@@ -51,7 +51,8 @@ state = {
   pan: { x, y },      // Canvas viewport offset
   zoom: 1,            // Canvas zoom level (0.2–3)
   exportFormat: 'prompt',
-  memoryEnabled: false // Memory Protocol toggle
+  memoryEnabled: false, // Memory Protocol toggle
+  defaultModel: 'sonnet-4.6' // Global default for new nodes
 }
 ```
 No frameworks, no reactive libraries. Each user action calls `render()` which does a full DOM diff-free re-render of the SVG canvas and triggers `updatePrompt()`.
@@ -66,7 +67,7 @@ No frameworks, no reactive libraries. Each user action calls `render()` which do
 | **Task** | Rounded rect | Green | A discrete unit of work — description + acceptance criteria (non-agent) |
 | **Decision** | Diamond | Amber | A conditional branch — yes/no routing based on agent output |
 | **Parallel** | Flat rect | Purple | Fork/Join control flow — splits into concurrent branches or collects results |
-| **Input** | Pill | Cyan | Entry point — Jira ticket, user story, PRD, or custom input |
+| **Input** | Pill | Cyan | Entry point — Jira ticket, user story, PRD, or custom input. Optional App Source Path and App Branch fields for test automation workflows |
 | **Output** | Pill | Rose | Deliverable — code changes, PR, report, or documentation |
 
 ### Agent Node Config
@@ -99,7 +100,7 @@ This ensures exported prompts always contain real instructions, even if the user
 - **Testing/Validation**: `tester`, `bugTester`, `e2eTester`, `validator`
 - **Research**: `codebaseExplorer`, `docResearcher`, `patternAnalyzer`, `synthesizer`
 - **Audit**: `securityAuditor`, `qualityAnalyst`, `perfProfiler`, `archReviewer`, `reportBuilder`
-- **Test Automation (SET)**: `testPlanner`, `featureWriter`, `screenObjectWriter`, `stepDefWriter`, `testReviewer`
+- **Test Automation (SET)**: `appExplorer`, `testPlanner`, `featureWriter`, `screenObjectWriter`, `stepDefWriter`, `testReviewer`
 - **Cross-cutting**: `securityReview`, `testWriter`, `researcher`
 
 Each template is structured with numbered steps, expected outputs, handoff summaries, and output format guidance.
@@ -226,7 +227,7 @@ After generation, `autoLayout()` is called to arrange nodes cleanly.
 | **Code Review** | Input → Analyzer → Reviewer → Improver → Validator → Output |
 | **Parallel Research** | Input → Fork → (Codebase Explorer ‖ Doc Researcher ‖ Pattern Analyzer) → Join → Synthesizer → Output |
 | **Agent Swarm** | Input → Fork → (Security Auditor ‖ Quality Analyst ‖ Perf Profiler ‖ Arch Reviewer) → Join → Report Builder → Output |
-| **Test Automation** | Input → Test Planner → Fork → (Feature Writer ‖ Screen Objects ‖ Step Definitions) → Join → Test Reviewer → Decision → Output |
+| **Test Automation** | (Jira Ticket + App Source) → Fork → (Test Planner ‖ App Explorer) → Join → Fork → (Feature Writer ‖ Screen Objects ‖ Step Definitions) → Join → Test Reviewer → Decision → Output |
 
 ---
 
