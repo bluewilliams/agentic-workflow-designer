@@ -91,7 +91,7 @@ User-entered prompt
 This ensures exported prompts always contain real instructions, even if the user never touches the prompt field.
 
 ### `PROMPTS` Library
-25+ pre-written agent prompt templates covering:
+30+ pre-written agent prompt templates covering:
 - **Planning/Architecture**: `planner`, `architect`
 - **Implementation**: `implementer`, `backend`, `frontend`
 - **Investigation/Fix**: `investigator`, `fixer`
@@ -99,9 +99,10 @@ This ensures exported prompts always contain real instructions, even if the user
 - **Testing/Validation**: `tester`, `bugTester`, `e2eTester`, `validator`
 - **Research**: `codebaseExplorer`, `docResearcher`, `patternAnalyzer`, `synthesizer`
 - **Audit**: `securityAuditor`, `qualityAnalyst`, `perfProfiler`, `archReviewer`, `reportBuilder`
+- **Test Automation (SET)**: `testPlanner`, `featureWriter`, `screenObjectWriter`, `stepDefWriter`, `testReviewer`
 - **Cross-cutting**: `securityReview`, `testWriter`, `researcher`
 
-Each template is structured with numbered steps, expected outputs, and output format guidance.
+Each template is structured with numbered steps, expected outputs, handoff summaries, and output format guidance.
 
 ---
 
@@ -225,6 +226,7 @@ After generation, `autoLayout()` is called to arrange nodes cleanly.
 | **Code Review** | Input → Analyzer → Reviewer → Improver → Validator → Output |
 | **Parallel Research** | Input → Fork → (Codebase Explorer ‖ Doc Researcher ‖ Pattern Analyzer) → Join → Synthesizer → Output |
 | **Agent Swarm** | Input → Fork → (Security Auditor ‖ Quality Analyst ‖ Perf Profiler ‖ Arch Reviewer) → Join → Report Builder → Output |
+| **Test Automation** | Input → Test Planner → Fork → (Feature Writer ‖ Screen Objects ‖ Step Definitions) → Join → Test Reviewer → Decision → Output |
 
 ---
 
@@ -338,4 +340,4 @@ JavaScript:
 
 ---
 
-*Last updated: 2026-02-22*
+*Last updated: 2026-02-24*
