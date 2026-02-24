@@ -43,7 +43,7 @@ No install required — the memory protocol is embedded directly in the generate
 - **Code Review** - Analyzer > Reviewer > Improver > Validator
 - **Parallel Research** - Codebase Explorer + Doc Researcher + Pattern Analyzer > Synthesizer
 - **Agent Swarm** - Security + Quality + Performance + Architecture audit > Report
-- **Test Automation** - Test Planner > parallel Feature Writer + Screen Objects + Step Definitions > Test Reviewer
+- **Test Automation** - [Test Planner | App Explorer] > parallel Feature Writer + Screen Objects + Step Definitions > Test Reviewer (with app source path + branch support)
 
 ## Node Types
 
