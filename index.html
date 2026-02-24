@@ -303,7 +303,7 @@ svg.canvas{width:100%;height:100%;display:block}
       </div>
       <div class="preset-item" onclick="loadPreset('test_automation')">
         <div class="preset-name">Test Automation</div>
-        <div class="preset-desc">[Plan | App Explorer] &rarr; [Feature | Screens | Steps] &rarr; Review</div>
+        <div class="preset-desc">Plan + Explore App &rarr; [Feature | Screens | Steps] &rarr; Review</div>
       </div>
       <div class="preset-item" onclick="loadPreset('review')">
         <div class="preset-name">Code Review</div>
@@ -315,7 +315,7 @@ svg.canvas{width:100%;height:100%;display:block}
       </div>
       <div class="preset-item" onclick="loadPreset('swarm')">
         <div class="preset-name">Agent Swarm</div>
-        <div class="preset-desc">[Security | Quality | Perf | Arch] &rarr; Report</div>
+        <div class="preset-desc">[Security | Quality | Performance | Architecture] &rarr; Report</div>
       </div>
     </div>
   </div>
@@ -435,7 +435,7 @@ svg.canvas{width:100%;height:100%;display:block}
       <button class="btn sm primary" onclick="copyPrompt()">Copy</button>
     </div>
   </div>
-  <div class="prompt-content" id="promptOutput">Design your workflow to generate an agent prompt...</div>
+  <div class="prompt-content" id="promptOutput">Add nodes and connections to see your workflow output here...</div>
 </div>
 
 <!-- Context Menu -->
@@ -519,7 +519,8 @@ function atlassianHint(urls) {
 const AGENT_TYPE_PROMPT_MAP = {
   planner: 'planner', architect: 'architect', coder: 'implementer',
   frontend: 'frontend', backend: 'backend', reviewer: 'reviewer',
-  tester: 'tester', debugger: 'investigator', researcher: 'researcher'
+  tester: 'tester', debugger: 'investigator', researcher: 'researcher',
+  general: 'researcher'
 };
 
 // Returns a quality prompt for any node - user prompt > agentType template > smart fallback
@@ -527,8 +528,9 @@ function getEffectivePrompt(node) {
   if (node.config.prompt && node.config.prompt.trim()) return node.config.prompt;
   const mapped = AGENT_TYPE_PROMPT_MAP[node.config.agentType];
   if (mapped && PROMPTS[mapped]) return PROMPTS[mapped];
-  // Smart fallback for general/unknown types using the node label
-  return `Complete the task: ${node.label}.\n\n1. Read and understand any input from previous steps\n2. Use Glob and Grep to orient yourself in the codebase before making changes\n3. Use \`LSP workspaceSymbol\` to find relevant types and symbols in the task area\n4. Use \`LSP goToDefinition\` and \`LSP findReferences\` on key symbols before modifying them — understand their usage scope\n5. Use \`LSP incomingCalls\` / \`LSP outgoingCalls\` to trace call chains if the task involves tracing behavior or fixing a bug\n6. Analyze the requirements and plan your approach\n7. Execute the work using the tools available to you\n8. Verify your output is complete and correct — run linter/tests if applicable\n9. Document what was done and any issues encountered\n\n## Handoff Summary\nEnd your response with:\n- **Completed**: What was accomplished\n- **Files Changed**: Specific files created or modified (with brief reason)\n- **Key Decisions**: Important choices made and why\n- **Next Step Needs**: What the next agent must know to continue effectively`;
+  // Smart fallback for general/unknown types using the node label + notes
+  const taskDesc = (node.config.notes && node.config.notes.trim()) ? `${node.label}: ${node.config.notes.trim()}` : node.label;
+  return `Complete the task: ${taskDesc}.\n\n1. Read and understand any input from previous steps\n2. Use Glob and Grep to orient yourself in the codebase before making changes\n3. Use \`LSP workspaceSymbol\` to find relevant types and symbols in the task area\n4. Use \`LSP goToDefinition\` and \`LSP findReferences\` on key symbols before modifying them — understand their usage scope\n5. Use \`LSP incomingCalls\` / \`LSP outgoingCalls\` to trace call chains if the task involves tracing behavior or fixing a bug\n6. Analyze the requirements and plan your approach\n7. Execute the work using the tools available to you\n8. Verify your output is complete and correct — run linter/tests if applicable\n9. Document what was done and any issues encountered\n\n## Handoff Summary\nEnd your response with:\n- **Completed**: What was accomplished\n- **Files Changed**: Specific files created or modified (with brief reason)\n- **Key Decisions**: Important choices made and why\n- **Next Step Needs**: What the next agent must know to continue effectively`;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -566,7 +568,7 @@ const PROMPTS = {
   // --- Testing & Validation ---
   tester: 'Write and run comprehensive tests for the changes.\n\nIf an Atlassian MCP tool is available, fetch the ticket\'s acceptance criteria to ensure every criterion has corresponding test coverage.\n\n1. Use `LSP documentSymbol` on each changed file to enumerate all public functions, methods, and exports — these define the test surface\n2. Use `LSP goToDefinition` on return types and parameter types to understand the exact shapes to assert against\n3. Use `LSP findReferences` on the changed functions to identify existing test files and test patterns already in use\n4. Use `LSP incomingCalls` on the changed functions to find integration-level entry points worth testing end-to-end\n5. Write unit tests for new functions/methods including edge cases\n6. Write integration tests for component interactions\n7. Test both happy paths and error scenarios\n8. Verify acceptance criteria from the original requirements\n9. Run the complete existing test suite to check for regressions\n\nReport: tests written (mapped to LSP-discovered surface), pass/fail results, coverage of new code, regressions found. Provide a clear PASS/FAIL verdict.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or FAIL\n- **Tests Written**: Count and breakdown (unit/integration)\n- **Coverage**: New code coverage assessment\n- **Failures**: Any failing tests with description\n- **Regressions**: Any existing tests that broke',
 
-  bugTester: 'Verify the bug fix and write regression tests.\n\n1. Read the investigation report and the fix summary\n2. Use `LSP incomingCalls` on the fixed function to identify all callers — write regression tests from each distinct call path that could expose the bug\n3. Use `LSP findReferences` on any changed type or variable to ensure the regression test covers all affected usages\n4. Use `LSP goToDefinition` to understand the fixed function\'s expected contract and assert against it precisely\n5. Write a regression test that FAILS without the fix and PASSES with it\n6. Test edge cases around the fixed code area\n7. Run the full test suite to verify no regressions were introduced\n8. Confirm the original reproduction steps no longer trigger the bug\n\nOutput: VERIFIED or NOT VERIFIED verdict, regression test details (with LSP-informed call path coverage), full test suite results, and confirmation the original issue is resolved.',
+  bugTester: 'Verify the bug fix and write regression tests.\n\n1. Read the investigation report and the fix summary\n2. Use `LSP incomingCalls` on the fixed function to identify all callers — write regression tests from each distinct call path that could expose the bug\n3. Use `LSP findReferences` on any changed type or variable to ensure the regression test covers all affected usages\n4. Use `LSP goToDefinition` to understand the fixed function\'s expected contract and assert against it precisely\n5. Write a regression test that FAILS without the fix and PASSES with it\n6. Test edge cases around the fixed code area\n7. Run the full test suite to verify no regressions were introduced\n8. Confirm the original reproduction steps no longer trigger the bug\n\nOutput: VERIFIED or NOT VERIFIED verdict, regression test details (with LSP-informed call path coverage), full test suite results, and confirmation the original issue is resolved.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: VERIFIED or NOT VERIFIED\n- **Regression Tests**: Tests written to cover the fixed bug (file:line)\n- **Call Paths Covered**: LSP-derived callers included in regression coverage\n- **Test Suite Results**: Full suite pass/fail\n- **Residual Risk**: Any related areas still at risk',
 
   e2eTester: 'Write and run E2E and integration tests for the full stack feature.\n\n1. Use `LSP documentSymbol` on changed API handler files and component files to enumerate the full public surface that needs test coverage\n2. Use `LSP findReferences` on the changed functions to find existing test files and follow their patterns\n3. Write integration tests verifying frontend-backend interaction — ensure API contracts match\n4. Write E2E tests for critical user workflows covering the happy path and key error scenarios\n5. Test API endpoints independently: correct status codes, error responses, edge cases, auth\n6. Test UI components in various states: loading, error, empty, populated\n7. Run the complete test suite to verify no regressions\n\nReport: tests written, results, coverage assessment, and a PASS/FAIL verdict.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or FAIL\n- **Tests Written**: Count and breakdown (E2E/integration/API)\n- **Coverage**: Which user flows and API endpoints are covered\n- **Failures**: Any failing tests with description\n- **Gaps**: Scenarios not yet covered and why',
 
@@ -579,18 +581,18 @@ const PROMPTS = {
 
   patternAnalyzer: 'Analyze existing patterns and conventions in the codebase.\n\n1. Use `LSP workspaceSymbol` to search for types and names similar to the feature being built — find the closest existing analogues\n2. Use `LSP documentSymbol` on the best analogue files to understand their internal structure and naming conventions\n3. Use `LSP findReferences` on shared utilities, hooks, and base classes to understand which ones are convention vs one-off\n4. Use `LSP goToImplementation` on common interfaces to compare how different features implement the same contract\n5. Note naming conventions, file organization, and import styles derived from LSP findings\n6. Note any deviations from established patterns\n7. Assess which patterns should be followed vs improved\n\nOutput: pattern inventory with code examples (file:line references), convention guide, and recommendations for the implementation approach.\n\n## Handoff Summary\nEnd your response with:\n- **Pattern to Follow**: The closest existing analogue with file:line\n- **Conventions**: Naming, file organization, and import styles to match\n- **Shared Code**: Reusable utilities and their LSP-verified reference counts\n- **Deviations**: Existing inconsistencies to be aware of\n- **Recommendation**: Preferred implementation approach aligned with codebase patterns',
 
-  synthesizer: 'Synthesize findings from all researchers into actionable recommendations.\n\n1. Correlate findings across codebase exploration, documentation, and pattern analysis\n2. Identify consensus and conflicts between sources\n3. Prioritize recommendations by impact and feasibility\n4. Create a clear action plan with specific steps and file references\n5. Flag risks or open questions requiring human decision\n\nOutput: executive summary, prioritized recommendations, concrete action plan, and risk register.',
+  synthesizer: 'Synthesize findings from all researchers into actionable recommendations.\n\n1. Correlate findings across codebase exploration, documentation, and pattern analysis\n2. Identify consensus and conflicts between sources\n3. Prioritize recommendations by impact and feasibility\n4. Create a clear action plan with specific steps and file references\n5. Flag risks or open questions requiring human decision\n\nOutput: executive summary, prioritized recommendations, concrete action plan, and risk register.\n\n## Handoff Summary\nEnd your response with:\n- **Recommended Approach**: Top recommendation with rationale\n- **Action Plan**: Numbered steps for implementation\n- **Open Questions**: Items requiring human decision before proceeding\n- **Risks**: Conflicts or uncertainties from the research findings',
 
   // --- Audit ---
-  securityAuditor: 'Audit for security vulnerabilities across the codebase.\n\n1. Use `LSP workspaceSymbol` to find all authentication, authorization, and input-handling functions\n2. Use `LSP incomingCalls` on each auth/permission check to map all callers — identify any code path that does NOT call it (potential bypass)\n3. Use `LSP findReferences` on user-controlled input parameters to trace them through the codebase — identify where they reach sinks (queries, shell commands, HTML output) without sanitization\n4. Use `LSP outgoingCalls` on request handler entry points to trace the full data flow from input to storage/output\n5. Use `LSP goToDefinition` on security-sensitive types (tokens, sessions, credentials) to verify they are handled correctly throughout\n\nFocus: SQL/command injection, XSS, CSRF, auth/authorization flaws, data exposure, insecure dependencies, secrets in code, OWASP Top 10.\n\nFor each finding: severity (Critical/High/Medium/Low), location (file:line), LSP-traced data flow, potential exploit scenario, and remediation steps. Output a prioritized security findings list.',
+  securityAuditor: 'Audit for security vulnerabilities across the codebase.\n\n1. Use `LSP workspaceSymbol` to find all authentication, authorization, and input-handling functions\n2. Use `LSP incomingCalls` on each auth/permission check to map all callers — identify any code path that does NOT call it (potential bypass)\n3. Use `LSP findReferences` on user-controlled input parameters to trace them through the codebase — identify where they reach sinks (queries, shell commands, HTML output) without sanitization\n4. Use `LSP outgoingCalls` on request handler entry points to trace the full data flow from input to storage/output\n5. Use `LSP goToDefinition` on security-sensitive types (tokens, sessions, credentials) to verify they are handled correctly throughout\n\nFocus: SQL/command injection, XSS, CSRF, auth/authorization flaws, data exposure, insecure dependencies, secrets in code, OWASP Top 10.\n\nFor each finding: severity (Critical/High/Medium/Low), location (file:line), LSP-traced data flow, potential exploit scenario, and remediation steps. Output a prioritized security findings list.\n\n## Handoff Summary\nEnd your response with:\n- **Critical Findings**: Immediate-action vulnerabilities with file:line\n- **High Findings**: Important but not immediately exploitable\n- **Data Flow Risks**: Untrusted input paths reaching sensitive sinks\n- **Auth Gaps**: Code paths without proper auth checks\n- **Remediation Priority**: Top items ranked by exploitability',
 
-  qualityAnalyst: 'Analyze code quality and maintainability.\n\n1. Use `LSP documentSymbol` on each key file to enumerate all functions and their nesting depth — flag highly nested functions as complexity candidates\n2. Use `LSP incomingCalls` on utility functions: zero callers = dead code; one caller = inline candidate; many callers = high-leverage improvement target\n3. Use `LSP outgoingCalls` on large functions to measure fan-out — excessive outgoing calls indicate Single Responsibility violations\n4. Use `LSP findReferences` on duplicated logic patterns to count instances and assess DRY violation impact\n5. Use `LSP goToImplementation` on interfaces with multiple implementations to check for consistency and Liskov Substitution compliance\n\nFocus: cyclomatic/cognitive complexity, code duplication (DRY), SOLID violations, test coverage gaps, dead code, inconsistent patterns, error handling completeness.\n\nFor each finding: severity, location (file:line), LSP-derived metric (caller count, fan-out, etc.), description, and improvement suggestion. Output a quality scorecard with prioritized findings.',
+  qualityAnalyst: 'Analyze code quality and maintainability.\n\n1. Use `LSP documentSymbol` on each key file to enumerate all functions and their nesting depth — flag highly nested functions as complexity candidates\n2. Use `LSP incomingCalls` on utility functions: zero callers = dead code; one caller = inline candidate; many callers = high-leverage improvement target\n3. Use `LSP outgoingCalls` on large functions to measure fan-out — excessive outgoing calls indicate Single Responsibility violations\n4. Use `LSP findReferences` on duplicated logic patterns to count instances and assess DRY violation impact\n5. Use `LSP goToImplementation` on interfaces with multiple implementations to check for consistency and Liskov Substitution compliance\n\nFocus: cyclomatic/cognitive complexity, code duplication (DRY), SOLID violations, test coverage gaps, dead code, inconsistent patterns, error handling completeness.\n\nFor each finding: severity, location (file:line), LSP-derived metric (caller count, fan-out, etc.), description, and improvement suggestion. Output a quality scorecard with prioritized findings.\n\n## Handoff Summary\nEnd your response with:\n- **Quality Score**: Overall health assessment\n- **Dead Code**: Zero-reference symbols to remove\n- **Complexity Hotspots**: High fan-out or deeply nested functions with file:line\n- **DRY Violations**: Duplicated logic with instance counts\n- **Top Improvements**: Prioritized items for the Report Builder',
 
-  perfProfiler: 'Identify performance bottlenecks and optimization opportunities.\n\n1. Use `LSP outgoingCalls` on hot-path entry points (request handlers, render functions, event handlers) to trace the full execution chain and spot expensive operations within it\n2. Use `LSP incomingCalls` on suspected bottleneck functions to quantify call frequency — high-callee-count functions have the highest optimization leverage\n3. Use `LSP findReferences` on database query and network request functions to find all call sites and detect N+1 patterns or redundant fetches\n4. Use `LSP goToDefinition` on caching/memoization utilities to understand what is already cached and identify what should be\n5. Use `LSP documentSymbol` to scan data transformation pipelines for unnecessary intermediate allocations\n\nFocus: N+1 queries, unnecessary re-renders, memory leaks, large bundle size, unoptimized algorithms, missing caching, synchronous blocking, excessive network calls.\n\nFor each finding: severity, location (file:line), LSP-derived call frequency, estimated impact, and optimization approach. Output a performance assessment with prioritized opportunities.',
+  perfProfiler: 'Identify performance bottlenecks and optimization opportunities.\n\n1. Use `LSP outgoingCalls` on hot-path entry points (request handlers, render functions, event handlers) to trace the full execution chain and spot expensive operations within it\n2. Use `LSP incomingCalls` on suspected bottleneck functions to quantify call frequency — high-callee-count functions have the highest optimization leverage\n3. Use `LSP findReferences` on database query and network request functions to find all call sites and detect N+1 patterns or redundant fetches\n4. Use `LSP goToDefinition` on caching/memoization utilities to understand what is already cached and identify what should be\n5. Use `LSP documentSymbol` to scan data transformation pipelines for unnecessary intermediate allocations\n\nFocus: N+1 queries, unnecessary re-renders, memory leaks, large bundle size, unoptimized algorithms, missing caching, synchronous blocking, excessive network calls.\n\nFor each finding: severity, location (file:line), LSP-derived call frequency, estimated impact, and optimization approach. Output a performance assessment with prioritized opportunities.\n\n## Handoff Summary\nEnd your response with:\n- **Critical Bottlenecks**: Highest-impact performance issues with file:line\n- **N+1 Patterns**: Database or network call patterns that need batching\n- **Caching Opportunities**: Functions with high call frequency that could be memoized\n- **Bundle/Memory**: Size or memory concerns\n- **Quick Wins**: Low-effort optimizations with high impact',
 
-  archReviewer: 'Review architecture for structural health and scalability.\n\n1. Use `LSP workspaceSymbol` to inventory all modules, services, and layers by their type/namespace patterns\n2. Use `LSP outgoingCalls` on each module\'s public API functions to map inter-module dependencies — build a dependency direction graph\n3. Use `LSP incomingCalls` on lower-layer modules to detect upper-layer violations (e.g., data layer calling presentation layer)\n4. Use `LSP goToImplementation` on service interfaces to verify concrete implementations respect the defined contract and don\'t introduce hidden couplings\n5. Use `LSP findReferences` on shared domain types to identify which layers consume them — flag any that cross expected layer boundaries\n\nFocus: module coupling, cohesion, dependency direction, layer violations, circular dependencies, separation of concerns, scalability bottlenecks.\n\nFor each finding: severity, affected components (with LSP-traced dependency evidence), description, and recommendation. Output an architecture health report with dependency direction graph.',
+  archReviewer: 'Review architecture for structural health and scalability.\n\n1. Use `LSP workspaceSymbol` to inventory all modules, services, and layers by their type/namespace patterns\n2. Use `LSP outgoingCalls` on each module\'s public API functions to map inter-module dependencies — build a dependency direction graph\n3. Use `LSP incomingCalls` on lower-layer modules to detect upper-layer violations (e.g., data layer calling presentation layer)\n4. Use `LSP goToImplementation` on service interfaces to verify concrete implementations respect the defined contract and don\'t introduce hidden couplings\n5. Use `LSP findReferences` on shared domain types to identify which layers consume them — flag any that cross expected layer boundaries\n\nFocus: module coupling, cohesion, dependency direction, layer violations, circular dependencies, separation of concerns, scalability bottlenecks.\n\nFor each finding: severity, affected components (with LSP-traced dependency evidence), description, and recommendation. Output an architecture health report with dependency direction graph.\n\n## Handoff Summary\nEnd your response with:\n- **Dependency Graph**: Module dependency direction summary\n- **Layer Violations**: Components reaching across layer boundaries\n- **Coupling Hotspots**: Tightly coupled modules with evidence\n- **Scalability Risks**: Architectural bottlenecks that limit growth\n- **Recommendations**: Structural improvements prioritized by impact',
 
-  reportBuilder: 'Compile all analyst findings into a unified, prioritized report.\n\n1. Aggregate findings across security, quality, performance, and architecture\n2. Deduplicate overlapping findings\n3. Assign overall severity considering cross-cutting impact\n4. Create an executive summary with key health metrics\n5. Organize recommendations by priority and effort\n\nOutput: executive summary, critical findings (immediate action), high-priority improvements (next sprint), and overall health scores per dimension.',
+  reportBuilder: 'Compile all analyst findings into a unified, prioritized report.\n\n1. Aggregate findings across security, quality, performance, and architecture\n2. Deduplicate overlapping findings\n3. Assign overall severity considering cross-cutting impact\n4. Create an executive summary with key health metrics\n5. Organize recommendations by priority and effort\n\nOutput: executive summary, critical findings (immediate action), high-priority improvements (next sprint), and overall health scores per dimension.\n\n## Handoff Summary\nEnd your response with:\n- **Overall Health**: Score per dimension (security/quality/performance/architecture)\n- **Critical Items**: Must-fix findings requiring immediate action\n- **Sprint Priorities**: High-priority items for next sprint\n- **Cross-Cutting Themes**: Issues that appear across multiple dimensions\n- **Metrics**: Quantitative summary (finding counts, severity breakdown)',
 
   securityReview: 'Review all changes for security vulnerabilities.\n\n1. Use `LSP findReferences` on user-controlled input parameters to trace them through the changed code — identify where they reach sinks (queries, shell commands, HTML output) without sanitization\n2. Use `LSP incomingCalls` on authentication/authorization check functions to verify every new code path calls them appropriately\n3. Use `LSP goToDefinition` on any security-sensitive types (tokens, sessions, credentials) to verify correct handling\n4. Check for injection risks: SQL, command, XSS, template injection\n5. Verify authentication and authorization logic — especially on new endpoints or state changes\n6. Review data exposure: are API responses leaking sensitive fields? Are error messages safe?\n7. Check CSRF protections and input validation on all user-facing inputs\n8. Verify secure defaults: passwords hashed, tokens expiring, cookies httpOnly/secure\n\nFor each finding: severity (Critical/High/Medium/Low), location (file:line), potential exploit scenario, and remediation.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or NEEDS FIX\n- **Critical Findings**: Immediate-action security issues\n- **High Findings**: Important but not exploitable without additional conditions\n- **Recommendations**: Security hardening suggestions (non-blocking)',
 
@@ -2015,12 +2017,12 @@ function updatePrompt() {
   const out = $('promptOutput');
   if (state.nodes.length === 0) {
     const hints = {
-      prompt: 'Design your workflow to generate a structured prompt...',
-      subagent: 'Design your workflow to generate Claude Code sub-agent calls...',
-      teams: 'Design your workflow to generate an Agent Teams delegation brief...',
-      sdk: 'Design your workflow to generate Agent SDK Python code...',
-      claude: 'Design your workflow to generate a Claude prompt...',
-      manifest: 'Design your workflow to generate a portable TOON manifest...'
+      prompt: 'Add nodes to see a structured workflow overview...',
+      subagent: 'Add nodes to see Claude Code sub-agent Task calls...',
+      teams: 'Add nodes to see an Agent Teams delegation brief...',
+      sdk: 'Add nodes to see Agent SDK Python code...',
+      claude: 'Add nodes to see a Claude conversational prompt...',
+      manifest: 'Add nodes to see a portable TOON manifest...'
     };
     out.textContent = hints[state.exportFormat] || hints.prompt;
     return;
@@ -2246,33 +2248,31 @@ function genSubAgents() {
   p.push('## Execution Plan');
   p.push('');
 
-  // Identify parallel groups
+  // Identify parallel groups — nodeToForkId maps each child to its specific fork
   const parallelChildren = new Set();
+  const nodeToForkId = {};
   parallels.forEach(par => {
-    state.connections.filter(c => c.from === par.id).forEach(c => parallelChildren.add(c.to));
+    state.connections.filter(c => c.from === par.id).forEach(c => {
+      parallelChildren.add(c.to);
+      nodeToForkId[c.to] = par.id;
+    });
   });
 
-  let stepNum = 1;
-  agents.forEach((node, i) => {
-    const deps = getDeps(node.id);
-    const isParallel = parallelChildren.has(node.id);
-    const at = getAgentTypeName(node.config.agentType);
+  // Map internal model value to Claude Code Task tool model shorthand
+  const taskModelMap = { 'sonnet-4.6': 'sonnet', 'opus-4.6': 'opus', 'sonnet': 'sonnet', 'opus': 'opus', 'haiku': 'haiku' };
 
-    const subagentType = 'general-purpose';
-    // Map internal model value to Claude Code Task tool model shorthand
-    const taskModelMap = { 'sonnet-4.6': 'sonnet', 'opus-4.6': 'opus', 'sonnet': 'sonnet', 'opus': 'opus', 'haiku': 'haiku' };
+  function emitAgentBlock(node, promptLines) {
     const taskModel = taskModelMap[node.config.model] || 'sonnet';
-
-    if (isParallel) {
-      p.push(`### Step ${stepNum} (PARALLEL): ${node.label}`);
-    } else {
-      p.push(`### Step ${stepNum}: ${node.label}`);
-    }
-    p.push('');
     p.push('```');
-    p.push(`Task(subagent_type="${subagentType}", model="${taskModel}", prompt="`);
+    p.push(`Task(subagent_type="general-purpose", model="${taskModel}", prompt="`);
+    p.push(promptLines.join('\n'));
+    p.push('")');
+    p.push('```');
+  }
 
-    // Build comprehensive sub-agent prompt
+  function buildAgentPrompt(node) {
+    const deps = getDeps(node.id);
+    const at = getAgentTypeName(node.config.agentType);
     const promptLines = [];
     promptLines.push(`You are a ${at} agent responsible for: ${node.label}.`);
     if (node.config.tools.length > 0) {
@@ -2285,26 +2285,22 @@ function genSubAgents() {
       promptLines.push('');
     }
 
-    // Task instructions - always present via getEffectivePrompt fallback
     promptLines.push('## Your Task');
     promptLines.push(getEffectivePrompt(node));
     promptLines.push('');
 
-    // Custom notes
     if (node.config.notes && node.config.notes.trim()) {
       promptLines.push('## Additional Context');
       promptLines.push(node.config.notes.trim());
       promptLines.push('');
     }
 
-    // Dependency context
     if (deps.length > 0) {
       promptLines.push('## Input');
       promptLines.push(`Review the output from: ${deps.join(', ')} before proceeding. Use their findings to inform your work.`);
       promptLines.push('');
     }
 
-    // Downstream awareness - decision gates
     const downstreamDecisions = getDownstreamDecisions(node.id);
     if (downstreamDecisions.length > 0) {
       promptLines.push('## Success Gate');
@@ -2314,7 +2310,6 @@ function genSubAgents() {
       });
       promptLines.push('');
     } else {
-      // Show what comes next so agent knows their audience
       const downstream = getDownstream(node.id);
       if (downstream.length > 0) {
         promptLines.push('## Downstream');
@@ -2323,7 +2318,6 @@ function genSubAgents() {
       }
     }
 
-    // Requirements
     if (story) {
       promptLines.push('## Requirements');
       promptLines.push(story);
@@ -2331,7 +2325,6 @@ function genSubAgents() {
     }
     appSourceBlock('## App Source').forEach(l => promptLines.push(l));
 
-    // Output format guidance
     promptLines.push('## Output Format');
     promptLines.push('Provide a structured response with:');
     promptLines.push('1. Summary of actions taken');
@@ -2348,35 +2341,52 @@ function genSubAgents() {
       promptLines.push(genAgentMemoryPostamble(node.label));
     }
 
-    p.push(promptLines.join('\n'));
-    p.push('")');
-    p.push('```');
-    p.push('');
-    p.push(`- **Agent type**: ${at}`);
-    p.push(`- **Model**: ${getModelLabel(node.config.model)} (\`${node.config.model}\`)`);
-    p.push(`- **Tools**: ${node.config.tools.join(', ')}`);
-    p.push(`- **Max turns**: ${node.config.maxTurns}`);
-    if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
-    if (isParallel) p.push('- **Execution**: Launch in parallel with other parallel steps');
-    p.push('');
+    return promptLines;
+  }
 
+  let stepNum = 1;
+  let i = 0;
+  while (i < agents.length) {
+    const node = agents[i];
+    const isParallel = parallelChildren.has(node.id);
+
+    if (isParallel) {
+      const siblings = agents.filter(a => nodeToForkId[a.id] === nodeToForkId[node.id]);
+      p.push(`### Step ${stepNum}: Parallel — Launch Together`);
+      p.push('');
+      p.push('Send all of the following Task calls in a **single message** so they run concurrently:');
+      p.push('');
+      siblings.forEach(s => {
+        const at = getAgentTypeName(s.config.agentType);
+        const deps = getDeps(s.id);
+        p.push(`#### ${s.label}`);
+        p.push('');
+        emitAgentBlock(s, buildAgentPrompt(s));
+        p.push('');
+        p.push(`- **Agent type**: ${at}`);
+        p.push(`- **Model**: ${getModelLabel(s.config.model)} (\`${s.config.model}\`)`);
+        p.push(`- **Tools**: ${s.config.tools.join(', ')}`);
+        p.push(`- **Max turns**: ${s.config.maxTurns}`);
+        if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
+        p.push('');
+      });
+      i += siblings.length;
+    } else {
+      const deps = getDeps(node.id);
+      const at = getAgentTypeName(node.config.agentType);
+      p.push(`### Step ${stepNum}: ${node.label}`);
+      p.push('');
+      emitAgentBlock(node, buildAgentPrompt(node));
+      p.push('');
+      p.push(`- **Agent type**: ${at}`);
+      p.push(`- **Model**: ${getModelLabel(node.config.model)} (\`${node.config.model}\`)`);
+      p.push(`- **Tools**: ${node.config.tools.join(', ')}`);
+      p.push(`- **Max turns**: ${node.config.maxTurns}`);
+      if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
+      p.push('');
+      i++;
+    }
     stepNum++;
-  });
-
-  // Parallel execution note
-  if (parallels.length > 0) {
-    p.push('---');
-    p.push('## Parallel Execution Notes');
-    p.push('');
-    p.push('To run parallel steps, launch multiple Task calls in the same message:');
-    p.push('');
-    parallels.forEach(par => {
-      const children = state.connections.filter(c => c.from === par.id).map(c => {
-        const n = state.nodes.find(nd => nd.id === c.to);
-        return n ? n.label : null;
-      }).filter(Boolean);
-      p.push(`Launch simultaneously: ${children.join(', ')}`);
-    });
   }
 
   return p.join('\n');
@@ -2977,10 +2987,12 @@ function genManifest() {
     p.push('');
   }
 
-  // Memory path
-  p.push('## Memory Path');
-  p.push(getMemoryPath());
-  p.push('');
+  // Memory path (only when memory is enabled)
+  if (state.memoryEnabled) {
+    p.push('## Memory Path');
+    p.push(getMemoryPath());
+    p.push('');
+  }
 
   // TOON key
   p.push(TOON_KEY);
