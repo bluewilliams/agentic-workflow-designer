@@ -337,6 +337,13 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
   </div>
 
+  <div class="sidebar-section" id="appSourceSection">
+    <h3>App Under Test <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Local path to the app being tested. Agents will explore it for selectors and screen structure.</div>
+    <input type="text" id="appSourcePath" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px" placeholder="/path/to/app/repo" oninput="updatePrompt()"/>
+    <input type="text" id="appSourceBranch" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px" placeholder="Branch (optional, e.g. feature/PROJ-123)" oninput="updatePrompt()"/>
+  </div>
+
   <div class="sidebar-section config-panel" id="configPanel">
     <h3>Node Configuration</h3>
     <div id="configFields"></div>
@@ -1376,8 +1383,6 @@ function updateConfig() {
     fields.innerHTML += configSelect('Source', 'source', node.config.source,
       [{ value:'jira', label:'Jira Ticket' },{ value:'story', label:'User Story' },{ value:'prd', label:'PRD' },{ value:'custom', label:'Custom' }]);
     fields.innerHTML += configTextarea('Description', 'description', node.config.description, 'Input details...');
-    fields.innerHTML += configInput('App Source Path', 'appPath', node.config.appPath || '', 'text');
-    fields.innerHTML += configInput('App Branch', 'appBranch', node.config.appBranch || '', 'text');
   } else if (node.type === 'output') {
     fields.innerHTML += configSelect('Format', 'format', node.config.format,
       [{ value:'code', label:'Code Changes' },{ value:'pr', label:'Pull Request' },{ value:'report', label:'Report' },{ value:'docs', label:'Documentation' }]);
@@ -1959,7 +1964,7 @@ function loadPreset(preset) {
     },
     test_automation: () => {
       const i = addNode('input', 80, 200, 'Jira Ticket');
-      const appIn = addNode('input', 80, 380, 'App Source', { source:'custom', description:'Path to the application source code being tested', appPath:'/path/to/app', appBranch:'' });
+      const appIn = addNode('input', 80, 380, 'App Source', { source:'custom', description:'Path to the app under test (set in sidebar)' });
       const planFork = addNode('parallel', 340, 286, 'Parallel Analysis', { strategy:'all' });
       const plan = addNode('agent', 620, 200, 'Test Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.testPlanner, maxTurns:10 });
       const appExp = addNode('agent', 620, 380, 'App Explorer', { agentType:'researcher', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','Bash'], prompt:PROMPTS.appExplorer, maxTurns:15 });
@@ -2026,10 +2031,11 @@ function updatePrompt() {
 function getStory() { return $('storyInput').value.trim(); }
 function getName() { return $('workflowName').value.trim(); }
 function getAppSource() {
-  const inp = state.nodes.find(n => n.type === 'input' && n.config.appPath && n.config.appPath.trim());
-  if (!inp) return null;
-  const path = inp.config.appPath.trim();
-  const branch = (inp.config.appBranch || '').trim();
+  const pathEl = $('appSourcePath');
+  const branchEl = $('appSourceBranch');
+  const path = pathEl ? pathEl.value.trim() : '';
+  if (!path) return null;
+  const branch = branchEl ? branchEl.value.trim() : '';
   return { path, branch: branch || null };
 }
 function appSourceBlock(heading) {
