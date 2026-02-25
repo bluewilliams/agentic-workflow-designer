@@ -20,6 +20,7 @@ The Agentic Workflow Designer is a **visual, browser-based playground** that bri
 5. Toggle **Memory Protocol** on/off as needed
 6. Select an export format tab and click **Copy**
 7. Paste the output into Claude Code or the Agent SDK — ready to run
+8. Optionally **Save** the workflow by name, or **Export .json** to share with colleagues
 
 ---
 
@@ -57,6 +58,20 @@ state = {
 ```
 No frameworks, no reactive libraries. Each user action calls `render()` which does a full DOM diff-free re-render of the SVG canvas and triggers `updatePrompt()`.
 
+### Persistence (localStorage)
+All persistence uses `localStorage` so the app remains a single portable HTML file with no server dependencies.
+
+| Key | Shape | Purpose |
+|-----|-------|---------|
+| `awd_prefs` | `{ defaultModel, memoryEnabled, appSourcePath, appSourceBranch, exportFormat }` | User preferences — auto-saved on change, auto-restored on load |
+| `awd_workflows` | `[ { slug, name, savedAt, nodeCount, agentCount }, ... ]` | Index of saved workflows (metadata only) |
+| `awd_wf_{slug}` | `{ version, slug, name, story, savedAt, canvas: { nodes, connections, nextId, pan, zoom } }` | Full saved workflow data |
+| `awd_autosave` | Same shape as `awd_wf_{slug}` | Single-slot auto-save, debounced 1s on `render()` |
+
+**Serialization boundary**: Nodes (full config), connections, nextId, pan, zoom, workflowName, and storyInput are persisted. Transient UI state (selectedId, mode, connectFrom, dragging, isPanning, mousePos) is excluded.
+
+**Error handling**: All localStorage operations are wrapped in try/catch. Auto-save fails silently; explicit save/export shows a toast on failure.
+
 ---
 
 ## Node Types
@@ -73,7 +88,7 @@ No frameworks, no reactive libraries. Each user action calls `render()` which do
 ### Agent Node Config
 Each Agent node has:
 - **Agent Type**: Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, General
-- **Model**: Sonnet 4.5 (default), Sonnet 4.6, Opus 4.5, Opus 4.6, Haiku 4.5
+- **Model**: Sonnet 4.6 (default), Sonnet 4.5, Opus 4.5, Opus 4.6, Haiku 4.5
 - **Tools**: Checkboxes for Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP
 - **Agent Prompt**: Freeform textarea — if left blank, falls back to `getEffectivePrompt()`
 - **Custom Notes**: Additional context injected into all export formats
@@ -252,32 +267,33 @@ After generation, `autoLayout()` is called to arrange nodes cleanly.
 | Memory preamble/postamble split | Read-before-task + write-after-task ordering maximizes compliance vs. a single appended block |
 | TOON v1 for memory files | Compact notation reduces token usage in agent context while preserving structured state |
 | Manifest as 6th format | Portable workflow definition enables sharing, diffing, and reproducibility |
+| localStorage for persistence | No server needed; keeps single-file portability; auto-save + named save + JSON export covers all sharing needs |
+| Debounced auto-save (1s) | Saves on every render without impacting interaction performance |
+| Separate prefs vs. workflow storage | Preferences (model, memory, format) persist globally; workflows persist individually by slug |
+| App Under Test after Presets | Contextual placement — appears directly below the preset that triggers it (Test Automation) |
 
 ---
 
 ## Known Limitations & Future Opportunities
 
 ### Current Limitations
-- **No persistence**: State is lost on page refresh (no localStorage save/load yet)
 - **No undo/redo**: Changes are irreversible without clearing the canvas
 - **No multi-select**: Can only select one node or edge at a time
 - **Agent SDK export is pseudocode**: The Python output requires manual adaptation to real SDK patterns
 - **Decision routing in exports is informational**: The export describes decision gates but doesn't generate conditional execution code
-- **Single canvas**: No support for multiple workflow tabs or saved workflow library
 - **Memory is prompt-only**: No deterministic pre-compaction hook exists; agents rely on frequent writes and breadcrumb detection
+- **localStorage only**: Persistence is browser-local; clearing browser data deletes saved workflows
 
 ### High-Value Future Features
-1. **Save/Load**: Serialize state to JSON and persist in localStorage or allow import/export as `.workflow.json`
-2. **Undo/Redo**: Command pattern or immutable state snapshots
-3. **Multi-select + bulk operations**: Drag-select multiple nodes, bulk delete, bulk move
-4. **Real Agent SDK code generation**: Generate working Python that actually runs the workflow via the Anthropic SDK
-5. **Workflow validation**: Warn on disconnected nodes, cycles, missing agent prompts, etc.
-6. **Template library**: Save custom workflows as named presets
-7. **Shareable URLs**: Encode workflow state in the URL hash for easy sharing
-8. **Node notes preview**: Show truncated notes on the canvas node itself
-9. **Connection labels**: Click a connection to add a label (currently only auto-set on Decision pass/fail)
-10. **Import from Jira API**: Fetch ticket content directly via Jira REST API
-11. **Claude Code hooks integration**: Use hooks for deterministic pre-compaction memory writes (v2 memory)
+1. **Undo/Redo**: Command pattern or immutable state snapshots
+2. **Multi-select + bulk operations**: Drag-select multiple nodes, bulk delete, bulk move
+3. **Real Agent SDK code generation**: Generate working Python that actually runs the workflow via the Anthropic SDK
+4. **Workflow validation**: Warn on disconnected nodes, cycles, missing agent prompts, etc.
+5. **Shareable URLs**: Encode workflow state in the URL hash for easy sharing
+6. **Node notes preview**: Show truncated notes on the canvas node itself
+7. **Connection labels**: Click a connection to add a label (currently only auto-set on Decision pass/fail)
+8. **Import from Jira API**: Fetch ticket content directly via Jira REST API
+9. **Claude Code hooks integration**: Use hooks for deterministic pre-compaction memory writes (v2 memory)
 
 ---
 
@@ -285,7 +301,7 @@ After generation, `autoLayout()` is called to arrange nodes cleanly.
 
 ```
 agentic-workflow-designer/
-├── index.html       # The entire application (~2,800 lines)
+├── index.html       # The entire application (~3,300 lines)
 ├── TECHNICAL.md     # This document
 ├── README.md        # User-facing overview
 ├── LICENSE          # MIT
@@ -294,37 +310,56 @@ agentic-workflow-designer/
 
 The `index.html` is internally organized into clearly delimited sections:
 ```
-CSS styles (lines 7–204)
-HTML structure (lines 206–400)
+CSS styles (lines 7–230)
+HTML structure (lines 232–380)
+  ├── Sidebar: Workflow Name, Story Input, Default Model, Add Nodes, Presets,
+  │            App Under Test (conditional), Saved Workflows, Tip, Memory, Node Config
+  ├── Canvas: Toolbar, SVG canvas, Empty state
+  └── Prompt Output: 6 format tabs, Copy button
 JavaScript:
-  ├── STATE & CONSTANTS (lines 402–582)
+  ├── STATE & CONSTANTS
   │     ├── NODE_DEFAULTS, AGENT_TYPES, ALL_TOOLS, MODELS
   │     ├── Atlassian URL detection
   │     ├── AGENT_TYPE_PROMPT_MAP, getEffectivePrompt()
   │     └── PROMPTS library (25+ templates)
-  ├── TOON v1 + MEMORY HELPERS (lines 584–802)
+  ├── TOON v1 + MEMORY HELPERS
   │     ├── TOON_KEY constant
   │     ├── slugify(), getMemoryPath()
+  │     ├── setDefaultModel(), initDefaultModelSelect()
   │     ├── toggleMemory(), updateMemoryPath()
   │     ├── genMemoryProtocol()        — orchestrator-level memory block
   │     ├── genAgentMemoryPreamble()   — per-agent read-first (step 0)
   │     └── genAgentMemoryPostamble()  — per-agent write-last (final steps)
-  ├── SVG HELPERS (lines 804–822)
-  ├── RENDERING (lines 822–960)
-  ├── NODE OPERATIONS (lines 960–1140)
-  ├── CONFIGURATION PANEL (lines 1140–1260)
-  ├── INTERACTION HANDLERS (lines 1260–1430)
-  ├── MODE & ZOOM (lines 1430–1470)
-  ├── AUTO LAYOUT (lines 1470–1530)
-  ├── STORY PARSING & WORKFLOW GENERATION (lines 1530–1690)
-  ├── PRESETS (lines 1690–1780)
-  └── EXPORT FORMAT SYSTEM (lines 1790–end)
-       ├── genWorkflow()      — Format 1: Workflow Markdown
-       ├── genSubAgents()     — Format 2: Sub-Agent Task calls
-       ├── genAgentTeams()    — Format 3: Agent Teams brief
-       ├── genAgentSDK()      — Format 4: Python SDK code
-       ├── genClaudePrompt()  — Format 5: Claude conversational prompt
-       └── genManifest()      — Format 6: TOON v1 Manifest
+  ├── PERSISTENCE (localStorage)
+  │     ├── showToast()                — reusable toast notification
+  │     ├── savePrefs(), restorePrefs() — preference auto-save/restore
+  │     ├── serializeWorkflow(), deserializeWorkflow() — state ↔ JSON
+  │     ├── autoSaveWorkflow(), restoreAutoSave() — debounced WIP persistence
+  │     ├── getWorkflowIndex(), setWorkflowIndex() — saved workflow index
+  │     ├── saveWorkflow(), loadSavedWorkflow(), deleteSavedWorkflow()
+  │     ├── renderSavedWorkflowList()  — sidebar list rendering
+  │     └── exportWorkflowFile(), importWorkflowFile() — .json file I/O
+  ├── SVG HELPERS
+  ├── RENDERING (render → renderNodes, renderConnections, autoSaveWorkflow)
+  ├── NODE OPERATIONS
+  ├── CONFIGURATION PANEL
+  ├── INTERACTION HANDLERS
+  ├── MODE & ZOOM
+  ├── AUTO LAYOUT
+  ├── STORY PARSING & WORKFLOW GENERATION
+  ├── PRESETS
+  ├── EXPORT FORMAT SYSTEM
+  │     ├── genWorkflow()      — Format 1: Workflow Markdown
+  │     ├── genSubAgents()     — Format 2: Sub-Agent Task calls
+  │     ├── genAgentTeams()    — Format 3: Agent Teams brief
+  │     ├── genAgentSDK()      — Format 4: Python SDK code
+  │     ├── genClaudePrompt()  — Format 5: Claude conversational prompt
+  │     └── genManifest()      — Format 6: TOON v1 Manifest
+  └── INIT
+        ├── initDefaultModelSelect()
+        ├── restorePrefs()
+        ├── restoreAutoSave() || (updateTransform + render)
+        └── renderSavedWorkflowList()
 ```
 
 ---
@@ -332,7 +367,7 @@ JavaScript:
 ## Development Guidelines
 
 - **Keep it single-file**: Resist the urge to add a build step unless complexity demands it
-- **Render on demand**: Call `render()` and `updatePrompt()` after any state mutation
+- **Render on demand**: Call `render()` and `updatePrompt()` after any state mutation (`render()` triggers auto-save automatically)
 - **Export completeness**: Every export format must include the full user story as context — never assume the recipient has seen it
 - **Prompt quality first**: The quality of exported prompts is the product's core value proposition. `getEffectivePrompt()` and the `PROMPTS` library are the most important code in the file
 - **Memory injection order**: Preamble (read) before task, postamble (write) after output format. Never append memory as an afterthought at the end
@@ -341,4 +376,4 @@ JavaScript:
 
 ---
 
-*Last updated: 2026-02-24*
+*Last updated: 2026-02-25*

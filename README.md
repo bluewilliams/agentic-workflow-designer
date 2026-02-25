@@ -10,7 +10,8 @@ A visual, interactive playground for designing AI agent workflows from Jira tick
 2. **Auto-generate a workflow** or build one manually from the node palette
 3. **Configure each agent** - model, tools, prompt, max turns
 4. **Export** in 6 formats optimized for different execution environments
-5. **Enable Memory Protocol** (optional) for compaction-resilient workflows with TOON notation
+5. **Save & load workflows** by name, export/import as `.json` files for sharing
+6. **Enable Memory Protocol** (optional) for compaction-resilient workflows with TOON notation
 
 ## Export Formats
 
@@ -59,10 +60,25 @@ No install required — the memory protocol is embedded directly in the generate
 - **Smart story detection** - auto-generates appropriate workflow from story keywords
 - **Decision gate integration** - downstream decisions are embedded as success criteria in agent prompts
 - **Workflow-aware prompts** - agents know their upstream dependencies and downstream consumers
+- **Save/Load workflows** - save by name, auto-restore work-in-progress on refresh, export/import `.json` for sharing
+- **Persistent preferences** - default model, memory toggle, export format, and app source path auto-save across sessions
 - **Memory Protocol** - optional compaction-resilient memory with TOON v1 notation
 - **TOON Manifest** - portable, git-friendly workflow definition format
 - **Custom workflows** - add your own nodes and connections; export generators add smart scaffolding automatically
 - **Model selection** - Sonnet 4.5/4.6, Opus 4.5/4.6, Haiku 4.5 with correct Task tool keys
+
+## Save & Load
+
+Workflows persist automatically. Your canvas is auto-saved on every change and restored on page refresh.
+
+### Named Workflows
+Click **Save** in the sidebar to save the current workflow by name. Saved workflows appear in a list — click to load, click × to delete. Same-name saves overwrite the previous version.
+
+### Export / Import
+Click **Export .json** to download the workflow as a portable file. Click **Import** to load a `.json` file from a colleague or another browser. All data stays local (localStorage) — nothing is sent to a server.
+
+### Preferences
+Your default model, memory toggle, export format tab, and app source path/branch are remembered automatically. No explicit save needed — just change a setting and it persists across sessions.
 
 ## Usage
 
