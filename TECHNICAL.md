@@ -1,4 +1,4 @@
-# Agentic Workflow Designer — Technical & Product Reference
+# Agentic Workflow Designer: Technical & Product Reference
 
 > A living document. Update this whenever architecture, features, or product goals evolve.
 
@@ -19,7 +19,7 @@ The Agentic Workflow Designer is a **visual, browser-based playground** that bri
 4. Optionally reconfigure each node (agent type, model, tools, custom prompt)
 5. Toggle **Memory Protocol** on/off as needed
 6. Select an export format tab and click **Copy**
-7. Paste the output into Claude Code or the Agent SDK — ready to run
+7. Paste the output into Claude Code or the Agent SDK and run it
 8. Optionally **Save** the workflow by name, or **Export .json** to share with colleagues
 
 ---
@@ -27,7 +27,7 @@ The Agentic Workflow Designer is a **visual, browser-based playground** that bri
 ## Architecture
 
 ### Single-File Design
-The entire application is a **single `index.html` file** (~2,800 lines). There is no build step, no server, no dependencies. Open the file in a browser and it works. This is intentional — it keeps the tool portable, shareable as a GitHub link, and trivially deployable as a static page.
+The entire application is a **single `index.html` file** (~2,800 lines). There is no build step, no server, no dependencies. Open the file in a browser and it works. This is intentional: it keeps the tool portable, shareable as a GitHub link, and trivially deployable as a static page.
 
 ### Layout Grid
 ```
@@ -64,7 +64,7 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 
 | Key | Shape | Purpose |
 |-----|-------|---------|
-| `awd_prefs` | `{ defaultModel, memoryEnabled, appSourcePath, appSourceBranch, exportFormat, repositories }` | User preferences — auto-saved on change, auto-restored on load |
+| `awd_prefs` | `{ defaultModel, memoryEnabled, appSourcePath, appSourceBranch, exportFormat, repositories }` | User preferences, auto-saved on change and auto-restored on load |
 | `awd_workflows` | `[ { slug, name, savedAt, nodeCount, agentCount }, ... ]` | Index of saved workflows (metadata only) |
 | `awd_wf_{slug}` | `{ version, slug, name, story, savedAt, repositories, canvas: { nodes, connections, nextId, pan, zoom } }` | Full saved workflow data |
 | `awd_autosave` | Same shape as `awd_wf_{slug}` | Single-slot auto-save, debounced 1s on `render()` |
@@ -80,18 +80,18 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 | Type | Shape | Color | Purpose |
 |------|-------|-------|---------|
 | **Agent** | Rounded rect | Blue | A Claude agent with configurable type, model, tools, prompt, notes, and max turns |
-| **Task** | Rounded rect | Green | A discrete unit of work — description + acceptance criteria (non-agent) |
-| **Decision** | Diamond | Amber | A conditional branch — yes/no routing based on agent output |
-| **Parallel** | Flat rect | Purple | Fork/Join control flow — splits into concurrent branches or collects results |
-| **Input** | Pill | Cyan | Entry point — Jira ticket, user story, PRD, or custom input. Optional App Source Path and App Branch fields for test automation workflows |
-| **Output** | Pill | Rose | Deliverable — code changes, PR, report, or documentation |
+| **Task** | Rounded rect | Green | A discrete unit of work with description + acceptance criteria (non-agent) |
+| **Decision** | Diamond | Amber | A conditional branch with yes/no routing based on agent output |
+| **Parallel** | Flat rect | Purple | Fork/Join control flow. Splits into concurrent branches or collects results |
+| **Input** | Pill | Cyan | Entry point: Jira ticket, user story, PRD, or custom input. Optional App Source Path and App Branch fields for test automation workflows |
+| **Output** | Pill | Rose | Deliverable: code changes, PR, report, or documentation |
 
 ### Agent Node Config
 Each Agent node has:
 - **Agent Type**: Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, General
 - **Model**: Opus 4.6 (default), Sonnet 4.6, Sonnet 4.5, Opus 4.5, Haiku 4.5
 - **Tools**: Checkboxes for Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP
-- **Agent Prompt**: Freeform textarea — if left blank, falls back to `getEffectivePrompt()`
+- **Agent Prompt**: Freeform textarea. If left blank, falls back to `getEffectivePrompt()`
 - **Custom Notes**: Additional context injected into all export formats
 - **Max Turns**: Integer cap on the agent's execution turns
 
@@ -99,7 +99,7 @@ Each Agent node has:
 
 ## Prompt Generation System
 
-### `getEffectivePrompt(node)` — 3-Tier Fallback
+### `getEffectivePrompt(node)`: 3-Tier Fallback
 ```
 User-entered prompt
   → Agent type template (AGENT_TYPE_PROMPT_MAP → PROMPTS[key])
@@ -158,7 +158,7 @@ All generators use `topologicalSort()` to process nodes in dependency order. Eac
 The Memory Protocol is an optional system that makes agent workflows resilient to context compaction. When enabled via the sidebar toggle, all export formats inject structured memory instructions that tell agents how to persist their work to disk and recover from context loss.
 
 ### Design Principle: Structural Injection Order
-Memory instructions are **structurally embedded** in each agent's prompt flow — not appended as an afterthought:
+Memory instructions are **structurally embedded** in each agent's prompt flow, not appended as an afterthought:
 
 1. **Read-first (Step 0)**: Memory read instructions appear **before** the task, ensuring agents check for compaction recovery before doing any work
 2. **Write-last (Final Steps)**: Memory write instructions appear **after** the output format, ensuring agents persist progress and breadcrumbs as their final mandatory action
@@ -271,8 +271,8 @@ After generation, `autoLayout()` is called to arrange nodes cleanly.
 | localStorage for persistence | No server needed; keeps single-file portability; auto-save + named save + JSON export covers all sharing needs |
 | Debounced auto-save (1s) | Saves on every render without impacting interaction performance |
 | Separate prefs vs. workflow storage | Preferences (model, memory, format) persist globally; workflows persist individually by slug |
-| App Under Test after Presets | Contextual placement — appears directly below the preset that triggers it (Test Automation) |
-| Repositories between Default Model and Add Nodes | Always visible; persists across sessions (prefs) and saved workflows; injected into all 6 export formats |
+| App Under Test after Presets | Contextual placement. Appears directly below the preset that triggers it (Test Automation) |
+| Repositories between Default Model and Add Nodes | Always visible. Persists across sessions (prefs) and saved workflows. Injected into all 6 export formats |
 
 ---
 
@@ -329,18 +329,18 @@ JavaScript:
   │     ├── slugify(), getMemoryPath()
   │     ├── setDefaultModel(), initDefaultModelSelect()
   │     ├── toggleMemory(), updateMemoryPath()
-  │     ├── genMemoryProtocol()        — orchestrator-level memory block
-  │     ├── genAgentMemoryPreamble()   — per-agent read-first (step 0)
-  │     └── genAgentMemoryPostamble()  — per-agent write-last (final steps)
+  │     ├── genMemoryProtocol()        # orchestrator-level memory block
+  │     ├── genAgentMemoryPreamble()   # per-agent read-first (step 0)
+  │     └── genAgentMemoryPostamble()  # per-agent write-last (final steps)
   ├── PERSISTENCE (localStorage)
-  │     ├── showToast()                — reusable toast notification
-  │     ├── savePrefs(), restorePrefs() — preference auto-save/restore
-  │     ├── serializeWorkflow(), deserializeWorkflow() — state ↔ JSON
-  │     ├── autoSaveWorkflow(), restoreAutoSave() — debounced WIP persistence
-  │     ├── getWorkflowIndex(), setWorkflowIndex() — saved workflow index
+  │     ├── showToast()                # reusable toast notification
+  │     ├── savePrefs(), restorePrefs() # preference auto-save/restore
+  │     ├── serializeWorkflow(), deserializeWorkflow() # state to/from JSON
+  │     ├── autoSaveWorkflow(), restoreAutoSave() # debounced WIP persistence
+  │     ├── getWorkflowIndex(), setWorkflowIndex() # saved workflow index
   │     ├── saveWorkflow(), loadSavedWorkflow(), deleteSavedWorkflow()
-  │     ├── renderSavedWorkflowList()  — sidebar list rendering
-  │     └── exportWorkflowFile(), importWorkflowFile() — .json file I/O
+  │     ├── renderSavedWorkflowList()  # sidebar list rendering
+  │     └── exportWorkflowFile(), importWorkflowFile() # .json file I/O
   ├── SVG HELPERS
   ├── RENDERING (render → renderNodes, renderConnections, autoSaveWorkflow)
   ├── NODE OPERATIONS
@@ -351,12 +351,12 @@ JavaScript:
   ├── STORY PARSING & WORKFLOW GENERATION
   ├── PRESETS
   ├── EXPORT FORMAT SYSTEM
-  │     ├── genWorkflow()      — Format 1: Workflow Markdown
-  │     ├── genSubAgents()     — Format 2: Sub-Agent Task calls
-  │     ├── genAgentTeams()    — Format 3: Agent Teams brief
-  │     ├── genAgentSDK()      — Format 4: Python SDK code
-  │     ├── genClaudePrompt()  — Format 5: Claude conversational prompt
-  │     └── genManifest()      — Format 6: TOON v1 Manifest
+  │     ├── genWorkflow()      # Format 1: Workflow Markdown
+  │     ├── genSubAgents()     # Format 2: Sub-Agent Task calls
+  │     ├── genAgentTeams()    # Format 3: Agent Teams brief
+  │     ├── genAgentSDK()      # Format 4: Python SDK code
+  │     ├── genClaudePrompt()  # Format 5: Claude conversational prompt
+  │     └── genManifest()      # Format 6: TOON v1 Manifest
   └── INIT
         ├── initDefaultModelSelect()
         ├── restorePrefs()
@@ -370,10 +370,10 @@ JavaScript:
 
 - **Keep it single-file**: Resist the urge to add a build step unless complexity demands it
 - **Render on demand**: Call `render()` and `updatePrompt()` after any state mutation (`render()` triggers auto-save automatically)
-- **Export completeness**: Every export format must include the full user story as context — never assume the recipient has seen it
+- **Export completeness**: Every export format must include the full user story as context. Never assume the recipient has seen it
 - **Prompt quality first**: The quality of exported prompts is the product's core value proposition. `getEffectivePrompt()` and the `PROMPTS` library are the most important code in the file
 - **Memory injection order**: Preamble (read) before task, postamble (write) after output format. Never append memory as an afterthought at the end
-- **Test with real Jira tickets**: The keyword detection in `generateFromStory()` was tuned for real-world ticket language — validate changes against diverse examples
+- **Test with real Jira tickets**: The keyword detection in `generateFromStory()` was tuned for real-world ticket language. Validate changes against diverse examples
 - **Model IDs**: Keep `MODELS` array in sync with current Anthropic model availability; the `family` field is used for SDK code generation
 
 ---
