@@ -208,6 +208,16 @@ svg.canvas{width:100%;height:100%;display:block}
   display:flex;gap:8px;align-items:flex-start;font-size:11px;line-height:1.5;color:var(--text2)}
 .sidebar-tip .tip-icon{font-size:13px;flex-shrink:0;margin-top:1px}
 .sidebar-tip strong{color:#f59e0b;font-weight:600}
+/* Saved workflows */
+.saved-workflows-list{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.saved-empty{font-size:11px;color:var(--text3);text-align:center;padding:12px 8px;line-height:1.5}
+.saved-item{display:flex;align-items:center;gap:6px}
+.saved-item .preset-item{flex:1;min-width:0}
+.saved-item .saved-delete{background:none;border:none;color:var(--text3);cursor:pointer;
+  font-size:14px;padding:2px 4px;border-radius:3px;flex-shrink:0;line-height:1;transition:color .15s}
+.saved-item .saved-delete:hover{color:#ef4444}
+.saved-meta{font-size:10px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.field-highlight{border-color:#f59e0b !important;box-shadow:0 0 0 2px rgba(245,158,11,.3)}
 /* Memory toggle */
 .memory-section .memory-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;
   color:var(--text2)}
@@ -232,12 +242,12 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-section">
     <h3>Workflow Name</h3>
-    <input type="text" id="workflowName" class="story-input" style="min-height:auto;padding:8px 10px;font-family:var(--font);font-weight:600" placeholder="e.g. PROJ-12345 User Auth Flow" oninput="updateMemoryPath();updatePrompt()"/>
+    <input type="text" id="workflowName" class="story-input" style="min-height:auto;padding:8px 10px;font-family:var(--font);font-weight:600" placeholder="e.g. PROJ-12345 User Auth Flow" oninput="updateMemoryPath();updatePrompt();autoSaveWorkflow()"/>
   </div>
 
   <div class="sidebar-section">
     <h3>User Story / Jira Ticket</h3>
-    <textarea class="story-input" id="storyInput" placeholder="Paste your Jira ticket or user story here...&#10;&#10;Example:&#10;As a user, I want to reset my password via email so that I can regain access to my account.&#10;&#10;Acceptance Criteria:&#10;- User clicks 'Forgot Password'&#10;- System sends reset email&#10;- User sets new password&#10;- User can login with new password"></textarea>
+    <textarea class="story-input" id="storyInput" placeholder="Paste your Jira ticket or user story here...&#10;&#10;Example:&#10;As a user, I want to reset my password via email so that I can regain access to my account.&#10;&#10;Acceptance Criteria:&#10;- User clicks 'Forgot Password'&#10;- System sends reset email&#10;- User sets new password&#10;- User can login with new password" oninput="autoSaveWorkflow()"></textarea>
     <div class="btn-row mt">
       <button class="btn primary" onclick="generateFromStory()">Generate Workflow</button>
       <button class="btn sm" onclick="clearCanvas()">Clear All</button>
@@ -320,6 +330,27 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
   </div>
 
+  <div class="sidebar-section" id="appSourceSection" style="display:none">
+    <h3>App Under Test <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Local path to the app being tested. Agents will explore it for selectors and screen structure.</div>
+    <input type="text" id="appSourcePath" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px" placeholder="/path/to/app/repo" oninput="updatePrompt();savePrefsDebounced()"/>
+    <input type="text" id="appSourceBranch" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px" placeholder="Branch (optional, e.g. feature/PROJ-123)" oninput="updatePrompt();savePrefsDebounced()"/>
+  </div>
+
+  <div class="sidebar-section">
+    <h3>Saved Workflows</h3>
+    <div class="btn-row">
+      <button class="btn sm primary" onclick="saveWorkflow()">Save</button>
+      <button class="btn sm" onclick="exportWorkflowFile()">Export .json</button>
+      <label class="btn sm" style="margin:0">Import
+        <input type="file" accept=".json" style="display:none" onchange="importWorkflowFile(event)">
+      </label>
+    </div>
+    <div class="saved-workflows-list" id="savedWorkflowList">
+      <div class="saved-empty">No saved workflows yet</div>
+    </div>
+  </div>
+
   <div class="sidebar-tip">
     <span class="tip-icon">⚡</span>
     <span><strong>Better outcomes:</strong> agents work best when an Atlassian MCP tool and a language-appropriate LSP server are installed, authenticated, and available.</span>
@@ -335,13 +366,6 @@ svg.canvas{width:100%;height:100%;display:block}
       <span class="memory-path-label">Memory Path</span>
       <div class="memory-path" id="memoryPathDisplay">~/.workflow-memory/untitled/</div>
     </div>
-  </div>
-
-  <div class="sidebar-section" id="appSourceSection" style="display:none">
-    <h3>App Under Test <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Local path to the app being tested. Agents will explore it for selectors and screen structure.</div>
-    <input type="text" id="appSourcePath" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px" placeholder="/path/to/app/repo" oninput="updatePrompt()"/>
-    <input type="text" id="appSourceBranch" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px" placeholder="Branch (optional, e.g. feature/PROJ-123)" oninput="updatePrompt()"/>
   </div>
 
   <div class="sidebar-section config-panel" id="configPanel">
@@ -665,6 +689,7 @@ function setDefaultModel(value) {
     el.classList.toggle('selected', el.dataset.value === value);
   });
   updatePrompt();
+  savePrefs();
 }
 
 function initDefaultModelSelect() {
@@ -697,11 +722,242 @@ function toggleMemory() {
   $('memoryPathField').style.display = state.memoryEnabled ? 'block' : 'none';
   updateMemoryPath();
   updatePrompt();
+  savePrefs();
 }
 
 function updateMemoryPath() {
   const el = $('memoryPathDisplay');
   if (el) el.textContent = getMemoryPath();
+}
+
+// ═══════════════════════════════════════════════════════════
+// PERSISTENCE (localStorage)
+// ═══════════════════════════════════════════════════════════
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+// -- Preferences --
+function savePrefs() {
+  try {
+    localStorage.setItem('awd_prefs', JSON.stringify({
+      defaultModel: state.defaultModel,
+      memoryEnabled: state.memoryEnabled,
+      appSourcePath: $('appSourcePath') ? $('appSourcePath').value : '',
+      appSourceBranch: $('appSourceBranch') ? $('appSourceBranch').value : '',
+      exportFormat: state.exportFormat
+    }));
+  } catch(e) { /* localStorage unavailable or full */ }
+}
+let _prefTimer = null;
+function savePrefsDebounced() {
+  clearTimeout(_prefTimer);
+  _prefTimer = setTimeout(savePrefs, 500);
+}
+function restorePrefs() {
+  try {
+    const raw = localStorage.getItem('awd_prefs');
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    if (p.defaultModel && MODELS.find(m => m.value === p.defaultModel)) setDefaultModel(p.defaultModel);
+    if (p.memoryEnabled) {
+      state.memoryEnabled = true;
+      const cb = $('memoryToggle');
+      if (cb) { cb.checked = true; $('memoryPathField').style.display = 'block'; }
+    }
+    if (p.appSourcePath && $('appSourcePath')) $('appSourcePath').value = p.appSourcePath;
+    if (p.appSourceBranch && $('appSourceBranch')) $('appSourceBranch').value = p.appSourceBranch;
+    if (p.exportFormat) setExportFormat(p.exportFormat);
+  } catch(e) { /* ignore */ }
+}
+
+// -- Workflow serialization --
+function serializeWorkflow() {
+  return {
+    version: 1,
+    slug: slugify(getName() || 'untitled'),
+    name: getName(),
+    story: $('storyInput') ? $('storyInput').value : '',
+    savedAt: new Date().toISOString(),
+    canvas: {
+      nodes: JSON.parse(JSON.stringify(state.nodes)),
+      connections: JSON.parse(JSON.stringify(state.connections)),
+      nextId: state.nextId,
+      pan: { ...state.pan },
+      zoom: state.zoom
+    }
+  };
+}
+function deserializeWorkflow(data) {
+  if (!data || !data.canvas) return false;
+  const c = data.canvas;
+  // Validate node types
+  const validTypes = Object.keys(NODE_DEFAULTS);
+  if (c.nodes && !c.nodes.every(n => validTypes.includes(n.type))) return false;
+  state.nodes = c.nodes || [];
+  state.connections = c.connections || [];
+  state.nextId = c.nextId || (state.nodes.length + 1);
+  state.pan = c.pan || { x: 0, y: 0 };
+  state.zoom = c.zoom || 1;
+  state.selectedId = null;
+  state.connectFrom = null;
+  if (data.name !== undefined) $('workflowName').value = data.name;
+  if (data.story !== undefined && $('storyInput')) $('storyInput').value = data.story;
+  updateTransform();
+  render();
+  updateMemoryPath();
+  return true;
+}
+
+// -- Auto-save --
+let _autoSaveTimer = null;
+function autoSaveWorkflow() {
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => {
+    try {
+      if (state.nodes.length === 0) {
+        localStorage.removeItem('awd_autosave');
+        return;
+      }
+      localStorage.setItem('awd_autosave', JSON.stringify(serializeWorkflow()));
+    } catch(e) { /* silently fail */ }
+  }, 1000);
+}
+function restoreAutoSave() {
+  try {
+    const raw = localStorage.getItem('awd_autosave');
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data || !data.canvas || !data.canvas.nodes || data.canvas.nodes.length === 0) return false;
+    return deserializeWorkflow(data);
+  } catch(e) { return false; }
+}
+
+// -- Workflow index --
+function getWorkflowIndex() {
+  try {
+    return JSON.parse(localStorage.getItem('awd_workflows') || '[]');
+  } catch(e) { return []; }
+}
+function setWorkflowIndex(index) {
+  try { localStorage.setItem('awd_workflows', JSON.stringify(index)); } catch(e) {}
+}
+
+// -- Save/Load/Delete --
+function saveWorkflow() {
+  const name = getName();
+  if (!name) {
+    const field = $('workflowName');
+    field.focus();
+    field.classList.add('field-highlight');
+    setTimeout(() => field.classList.remove('field-highlight'), 2000);
+    showToast('Enter a workflow name first');
+    return;
+  }
+  if (state.nodes.length === 0) {
+    showToast('Add nodes before saving');
+    return;
+  }
+  const data = serializeWorkflow();
+  const slug = data.slug;
+  try {
+    localStorage.setItem('awd_wf_' + slug, JSON.stringify(data));
+    // Update index
+    let index = getWorkflowIndex();
+    index = index.filter(e => e.slug !== slug);
+    index.unshift({
+      slug, name, savedAt: data.savedAt,
+      nodeCount: state.nodes.length,
+      agentCount: state.nodes.filter(n => n.type === 'agent').length
+    });
+    setWorkflowIndex(index);
+    renderSavedWorkflowList();
+    showToast('Workflow saved: ' + name);
+  } catch(e) {
+    showToast('Save failed — storage may be full');
+  }
+}
+function loadSavedWorkflow(slug) {
+  try {
+    const raw = localStorage.getItem('awd_wf_' + slug);
+    if (!raw) { showToast('Workflow not found'); return; }
+    const data = JSON.parse(raw);
+    if (deserializeWorkflow(data)) {
+      showToast('Loaded: ' + (data.name || slug));
+    } else {
+      showToast('Failed to load workflow');
+    }
+  } catch(e) { showToast('Failed to load workflow'); }
+}
+function deleteSavedWorkflow(slug, event) {
+  if (event) event.stopPropagation();
+  if (!confirm('Delete this saved workflow?')) return;
+  try {
+    localStorage.removeItem('awd_wf_' + slug);
+    let index = getWorkflowIndex().filter(e => e.slug !== slug);
+    setWorkflowIndex(index);
+    renderSavedWorkflowList();
+    showToast('Workflow deleted');
+  } catch(e) {}
+}
+function renderSavedWorkflowList() {
+  const el = $('savedWorkflowList');
+  if (!el) return;
+  const index = getWorkflowIndex();
+  if (index.length === 0) {
+    el.innerHTML = '<div class="saved-empty">No saved workflows yet</div>';
+    return;
+  }
+  el.innerHTML = index.map(e => {
+    const date = new Date(e.savedAt);
+    const dateStr = date.toLocaleDateString(undefined, { month:'short', day:'numeric' });
+    const safeName = escHtml(e.name || e.slug);
+    return `<div class="saved-item">
+      <div class="preset-item" onclick="loadSavedWorkflow('${e.slug}')">
+        <div class="preset-name">${safeName}</div>
+        <div class="saved-meta">${dateStr} · ${e.nodeCount || 0} nodes · ${e.agentCount || 0} agents</div>
+      </div>
+      <button class="saved-delete" onclick="deleteSavedWorkflow('${e.slug}',event)" title="Delete">&times;</button>
+    </div>`;
+  }).join('');
+}
+
+// -- File export/import --
+function exportWorkflowFile() {
+  if (state.nodes.length === 0) { showToast('Add nodes before exporting'); return; }
+  const data = { format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow() };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (slugify(getName() || 'workflow')) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Exported ' + a.download);
+}
+function importWorkflowFile(event) {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { showToast('File too large (max 10MB)'); return; }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data.format !== 'agentic-workflow-designer') { showToast('Not a valid workflow file'); return; }
+      if (!data.canvas || !data.canvas.nodes) { showToast('Invalid workflow data'); return; }
+      const validTypes = Object.keys(NODE_DEFAULTS);
+      if (!data.canvas.nodes.every(n => validTypes.includes(n.type))) { showToast('Unknown node types in file'); return; }
+      if (deserializeWorkflow(data)) {
+        showToast('Imported: ' + (data.name || 'workflow'));
+      } else {
+        showToast('Failed to import workflow');
+      }
+    } catch(err) { showToast('Invalid JSON file'); }
+  };
+  reader.readAsText(file);
 }
 
 // Full memory protocol block for orchestrator-level prompts
@@ -928,6 +1184,7 @@ function render() {
   $('appSourceSection').style.display = hasAppExplorer ? '' : 'none';
   const agents = state.nodes.filter(n => n.type === 'agent').length;
   $('nodeCount').textContent = `${state.nodes.length} nodes \u00B7 ${state.connections.length} connections` + (agents ? ` \u00B7 ${agents} agents` : '');
+  autoSaveWorkflow();
 }
 
 function renderNodes() {
@@ -1450,7 +1707,7 @@ function configTextarea(label, key, value, placeholder) {
   return `<div class="config-field"><label>${label}</label>
     <textarea data-key="${key}" placeholder="${placeholder||''}">${escHtml(value||'')}</textarea></div>`;
 }
-function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 // ═══════════════════════════════════════════════════════════
 // INTERACTION HANDLERS
@@ -2000,6 +2257,7 @@ function clearCanvas() {
   state.connectFrom = null;
   render();
   updateConfig();
+  try { localStorage.removeItem('awd_autosave'); } catch(e) {}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2011,6 +2269,7 @@ function setExportFormat(format) {
     t.classList.toggle('active', t.dataset.format === format);
   });
   updatePrompt();
+  savePrefs();
 }
 
 function updatePrompt() {
@@ -3031,19 +3290,17 @@ function topologicalSort() {
 // ═══════════════════════════════════════════════════════════
 function copyPrompt() {
   const text = $('promptOutput').textContent;
-  navigator.clipboard.writeText(text).then(() => {
-    const toast = $('toast');
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 1800);
-  });
+  navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!'));
 }
 
 // ═══════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════
-updateTransform();
 initDefaultModelSelect();
-render();
+restorePrefs();
+const _autoRestored = restoreAutoSave();
+if (!_autoRestored) { updateTransform(); render(); }
+renderSavedWorkflowList();
 </script>
 </body>
 </html>
