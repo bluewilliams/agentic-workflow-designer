@@ -381,7 +381,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </label>
     <div id="memoryPathField" style="display:none;margin-top:8px">
       <span class="memory-path-label">Memory Path</span>
-      <div class="memory-path" id="memoryPathDisplay">~/.workflow-memory/untitled/</div>
+      <div class="memory-path" id="memoryPathDisplay">~/.claude/workflow-memory/untitled/</div>
     </div>
   </div>
 
@@ -693,7 +693,7 @@ function slugify(text) {
 }
 
 function getMemoryPath() {
-  return '~/.workflow-memory/' + slugify(getName() || 'untitled') + '/';
+  return '~/.claude/workflow-memory/' + slugify(getName() || 'untitled') + '/';
 }
 
 function setDefaultModel(value) {

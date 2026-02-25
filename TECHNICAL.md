@@ -177,7 +177,7 @@ A compact structured notation for agent memory and inter-agent communication:
 | **Entry format** | `## @name \| ISO-ts \| status-emoji` then `d:` `f:` `→` `←` `!:` `💡:` lines |
 
 ### Memory Files
-Three file types stored at `~/.workflow-memory/{workflow-slug}/`:
+Three file types stored at `~/.claude/workflow-memory/{workflow-slug}/`:
 
 | File | Access | Purpose |
 |------|--------|---------|
