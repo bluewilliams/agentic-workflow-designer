@@ -2334,13 +2334,21 @@ function loadPreset(preset) {
 }
 
 function clearCanvas(skipConfirm) {
-  if (!skipConfirm && state.nodes.length > 0 && !confirm('Clear all nodes and connections?')) return;
+  if (!skipConfirm && state.nodes.length > 0 && !confirm('Clear all nodes, connections, and inputs?')) return;
   state.nodes = [];
   state.connections = [];
   state.selectedId = null;
   state.connectFrom = null;
+  $('workflowName').value = '';
+  if ($('storyInput')) $('storyInput').value = '';
+  state.repositories = [];
+  renderRepoRows();
+  if ($('appSourcePath')) $('appSourcePath').value = '';
+  if ($('appSourceBranch')) $('appSourceBranch').value = '';
   render();
   updateConfig();
+  updateMemoryPath();
+  savePrefsDebounced();
   try { localStorage.removeItem('awd_autosave'); } catch(e) {}
 }
 
