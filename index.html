@@ -828,12 +828,15 @@ function repoBlock(heading) {
   if (repos.length === 0) return [];
   const h = heading || '### Repositories';
   const lines = [h, ''];
+  lines.push('This workflow spans multiple repositories. For each repo below:');
+  lines.push('1. Verify the path exists');
+  lines.push('2. Check out the specified branch (if provided) and pull latest');
+  lines.push('3. When making changes, note which repo each change belongs to in your output');
+  lines.push('');
   repos.forEach((r, i) => {
     lines.push('- **Repo ' + (i + 1) + '**: `' + r.path + '`');
     if (r.branch) lines.push('  - Branch: `' + r.branch + '`');
   });
-  lines.push('');
-  lines.push('For each repository: verify the path exists, check out the specified branch (if provided), and pull latest before starting work.');
   lines.push('');
   return lines;
 }
@@ -2398,7 +2401,15 @@ function appSourceBlock(heading) {
   if (!app) return [];
   const h = heading || '### App Source';
   const lines = [h, '', '- **Path**: `' + app.path + '`'];
-  if (app.branch) lines.push('- **Branch**: `' + app.branch + '` (checkout and pull before exploring)');
+  if (app.branch) lines.push('- **Branch**: `' + app.branch + '`');
+  lines.push('');
+  lines.push('This is the application under test — **READ-ONLY, do NOT modify files in this repo.**');
+  lines.push('Explore it to understand UI structure and extract element selectors for test automation:');
+  lines.push('1. If a branch is specified, run `git -C ' + app.path + ' checkout ' + (app.branch || '{branch}') + ' && git -C ' + app.path + ' pull`');
+  lines.push('2. Use `Glob` and `Grep` on this path to find UI components, screens/views, and navigation structure');
+  lines.push('3. Search for element selectors: `testID`, `data-testid`, `accessibilityLabel`, `accessibilityIdentifier`, `contentDescription`, `resource-id`, or framework equivalents');
+  lines.push('4. Extract selectors, interactive elements, and component hierarchy to inform your test code');
+  lines.push('5. Note any elements lacking accessibility identifiers — flag these as gaps the app team should address');
   lines.push('');
   return lines;
 }
@@ -3015,7 +3026,7 @@ function genAgentSDK() {
   }
   const _sdkApp = getAppSource();
   if (_sdkApp) {
-    p.push(`    app_source_path = "${_sdkApp.path}"`);
+    p.push(`    app_source_path = "${_sdkApp.path}"  # READ-ONLY — explore for selectors, do not modify`);
     if (_sdkApp.branch) p.push(`    app_source_branch = "${_sdkApp.branch}"  # checkout before exploring`);
     p.push('');
   }
@@ -3273,12 +3284,13 @@ function genManifest() {
   p.push(story || '(No story provided)');
   p.push('');
 
-  // App source
+  // App source (read-only — explore for selectors, do not modify)
   const _mfApp = getAppSource();
   if (_mfApp) {
-    p.push('## App Source');
+    p.push('## App Source (READ-ONLY)');
     p.push('path: ' + _mfApp.path);
     if (_mfApp.branch) p.push('branch: ' + _mfApp.branch);
+    p.push('mode: read-only — explore for selectors, do not modify');
     p.push('');
   }
 
