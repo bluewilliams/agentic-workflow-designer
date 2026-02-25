@@ -2072,12 +2072,11 @@ function generateFromStory() {
   const story = $('storyInput').value.trim();
   if (!story) return;
   if (state.nodes.length > 0 && !confirm('This will replace your current workflow with a generated one. Continue?')) return;
-  // Save user inputs before clearing canvas (clearCanvas resets all inputs)
-  const savedName = $('workflowName').value;
-  const savedStory = $('storyInput').value;
-  clearCanvas(true);
-  $('workflowName').value = savedName;
-  $('storyInput').value = savedStory;
+  // Only clear nodes and connections, preserve all user inputs (name, story, repos, app source)
+  state.nodes = [];
+  state.connections = [];
+  state.selectedId = null;
+  state.connectFrom = null;
 
   const lower = story.toLowerCase();
   const nodes = [];
@@ -2235,7 +2234,11 @@ function generateFromStory() {
 // ═══════════════════════════════════════════════════════════
 function loadPreset(preset) {
   if (state.nodes.length > 0 && !confirm('This will replace your current workflow with the selected preset. Continue?')) return;
-  clearCanvas(true);
+  // Only clear nodes and connections, preserve all user inputs (name, story, repos, app source)
+  state.nodes = [];
+  state.connections = [];
+  state.selectedId = null;
+  state.connectFrom = null;
   const presets = {
     feature: () => {
       const i = addNode('input', 80, 250, 'Requirements');
