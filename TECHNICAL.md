@@ -53,7 +53,8 @@ state = {
   zoom: 1,            // Canvas zoom level (0.2–3)
   exportFormat: 'prompt',
   memoryEnabled: false, // Memory Protocol toggle
-  defaultModel: 'opus-4.6' // Global default for new nodes
+  defaultModel: 'opus-4.6', // Global default for new nodes
+  repositories: [] // Array of { path, branch } for multi-repo workflows
 }
 ```
 No frameworks, no reactive libraries. Each user action calls `render()` which does a full DOM diff-free re-render of the SVG canvas and triggers `updatePrompt()`.
@@ -63,12 +64,12 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 
 | Key | Shape | Purpose |
 |-----|-------|---------|
-| `awd_prefs` | `{ defaultModel, memoryEnabled, appSourcePath, appSourceBranch, exportFormat }` | User preferences — auto-saved on change, auto-restored on load |
+| `awd_prefs` | `{ defaultModel, memoryEnabled, appSourcePath, appSourceBranch, exportFormat, repositories }` | User preferences — auto-saved on change, auto-restored on load |
 | `awd_workflows` | `[ { slug, name, savedAt, nodeCount, agentCount }, ... ]` | Index of saved workflows (metadata only) |
-| `awd_wf_{slug}` | `{ version, slug, name, story, savedAt, canvas: { nodes, connections, nextId, pan, zoom } }` | Full saved workflow data |
+| `awd_wf_{slug}` | `{ version, slug, name, story, savedAt, repositories, canvas: { nodes, connections, nextId, pan, zoom } }` | Full saved workflow data |
 | `awd_autosave` | Same shape as `awd_wf_{slug}` | Single-slot auto-save, debounced 1s on `render()` |
 
-**Serialization boundary**: Nodes (full config), connections, nextId, pan, zoom, workflowName, and storyInput are persisted. Transient UI state (selectedId, mode, connectFrom, dragging, isPanning, mousePos) is excluded.
+**Serialization boundary**: Nodes (full config), connections, nextId, pan, zoom, workflowName, storyInput, and repositories are persisted. Transient UI state (selectedId, mode, connectFrom, dragging, isPanning, mousePos) is excluded.
 
 **Error handling**: All localStorage operations are wrapped in try/catch. Auto-save fails silently; explicit save/export shows a toast on failure.
 
@@ -271,6 +272,7 @@ After generation, `autoLayout()` is called to arrange nodes cleanly.
 | Debounced auto-save (1s) | Saves on every render without impacting interaction performance |
 | Separate prefs vs. workflow storage | Preferences (model, memory, format) persist globally; workflows persist individually by slug |
 | App Under Test after Presets | Contextual placement — appears directly below the preset that triggers it (Test Automation) |
+| Repositories between Default Model and Add Nodes | Always visible; persists across sessions (prefs) and saved workflows; injected into all 6 export formats |
 
 ---
 
@@ -312,8 +314,8 @@ The `index.html` is internally organized into clearly delimited sections:
 ```
 CSS styles (lines 7–230)
 HTML structure (lines 232–380)
-  ├── Sidebar: Workflow Name, Story Input, Default Model, Add Nodes, Presets,
-  │            App Under Test (conditional), Saved Workflows, Tip, Memory, Node Config
+  ├── Sidebar: Workflow Name, Story Input, Default Model, Repositories,
+  │            Add Nodes, Presets, App Under Test (conditional), Saved Workflows, Tip, Memory, Node Config
   ├── Canvas: Toolbar, SVG canvas, Empty state
   └── Prompt Output: 6 format tabs, Copy button
 JavaScript:

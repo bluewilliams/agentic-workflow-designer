@@ -61,7 +61,8 @@ No install required — the memory protocol is embedded directly in the generate
 - **Decision gate integration** - downstream decisions are embedded as success criteria in agent prompts
 - **Workflow-aware prompts** - agents know their upstream dependencies and downstream consumers
 - **Save/Load workflows** - save by name, auto-restore work-in-progress on refresh, export/import `.json` for sharing
-- **Persistent preferences** - default model, memory toggle, export format, and app source path auto-save across sessions
+- **Persistent preferences** - default model, memory toggle, export format, app source path, and repositories auto-save across sessions
+- **Multi-repository support** - specify multiple repos with branches; agents check out the right branch and pull latest before starting
 - **Memory Protocol** - optional compaction-resilient memory with TOON v1 notation
 - **TOON Manifest** - portable, git-friendly workflow definition format
 - **Custom workflows** - add your own nodes and connections; export generators add smart scaffolding automatically
@@ -78,7 +79,7 @@ Click **Save** in the sidebar to save the current workflow by name. Saved workfl
 Click **Export .json** to download the workflow as a portable file. Click **Import** to load a `.json` file from a colleague or another browser. All data stays local (localStorage) — nothing is sent to a server.
 
 ### Preferences
-Your default model, memory toggle, export format tab, and app source path/branch are remembered automatically. No explicit save needed — just change a setting and it persists across sessions.
+Your default model, memory toggle, export format tab, app source path/branch, and repositories are remembered automatically. No explicit save needed — just change a setting and it persists across sessions.
 
 ## Usage
 
