@@ -53,7 +53,7 @@ state = {
   zoom: 1,            // Canvas zoom level (0.2–3)
   exportFormat: 'prompt',
   memoryEnabled: false, // Memory Protocol toggle
-  defaultModel: 'sonnet-4.6' // Global default for new nodes
+  defaultModel: 'opus-4.6' // Global default for new nodes
 }
 ```
 No frameworks, no reactive libraries. Each user action calls `render()` which does a full DOM diff-free re-render of the SVG canvas and triggers `updatePrompt()`.
@@ -88,7 +88,7 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 ### Agent Node Config
 Each Agent node has:
 - **Agent Type**: Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, General
-- **Model**: Sonnet 4.6 (default), Sonnet 4.5, Opus 4.5, Opus 4.6, Haiku 4.5
+- **Model**: Opus 4.6 (default), Sonnet 4.6, Sonnet 4.5, Opus 4.5, Haiku 4.5
 - **Tools**: Checkboxes for Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP
 - **Agent Prompt**: Freeform textarea — if left blank, falls back to `getEffectivePrompt()`
 - **Custom Notes**: Additional context injected into all export formats
