@@ -2072,7 +2072,12 @@ function generateFromStory() {
   const story = $('storyInput').value.trim();
   if (!story) return;
   if (state.nodes.length > 0 && !confirm('This will replace your current workflow with a generated one. Continue?')) return;
+  // Save user inputs before clearing canvas (clearCanvas resets all inputs)
+  const savedName = $('workflowName').value;
+  const savedStory = $('storyInput').value;
   clearCanvas(true);
+  $('workflowName').value = savedName;
+  $('storyInput').value = savedStory;
 
   const lower = story.toLowerCase();
   const nodes = [];
@@ -2155,27 +2160,25 @@ function generateFromStory() {
       lastNodes = [backend, frontend];
     }
   } else {
-    // Even single-domain work benefits from parallel research + implementation
+    // Single-domain: research first, then implement based on findings
     const agentType = hasUI ? 'frontend' : hasAPI ? 'backend' : 'coder';
-    const fork = addNode('parallel', 620, 245, 'Parallel Work', { strategy: 'all', description: 'Research and implementation in parallel' });
-    addConnection(planner.id, fork.id);
 
-    const researcher = addNode('agent', 920, 170, 'Researcher', {
+    const researcher = addNode('agent', 620, 250, 'Researcher', {
       agentType: 'researcher', model: state.defaultModel,
       tools: ['Read', 'Grep', 'Glob', 'WebSearch'],
       prompt: PROMPTS.researcher,
       notes: '', maxTurns: 10
     });
-    addConnection(fork.id, researcher.id);
+    addConnection(planner.id, researcher.id);
 
-    const implAgent = addNode('agent', 920, 320, hasUI ? 'Frontend Dev' : hasAPI ? 'Backend Dev' : 'Implementer', {
+    const implAgent = addNode('agent', 920, 250, hasUI ? 'Frontend Dev' : hasAPI ? 'Backend Dev' : 'Implementer', {
       agentType, model: state.defaultModel,
       tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob'],
       prompt: PROMPTS.implementer,
       notes: '', maxTurns: 15
     });
-    addConnection(fork.id, implAgent.id);
-    lastNodes = [researcher, implAgent];
+    addConnection(researcher.id, implAgent.id);
+    lastNodes = [implAgent];
   }
 
   // Security review if needed
