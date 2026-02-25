@@ -22,7 +22,7 @@ A visual, interactive playground for designing AI agent workflows from Jira tick
 | **Agent Teams** | Claude Code Teams | Team lead brief with TeamCreate/TaskCreate delegation plan |
 | **Agent SDK** | Anthropic Agent SDK | Python skeleton with agent configs and async orchestration |
 | **Claude Prompt** | Claude.ai / API | Step-by-step role-based prompt for single-agent execution |
-| **Manifest** | Portability & sharing | TOON v1 workflow definition — git-committable, diff-friendly |
+| **Manifest** | Portability & sharing | TOON v1 workflow definition. Git-committable, diff-friendly |
 
 ## Memory Protocol
 
@@ -30,11 +30,11 @@ Toggle **Enable workflow memory** in the sidebar to inject a compaction-resilien
 
 - Each agent reads memory files **before** starting work (step zero)
 - Each agent writes progress + breadcrumb **after** completing work (final step)
-- Compaction recovery is automatic — agents detect missing breadcrumbs and re-read state from disk
+- Compaction recovery is automatic. Agents detect missing breadcrumbs and re-read state from disk
 - Inter-agent communication flows through `shared.md` using TOON notation
 - Memory files: `manifest.md` (read-only), `shared.md` (append-only), `@{agent}.md` (per-agent)
 
-No install required — the memory protocol is embedded directly in the generated prompts.
+No install required. The memory protocol is embedded directly in the generated prompts.
 
 ## Built-in Presets
 
@@ -73,13 +73,13 @@ No install required — the memory protocol is embedded directly in the generate
 Workflows persist automatically. Your canvas is auto-saved on every change and restored on page refresh.
 
 ### Named Workflows
-Click **Save** in the sidebar to save the current workflow by name. Saved workflows appear in a list — click to load, click × to delete. Same-name saves overwrite the previous version.
+Click **Save** in the sidebar to save the current workflow by name. Saved workflows appear in a list. Click to load, click × to delete. Same-name saves overwrite the previous version.
 
 ### Export / Import
-Click **Export .json** to download the workflow as a portable file. Click **Import** to load a `.json` file from a colleague or another browser. All data stays local (localStorage) — nothing is sent to a server.
+Click **Export .json** to download the workflow as a portable file. Click **Import** to load a `.json` file from a colleague or another browser. All data stays local (localStorage). Nothing is sent to a server.
 
 ### Preferences
-Your default model, memory toggle, export format tab, app source path/branch, and repositories are remembered automatically. No explicit save needed — just change a setting and it persists across sessions.
+Your default model, memory toggle, export format tab, app source path/branch, and repositories are remembered automatically. No explicit save needed. Just change a setting and it persists across sessions.
 
 ## Usage
 
