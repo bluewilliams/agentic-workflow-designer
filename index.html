@@ -228,6 +228,15 @@ svg.canvas{width:100%;height:100%;display:block}
   word-break:break-all;line-height:1.4}
 .memory-section .memory-path-label{font-size:10px;color:var(--text3);text-transform:uppercase;
   letter-spacing:.5px;margin-bottom:4px;display:block}
+/* Repo rows */
+.repo-row{display:flex;gap:4px;align-items:center;margin-bottom:4px}
+.repo-row input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);color:var(--text);
+  padding:5px 7px;border-radius:var(--radius-sm);font-size:11px;font-family:var(--font)}
+.repo-row input:focus{outline:none;border-color:var(--accent)}
+.repo-row input::placeholder{color:var(--text3)}
+.repo-row .repo-remove{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;
+  padding:0 2px;line-height:1;transition:color .15s;flex-shrink:0}
+.repo-row .repo-remove:hover{color:#ef4444}
 </style>
 </head>
 <body>
@@ -262,6 +271,13 @@ svg.canvas{width:100%;height:100%;display:block}
       <div class="custom-select-options" id="defaultModelOptions"></div>
     </div>
     <div style="font-size:10px;color:var(--text3);margin-top:6px">New nodes, presets, and generated workflows will use this model.</div>
+  </div>
+
+  <div class="sidebar-section">
+    <h3>Repositories <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Repos this workflow touches. Agents will check out the branch and pull latest before starting.</div>
+    <div id="repoList"></div>
+    <button class="btn sm" onclick="addRepoRow()">+ Add Repository</button>
   </div>
 
   <div class="sidebar-section">
@@ -656,7 +672,8 @@ let state = {
   mousePos: { x: 0, y: 0 },
   exportFormat: 'prompt',
   memoryEnabled: false,
-  defaultModel: 'opus-4.6'
+  defaultModel: 'opus-4.6',
+  repositories: []
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -749,7 +766,8 @@ function savePrefs() {
       memoryEnabled: state.memoryEnabled,
       appSourcePath: $('appSourcePath') ? $('appSourcePath').value : '',
       appSourceBranch: $('appSourceBranch') ? $('appSourceBranch').value : '',
-      exportFormat: state.exportFormat
+      exportFormat: state.exportFormat,
+      repositories: state.repositories
     }));
   } catch(e) { /* localStorage unavailable or full */ }
 }
@@ -772,7 +790,66 @@ function restorePrefs() {
     if (p.appSourcePath && $('appSourcePath')) $('appSourcePath').value = p.appSourcePath;
     if (p.appSourceBranch && $('appSourceBranch')) $('appSourceBranch').value = p.appSourceBranch;
     if (p.exportFormat) setExportFormat(p.exportFormat);
+    if (Array.isArray(p.repositories)) { state.repositories = p.repositories; renderRepoRows(); }
   } catch(e) { /* ignore */ }
+}
+
+// -- Repository rows --
+function addRepoRow(path, branch) {
+  const row = document.createElement('div');
+  row.className = 'repo-row';
+  row.innerHTML =
+    '<input type="text" placeholder="/path/to/repo" value="' + (path || '').replace(/"/g, '&quot;') + '" oninput="onRepoChange()"/>' +
+    '<input type="text" placeholder="branch" style="max-width:120px" value="' + (branch || '').replace(/"/g, '&quot;') + '" oninput="onRepoChange()"/>' +
+    '<button class="repo-remove" onclick="removeRepoRow(this)" title="Remove">&times;</button>';
+  $('repoList').appendChild(row);
+  onRepoChange();
+}
+function removeRepoRow(btn) {
+  btn.closest('.repo-row').remove();
+  onRepoChange();
+}
+function onRepoChange() {
+  const rows = $('repoList').querySelectorAll('.repo-row');
+  state.repositories = [];
+  rows.forEach(r => {
+    const inputs = r.querySelectorAll('input');
+    state.repositories.push({ path: inputs[0].value.trim(), branch: inputs[1].value.trim() });
+  });
+  savePrefsDebounced();
+  updatePrompt();
+  autoSaveWorkflow();
+}
+function getRepositories() {
+  return state.repositories.filter(r => r.path);
+}
+function repoBlock(heading) {
+  const repos = getRepositories();
+  if (repos.length === 0) return [];
+  const h = heading || '### Repositories';
+  const lines = [h, ''];
+  repos.forEach((r, i) => {
+    lines.push('- **Repo ' + (i + 1) + '**: `' + r.path + '`');
+    if (r.branch) lines.push('  - Branch: `' + r.branch + '`');
+  });
+  lines.push('');
+  lines.push('For each repository: verify the path exists, check out the specified branch (if provided), and pull latest before starting work.');
+  lines.push('');
+  return lines;
+}
+function renderRepoRows() {
+  const list = $('repoList');
+  if (!list) return;
+  list.innerHTML = '';
+  (state.repositories || []).forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'repo-row';
+    row.innerHTML =
+      '<input type="text" placeholder="/path/to/repo" value="' + (r.path || '').replace(/"/g, '&quot;') + '" oninput="onRepoChange()"/>' +
+      '<input type="text" placeholder="branch" style="max-width:120px" value="' + (r.branch || '').replace(/"/g, '&quot;') + '" oninput="onRepoChange()"/>' +
+      '<button class="repo-remove" onclick="removeRepoRow(this)" title="Remove">&times;</button>';
+    list.appendChild(row);
+  });
 }
 
 // -- Workflow serialization --
@@ -783,6 +860,7 @@ function serializeWorkflow() {
     name: getName(),
     story: $('storyInput') ? $('storyInput').value : '',
     savedAt: new Date().toISOString(),
+    repositories: state.repositories,
     canvas: {
       nodes: JSON.parse(JSON.stringify(state.nodes)),
       connections: JSON.parse(JSON.stringify(state.connections)),
@@ -807,6 +885,8 @@ function deserializeWorkflow(data) {
   state.connectFrom = null;
   if (data.name !== undefined) $('workflowName').value = data.name;
   if (data.story !== undefined && $('storyInput')) $('storyInput').value = data.story;
+  state.repositories = Array.isArray(data.repositories) ? data.repositories : [];
+  renderRepoRows();
   updateTransform();
   render();
   updateMemoryPath();
@@ -2352,6 +2432,7 @@ function genWorkflow() {
   p.push('');
   if (story) { p.push('### Requirements'); p.push(''); p.push(story); p.push(''); }
   appSourceBlock('### App Source').forEach(l => p.push(l));
+  repoBlock('### Repositories').forEach(l => p.push(l));
   const _wfAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_wfAtl) { p.push(_wfAtl); p.push(''); }
 
@@ -2587,6 +2668,7 @@ function genSubAgents() {
       promptLines.push('');
     }
     appSourceBlock('## App Source').forEach(l => promptLines.push(l));
+    repoBlock('## Repositories').forEach(l => promptLines.push(l));
 
     promptLines.push('## Output Format');
     promptLines.push('Provide a structured response with:');
@@ -2688,6 +2770,7 @@ function genAgentTeams() {
     p.push('');
   }
   appSourceBlock('## App Source').forEach(l => p.push(l));
+  repoBlock('## Repositories').forEach(l => p.push(l));
   const _atAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_atAtl) { p.push(_atAtl); p.push(''); }
 
@@ -2928,6 +3011,17 @@ function genAgentSDK() {
     if (_sdkApp.branch) p.push(`    app_source_branch = "${_sdkApp.branch}"  # checkout before exploring`);
     p.push('');
   }
+  const _sdkRepos = getRepositories();
+  if (_sdkRepos.length > 0) {
+    const _esc = s => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    p.push('    # Repositories — verify path, checkout branch, pull latest before starting');
+    p.push('    repositories = [');
+    _sdkRepos.forEach(r => {
+      p.push(`        {"path": "${_esc(r.path)}", "branch": "${_esc(r.branch || '')}"},`);
+    });
+    p.push('    ]');
+    p.push('');
+  }
 
   // Identify parallel groups — nodeToForkId maps each child to its specific fork
   const parallelChildren = new Set();
@@ -3025,6 +3119,7 @@ function genClaudePrompt() {
     p.push('');
   }
   appSourceBlock('## App Source').forEach(l => p.push(l));
+  repoBlock('## Repositories').forEach(l => p.push(l));
   const _cpAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_cpAtl) { p.push(_cpAtl); p.push(''); }
 
@@ -3176,6 +3271,16 @@ function genManifest() {
     p.push('## App Source');
     p.push('path: ' + _mfApp.path);
     if (_mfApp.branch) p.push('branch: ' + _mfApp.branch);
+    p.push('');
+  }
+
+  // Repositories
+  const _mfRepos = getRepositories();
+  if (_mfRepos.length > 0) {
+    p.push('## Repositories');
+    _mfRepos.forEach((r, i) => {
+      p.push('repo' + (i + 1) + ': ' + r.path + (r.branch ? ' branch:' + r.branch : ''));
+    });
     p.push('');
   }
 
