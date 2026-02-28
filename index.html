@@ -1786,7 +1786,7 @@ function updateConfig() {
 
   // Bind events
   fields.querySelectorAll('input,select,textarea').forEach(el => {
-    el.addEventListener('input', () => {
+    const handler = () => {
       const key = el.dataset.key;
       const val = el.type === 'number' ? parseInt(el.value) || 0 : el.value;
       if (key === 'label') node.label = val;
@@ -1810,7 +1810,10 @@ function updateConfig() {
       }
 
       render();
-    });
+    };
+    el.addEventListener('input', handler);
+    // Select elements need 'change' for reliable cross-browser support
+    if (el.tagName === 'SELECT') el.addEventListener('change', handler);
   });
 
   // Tools grid
