@@ -84,7 +84,7 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 | **Decision** | Diamond | Amber | A conditional branch with yes/no routing based on agent output |
 | **Parallel** | Flat rect | Purple | Fork/Join control flow. Splits into concurrent branches or collects results |
 | **Input** | Pill | Cyan | Entry point: Jira ticket, user story, PRD, or custom input. Optional App Source Path and App Branch fields for test automation workflows |
-| **Output** | Pill | Rose | Deliverable: code changes, PR, report, or documentation |
+| **Output** | Pill | Rose | Deliverable: code changes, PR, report, or documentation. When format is PR, shows Branch Name and Target Branch fields |
 
 ### Agent Node Config
 Each Agent node has:
@@ -142,6 +142,16 @@ A conversational prompt suitable for Claude.ai, structured as a role-assignment 
 
 ### 6. Manifest (TOON v1)
 A portable, git-committable workflow definition using Token-Optimized Orchestration Notation. Contains the workflow name, story, agent graph, connection topology, parallel groups, decisions, outputs, memory path, and TOON key. Designed for sharing between colleagues, diffing across iterations, and machine-readable workflow portability.
+
+### Pull Request Creation (`prBlock()`)
+When any output node has `format: pr`, the `prBlock()` helper injects PR creation instructions into all 6 export formats. The block includes:
+- **Hard safety rule**: never commit or push directly to the target branch
+- **Branch name**: uses the user-provided name, or derives from ticket ID in requirements, or generates a descriptive name
+- **Target branch**: uses the user-provided value, or defaults to `main`
+- **Git provider detection**: parses `git remote -v` to determine GitHub/Bitbucket/GitLab and uses the appropriate CLI tool (`gh`, Atlassian MCP, `glab`)
+- **Graceful fallback**: if PR creation fails (auth, missing tool), pushes the branch and provides the user a URL to create the PR manually
+
+All presets default to `format: 'code'`. PR creation is strictly opt-in: users must select "Pull Request" from the Format dropdown and configure the branch fields.
 
 ### Topology Awareness in Exports
 All generators use `topologicalSort()` to process nodes in dependency order. Each agent's export block includes:
@@ -237,13 +247,14 @@ After generation, `autoLayout()` is called to arrange nodes cleanly.
 
 | Preset | Pattern |
 |--------|---------|
-| **Feature Development** | Input → Planner → Implementer → Reviewer → Tester → Output |
-| **Bug Fix** | Input → Investigator → Fixer → Tester → Decision → Output |
-| **Full Stack Feature** | Input → Architect → Parallel(Backend, Frontend) → Reviewer → Tester → Output |
-| **Code Review** | Input → Analyzer → Reviewer → Improver → Validator → Output |
-| **Parallel Research** | Input → Fork → (Codebase Explorer ‖ Doc Researcher ‖ Pattern Analyzer) → Join → Synthesizer → Output |
-| **Agent Swarm** | Input → Fork → (Security Auditor ‖ Quality Analyst ‖ Perf Profiler ‖ Arch Reviewer) → Join → Report Builder → Output |
-| **Test Automation** | (Jira Ticket + App Source) → Fork → (Test Planner ‖ App Explorer) → Join → Fork → (Feature Writer ‖ Screen Objects ‖ Step Definitions) → Join → Test Reviewer → Decision → Output |
+| **Feature Development** | Input → Planner → Implementer → Reviewer → Tester → Feature Complete (code) |
+| **Bug Fix** | Input → Investigator → Fixer → Tester → Decision → Fix Complete (code) |
+| **Full Stack Feature** | Input → Architect → Parallel(Backend, Frontend) → Reviewer → Tester → Feature Ready (code) |
+| **Code Review** | Input → Analyzer → Reviewer → Improver → Validator → Improved Code (code) |
+| **Parallel Research** | Input → Fork → (Codebase Explorer ‖ Doc Researcher ‖ Pattern Analyzer) → Join → Synthesizer → Research Report (report) |
+| **Agent Swarm** | Input → Fork → (Security Auditor ‖ Quality Analyst ‖ Perf Profiler ‖ Arch Reviewer) → Join → Report Builder → Audit Report (report) |
+| **Test Automation** | (Jira Ticket + App Source) → Fork → (Test Planner ‖ App Explorer) → Join → Fork → (Feature Writer ‖ Screen Objects ‖ Step Definitions) → Join → Test Reviewer → Decision → Test Suite (code) |
+| **UI Design & Development** | Input → Design System Analyzer → UI Implementer → UI Reviewer → Component Ready (code) |
 
 ---
 
@@ -266,6 +277,8 @@ After generation, `autoLayout()` is called to arrange nodes cleanly.
 | Topological sort for export ordering | Ensures agents are always exported in dependency order regardless of canvas position |
 | getEffectivePrompt 3-tier fallback | Ensures every export always contains real instructions even for blank-prompt nodes |
 | Memory preamble/postamble split | Read-before-task + write-after-task ordering maximizes compliance vs. a single appended block |
+| Safe-by-default output format | All presets use `format: 'code'` (local changes only). PR creation requires explicit opt-in to prevent agents from pushing code or creating branches without user intent |
+| `prBlock()` prompt injection | PR instructions are only injected when at least one output node has `format: pr`. Provider detection via `git remote -v` works for GitHub, Bitbucket, and GitLab with graceful fallback |
 | TOON v1 for memory files | Compact notation reduces token usage in agent context while preserving structured state |
 | Manifest as 6th format | Portable workflow definition enables sharing, diffing, and reproducibility |
 | localStorage for persistence | No server needed; keeps single-file portability; auto-save + named save + JSON export covers all sharing needs |
@@ -351,6 +364,7 @@ JavaScript:
   ├── STORY PARSING & WORKFLOW GENERATION
   ├── PRESETS
   ├── EXPORT FORMAT SYSTEM
+  │     ├── prBlock()          # PR creation prompt injection (when format=pr)
   │     ├── genWorkflow()      # Format 1: Workflow Markdown
   │     ├── genSubAgents()     # Format 2: Sub-Agent Task calls
   │     ├── genAgentTeams()    # Format 3: Agent Teams brief
@@ -378,4 +392,4 @@ JavaScript:
 
 ---
 
-*Last updated: 2026-02-25*
+*Last updated: 2026-02-28*
