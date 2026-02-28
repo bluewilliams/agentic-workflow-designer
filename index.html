@@ -256,10 +256,22 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-section">
     <h3>Requirements</h3>
-    <textarea class="story-input" id="storyInput" placeholder="Paste your Jira ticket, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Example:&#10;As a user, I want to reset my password via email so that I can regain access to my account.&#10;&#10;Acceptance Criteria:&#10;- User clicks 'Forgot Password'&#10;- System sends reset email&#10;- User sets new password&#10;- User can login with new password" oninput="autoSaveWorkflow()"></textarea>
+    <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset — the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Generate to auto-build a workflow from keywords." oninput="autoSaveWorkflow()"></textarea>
     <div class="btn-row mt">
       <button class="btn primary" onclick="generateFromStory()">Generate from Requirements</button>
       <button class="btn sm" onclick="clearCanvas()">Clear All</button>
+    </div>
+    <div id="urlPresetPicker" style="display:none;margin-top:8px;padding:10px;background:var(--surface2);border:1px solid var(--accent);border-radius:8px">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:8px;font-weight:600">Your input looks like a ticket URL. What type of work is it?</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:8px">The agent will fetch ticket details at runtime via the Atlassian MCP tool. Pick a workflow shape so the right agents are assigned.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
+        <button class="btn sm" onclick="pickUrlPreset('feature')" style="font-size:10px">Feature</button>
+        <button class="btn sm" onclick="pickUrlPreset('bugfix')" style="font-size:10px">Bug Fix</button>
+        <button class="btn sm" onclick="pickUrlPreset('ui_component')" style="font-size:10px">UI Work</button>
+        <button class="btn sm" onclick="pickUrlPreset('fullstack')" style="font-size:10px">Full Stack</button>
+        <button class="btn sm" onclick="pickUrlPreset('test_automation')" style="font-size:10px">Test Automation</button>
+        <button class="btn sm" onclick="dismissUrlPicker()" style="font-size:10px;opacity:.6">Dismiss</button>
+      </div>
     </div>
     <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5"><strong style="color:var(--text2)">Presets</strong> below give you a ready-made pipeline, just paste context above and copy the prompt. <strong style="color:var(--text2)">Generate from Requirements</strong> auto-builds a workflow from your requirements.</div>
   </div>
@@ -2089,9 +2101,29 @@ function autoLayout() {
 // ═══════════════════════════════════════════════════════════
 // STORY PARSING & WORKFLOW GENERATION
 // ═══════════════════════════════════════════════════════════
+function isUrlOnly(text) {
+  // Strip whitespace and check if the entire input is one or more URLs with no meaningful prose
+  const stripped = text.replace(/https?:\/\/\S+/gi, '').trim();
+  // If removing all URLs leaves nothing (or just punctuation/whitespace), it's URL-only
+  return stripped.length < 10 && /https?:\/\//i.test(text);
+}
+function pickUrlPreset(preset) {
+  $('urlPresetPicker').style.display = 'none';
+  loadPreset(preset);
+}
+function dismissUrlPicker() {
+  $('urlPresetPicker').style.display = 'none';
+}
 function generateFromStory() {
   const story = $('storyInput').value.trim();
   if (!story) return;
+
+  // Detect URL-only input (e.g. just a Jira link) — show preset picker instead of blind generation
+  if (isUrlOnly(story)) {
+    $('urlPresetPicker').style.display = '';
+    return;
+  }
+
   if (state.nodes.length > 0 && !confirm('This will replace your current workflow with a generated one. Continue?')) return;
   // Only clear nodes and connections, preserve all user inputs (name, story, repos, app source)
   state.nodes = [];
@@ -2419,6 +2451,7 @@ function clearCanvas(skipConfirm) {
   if ($('appSourcePath')) $('appSourcePath').value = '';
   if ($('appSourceBranch')) $('appSourceBranch').value = '';
   if ($('uiContextNotes')) $('uiContextNotes').value = '';
+  if ($('urlPresetPicker')) $('urlPresetPicker').style.display = 'none';
   render();
   updateConfig();
   updateMemoryPath();
