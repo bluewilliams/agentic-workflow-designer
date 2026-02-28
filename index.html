@@ -344,6 +344,10 @@ svg.canvas{width:100%;height:100%;display:block}
         <div class="preset-name">Agent Swarm</div>
         <div class="preset-desc">[Security | Quality | Performance | Architecture] &rarr; Report</div>
       </div>
+      <div class="preset-item" onclick="loadPreset('ui_component')">
+        <div class="preset-name">UI Development</div>
+        <div class="preset-desc">Analyze Design System &rarr; Implement &rarr; Review</div>
+      </div>
     </div>
   </div>
 
@@ -352,6 +356,12 @@ svg.canvas{width:100%;height:100%;display:block}
     <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Local path to the app being tested. Agents will explore it for selectors and screen structure.</div>
     <input type="text" id="appSourcePath" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px" placeholder="/path/to/app/repo" oninput="updatePrompt();savePrefsDebounced()"/>
     <input type="text" id="appSourceBranch" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px" placeholder="Branch (optional, e.g. feature/PROJ-123)" oninput="updatePrompt();savePrefsDebounced()"/>
+  </div>
+
+  <div class="sidebar-section" id="uiContextSection" style="display:none">
+    <h3>UI Context <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Styling preferences or migration notes. Leave blank and the agent will discover your design system automatically.</div>
+    <textarea id="uiContextNotes" class="story-input" style="min-height:48px;padding:6px 8px;font-size:12px" placeholder="e.g. Use vanilla-extract + clsx, avoid SCSS and MUI v4" oninput="updatePrompt();savePrefsDebounced()"></textarea>
   </div>
 
   <div class="sidebar-section">
@@ -370,7 +380,7 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-tip">
     <span class="tip-icon">⚡</span>
-    <span><strong>Better outcomes:</strong> agents work best when an Atlassian MCP tool and a language-appropriate LSP server are installed, authenticated, and available.</span>
+    <span><strong>Better outcomes:</strong> agents work best when an Atlassian MCP tool and a language-appropriate LSP server are installed, authenticated, and available.<br><br><strong>Atlassian MCP setup:</strong><br><code style="font-size:10px;word-break:break-all;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">claude mcp add --transport http atlassian https://mcp.atlassian.com/v1/mcp --scope user</code></span>
   </div>
 
   <div class="sidebar-section memory-section">
@@ -590,6 +600,13 @@ const PROMPTS = {
 
   frontend: 'Implement the UI components per the design.\n\n1. Use `LSP documentSymbol` on existing component files to understand their props, state, and exported API before creating similar ones\n2. Use `LSP goToDefinition` on any prop type, context type, or hook return type you will use or extend\n3. Use `LSP findReferences` on shared components, hooks, or context providers you plan to modify — confirm all usages before changing their API\n4. Create/modify components following the existing design system\n5. Implement state management for the new feature\n6. Wire up API calls to the backend endpoints\n7. Ensure responsive design and accessibility (semantic HTML, ARIA, keyboard nav)\n8. Handle loading, error, and empty states\n9. Run linter and existing frontend tests\n\nProvide a summary of all UI changes with component hierarchy.\n\n## Handoff Summary\nEnd your response with:\n- **Components Changed**: Each component with description of changes\n- **Files Changed**: Each file with what was done\n- **API Dependencies**: Backend endpoints consumed and expected contracts\n- **Testing Notes**: User flows and states to verify (loading, error, empty, populated)',
 
+  // --- UI Development (Design System Aware) ---
+  designSystemAnalyzer: 'Analyze the project\'s design system and styling architecture to produce a Design System Brief that downstream agents will follow.\n\n## Discovery Process\n\n1. **Dependencies**: Read `package.json` (or equivalent manifest) and identify ALL styling-related dependencies — look for: vanilla-extract, tailwind, styled-components, emotion, CSS modules, SCSS/Sass, MUI/Material UI, Ant Design, Chakra UI, Ionic, Radix, Shadcn, clsx/classnames, and any other UI framework or utility\n2. **UI framework**: Determine the component framework (React, Vue, Angular, Svelte, Astro, etc.) and its version — this affects file extensions, component patterns, and styling conventions\n3. **Token/theme files**: Use `Glob` to search for theme and token files:\n   - `**/theme/**`, `**/tokens/**`, `**/design-tokens*`\n   - `**/*.css.ts` (vanilla-extract), `**/tailwind.config*` (Tailwind)\n   - `**/styles/variables*`, `**/_variables*` (SCSS variables)\n   - `**/ThemeProvider*`, `**/createTheme*` (MUI/component library themes)\n   - `**/globals.css`, `**/app.css` (CSS custom properties / Tailwind base)\n4. **Current patterns**: Run `git log --oneline --diff-filter=AM --name-only -20 -- \"*.tsx\" \"*.vue\" \"*.jsx\" \"*.svelte\" \"*.css.ts\" \"*.module.css\" \"*.module.scss\" \"*.scss\"` to find the most recently modified and newly created UI files — these represent the team\'s CURRENT preferred approach. If git history is unavailable (shallow clone, non-git project), fall back to sorting by file modification date using `ls -lt` on component directories\n5. **Read examples**: Read 2-3 of the most recently modified/created component files AND 2-3 older component files to compare styling approaches. Identify what is \"new pattern\" vs \"legacy pattern\". If the project uses ONE consistent approach everywhere, note that there is no migration — simply document the single approach\n6. **Composition utilities**: Search for how classes are composed — `clsx`, `classnames`, `cx`, `cn` (shadcn convention), template literals, `styled()`, Tailwind `tw`, etc.\n7. **File structure conventions**: Note how components are organized — co-located styles? Separate styles directory? Naming conventions for style files? Barrel exports?\n8. **Component library wrappers**: Check if the project wraps any component library (MUI, Ionic, etc.) with custom components — these wrappers may be the intended API for new code rather than using the library directly\n\n## Handling edge cases\n- **Utility-first CSS** (Tailwind, UnoCSS): There may be no separate token files — the config file IS the token source. Document the config path and relevant theme extensions\n- **No tokens at all**: Some projects use a component library\'s default theme with no customization — document which library theme to use and how to access its values\n- **Monorepo**: Scope your analysis to the relevant package/app directory, not the entire monorepo root\n- **Single consistent approach**: If there is NO migration happening and the codebase uses one approach consistently, state that clearly — don\'t manufacture an \"avoid\" list\n\n## UI Context notes\nCheck the \"UI Context\" section in this workflow for any user-provided styling preferences. If present, treat these as authoritative constraints — they represent the user\'s explicit preference. Validate them against what you find in the codebase and incorporate them into your Brief.\n\n## Output: Design System Brief\n\nProduce a concise, actionable brief with these sections:\n\n### Preferred Styling Approach\nThe styling system new components MUST use (e.g., \"vanilla-extract with clsx for class composition\", or \"Tailwind utility classes with cn() helper\")\n\n### Token/Theme Source\nExact path to the canonical token, theme, or config file that all styling values should reference. For Tailwind projects this is the Tailwind config; for vanilla-extract, the theme contract; for SCSS, the variables file\n\n### Canonical Component Example\nPath to a specific recent component that exemplifies the correct pattern — the implementer should study this file\'s structure, imports, and styling approach\n\n### Available Design Tokens\nList the key token categories available (colors, spacing, typography, shadows, breakpoints, z-index, etc.) with import path. For utility-first CSS, list the relevant theme config sections instead\n\n### File Structure Convention\nHow style files relate to component files (co-located *.css.ts, separate /styles directory, Tailwind classes inline, etc.) and the component file naming pattern\n\n### Component Library Usage\nIf a component library is in use, document: which library, which version, whether it should be used directly or through project wrappers, and how to theme/style its components within the preferred approach\n\n### Patterns to AVOID\nExplicit list of legacy or deprecated styling approaches found in the codebase that must NOT be used in new code (e.g., \"Do not use SCSS files\", \"Do not import from @mui/styles\", \"Do not use inline style objects for theming values\"). If there is no migration and the codebase is consistent, state \"No legacy patterns detected — the codebase uses a single consistent approach\"\n\n## Handoff Summary\nEnd your response with:\n- **UI Framework**: Framework and version (e.g., React 18, Vue 3)\n- **Styling Approach**: The one approach to use for new components\n- **Token Source**: Path to import design tokens/theme values from\n- **Canonical Example**: Component file path to follow as a pattern\n- **Composition Method**: How to compose/combine CSS classes (or \"N/A\" for utility-first)\n- **Component Library**: Library in use and how to consume it (or \"None\")\n- **Avoid List**: Deprecated approaches that must not be used (or \"None\")',
+
+  uiImplementer: 'Implement the UI component following the Design System Brief from the previous step.\n\n## CRITICAL: Read the Design System Brief first\nBefore writing ANY code, read the Design System Analyzer\'s output completely. You MUST follow its specifications for styling approach, token imports, file structure, composition method, and component library usage. Do NOT deviate from the Brief.\n\n## Implementation Process\n\n1. **Study the canonical example**: Read the component file identified in the Brief as the pattern to follow — match its file structure, naming, and styling approach exactly\n2. **Import tokens/theme**: Use the token source path from the Brief for all colors, spacing, typography, and shadows — never hardcode these values. For utility-first CSS (Tailwind), use the project\'s configured classes rather than arbitrary values\n3. **Component library**: If the Brief specifies a component library, use it as documented — through project wrappers if they exist, or directly if specified. Do not mix component libraries\n4. Use `LSP documentSymbol` on existing component files to understand their props, state, and exported API before creating similar ones\n5. Use `LSP goToDefinition` on any prop type, context type, or hook return type you will use or extend\n6. Use `LSP findReferences` on shared components, hooks, or context providers you plan to modify — confirm all usages before changing their API\n7. Check for existing shared components (buttons, inputs, modals, layouts) before creating new ones — reuse what exists\n8. Create the component using ONLY the styling approach specified in the Brief\n9. Use the composition method specified in the Brief (e.g., clsx, classnames, cx, cn) for combining classes\n10. Follow the file structure convention from the Brief (co-located styles, naming patterns)\n11. Implement state management for the new feature\n12. Wire up API calls to any backend endpoints\n13. Ensure responsive design and accessibility (semantic HTML, ARIA, keyboard nav)\n14. Handle loading, error, and empty states\n15. Run linter and existing frontend tests\n\n## Style Rules\n- Use design tokens for ALL visual values — no hardcoded colors, font sizes, or spacing\n- Do NOT use any approach listed in the Brief\'s \"Avoid List\"\n- Match the canonical example\'s patterns for exports, props interface, and composition\n- If the Brief says the codebase uses a single consistent approach with no migration, simply follow that approach\n\nProvide a summary of all UI changes with component hierarchy.\n\n## Handoff Summary\nEnd your response with:\n- **Components Changed**: Each component with description of changes\n- **Styling Approach Used**: Confirm which approach was followed\n- **Files Changed**: Each file with what was done\n- **Tokens Referenced**: Which design token categories were used\n- **Shared Components Reused**: Existing components leveraged (or \"None\")\n- **API Dependencies**: Backend endpoints consumed and expected contracts\n- **Testing Notes**: User flows and states to verify (loading, error, empty, populated)',
+
+  uiReviewer: 'Review the UI component for correctness, quality, and design system compliance.\n\n## CRITICAL: Read the Design System Brief first\nBefore reviewing, read the Design System Analyzer\'s output completely. Use it as your compliance checklist — every component must conform to the Brief.\n\n## Design System Compliance Review\n\n1. **Styling approach**: Verify the component uses ONLY the approach specified in the Brief. Flag ANY use of alternative or legacy styling methods\n2. **Token usage**: Verify design tokens are imported from the Brief\'s token source and used for ALL colors, spacing, typography, and shadows. Flag any hardcoded visual values. For utility-first CSS (Tailwind), verify configured theme classes are used instead of arbitrary values\n3. **Avoid list**: Check for ANY use of patterns listed in the Brief\'s \"Avoid List\" — these are automatic rejections\n4. **Canonical pattern adherence**: Compare the component\'s file structure, naming, and composition method against the canonical example from the Brief\n5. **Composition method**: Verify classes are composed using the specified utility (clsx, classnames, cn, etc.) — not string concatenation or other methods\n6. **Component library compliance**: If the Brief specifies a component library, verify it is consumed correctly — through project wrappers if documented, with proper theming integration, no mixing of different component libraries\n7. **Shared component reuse**: Check that existing shared components were reused where appropriate rather than creating duplicates\n\n## Standard Code Review\n\n8. Use `LSP findReferences` on modified functions to check all call sites are consistent with any changes\n9. Use `LSP goToDefinition` on new types/interfaces to verify they align with usage\n10. Use `LSP goToImplementation` on changed interfaces to confirm all implementations are updated\n11. **Correctness**: Does the implementation match requirements?\n12. **Accessibility**: Semantic HTML, ARIA attributes, keyboard navigation, focus management\n13. **Responsive design**: Works across viewport sizes, no overflow or layout breaks\n14. **State handling**: Loading, error, and empty states are covered\n15. **Performance**: No unnecessary re-renders, efficient event handlers, proper memoization where needed\n16. **Conventions**: Follows project patterns for naming, file organization, and imports\n\nFor each issue: file:line, severity (Critical/High/Medium/Low), category (Design System / Correctness / Accessibility / Performance), and fix suggestion.\n\n**Design system violations are Critical severity** — they undermine the migration effort and create technical debt.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or NEEDS REVISION\n- **Design System Compliance**: PASS or list of violations\n- **Critical Issues**: Must-fix items with file:line (if any)\n- **Improvements**: Suggested enhancements, non-blocking\n- **Test Gaps**: Areas needing test coverage',
+
   // --- Investigation & Fixing ---
   investigator: 'Investigate the reported bug systematically to find the root cause.\n\nIf an Atlassian MCP tool is available, fetch the full bug report details and search for related issues (duplicates, prior incidents in the same area, linked tickets) to gather additional context.\n\n1. Understand expected vs actual behavior from the bug report\n2. Use `Grep` to find the entry point — the function/handler most likely involved\n3. Use `LSP incomingCalls` on the suspected function to trace how it is invoked — find all call sites leading to the bug\n4. Use `LSP outgoingCalls` to trace what the function calls, following the execution path deeper into the stack\n5. Use `LSP findReferences` on any variable, type, or constant that may be incorrectly set to find where it originates\n6. Use `LSP goToDefinition` to inspect type definitions and ensure the data shapes match expectations at every layer\n7. Use `LSP hover` to get type information on ambiguous expressions without reading the full definition file\n8. Check `git log` for recent changes to suspected files that may have introduced the issue\n9. Identify the ROOT CAUSE, not just the symptom\n\nOutput: reproduction steps, full call chain (using LSP findings), affected files/functions, root cause analysis, recommended fix approach, and impact assessment.\n\n## Handoff Summary\nEnd your response with:\n- **Root Cause**: Clear description of what is wrong and where\n- **Call Chain**: The traced path from entry point to failure (file:line at each step)\n- **Recommended Fix**: Specific approach for the Fixer to take\n- **Affected Files**: Files the Fixer will need to modify\n- **Risk Areas**: Related code that could be affected by the fix',
 
@@ -766,6 +783,7 @@ function savePrefs() {
       memoryEnabled: state.memoryEnabled,
       appSourcePath: $('appSourcePath') ? $('appSourcePath').value : '',
       appSourceBranch: $('appSourceBranch') ? $('appSourceBranch').value : '',
+      uiContextNotes: $('uiContextNotes') ? $('uiContextNotes').value : '',
       exportFormat: state.exportFormat,
       repositories: state.repositories
     }));
@@ -789,6 +807,7 @@ function restorePrefs() {
     }
     if (p.appSourcePath && $('appSourcePath')) $('appSourcePath').value = p.appSourcePath;
     if (p.appSourceBranch && $('appSourceBranch')) $('appSourceBranch').value = p.appSourceBranch;
+    if (p.uiContextNotes && $('uiContextNotes')) $('uiContextNotes').value = p.uiContextNotes;
     if (p.exportFormat) setExportFormat(p.exportFormat);
     if (Array.isArray(p.repositories)) { state.repositories = p.repositories; renderRepoRows(); }
   } catch(e) { /* ignore */ }
@@ -1266,6 +1285,8 @@ function render() {
   $('emptyState').style.display = state.nodes.length === 0 ? 'flex' : 'none';
   const hasAppExplorer = state.nodes.some(n => n.type === 'agent' && n.config.prompt === PROMPTS.appExplorer);
   $('appSourceSection').style.display = hasAppExplorer ? '' : 'none';
+  const hasDesignAnalyzer = state.nodes.some(n => n.type === 'agent' && n.config.prompt === PROMPTS.designSystemAnalyzer);
+  $('uiContextSection').style.display = hasDesignAnalyzer ? '' : 'none';
   const agents = state.nodes.filter(n => n.type === 'agent').length;
   $('nodeCount').textContent = `${state.nodes.length} nodes \u00B7 ${state.connections.length} connections` + (agents ? ` \u00B7 ${agents} agents` : '');
   autoSaveWorkflow();
@@ -2158,9 +2179,27 @@ function generateFromStory() {
     } else {
       lastNodes = [backend, frontend];
     }
+  } else if (hasUI) {
+    // UI-focused: design system analysis first, then implement with awareness
+    const dsAnalyzer = addNode('agent', 620, 250, 'Design System Analyzer', {
+      agentType: 'researcher', model: state.defaultModel,
+      tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP'],
+      prompt: PROMPTS.designSystemAnalyzer,
+      notes: '', maxTurns: 10
+    });
+    addConnection(planner.id, dsAnalyzer.id);
+
+    const implAgent = addNode('agent', 920, 250, 'UI Implementer', {
+      agentType: 'frontend', model: state.defaultModel,
+      tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LSP'],
+      prompt: PROMPTS.uiImplementer,
+      notes: '', maxTurns: 15
+    });
+    addConnection(dsAnalyzer.id, implAgent.id);
+    lastNodes = [implAgent];
   } else {
     // Single-domain: research first, then implement based on findings
-    const agentType = hasUI ? 'frontend' : hasAPI ? 'backend' : 'coder';
+    const agentType = hasAPI ? 'backend' : 'coder';
 
     const researcher = addNode('agent', 620, 250, 'Researcher', {
       agentType: 'researcher', model: state.defaultModel,
@@ -2170,7 +2209,7 @@ function generateFromStory() {
     });
     addConnection(planner.id, researcher.id);
 
-    const implAgent = addNode('agent', 920, 250, hasUI ? 'Frontend Dev' : hasAPI ? 'Backend Dev' : 'Implementer', {
+    const implAgent = addNode('agent', 920, 250, hasAPI ? 'Backend Dev' : 'Implementer', {
       agentType, model: state.defaultModel,
       tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob'],
       prompt: PROMPTS.implementer,
@@ -2337,6 +2376,31 @@ function loadPreset(preset) {
       addConnection(authFork.id, feat.id); addConnection(authFork.id, scrn.id); addConnection(authFork.id, step.id);
       addConnection(feat.id, authJoin.id); addConnection(scrn.id, authJoin.id); addConnection(step.id, authJoin.id);
       addConnection(authJoin.id, rev.id); addConnection(rev.id, d.id); addConnection(d.id, o.id, 'Approved');
+    },
+    ui_component: () => {
+      const i = addNode('input', 80, 280, 'Component Spec');
+      const dsa = addNode('agent', 380, 280, 'Design System Analyzer', {
+        agentType: 'researcher', model: state.defaultModel,
+        tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP'],
+        prompt: PROMPTS.designSystemAnalyzer, maxTurns: 10
+      });
+      const impl = addNode('agent', 700, 280, 'UI Implementer', {
+        agentType: 'frontend', model: state.defaultModel,
+        tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LSP'],
+        prompt: PROMPTS.uiImplementer, maxTurns: 15
+      });
+      const rev = addNode('agent', 1020, 280, 'UI Reviewer', {
+        agentType: 'reviewer', model: state.defaultModel,
+        tools: ['Read', 'Grep', 'Glob'],
+        prompt: PROMPTS.uiReviewer, maxTurns: 5
+      });
+      const o = addNode('output', 1340, 280, 'Component PR', {
+        deliverable: 'UI component following project design system', format: 'pr'
+      });
+      addConnection(i.id, dsa.id);
+      addConnection(dsa.id, impl.id);
+      addConnection(impl.id, rev.id);
+      addConnection(rev.id, o.id);
     }
   };
   if (presets[preset]) { presets[preset](); autoLayout(); }
@@ -2354,6 +2418,7 @@ function clearCanvas(skipConfirm) {
   renderRepoRows();
   if ($('appSourcePath')) $('appSourcePath').value = '';
   if ($('appSourceBranch')) $('appSourceBranch').value = '';
+  if ($('uiContextNotes')) $('uiContextNotes').value = '';
   render();
   updateConfig();
   updateMemoryPath();
@@ -2419,6 +2484,13 @@ function appSourceBlock(heading) {
   lines.push('');
   return lines;
 }
+function uiContextBlock(heading) {
+  const el = $('uiContextNotes');
+  const notes = el ? el.value.trim() : '';
+  if (!notes) return [];
+  const h = heading || '### UI Context';
+  return [h, '', notes, ''];
+}
 function getAgentTypeName(id) { const a = AGENT_TYPES.find(t => t.id === id); return a ? a.name : 'General'; }
 function getDeps(nodeId) {
   return state.connections.filter(c => c.to === nodeId).map(c => {
@@ -2457,6 +2529,7 @@ function genWorkflow() {
   p.push('');
   if (story) { p.push('### Requirements'); p.push(''); p.push(story); p.push(''); }
   appSourceBlock('### App Source').forEach(l => p.push(l));
+  uiContextBlock('### UI Context').forEach(l => p.push(l));
   repoBlock('### Repositories').forEach(l => p.push(l));
   const _wfAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_wfAtl) { p.push(_wfAtl); p.push(''); }
@@ -2693,6 +2766,7 @@ function genSubAgents() {
       promptLines.push('');
     }
     appSourceBlock('## App Source').forEach(l => promptLines.push(l));
+    uiContextBlock('## UI Context').forEach(l => promptLines.push(l));
     repoBlock('## Repositories').forEach(l => promptLines.push(l));
 
     promptLines.push('## Output Format');
@@ -2795,6 +2869,7 @@ function genAgentTeams() {
     p.push('');
   }
   appSourceBlock('## App Source').forEach(l => p.push(l));
+  uiContextBlock('## UI Context').forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _atAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_atAtl) { p.push(_atAtl); p.push(''); }
@@ -3036,6 +3111,11 @@ function genAgentSDK() {
     if (_sdkApp.branch) p.push(`    app_source_branch = "${_sdkApp.branch}"  # checkout before exploring`);
     p.push('');
   }
+  const _sdkUiNotes = $('uiContextNotes') ? $('uiContextNotes').value.trim() : '';
+  if (_sdkUiNotes) {
+    p.push(`    ui_context = """${_sdkUiNotes}"""  # Styling preferences — Design System Analyzer will use these as constraints`);
+    p.push('');
+  }
   const _sdkRepos = getRepositories();
   if (_sdkRepos.length > 0) {
     const _esc = s => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -3144,6 +3224,7 @@ function genClaudePrompt() {
     p.push('');
   }
   appSourceBlock('## App Source').forEach(l => p.push(l));
+  uiContextBlock('## UI Context').forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _cpAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_cpAtl) { p.push(_cpAtl); p.push(''); }
@@ -3297,6 +3378,14 @@ function genManifest() {
     p.push('path: ' + _mfApp.path);
     if (_mfApp.branch) p.push('branch: ' + _mfApp.branch);
     p.push('mode: read-only — explore for selectors, do not modify');
+    p.push('');
+  }
+
+  // UI Context
+  const _mfUiNotes = $('uiContextNotes') ? $('uiContextNotes').value.trim() : '';
+  if (_mfUiNotes) {
+    p.push('## UI Context');
+    p.push(_mfUiNotes);
     p.push('');
   }
 
