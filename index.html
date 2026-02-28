@@ -66,6 +66,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 .preset-item{padding:8px 10px;background:var(--bg);border:1px solid var(--border);
   border-radius:var(--radius-sm);cursor:pointer;font-size:12px;transition:all .15s}
 .preset-item:hover{border-color:var(--accent);background:var(--surface2)}
+.preset-item.active{border-color:var(--accent);background:rgba(99,144,255,.1)}
 .preset-item .preset-name{font-weight:600;margin-bottom:2px}
 .preset-item .preset-desc{font-size:10px;color:var(--text3)}
 /* Node Config */
@@ -328,35 +329,35 @@ svg.canvas{width:100%;height:100%;display:block}
   <div class="sidebar-section">
     <h3>Presets</h3>
     <div class="preset-list">
-      <div class="preset-item" onclick="loadPreset('feature')">
+      <div class="preset-item" data-preset="feature" onclick="loadPreset('feature')">
         <div class="preset-name">Feature Development</div>
         <div class="preset-desc">Plan &rarr; Implement &rarr; Review &rarr; Test</div>
       </div>
-      <div class="preset-item" onclick="loadPreset('bugfix')">
+      <div class="preset-item" data-preset="bugfix" onclick="loadPreset('bugfix')">
         <div class="preset-name">Bug Fix</div>
         <div class="preset-desc">Investigate &rarr; Fix &rarr; Test &rarr; Verify</div>
       </div>
-      <div class="preset-item" onclick="loadPreset('fullstack')">
+      <div class="preset-item" data-preset="fullstack" onclick="loadPreset('fullstack')">
         <div class="preset-name">Full Stack Feature</div>
         <div class="preset-desc">Design &rarr; [Backend | Frontend] &rarr; Test</div>
       </div>
-      <div class="preset-item" onclick="loadPreset('test_automation')">
+      <div class="preset-item" data-preset="test_automation" onclick="loadPreset('test_automation')">
         <div class="preset-name">Test Automation</div>
         <div class="preset-desc">Plan + Explore App &rarr; [Feature | Screens | Steps] &rarr; Review</div>
       </div>
-      <div class="preset-item" onclick="loadPreset('review')">
+      <div class="preset-item" data-preset="review" onclick="loadPreset('review')">
         <div class="preset-name">Code Review</div>
         <div class="preset-desc">Analyze &rarr; Review &rarr; Improve &rarr; Validate</div>
       </div>
-      <div class="preset-item" onclick="loadPreset('parallel_research')">
+      <div class="preset-item" data-preset="parallel_research" onclick="loadPreset('parallel_research')">
         <div class="preset-name">Parallel Research</div>
         <div class="preset-desc">[Codebase | Docs | Patterns] &rarr; Synthesize</div>
       </div>
-      <div class="preset-item" onclick="loadPreset('swarm')">
+      <div class="preset-item" data-preset="swarm" onclick="loadPreset('swarm')">
         <div class="preset-name">Agent Swarm</div>
         <div class="preset-desc">[Security | Quality | Performance | Architecture] &rarr; Report</div>
       </div>
-      <div class="preset-item" onclick="loadPreset('ui_component')">
+      <div class="preset-item" data-preset="ui_component" onclick="loadPreset('ui_component')">
         <div class="preset-name">UI Development</div>
         <div class="preset-desc">Analyze Design System &rarr; Implement &rarr; Review</div>
       </div>
@@ -702,7 +703,8 @@ let state = {
   exportFormat: 'prompt',
   memoryEnabled: false,
   defaultModel: 'opus-4.6',
-  repositories: []
+  repositories: [],
+  activePreset: null
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -917,6 +919,7 @@ function deserializeWorkflow(data) {
   state.zoom = c.zoom || 1;
   state.selectedId = null;
   state.connectFrom = null;
+  state.activePreset = null;
   if (data.name !== undefined) $('workflowName').value = data.name;
   if (data.story !== undefined && $('storyInput')) $('storyInput').value = data.story;
   state.repositories = Array.isArray(data.repositories) ? data.repositories : [];
@@ -1299,6 +1302,9 @@ function render() {
   $('appSourceSection').style.display = hasAppExplorer ? '' : 'none';
   const hasDesignAnalyzer = state.nodes.some(n => n.type === 'agent' && n.config.prompt === PROMPTS.designSystemAnalyzer);
   $('uiContextSection').style.display = hasDesignAnalyzer ? '' : 'none';
+  document.querySelectorAll('.preset-item[data-preset]').forEach(el => {
+    el.classList.toggle('active', el.dataset.preset === state.activePreset);
+  });
   const agents = state.nodes.filter(n => n.type === 'agent').length;
   $('nodeCount').textContent = `${state.nodes.length} nodes \u00B7 ${state.connections.length} connections` + (agents ? ` \u00B7 ${agents} agents` : '');
   autoSaveWorkflow();
@@ -2130,6 +2136,7 @@ function generateFromStory() {
   state.connections = [];
   state.selectedId = null;
   state.connectFrom = null;
+  state.activePreset = null;
 
   const lower = story.toLowerCase();
   const nodes = [];
@@ -2435,7 +2442,7 @@ function loadPreset(preset) {
       addConnection(rev.id, o.id);
     }
   };
-  if (presets[preset]) { presets[preset](); autoLayout(); }
+  if (presets[preset]) { presets[preset](); state.activePreset = preset; autoLayout(); }
 }
 
 function clearCanvas(skipConfirm) {
@@ -2444,6 +2451,7 @@ function clearCanvas(skipConfirm) {
   state.connections = [];
   state.selectedId = null;
   state.connectFrom = null;
+  state.activePreset = null;
   $('workflowName').value = '';
   if ($('storyInput')) $('storyInput').value = '';
   state.repositories = [];
