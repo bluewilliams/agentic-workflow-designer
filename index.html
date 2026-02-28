@@ -393,7 +393,7 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-tip">
     <span class="tip-icon">⚡</span>
-    <span><strong>Better outcomes:</strong> agents work best when an Atlassian MCP tool and a language-appropriate LSP server are installed, authenticated, and available.<br><br><strong>Atlassian MCP setup:</strong><br><code style="font-size:10px;word-break:break-all;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">claude mcp add --transport http atlassian https://mcp.atlassian.com/v1/mcp --scope user</code></span>
+    <span><strong>Better outcomes:</strong> agents work best when an Atlassian MCP tool and a language-appropriate LSP server are installed, authenticated, and available.<br><br><strong>Atlassian MCP setup:</strong><br><code style="font-size:10px;word-break:break-all;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">claude mcp add --transport http atlassian https://mcp.atlassian.com/v1/mcp --scope user</code><br><br><strong>PR creation:</strong> GitHub repos use <code style="font-size:10px;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">gh</code> CLI (built-in). Bitbucket repos can use the same Atlassian MCP above. GitLab repos need <code style="font-size:10px;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">glab</code> CLI or a GitLab MCP.</span>
   </div>
 
   <div class="sidebar-section memory-section">
@@ -529,7 +529,7 @@ const NODE_DEFAULTS = {
   input: { w: 180, h: 52, color: '#06b6d4', icon: '\u{1F4CB}', label: 'Input',
     config: { source: 'jira', description: '' }},
   output: { w: 180, h: 52, color: '#f43f5e', icon: '\u{1F4E6}', label: 'Output',
-    config: { deliverable: '', format: 'code' }}
+    config: { deliverable: '', format: 'code', targetBranch: '', branchName: '' }}
 };
 
 const AGENT_TYPES = [
@@ -913,6 +913,13 @@ function deserializeWorkflow(data) {
   const validTypes = Object.keys(NODE_DEFAULTS);
   if (c.nodes && !c.nodes.every(n => validTypes.includes(n.type))) return false;
   state.nodes = c.nodes || [];
+  // Migrate output nodes from older versions without PR fields
+  state.nodes.forEach(n => {
+    if (n.type === 'output') {
+      if (n.config.targetBranch === undefined) n.config.targetBranch = '';
+      if (n.config.branchName === undefined) n.config.branchName = '';
+    }
+  });
   state.connections = c.connections || [];
   state.nextId = c.nextId || (state.nodes.length + 1);
   state.pan = c.pan || { x: 0, y: 0 };
@@ -1771,6 +1778,10 @@ function updateConfig() {
     fields.innerHTML += configSelect('Format', 'format', node.config.format,
       [{ value:'code', label:'Code Changes' },{ value:'pr', label:'Pull Request' },{ value:'report', label:'Report' },{ value:'docs', label:'Documentation' }]);
     fields.innerHTML += configInput('Deliverable', 'deliverable', node.config.deliverable);
+    if (node.config.format === 'pr') {
+      fields.innerHTML += configInput('Branch Name', 'branchName', node.config.branchName || '', 'text', 'e.g. feature/KA-6069-profile-redesign');
+      fields.innerHTML += configInput('Target Branch', 'targetBranch', node.config.targetBranch || '', 'text', 'e.g. main, develop (default: main)');
+    }
   }
 
   // Bind events
@@ -1780,6 +1791,11 @@ function updateConfig() {
       const val = el.type === 'number' ? parseInt(el.value) || 0 : el.value;
       if (key === 'label') node.label = val;
       else node.config[key] = val;
+
+      // Re-render config panel when output format changes (show/hide PR fields)
+      if (key === 'format' && node.type === 'output') {
+        updateConfig();
+      }
 
       // Auto-populate prompt when agent type changes and prompt is empty
       if (key === 'agentType' && node.type === 'agent') {
@@ -1818,9 +1834,9 @@ function updateConfig() {
   }
 }
 
-function configInput(label, key, value, type) {
+function configInput(label, key, value, type, placeholder) {
   return `<div class="config-field"><label>${label}</label>
-    <input type="${type||'text'}" data-key="${key}" value="${escHtml(String(value||''))}" /></div>`;
+    <input type="${type||'text'}" data-key="${key}" value="${escHtml(String(value||''))}"${placeholder ? ` placeholder="${escHtml(placeholder)}"` : ''} /></div>`;
 }
 function configSelect(label, key, value, options) {
   const opts = options.map(o => `<option value="${o.value}"${o.value===value?' selected':''}>${o.label}</option>`).join('');
@@ -2298,7 +2314,7 @@ function generateFromStory() {
     addConnection(decision.id, tester.id, 'Pass');
 
     const output = addNode('output', tester.x + 280, tester.y, 'Deliverable', {
-      deliverable: 'Tested, reviewed code changes', format: 'pr'
+      deliverable: 'Tested, reviewed code changes', format: 'code'
     });
     addConnection(tester.id, output.id);
   }
@@ -2324,7 +2340,7 @@ function loadPreset(preset) {
       const c = addNode('agent', 620, 250, 'Implementer', { agentType:'coder', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob'], prompt:PROMPTS.implementer, maxTurns:15 });
       const r = addNode('agent', 900, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep'], prompt:PROMPTS.reviewer, maxTurns:5 });
       const t = addNode('agent', 1180, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Bash'], prompt:PROMPTS.tester, maxTurns:10 });
-      const o = addNode('output', 1460, 250, 'PR Ready', { deliverable:'Tested feature', format:'pr' });
+      const o = addNode('output', 1460, 250, 'Feature Complete', { deliverable:'Tested feature', format:'code' });
       addConnection(i.id, p.id); addConnection(p.id, c.id); addConnection(c.id, r.id);
       addConnection(r.id, t.id); addConnection(t.id, o.id);
     },
@@ -2334,7 +2350,7 @@ function loadPreset(preset) {
       const f = addNode('agent', 620, 250, 'Fixer', { agentType:'coder', model:state.defaultModel, tools:['Read','Write','Edit','Bash'], prompt:PROMPTS.fixer, maxTurns:10 });
       const t = addNode('agent', 900, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Bash'], prompt:PROMPTS.bugTester, maxTurns:10 });
       const d = addNode('decision', 1180, 242, 'Fix Verified?', { condition:'Tests pass and bug is fixed', yesLabel:'Verified', noLabel:'Failed' });
-      const o = addNode('output', 1460, 250, 'Fix Complete', { deliverable:'Bug fix with regression test', format:'pr' });
+      const o = addNode('output', 1460, 250, 'Fix Complete', { deliverable:'Bug fix with regression test', format:'code' });
       addConnection(i.id, inv.id); addConnection(inv.id, f.id); addConnection(f.id, t.id);
       addConnection(t.id, d.id); addConnection(d.id, o.id, 'Verified');
     },
@@ -2346,7 +2362,7 @@ function loadPreset(preset) {
       const fe = addNode('agent', 920, 370, 'Frontend', { agentType:'frontend', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep'], prompt:PROMPTS.frontend, maxTurns:15 });
       const r = addNode('agent', 1200, 280, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep'], prompt:PROMPTS.fullstackReviewer, maxTurns:5 });
       const t = addNode('agent', 1480, 280, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Bash'], prompt:PROMPTS.e2eTester, maxTurns:10 });
-      const o = addNode('output', 1760, 280, 'Deploy Ready', { deliverable:'Full stack feature', format:'pr' });
+      const o = addNode('output', 1760, 280, 'Feature Ready', { deliverable:'Full stack feature', format:'code' });
       addConnection(i.id, arch.id); addConnection(arch.id, fork.id);
       addConnection(fork.id, be.id); addConnection(fork.id, fe.id);
       addConnection(be.id, r.id); addConnection(fe.id, r.id);
@@ -2407,7 +2423,7 @@ function loadPreset(preset) {
       const authJoin = addNode('parallel', 1680, 286, 'Collect', { strategy:'all' });
       const rev = addNode('agent', 1960, 290, 'Test Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.testReviewer, maxTurns:10 });
       const d = addNode('decision', 2240, 282, 'Tests Ready?', { condition:'All acceptance criteria covered, both platforms implemented, DI registered', yesLabel:'Approved', noLabel:'Revise' });
-      const o = addNode('output', 2520, 290, 'Test Suite', { deliverable:'Complete test automation: feature file, screen objects, step definitions', format:'pr' });
+      const o = addNode('output', 2520, 290, 'Test Suite', { deliverable:'Complete test automation: feature file, screen objects, step definitions', format:'code' });
       addConnection(i.id, planFork.id); addConnection(appIn.id, planFork.id);
       addConnection(planFork.id, plan.id); addConnection(planFork.id, appExp.id);
       addConnection(plan.id, planJoin.id); addConnection(appExp.id, planJoin.id);
@@ -2433,8 +2449,8 @@ function loadPreset(preset) {
         tools: ['Read', 'Grep', 'Glob'],
         prompt: PROMPTS.uiReviewer, maxTurns: 5
       });
-      const o = addNode('output', 1340, 280, 'Component PR', {
-        deliverable: 'UI component following project design system', format: 'pr'
+      const o = addNode('output', 1340, 280, 'Component Ready', {
+        deliverable: 'UI component following project design system', format: 'code'
       });
       addConnection(i.id, dsa.id);
       addConnection(dsa.id, impl.id);
@@ -2532,6 +2548,45 @@ function uiContextBlock(heading) {
   const h = heading || '### UI Context';
   return [h, '', notes, ''];
 }
+function prBlock(heading) {
+  const outputs = state.nodes.filter(n => n.type === 'output' && n.config.format === 'pr');
+  if (outputs.length === 0) return [];
+  const h = heading || '### Pull Request Creation';
+  const lines = [h, ''];
+  lines.push('**CRITICAL: NEVER commit or push directly to the target branch.** Always work on a feature branch.');
+  lines.push('');
+  const branchNames = outputs.map(o => o.config.branchName).filter(Boolean);
+  if (branchNames.length > 0) {
+    lines.push('**Feature branch**: `' + branchNames[0] + '`');
+  } else {
+    lines.push('**Feature branch**: Derive from the ticket ID in the requirements (e.g. `KA-6069` \u2192 `feature/KA-6069-short-description`). If no ticket ID, generate a descriptive branch name like `feature/short-description-of-changes`.');
+  }
+  lines.push('');
+  const targets = outputs.map(o => o.config.targetBranch).filter(Boolean);
+  lines.push('**Target branch** (PR merges into): `' + (targets[0] || 'main') + '`');
+  lines.push('');
+  lines.push('**Steps:**');
+  lines.push('1. **Check the current branch** with `git branch --show-current`:');
+  if (branchNames.length > 0) {
+    lines.push('   - If current branch is `' + branchNames[0] + '` \u2192 use it as-is');
+    lines.push('   - If current branch is different \u2192 stash any uncommitted changes, then `git checkout ' + branchNames[0] + '` (or `git checkout -b ' + branchNames[0] + '` if it does not exist yet)');
+  } else {
+    lines.push('   - If on a feature branch whose name contains the ticket ID from the requirements \u2192 use it as-is');
+    lines.push('   - If on a feature branch that does NOT relate to this task \u2192 create the correct branch from the target: `git checkout -b feature/<ticket-id>-short-description <target-branch>`');
+    lines.push('   - If on main/develop/master \u2192 create a feature branch: `git checkout -b feature/<ticket-id>-short-description`');
+  }
+  lines.push('2. Make all changes and commit on the feature branch');
+  lines.push('3. Push the feature branch: `git push -u origin <feature-branch>`');
+  lines.push('4. Detect the git provider from `git remote -v`:');
+  lines.push('   - `github.com` \u2192 use `gh pr create --base ' + (targets[0] || 'main') + '`');
+  lines.push('   - `bitbucket.org` \u2192 use the Atlassian MCP `create_pull_request` tool if available, or `curl -X POST` the Bitbucket REST API');
+  lines.push('   - `gitlab.com` \u2192 use `glab mr create` if available, or the GitLab API');
+  lines.push('5. PR title: concise summary of changes');
+  lines.push('6. PR description: what changed, why, and how to test');
+  lines.push('7. If PR creation fails (auth, missing tool), push the branch and provide the user a URL to create the PR manually');
+  lines.push('');
+  return lines;
+}
 function getAgentTypeName(id) { const a = AGENT_TYPES.find(t => t.id === id); return a ? a.name : 'General'; }
 function getDeps(nodeId) {
   return state.connections.filter(c => c.to === nodeId).map(c => {
@@ -2571,6 +2626,7 @@ function genWorkflow() {
   if (story) { p.push('### Requirements'); p.push(''); p.push(story); p.push(''); }
   appSourceBlock('### App Source').forEach(l => p.push(l));
   uiContextBlock('### UI Context').forEach(l => p.push(l));
+  prBlock('### Pull Request Creation').forEach(l => p.push(l));
   repoBlock('### Repositories').forEach(l => p.push(l));
   const _wfAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_wfAtl) { p.push(_wfAtl); p.push(''); }
@@ -2808,6 +2864,7 @@ function genSubAgents() {
     }
     appSourceBlock('## App Source').forEach(l => promptLines.push(l));
     uiContextBlock('## UI Context').forEach(l => promptLines.push(l));
+    prBlock('## Pull Request Creation').forEach(l => promptLines.push(l));
     repoBlock('## Repositories').forEach(l => promptLines.push(l));
 
     promptLines.push('## Output Format');
@@ -2911,6 +2968,7 @@ function genAgentTeams() {
   }
   appSourceBlock('## App Source').forEach(l => p.push(l));
   uiContextBlock('## UI Context').forEach(l => p.push(l));
+  prBlock('## Pull Request Creation').forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _atAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_atAtl) { p.push(_atAtl); p.push(''); }
@@ -3157,6 +3215,14 @@ function genAgentSDK() {
     p.push(`    ui_context = """${_sdkUiNotes}"""  # Styling preferences — Design System Analyzer will use these as constraints`);
     p.push('');
   }
+  const _sdkPrLines = prBlock();
+  if (_sdkPrLines.length > 0) {
+    p.push('    # ' + '\u2500'.repeat(59));
+    p.push('    # PULL REQUEST CREATION');
+    p.push('    # ' + '\u2500'.repeat(59));
+    _sdkPrLines.slice(2).forEach(l => { if (l) p.push('    # ' + l); else p.push('    #'); });
+    p.push('');
+  }
   const _sdkRepos = getRepositories();
   if (_sdkRepos.length > 0) {
     const _esc = s => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -3266,6 +3332,7 @@ function genClaudePrompt() {
   }
   appSourceBlock('## App Source').forEach(l => p.push(l));
   uiContextBlock('## UI Context').forEach(l => p.push(l));
+  prBlock('## Pull Request Creation').forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _cpAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_cpAtl) { p.push(_cpAtl); p.push(''); }
@@ -3506,9 +3573,20 @@ function genManifest() {
   if (outputs.length > 0) {
     p.push('## Outputs');
     outputs.forEach(o => {
-      p.push('\u{1F4E6} ' + o.label + ': ' + (o.config.deliverable || 'deliverable') + ' (' + o.config.format + ')');
+      let line = '\u{1F4E6} ' + o.label + ': ' + (o.config.deliverable || 'deliverable') + ' (' + o.config.format + ')';
+      if (o.config.format === 'pr') {
+        if (o.config.branchName) line += ' branch:' + o.config.branchName;
+        line += ' target:' + (o.config.targetBranch || 'main');
+      }
+      p.push(line);
     });
     p.push('');
+  }
+
+  // PR creation instructions
+  const _mfPr = prBlock('## Pull Request Creation');
+  if (_mfPr.length > 0) {
+    _mfPr.forEach(l => p.push(l));
   }
 
   // Memory path (only when memory is enabled)
