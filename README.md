@@ -45,6 +45,7 @@ No install required. The memory protocol is embedded directly in the generated p
 - **Parallel Research** - Codebase Explorer + Doc Researcher + Pattern Analyzer > Synthesizer
 - **Agent Swarm** - Security + Quality + Performance + Architecture audit > Report
 - **Test Automation** - [Test Planner | App Explorer] > parallel Feature Writer + Screen Objects + Step Definitions > Test Reviewer (with app source path + branch support)
+- **UI Design & Development** - Design System Analyzer > UI Implementer > UI Reviewer
 
 ## Node Types
 
@@ -52,7 +53,7 @@ No install required. The memory protocol is embedded directly in the generated p
 - **Decision** - Conditional gate with pass/fail criteria (integrated into agent prompts)
 - **Parallel Fork** - Split workflow into concurrent branches
 - **Input** - Story/requirements entry point
-- **Output** - Deliverable definition
+- **Output** - Deliverable definition (format: Code Changes, Pull Request, Report, or Documentation). When format is Pull Request, additional fields appear for Branch Name and Target Branch
 
 ## Key Features
 
@@ -65,6 +66,7 @@ No install required. The memory protocol is embedded directly in the generated p
 - **Multi-repository support** - specify multiple repos with branches; agents check out the right branch and pull latest before starting
 - **Memory Protocol** - optional compaction-resilient memory with TOON v1 notation
 - **TOON Manifest** - portable, git-friendly workflow definition format
+- **Pull Request creation** - opt-in PR output format with git provider auto-detection (GitHub, Bitbucket, GitLab), configurable feature branch and target branch, and safety-first prompt injection. All presets default to Code Changes; PR creation requires explicit opt-in
 - **Custom workflows** - add your own nodes and connections; export generators add smart scaffolding automatically
 - **Model selection** - Sonnet 4.5/4.6, Opus 4.5/4.6, Haiku 4.5 with correct Task tool keys
 
