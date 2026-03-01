@@ -43,7 +43,7 @@ Toggle **Enable workflow memory** in the sidebar to inject a compaction-resilien
 - Memory files: `manifest.md` (read-only), `shared.md` (append-only), `@{agent}.md` (per-agent)
 - Duplicate agent labels are handled automatically with unique slug suffixes
 
-Memory auto-enables for complex workflows (parallel forks, decision gate loops, or 5+ agents) when loading presets or generating from a story. You can always toggle it off manually.
+Memory auto-enables for complex workflows (parallel forks, decision gate loops, or 5+ agents) when loading presets or generating from a story. Workflows created without a name get an auto-generated two-part name (e.g. `swift-falcon`) so every workflow has a unique memory path. You can always overwrite the name or toggle memory off manually.
 
 No install required. The memory protocol is embedded directly in the generated prompts.
 
@@ -137,7 +137,7 @@ Your default model, memory toggle, export format tab, app source path/branch, an
 
 ## Testing
 
-Open `tests.html` in any browser to run the full test suite (129 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 6 export generators, workflow generation, preset loading, and format recommendations. Green/red results render instantly with expandable failure details.
+Open `tests.html` in any browser to run the full test suite (137 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 6 export generators, workflow generation, preset loading, format recommendations, and workflow auto-naming. Green/red results render instantly with expandable failure details.
 
 **CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3 (no npm). Use `--verbose` for failure details. Exit code 0 = all pass.
 
