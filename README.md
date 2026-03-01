@@ -4,6 +4,12 @@ A visual, interactive playground for designing AI agent workflows from Jira tick
 
 **[Try it live](https://bluewilliams.github.io/agentic-workflow-designer/)** - No install required, runs entirely in-browser.
 
+## Design Philosophy
+
+Single HTML file. No frameworks, no build step, no server, no dependencies. Open it in a browser and it works. Deploy it to GitHub Pages and it works. Send it to a colleague and it works.
+
+All data stays in your browser (localStorage). Nothing is sent to a server. Export workflows as `.json` files to share with your team, or save them by name and pick up where you left off.
+
 ## What It Does
 
 1. **Paste a Jira ticket or user story** into the story input
@@ -133,18 +139,11 @@ Open `tests.html` in any browser to run the full test suite (129 tests, zero dep
 
 **CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3 (no npm). Use `--verbose` for failure details. Exit code 0 = all pass.
 
-## Requirements
+## Getting Started
 
-- Any modern browser (Chrome, Firefox, Safari, Edge)
-- No server, no build step, no dependencies
+Open `index.html` in any modern browser (Chrome, Firefox, Safari, Edge). Or deploy via GitHub Pages - it works automatically.
 
-For the CLI test runner (`run-tests.sh`): Chrome/Chromium + Python 3.
-
-## Usage
-
-Open `index.html` in any modern browser. That's it.
-
-Or deploy via GitHub Pages - the file is named `index.html` so it works automatically.
+The CLI test runner (`run-tests.sh`) requires Chrome/Chromium + Python 3.
 
 ## How the Prompts Work
 
