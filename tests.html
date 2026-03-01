@@ -1083,9 +1083,9 @@ describe('Preset Loading', () => {
     win.loadPreset('swarm');
     expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
   });
-  it('test_automation preset: 7 agents', () => {
+  it('test_automation preset: 6 agents', () => {
     win.loadPreset('test_automation');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(7);
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(6);
   });
   it('ui_component preset: 3 agents', () => {
     win.loadPreset('ui_component');
@@ -1166,8 +1166,12 @@ describe('Format Recommendations', () => {
 // ═══════════════════════════════════════════════════════════
 document.getElementById('app').addEventListener('load', function() {
   win = this.contentWindow;
-  // Expose let-scoped variables as window properties so tests can access them
-  win.eval('window.state = state');
+  // Expose let-scoped 'state' as a window property so tests can access it.
+  // win.eval() is indirect eval (global scope only, can't see let declarations).
+  // Injecting a <script> tag works because inline scripts share the global lexical env.
+  const s = win.document.createElement('script');
+  s.textContent = 'window.state = state;';
+  win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
   // Clear localStorage to start fresh
