@@ -93,6 +93,8 @@ Your default model, memory toggle, export format tab, app source path/branch, an
 
 Open `tests.html` in any browser to run the full test suite (129 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 6 export generators, workflow generation, preset loading, and format recommendations. Green/red results render instantly with expandable failure details.
 
+**CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3 (no npm). Use `--verbose` for failure details. Exit code 0 = all pass.
+
 ## Usage
 
 Open `index.html` in any modern browser. No dependencies, no build step, no server required.
