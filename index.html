@@ -229,6 +229,13 @@ svg.canvas{width:100%;height:100%;display:block}
 .saved-item .saved-delete:hover{color:#ef4444}
 .saved-meta{font-size:10px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .field-highlight{border-color:#f59e0b !important;box-shadow:0 0 0 2px rgba(245,158,11,.3)}
+/* Format recommendation banner */
+.format-rec{display:flex;align-items:center;gap:8px;padding:4px 14px;
+  font-size:10px;color:var(--text3);background:rgba(59,130,246,.05);
+  border-bottom:1px solid var(--border);min-height:24px;line-height:1.4}
+.format-rec:empty{display:none}
+.format-rec strong{color:var(--accent);font-weight:600;cursor:pointer}
+.format-rec strong:hover{text-decoration:underline}
 /* Memory toggle */
 .memory-section .memory-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;
   color:var(--text2)}
@@ -536,6 +543,7 @@ svg.canvas{width:100%;height:100%;display:block}
       <button class="btn sm primary" onclick="copyPrompt()">Copy</button>
     </div>
   </div>
+  <div class="format-rec" id="formatRec"></div>
   <div class="prompt-content" id="promptOutput">Add nodes and connections to see your workflow output here...</div>
 </div>
 
@@ -1826,7 +1834,7 @@ function updateConfig() {
     fields.innerHTML += configTextarea('Description', 'description', node.config.description, 'What this task does...');
     fields.innerHTML += configTextarea('Acceptance Criteria', 'acceptance', node.config.acceptance, 'Done when...');
   } else if (node.type === 'decision') {
-    fields.innerHTML += configInput('Condition', 'condition', node.config.condition);
+    fields.innerHTML += configTextarea('Condition', 'condition', node.config.condition, 'Criteria to evaluate (e.g. acceptance criteria)');
     fields.innerHTML += configInput('Yes Label', 'yesLabel', node.config.yesLabel);
     fields.innerHTML += configInput('No Label', 'noLabel', node.config.noLabel);
     fields.innerHTML += configInput('Max Revisions', 'maxRevisions', node.config.maxRevisions || 3, 'number');
@@ -2212,6 +2220,38 @@ function pickUrlPreset(preset) {
 function dismissUrlPicker() {
   $('urlPresetPicker').style.display = 'none';
 }
+function extractAcceptanceCriteria(text) {
+  const criteria = [];
+  // Match lines that look like acceptance criteria: bullets, numbered items, or checkbox items
+  // containing requirement language (should, must, shall, verify, ensure, can, is, are, has, works)
+  const lines = text.split('\n');
+  let inACSection = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Detect AC section headers
+    if (/^(acceptance\s+criteria|ac|definition\s+of\s+done|done\s+when|requirements|expected\s+(behavior|result)|success\s+criteria)\s*[:：]/i.test(trimmed)) {
+      inACSection = true;
+      continue;
+    }
+    // Exit AC section on next non-list header
+    if (inACSection && /^[A-Z][a-z]+.*[:：]\s*$/.test(trimmed) && !/^[-*•\d\[☐✓✗]/.test(trimmed)) {
+      inACSection = false;
+      continue;
+    }
+    // Extract list items from AC section or requirement-phrased bullets anywhere
+    const isBullet = /^\s*[-*•]\s*\[?\s*[xX ]?\]?\s*/.test(line) || /^\s*\d+[.)]\s*/.test(line) || /^\s*☐\s*/.test(line);
+    if (!isBullet) continue;
+    const content = trimmed.replace(/^[-*•☐]\s*\[?\s*[xX ]?\]?\s*/, '').replace(/^\d+[.)]\s*/, '').trim();
+    if (!content || content.length < 5) continue;
+    if (inACSection) {
+      criteria.push(content);
+    } else if (/\b(should|must|shall|verify|ensure|can|needs?\s+to|has\s+to|works?|displays?|returns?|shows?|allows?|prevents?|validates?)\b/i.test(content)) {
+      criteria.push(content);
+    }
+  }
+  return criteria;
+}
+
 function generateFromStory() {
   const story = $('storyInput').value.trim();
   if (!story) return;
@@ -2606,8 +2646,12 @@ function generateFromStory() {
     lastNodes.forEach(n => addConnection(n.id, reviewer.id));
 
     // Decision gate with Revise cycle back to implementer
+    const extractedAC = extractAcceptanceCriteria(story);
+    const decisionCondition = extractedAC.length > 0
+      ? extractedAC.map((c, i) => `${i + 1}. ${c}`).join('\n')
+      : 'All review checks pass';
     const decision = addNode('decision', 0, 0, 'Review OK?', {
-      condition: 'All review checks pass', yesLabel: 'Pass', noLabel: 'Revise'
+      condition: decisionCondition, yesLabel: 'Pass', noLabel: 'Revise'
     });
     addConnection(reviewer.id, decision.id);
     lastNodes.forEach(n => addConnection(decision.id, n.id, 'Revise'));
@@ -2873,7 +2917,36 @@ function loadPreset(preset) {
       addConnection(d.id, t.id, 'Pass'); addConnection(t.id, o.id);
     }
   };
-  if (presets[preset]) { presets[preset](); state.activePreset = preset; autoLayout(); }
+  if (presets[preset]) { presets[preset](); state.activePreset = preset; autoLayout(); updateStoryPlaceholder(preset); }
+}
+
+const STORY_PLACEHOLDERS = {
+  feature: 'User story:\nAs a [role], I want [feature] so that [benefit].\n\nAcceptance criteria:\n- [ ] \n- [ ] \n\nRelevant files/areas:\n\nConstraints or notes:',
+  bugfix: 'Bug description:\n\nSteps to reproduce:\n1. \n2. \n3. \n\nExpected behavior:\n\nActual behavior:\n\nRelevant files/logs:\n\nEnvironment:',
+  fullstack: 'Feature overview:\n\nBackend requirements:\n- \n\nFrontend requirements:\n- \n\nAcceptance criteria:\n- [ ] \n- [ ] \n\nAPI contract (if known):\n\nRelevant files/areas:',
+  ui_component: 'Component/screen description:\n\nDesign reference (Figma, screenshot, or description):\n\nBehavior requirements:\n- \n\nAccessibility requirements:\n\nExisting design system context (e.g. styling lib, tokens):',
+  refactoring: 'What to refactor:\n\nWhy (pain points / tech debt):\n\nDesired outcome:\n\nConstraints (do not break):\n- \n\nRelevant files:',
+  documentation: 'What to document:\n\nTarget audience:\n\nScope (API docs, user guide, README, etc.):\n\nExisting docs to reference:\n\nKey topics to cover:\n- ',
+  devops: 'Infrastructure/pipeline change:\n\nCurrent state:\n\nDesired state:\n\nEnvironment (staging, prod, etc.):\n\nConstraints or rollback plan:',
+  performance: 'Performance issue or optimization goal:\n\nCurrent metrics (if known):\n\nTarget metrics:\n\nRelevant files/endpoints:\n\nReproduction steps:',
+  data_migration: 'Migration overview:\n\nSource schema/format:\n\nTarget schema/format:\n\nData volume estimate:\n\nRollback requirements:\n\nDowntime constraints:',
+  testing: 'What to test:\n\nTest types needed (unit, integration, e2e):\n\nCritical paths to cover:\n- \n\nEdge cases:\n- \n\nRelevant files:',
+  test_automation: 'App under test:\n\nFeatures/screens to automate:\n- \n\nTest scenarios:\n- \n\nBrowser/device requirements:\n\nExisting test framework:',
+  review: 'Code/PR to review:\n\nAreas of concern:\n\nReview focus (security, performance, quality, all):\n\nContext or background:',
+  parallel_research: 'Research question or topic:\n\nWhat to explore:\n- Codebase patterns\n- Documentation\n- Best practices\n\nExpected output format:\n\nScope constraints:',
+  swarm: 'System/codebase to audit:\n\nAudit focus areas:\n- [ ] Security\n- [ ] Quality\n- [ ] Performance\n- [ ] Architecture\n\nRelevant files/modules:\n\nKnown concerns:'
+};
+
+function updateStoryPlaceholder(preset) {
+  const el = $('storyInput');
+  if (!el) return;
+  if (el.value.trim()) return; // Don't override existing content
+  const tmpl = STORY_PLACEHOLDERS[preset];
+  if (tmpl) {
+    el.placeholder = tmpl;
+  } else {
+    el.placeholder = 'Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.';
+  }
 }
 
 function clearCanvas(skipConfirm) {
@@ -2884,7 +2957,7 @@ function clearCanvas(skipConfirm) {
   state.connectFrom = null;
   state.activePreset = null;
   $('workflowName').value = '';
-  if ($('storyInput')) $('storyInput').value = '';
+  if ($('storyInput')) { $('storyInput').value = ''; $('storyInput').placeholder = 'Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.\n\nJira URL: paste a link and pick a workflow preset \u2014 the agent fetches ticket details at runtime via Atlassian MCP.\n\nRequirements: paste full text and click Generate to auto-build a workflow from keywords.'; }
   state.repositories = [];
   renderRepoRows();
   if ($('appSourcePath')) $('appSourcePath').value = '';
@@ -2914,8 +2987,45 @@ function isSequentialFormat() {
   return state.exportFormat === 'prompt' || state.exportFormat === 'claude';
 }
 
+function getFormatRecommendation() {
+  const agents = state.nodes.filter(n => n.type === 'agent');
+  const hasParallel = state.nodes.some(n => n.type === 'parallel');
+  const agentCount = agents.length;
+  if (agentCount === 0) return null;
+
+  let rec, why;
+  if (agentCount <= 2 && !hasParallel) {
+    rec = 'claude';
+    why = 'Simple linear workflow \u2014 a single Claude conversation handles this well.';
+  } else if (hasParallel && agentCount >= 4) {
+    rec = 'teams';
+    why = 'Parallel agents with 4+ steps \u2014 Agent Teams can run them concurrently.';
+  } else if (hasParallel || agentCount >= 3) {
+    rec = 'subagent';
+    why = 'Multi-step workflow \u2014 Sub-Agents gives each step a focused context window.';
+  } else {
+    rec = 'claude';
+    why = 'Straightforward workflow \u2014 a single Claude conversation works well here.';
+  }
+  return { format: rec, why };
+}
+
+function updateFormatRec() {
+  const el = $('formatRec');
+  if (!el) return;
+  const rec = getFormatRecommendation();
+  if (!rec) { el.innerHTML = ''; return; }
+  const labels = { prompt:'Workflow', subagent:'Sub-Agents', teams:'Agent Teams', sdk:'Agent SDK', claude:'Claude Prompt', manifest:'Manifest' };
+  if (state.exportFormat === rec.format) {
+    el.innerHTML = '\u2705 ' + rec.why;
+  } else {
+    el.innerHTML = '\u{1F4A1} ' + rec.why + ' Try <strong onclick="setExportFormat(\'' + rec.format + '\')">' + labels[rec.format] + '</strong>';
+  }
+}
+
 function updatePrompt() {
   const out = $('promptOutput');
+  updateFormatRec();
   if (state.nodes.length === 0) {
     const hints = {
       prompt: 'Add nodes to see a structured workflow overview...',
