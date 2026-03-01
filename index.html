@@ -2604,12 +2604,12 @@ function generateFromStory() {
     });
     lastNodes.forEach(n => addConnection(n.id, reviewer.id));
 
-    // Decision gate with Revise cycle back to reviewer
+    // Decision gate with Revise cycle back to implementer
     const decision = addNode('decision', 0, 0, 'Review OK?', {
       condition: 'All review checks pass', yesLabel: 'Pass', noLabel: 'Revise'
     });
     addConnection(reviewer.id, decision.id);
-    addConnection(decision.id, reviewer.id, 'Revise');
+    lastNodes.forEach(n => addConnection(decision.id, n.id, 'Revise'));
 
     // Tester (bugTester prompt for bugfix workflows)
     const tester = addNode('agent', 0, 0, 'Tester', {
@@ -2807,7 +2807,7 @@ function loadPreset(preset) {
       const t = addNode('agent', 1740, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
       const o = addNode('output', 2020, 250, 'Refactored Code', { deliverable:'Refactored, validated code with preserved behavior', format:'code' });
       addConnection(i.id, p.id); addConnection(p.id, a.id); addConnection(a.id, rf.id);
-      addConnection(rf.id, r.id); addConnection(r.id, d.id); addConnection(d.id, r.id, 'Revise');
+      addConnection(rf.id, r.id); addConnection(r.id, d.id); addConnection(d.id, rf.id, 'Revise');
       addConnection(d.id, t.id, 'Pass'); addConnection(t.id, o.id);
     },
     documentation: () => {
@@ -2829,7 +2829,7 @@ function loadPreset(preset) {
       const t = addNode('agent', 1460, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
       const o = addNode('output', 1740, 250, 'Infrastructure Ready', { deliverable:'Validated infrastructure and deployment changes', format:'code' });
       addConnection(i.id, p.id); addConnection(p.id, dev.id); addConnection(dev.id, r.id);
-      addConnection(r.id, d.id); addConnection(d.id, r.id, 'Revise');
+      addConnection(r.id, d.id); addConnection(d.id, dev.id, 'Revise');
       addConnection(d.id, t.id, 'Pass'); addConnection(t.id, o.id);
     },
     performance: () => {
@@ -2842,7 +2842,7 @@ function loadPreset(preset) {
       const t = addNode('agent', 1740, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
       const o = addNode('output', 2020, 250, 'Optimized', { deliverable:'Performance-optimized code with benchmark results', format:'report' });
       addConnection(i.id, p.id); addConnection(p.id, prof.id); addConnection(prof.id, opt.id);
-      addConnection(opt.id, r.id); addConnection(r.id, d.id); addConnection(d.id, r.id, 'Revise');
+      addConnection(opt.id, r.id); addConnection(r.id, d.id); addConnection(d.id, opt.id, 'Revise');
       addConnection(d.id, t.id, 'Pass'); addConnection(t.id, o.id);
     },
     testing: () => {
@@ -2855,7 +2855,7 @@ function loadPreset(preset) {
       const t = addNode('agent', 1740, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
       const o = addNode('output', 2020, 250, 'Test Suite', { deliverable:'Comprehensive test suite with coverage report', format:'code' });
       addConnection(i.id, p.id); addConnection(p.id, a.id); addConnection(a.id, tw.id);
-      addConnection(tw.id, r.id); addConnection(r.id, d.id); addConnection(d.id, r.id, 'Revise');
+      addConnection(tw.id, r.id); addConnection(r.id, d.id); addConnection(d.id, tw.id, 'Revise');
       addConnection(d.id, t.id, 'Pass'); addConnection(t.id, o.id);
     },
     data_migration: () => {
@@ -2868,7 +2868,7 @@ function loadPreset(preset) {
       const t = addNode('agent', 1740, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
       const o = addNode('output', 2020, 250, 'Migration Complete', { deliverable:'Tested, reversible data migration', format:'code' });
       addConnection(i.id, p.id); addConnection(p.id, res.id); addConnection(res.id, mig.id);
-      addConnection(mig.id, r.id); addConnection(r.id, d.id); addConnection(d.id, r.id, 'Revise');
+      addConnection(mig.id, r.id); addConnection(r.id, d.id); addConnection(d.id, mig.id, 'Revise');
       addConnection(d.id, t.id, 'Pass'); addConnection(t.id, o.id);
     }
   };
@@ -3120,7 +3120,13 @@ function genWorkflow() {
       p.push(`- **${d.label}**: ${d.config.condition || 'Evaluate condition'}`);
       if (feeders.length > 0) p.push(`  - Evaluated based on output from: ${feeders.join(', ')}`);
       p.push(`  - ${d.config.yesLabel || 'Yes'} \u2192 continue to next step`);
-      p.push(`  - ${d.config.noLabel || 'No'} \u2192 re-run previous step with feedback`);
+      const reviseConns = state.connections.filter(c => c.from === d.id && c.label === (d.config.noLabel || 'Revise'));
+      const reviseTargets = reviseConns.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
+      if (reviseTargets.length > 0) {
+        p.push(`  - ${d.config.noLabel || 'No'} \u2192 re-run ${reviseTargets.map(t => t.label).join(', ')} with feedback`);
+      } else {
+        p.push(`  - ${d.config.noLabel || 'No'} \u2192 re-run previous implementation step with feedback`);
+      }
     }); p.push('');
   }
 
@@ -3510,7 +3516,13 @@ function genAgentTeams() {
       p.push(`**${d.label}**: ${d.config.condition || 'Evaluate condition'}`);
       if (feeders.length > 0) p.push(`- Review output from: ${feeders.join(', ')}`);
       p.push(`- If **${d.config.yesLabel || 'Yes'}**: proceed to the next step`);
-      p.push(`- If **${d.config.noLabel || 'No'}**: re-assign to the relevant teammate with specific feedback on what needs to change`);
+      const _rcT = state.connections.filter(c => c.from === d.id && c.label === (d.config.noLabel || 'Revise'));
+      const _rtT = _rcT.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
+      if (_rtT.length > 0) {
+        p.push(`- If **${d.config.noLabel || 'No'}**: re-assign to **${_rtT.map(t => t.label).join(', ')}** with specific feedback on what needs to change`);
+      } else {
+        p.push(`- If **${d.config.noLabel || 'No'}**: re-assign to the relevant teammate with specific feedback on what needs to change`);
+      }
       p.push('');
     });
   }
@@ -3825,7 +3837,13 @@ function genClaudePrompt() {
         if (downDec.length > 0) {
           downDec.forEach(d => {
             p.push(`**Before proceeding**: Evaluate against "${d.config.condition || d.label}".`);
-            p.push(`If ${d.config.yesLabel || 'Pass'}: continue. If ${d.config.noLabel || 'Fail'}: go back and revise this step until the criteria is met.`);
+            const _rc = state.connections.filter(c => c.from === d.id && c.label === (d.config.noLabel || 'Revise'));
+            const _rt = _rc.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
+            if (_rt.length > 0) {
+              p.push(`If ${d.config.yesLabel || 'Pass'}: continue. If ${d.config.noLabel || 'Fail'}: go back to the ${_rt.map(t => t.label).join(', ')} step and revise until the criteria is met.`);
+            } else {
+              p.push(`If ${d.config.yesLabel || 'Pass'}: continue. If ${d.config.noLabel || 'Fail'}: go back and revise the implementation until the criteria is met.`);
+            }
           });
           p.push('');
         }
@@ -3847,7 +3865,13 @@ function genClaudePrompt() {
       p.push(`At the "${d.label}" checkpoint: ${d.config.condition || 'evaluate the condition'}.`);
       if (feeders.length > 0) p.push(`Based on output from: ${feeders.join(', ')}.`);
       p.push(`If ${d.config.yesLabel || 'yes'}: continue to the next step.`);
-      p.push(`If ${d.config.noLabel || 'no'}: revisit the previous step and address the shortcomings.`);
+      const _rc2 = state.connections.filter(c => c.from === d.id && c.label === (d.config.noLabel || 'Revise'));
+      const _rt2 = _rc2.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
+      if (_rt2.length > 0) {
+        p.push(`If ${d.config.noLabel || 'no'}: go back to the ${_rt2.map(t => t.label).join(', ')} step and address the shortcomings.`);
+      } else {
+        p.push(`If ${d.config.noLabel || 'no'}: revisit the implementation step and address the shortcomings.`);
+      }
       p.push('');
     });
   }
