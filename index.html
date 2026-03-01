@@ -365,6 +365,10 @@ svg.canvas{width:100%;height:100%;display:block}
         <div class="preset-name">Data Migration</div>
         <div class="preset-desc">Research &rarr; Migrate &rarr; Review &rarr; Test</div>
       </div>
+      <div class="preset-item" data-preset="testing" onclick="loadPreset('testing')">
+        <div class="preset-name">Testing</div>
+        <div class="preset-desc">Analyze &rarr; Write Tests &rarr; Review &rarr; Verify</div>
+      </div>
       <div class="preset-item" data-preset="test_automation" onclick="loadPreset('test_automation')">
         <div class="preset-name">Test Automation</div>
         <div class="preset-desc">Plan + Explore App &rarr; [Feature | Screens | Steps] &rarr; Review</div>
@@ -688,6 +692,8 @@ const PROMPTS = {
   securityReview: 'Review all changes for security vulnerabilities.\n\n1. Use `LSP findReferences` on user-controlled input parameters to trace them through the changed code — identify where they reach sinks (queries, shell commands, HTML output) without sanitization\n2. Use `LSP incomingCalls` on authentication/authorization check functions to verify every new code path calls them appropriately\n3. Use `LSP goToDefinition` on any security-sensitive types (tokens, sessions, credentials) to verify correct handling\n4. Check for injection risks: SQL, command, XSS, template injection\n5. Verify authentication and authorization logic — especially on new endpoints or state changes\n6. Review data exposure: are API responses leaking sensitive fields? Are error messages safe?\n7. Check CSRF protections and input validation on all user-facing inputs\n8. Verify secure defaults: passwords hashed, tokens expiring, cookies httpOnly/secure\n\nFor each finding: severity (Critical/High/Medium/Low), location (file:line), potential exploit scenario, and remediation.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or NEEDS FIX\n- **Critical Findings**: Immediate-action security issues\n- **High Findings**: Important but not exploitable without additional conditions\n- **Recommendations**: Security hardening suggestions (non-blocking)',
 
   testWriter: 'Write unit and integration tests in parallel with implementation.\n\n1. Read the plan to anticipate API and component interfaces\n2. Use `LSP workspaceSymbol` to find existing test files and test utilities — follow established patterns\n3. Use `LSP goToDefinition` on types referenced in the plan to understand exact shapes to assert against\n4. Write unit tests covering happy paths and error cases\n5. Write integration tests for component interactions\n6. Cover edge cases: null/empty inputs, boundary values, concurrent access\n7. Ensure tests are deterministic and independent\n\nReport: tests written, coverage of planned interfaces, and any assumptions that need verification once implementation completes.\n\n## Handoff Summary\nEnd your response with:\n- **Tests Written**: Count and breakdown (unit/integration)\n- **Interfaces Covered**: Which planned interfaces have test coverage\n- **Assumptions**: Anything assumed about the implementation that needs verification\n- **Test Commands**: How to run the tests',
+
+  testSuiteWriter: 'Analyze existing code and write comprehensive tests for untested or under-tested modules.\n\n1. Read the analysis report identifying test surface, complexity hotspots, and coverage gaps\n2. Use `LSP workspaceSymbol` to find existing test files and test utilities — follow established patterns exactly (framework, naming, directory structure)\n3. Use `LSP documentSymbol` on each target file to enumerate all public functions, classes, and exports — these define the test surface\n4. Use `LSP goToDefinition` on key types to understand input/output contracts and error conditions\n5. Use `LSP findReferences` on public APIs to understand how they are called in production — derive realistic test scenarios from actual usage\n6. Use `LSP incomingCalls` on critical functions to understand caller expectations and edge cases\n7. Prioritize by risk: test complex logic and error-prone paths first, simple getters/setters last\n8. Write unit tests: happy paths, error cases, boundary values, null/empty inputs\n9. Write integration tests: component interactions, data flow across module boundaries\n10. Run the full test suite with `Bash` and fix any failures before reporting\n\nOutput: test files created, coverage summary, and any areas requiring manual test design.\n\n## Handoff Summary\nEnd your response with:\n- **Tests Written**: Count and breakdown (unit/integration) per module\n- **Coverage**: Estimated coverage improvement (before → after)\n- **Risk Areas Covered**: Which high-risk paths now have test coverage\n- **Gaps Remaining**: Areas that need manual test design or mocking infrastructure\n- **Test Commands**: How to run the new tests',
 
   researcher: 'Research existing codebase patterns, similar implementations, and relevant documentation.\n\nIf an Atlassian MCP tool is available, search Confluence for architecture docs, runbooks, and ADRs related to this feature area. Check Jira for related tickets that may contain useful implementation context or prior decisions.\n\n1. Use `Glob "**/*"` to map the full project structure — identify key directories and files\n2. Use `Grep` with relevant keywords to find existing implementations of similar features\n3. Use `LSP workspaceSymbol` to search for types, interfaces, and classes by name in the feature domain\n4. Use `LSP documentSymbol` on the most relevant files to understand their full structure before reading them in detail\n5. Use `LSP goToDefinition` on key types and functions to understand their signatures and dependencies\n6. Use `LSP findReferences` on shared utilities and hooks to understand how widely they are used — identify the best reuse candidates\n7. Use `LSP goToImplementation` on interfaces to find all existing concrete implementations and understand the expected pattern\n8. Use `LSP incomingCalls` / `LSP outgoingCalls` on core functions to understand integration points and data flow\n9. Use `LSP hover` to quickly check type signatures without navigating away from the current file\n10. Note naming conventions, file organization, import styles, and shared utilities\n11. Identify any constraints, technical debt, or gotchas that could affect the implementation\n12. Check for documentation, ADRs, or README files related to the area\n\nOutput: relevant patterns found with file:line references, recommended implementation approach aligned with existing conventions, and list of constraints to be aware of.\n\n## Handoff Summary\nEnd your response with:\n- **Relevant Files**: Key files the implementer should read before starting\n- **Pattern to Follow**: Specific existing pattern to replicate (file:line)\n- **Shared Code Available**: Utilities/hooks/components that can be reused (with LSP-verified reference counts)\n- **Key Types**: Types/interfaces the implementer must use (with goToDefinition locations)\n- **Constraints**: Technical debt, gotchas, or decisions to respect',
 
@@ -2197,8 +2203,12 @@ function generateFromStory() {
     ],
     ui: [
       [/\b(component|button|form|modal|frontend)\b/gi, 3],
+      [/\b(dashboard|sidebar|navbar|toolbar|dropdown|tooltip|carousel|accordion)\b/gi, 3],
       [/\b(page|screen|view|style|layout|responsive|css)\b/gi, 2],
-      [/\b(display|render)\b/gi, 2]
+      [/\b(widget|panel|popover|menu|tab|card|icon)\b/gi, 2],
+      [/\b(display|render)\b/gi, 2],
+      [/\b(animation|transition|theme|dark mode|light mode)\b/gi, 1.5],
+      [/\b(header|footer)\b/gi, 1]
     ],
     api: [
       [/\b(api|endpoint|rest|graphql|backend)\b/gi, 3],
@@ -2415,6 +2425,25 @@ function generateFromStory() {
     addConnection(researcher.id, migrationEng.id);
     lastNodes = [migrationEng];
 
+  } else if (dominant === 'test') {
+    // Shape 11: Code Analyzer → Test Suite Writer
+    const analyzer = addNode('agent', 0, 0, 'Code Analyzer', {
+      agentType: 'researcher', model: state.defaultModel,
+      tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP'],
+      prompt: PROMPTS.codeAnalyzer,
+      notes: '', maxTurns: 10
+    });
+    addConnection(entryNode.id, analyzer.id);
+
+    const testSuiteWriter = addNode('agent', 0, 0, 'Test Suite Writer', {
+      agentType: 'tester', model: state.defaultModel,
+      tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LSP'],
+      prompt: PROMPTS.testSuiteWriter,
+      notes: '', maxTurns: 15
+    });
+    addConnection(analyzer.id, testSuiteWriter.id);
+    lastNodes = [testSuiteWriter];
+
   } else if (hasUI && hasAPI) {
     // Shape 7: Parallel(Backend, Frontend, [Test])
     const fork = addNode('parallel', 0, 0, 'Parallel Dev', { strategy: 'all', description: 'Backend and Frontend in parallel' });
@@ -2562,7 +2591,8 @@ function generateFromStory() {
       refactoring: { label: 'Refactored Code',     deliverable: 'Refactored, validated code with preserved behavior',   format: 'code' },
       devops:      { label: 'Infrastructure Ready', deliverable: 'Validated infrastructure and deployment changes',     format: 'code' },
       performance: { label: 'Optimized',           deliverable: 'Performance-optimized code with benchmark results',    format: 'report' },
-      data:        { label: 'Migration Complete',  deliverable: 'Tested, reversible data migration',                    format: 'code' }
+      data:        { label: 'Migration Complete',  deliverable: 'Tested, reversible data migration',                    format: 'code' },
+      test:        { label: 'Test Suite',          deliverable: 'Comprehensive test suite with coverage report',         format: 'code' }
     };
     let outputConfig;
     if (outputMap[dominant]) {
@@ -2765,6 +2795,19 @@ function loadPreset(preset) {
       const o = addNode('output', 2020, 250, 'Optimized', { deliverable:'Performance-optimized code with benchmark results', format:'report' });
       addConnection(i.id, p.id); addConnection(p.id, prof.id); addConnection(prof.id, opt.id);
       addConnection(opt.id, r.id); addConnection(r.id, d.id); addConnection(d.id, r.id, 'Revise');
+      addConnection(d.id, t.id, 'Pass'); addConnection(t.id, o.id);
+    },
+    testing: () => {
+      const i = addNode('input', 80, 250, 'Code to Test');
+      const p = addNode('agent', 340, 250, 'Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.planner, maxTurns:5 });
+      const a = addNode('agent', 620, 250, 'Code Analyzer', { agentType:'researcher', model:state.defaultModel, tools:['Read','Grep','Glob','Bash','LSP'], prompt:PROMPTS.codeAnalyzer, maxTurns:10 });
+      const tw = addNode('agent', 900, 250, 'Test Suite Writer', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.testSuiteWriter, maxTurns:15 });
+      const r = addNode('agent', 1180, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, maxTurns:5 });
+      const d = addNode('decision', 1460, 242, 'Review OK?', { condition:'All review checks pass', yesLabel:'Pass', noLabel:'Revise' });
+      const t = addNode('agent', 1740, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
+      const o = addNode('output', 2020, 250, 'Test Suite', { deliverable:'Comprehensive test suite with coverage report', format:'code' });
+      addConnection(i.id, p.id); addConnection(p.id, a.id); addConnection(a.id, tw.id);
+      addConnection(tw.id, r.id); addConnection(r.id, d.id); addConnection(d.id, r.id, 'Revise');
       addConnection(d.id, t.id, 'Pass'); addConnection(t.id, o.id);
     },
     data_migration: () => {
