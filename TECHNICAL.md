@@ -279,7 +279,7 @@ Parses the user story with keyword detection to build an appropriate workflow au
 | UI only or API only | Input → Planner → Parallel(Researcher, Implementer) → Reviewer → Decision → Tester → Output |
 | Security keywords | Adds a Security Review agent before the main reviewer |
 
-After generation, memory is auto-enabled if the workflow has parallel forks or 5+ agents, then `autoLayout()` arranges nodes cleanly.
+After generation, memory is auto-enabled if the workflow has parallel forks or 5+ agents. If the workflow name field is empty, `ensureWorkflowName()` auto-generates a memorable two-part name (e.g. `swift-falcon`) from built-in adjective/noun word lists so every workflow gets a unique memory path. Then `autoLayout()` arranges nodes cleanly.
 
 ---
 
@@ -388,7 +388,8 @@ JavaScript:
   │     └── PROMPTS library (25+ templates)
   ├── TOON v1 + MEMORY HELPERS
   │     ├── TOON_KEY constant
-  │     ├── slugify(), getMemoryPath(), buildAgentSlugMap()
+  │     ├── slugify(), generateWorkflowName(), ensureWorkflowName()
+  │     ├── getMemoryPath(), buildAgentSlugMap()
   │     ├── setDefaultModel(), initDefaultModelSelect()
   │     ├── toggleMemory(), setMemoryEnabled(), updateMemoryPath()
   │     ├── genMemoryProtocol()            # orchestrator-level memory block
@@ -443,7 +444,7 @@ JavaScript:
 
 **How it works**: Loads `index.html` in a hidden `<iframe>`, accesses its `contentWindow` for all functions, state, and DOM. Tests run against the real app with real localStorage and real initialization.
 
-**Coverage** (129 tests across 13 suites):
+**Coverage** (137 tests across 14 suites):
 - **Pure utilities**: `slugify`, `extractAcceptanceCriteria`, `isUrlOnly`, `getEffectivePrompt`, `getModelLabel`
 - **State management**: `addNode`, `addConnection`, `deleteNode`, `buildAgentSlugMap`, `topologicalSort`
 - **Persistence**: serialize/deserialize roundtrips, prefs save/restore, workflow save/load
@@ -452,6 +453,7 @@ JavaScript:
 - **Workflow generation**: keyword scoring, structural properties, AC extraction
 - **Preset loading**: agent count verification for all 10 presets, memory auto-enable behavior
 - **Format recommendations**: agent count and parallel fork heuristics
+- **Workflow auto-naming**: name generation format, variety, empty-field population, user name preservation
 
 **Running tests in a browser**: Open `tests.html` in a browser. Results render immediately — green/red badges per suite, expandable failure details with expected vs actual values.
 

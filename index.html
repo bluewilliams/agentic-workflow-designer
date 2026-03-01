@@ -781,6 +781,29 @@ function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled';
 }
 
+const _WF_ADJ = ['swift','calm','bold','keen','bright','sharp','warm','cool','deep','fast',
+  'clear','fresh','prime','core','iron','agile','vivid','rapid','solid','noble',
+  'tidal','lunar','solar','polar','amber','azure','coral','ivory','olive','sage',
+  'steel','frost','blaze','drift','crest'];
+const _WF_NOUN = ['falcon','river','summit','spark','forge','cedar','prism','orbit','pulse','ridge',
+  'arrow','beacon','bridge','circuit','delta','flux','grove','harbor','index','lance',
+  'matrix','nexus','pilot','quartz','relay','scout','tower','vault','vector','zenith',
+  'atlas','cipher','dune','ember','fable'];
+
+function generateWorkflowName() {
+  const adj = _WF_ADJ[Math.floor(Math.random() * _WF_ADJ.length)];
+  const noun = _WF_NOUN[Math.floor(Math.random() * _WF_NOUN.length)];
+  return adj + '-' + noun;
+}
+
+function ensureWorkflowName() {
+  if (!getName()) {
+    $('workflowName').value = generateWorkflowName();
+    updateMemoryPath();
+    updatePrompt();
+  }
+}
+
 function getMemoryPath() {
   return '~/.claude/workflow-memory/' + slugify(getName() || 'untitled') + '/';
 }
@@ -2747,6 +2770,7 @@ function generateFromStory() {
   const hasParallel = state.nodes.some(n => n.type === 'parallel');
   const manyAgents = state.nodes.filter(n => n.type === 'agent').length >= 5;
   if (hasParallel || manyAgents) setMemoryEnabled(true);
+  ensureWorkflowName();
 
   autoLayout();
   setMode('select');
@@ -2984,6 +3008,7 @@ function loadPreset(preset) {
     const hasDecision = state.nodes.some(n => n.type === 'decision');
     const manyAgents = state.nodes.filter(n => n.type === 'agent').length >= 5;
     if (hasParallel || hasDecision || manyAgents) setMemoryEnabled(true);
+    ensureWorkflowName();
   }
 }
 
