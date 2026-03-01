@@ -736,10 +736,12 @@ describe('Memory Protocol', () => {
   });
   it('generateFromStory: simple bugfix story -> OFF', () => {
     resetState();
-    win.document.getElementById('storyInput').value = 'Fix the login button bug.';
+    // Story must only trigger ONE strong category (bugfix) to be classified as "simple".
+    // "button" would score 3 in UI, making strongCategories=2 and complexity="standard".
+    win.document.getElementById('storyInput').value = 'Fix the null pointer bug.';
     win.generateFromStory();
-    // Simple bugfix: 2 domain agents + maybe planner, no parallel, typically <5 agents
-    // Memory should be OFF (no parallel, <5 agents)
+    // Simple bugfix: no Planner (simple), Investigator + Fixer + Code Reviewer + Tester = 4 agents
+    // Memory should be OFF (no parallel, 4 < 5 agents)
     expect(win.state.memoryEnabled).toBe(false);
   });
   it('generateFromStory: decision gate alone does not trigger memory', () => {
@@ -1009,7 +1011,9 @@ describe('Workflow Generation', () => {
     expect(win.state.nodes.some(n => n.type === 'parallel')).toBe(true);
   });
   it('short simple story -> no Planner, no Architect', () => {
-    win.document.getElementById('storyInput').value = 'Fix the button color';
+    // Story must only trigger ONE strong category to be classified as "simple".
+    // "button" scores 3 in UI, making strongCategories=2 and complexity="standard".
+    win.document.getElementById('storyInput').value = 'Fix the compile error';
     win.generateFromStory();
     const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
     expect(labels).toNotContain('Planner');
