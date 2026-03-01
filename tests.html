@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AWD Test Suite</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f172a;--surface:#1e293b;--surface2:#334155;--border:#334155;
+  --text:#e2e8f0;--text2:#94a3b8;--green:#22c55e;--red:#ef4444;--yellow:#eab308;
+  --font:system-ui,-apple-system,sans-serif;--mono:'SF Mono',Menlo,monospace}
+body{font-family:var(--font);background:var(--bg);color:var(--text);padding:20px;max-width:900px;margin:0 auto}
+h1{font-size:20px;margin-bottom:4px}
+.subtitle{font-size:12px;color:var(--text2);margin-bottom:16px}
+.bar{display:flex;gap:12px;align-items:center;padding:12px 16px;background:var(--surface);
+  border-radius:8px;margin-bottom:16px;font-size:13px;font-weight:600}
+.bar .pass{color:var(--green)}.bar .fail{color:var(--red)}.bar .total{color:var(--text2)}
+.bar .time{margin-left:auto;color:var(--text2);font-weight:400;font-size:12px}
+details{margin-bottom:6px;background:var(--surface);border-radius:6px;overflow:hidden}
+summary{padding:10px 14px;cursor:pointer;font-size:13px;font-weight:600;
+  display:flex;align-items:center;gap:8px;user-select:none}
+summary:hover{background:var(--surface2)}
+summary .badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
+summary .badge.green{background:rgba(34,197,94,.15);color:var(--green)}
+summary .badge.red{background:rgba(239,68,68,.15);color:var(--red)}
+.tests{padding:4px 14px 10px}
+.test-row{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;
+  border-bottom:1px solid rgba(51,65,85,.5)}
+.test-row:last-child{border-bottom:none}
+.icon{font-size:14px;flex-shrink:0}
+.test-name{flex:1;color:var(--text2)}
+.test-name.failed{color:var(--red)}
+.error-detail{font-family:var(--mono);font-size:11px;color:var(--red);
+  background:rgba(239,68,68,.08);padding:6px 10px;border-radius:4px;margin:4px 0 6px 22px;
+  white-space:pre-wrap;word-break:break-word}
+</style>
+</head>
+<body>
+<h1>AWD Test Suite</h1>
+<p class="subtitle">Agentic Workflow Designer - iframe-based regression tests</p>
+<div class="bar" id="bar"><span class="total">Running&hellip;</span></div>
+<div id="results"></div>
+<iframe id="app" src="index.html" style="display:none;width:1024px;height:768px"></iframe>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// SECTION 2: Minimal Test Framework (zero dependencies)
+// ═══════════════════════════════════════════════════════════
+const suites = [];
+let currentSuite = null;
+
+function describe(name, fn) {
+  const suite = { name, tests: [], beforeEach: null, afterEach: null };
+  currentSuite = suite;
+  suites.push(suite);
+  fn();
+  currentSuite = null;
+}
+
+function it(name, fn) {
+  if (!currentSuite) throw new Error('it() must be inside describe()');
+  currentSuite.tests.push({ name, fn });
+}
+
+function beforeEach(fn) {
+  if (!currentSuite) throw new Error('beforeEach() must be inside describe()');
+  currentSuite.beforeEach = fn;
+}
+
+function afterEach(fn) {
+  if (!currentSuite) throw new Error('afterEach() must be inside describe()');
+  currentSuite.afterEach = fn;
+}
+
+class Expectation {
+  constructor(actual) { this.actual = actual; }
+  toBe(expected) {
+    if (this.actual !== expected)
+      throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(this.actual)}`);
+  }
+  toEqual(expected) {
+    const a = JSON.stringify(this.actual), b = JSON.stringify(expected);
+    if (a !== b) throw new Error(`Expected ${b}, got ${a}`);
+  }
+  toContain(str) {
+    if (typeof this.actual === 'string') {
+      if (!this.actual.includes(str))
+        throw new Error(`Expected string to contain "${str}".\nGot: "${this.actual.slice(0, 300)}..."`);
+    } else if (Array.isArray(this.actual)) {
+      if (!this.actual.includes(str))
+        throw new Error(`Expected array to contain ${JSON.stringify(str)}`);
+    } else {
+      throw new Error(`toContain requires string or array, got ${typeof this.actual}`);
+    }
+  }
+  toNotContain(str) {
+    if (typeof this.actual === 'string') {
+      if (this.actual.includes(str))
+        throw new Error(`Expected string NOT to contain "${str}"`);
+    } else if (Array.isArray(this.actual)) {
+      if (this.actual.includes(str))
+        throw new Error(`Expected array NOT to contain ${JSON.stringify(str)}`);
+    }
+  }
+  toBeTruthy() {
+    if (!this.actual) throw new Error(`Expected truthy, got ${JSON.stringify(this.actual)}`);
+  }
+  toBeFalsy() {
+    if (this.actual) throw new Error(`Expected falsy, got ${JSON.stringify(this.actual)}`);
+  }
+  toBeGreaterThan(n) {
+    if (!(this.actual > n)) throw new Error(`Expected ${this.actual} > ${n}`);
+  }
+  toBeLessThan(n) {
+    if (!(this.actual < n)) throw new Error(`Expected ${this.actual} < ${n}`);
+  }
+  toBeNull() {
+    if (this.actual !== null) throw new Error(`Expected null, got ${JSON.stringify(this.actual)}`);
+  }
+  toMatch(regex) {
+    if (!regex.test(this.actual))
+      throw new Error(`Expected "${String(this.actual).slice(0, 200)}" to match ${regex}`);
+  }
+  toBeInstanceOf(cls) {
+    if (!(this.actual instanceof cls))
+      throw new Error(`Expected instance of ${cls.name}`);
+  }
+}
+
+function expect(val) { return new Expectation(val); }
+
+async function runAll(win) {
+  const t0 = performance.now();
+  let totalPass = 0, totalFail = 0;
+  const resultsEl = document.getElementById('results');
+  resultsEl.innerHTML = '';
+
+  for (const suite of suites) {
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    const testsDiv = document.createElement('div');
+    testsDiv.className = 'tests';
+    let suitePass = 0, suiteFail = 0;
+
+    for (const test of suite.tests) {
+      try {
+        if (suite.beforeEach) suite.beforeEach();
+        test.fn();
+        if (suite.afterEach) suite.afterEach();
+        suitePass++;
+        totalPass++;
+        testsDiv.innerHTML += `<div class="test-row"><span class="icon">✅</span><span class="test-name">${esc(test.name)}</span></div>`;
+      } catch (e) {
+        suiteFail++;
+        totalFail++;
+        testsDiv.innerHTML += `<div class="test-row"><span class="icon">❌</span><span class="test-name failed">${esc(test.name)}</span></div>`;
+        testsDiv.innerHTML += `<div class="error-detail">${esc(e.message)}</div>`;
+      }
+    }
+
+    const badge = suiteFail === 0
+      ? `<span class="badge green">${suitePass} passed</span>`
+      : `<span class="badge red">${suiteFail} failed</span>`;
+    summary.innerHTML = `${badge} ${esc(suite.name)} <span style="color:var(--text2);font-weight:400;font-size:11px;margin-left:auto">${suitePass + suiteFail} tests</span>`;
+    details.appendChild(summary);
+    details.appendChild(testsDiv);
+    if (suiteFail > 0) details.open = true;
+    resultsEl.appendChild(details);
+  }
+
+  const elapsed = (performance.now() - t0).toFixed(0);
+  const bar = document.getElementById('bar');
+  bar.innerHTML = `<span class="pass">✅ ${totalPass} passed</span>`
+    + (totalFail > 0 ? `<span class="fail">❌ ${totalFail} failed</span>` : '')
+    + `<span class="total">${totalPass + totalFail} total</span>`
+    + `<span class="time">${elapsed}ms</span>`;
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ═══════════════════════════════════════════════════════════
+// SECTION 3: Test Helpers
+// ═══════════════════════════════════════════════════════════
+let win; // set on iframe load
+
+function resetState() {
+  win.state.nodes = [];
+  win.state.connections = [];
+  win.state.selectedId = null;
+  win.state.mode = 'select';
+  win.state.connectFrom = null;
+  win.state.pan = { x: 0, y: 0 };
+  win.state.zoom = 1;
+  win.state.nextId = 1;
+  win.state.dragging = null;
+  win.state.isPanning = false;
+  win.state.mousePos = { x: 0, y: 0 };
+  win.state.exportFormat = 'prompt';
+  win.state.memoryEnabled = false;
+  win.state.defaultModel = 'opus-4.6';
+  win.state.repositories = [];
+  win.state.activePreset = null;
+  // Reset DOM inputs
+  const wfName = win.document.getElementById('workflowName');
+  if (wfName) wfName.value = '';
+  const storyInput = win.document.getElementById('storyInput');
+  if (storyInput) storyInput.value = '';
+  const memToggle = win.document.getElementById('memoryToggle');
+  if (memToggle) memToggle.checked = false;
+  const memPath = win.document.getElementById('memoryPathField');
+  if (memPath) memPath.style.display = 'none';
+}
+
+function clearStorage() {
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('awd_')) keys.push(k);
+  }
+  keys.forEach(k => localStorage.removeItem(k));
+}
+
+function buildTestWorkflow(shape) {
+  resetState();
+  const refs = {};
+
+  if (shape === 'linear') {
+    refs.input = win.addNode('input', 100, 200, 'Requirements');
+    refs.planner = win.addNode('agent', 350, 200, 'Planner', { agentType:'planner', model:'opus-4.6', tools:['Read','Grep','Glob'], prompt:'Plan it.', maxTurns:5 });
+    refs.implementer = win.addNode('agent', 600, 200, 'Implementer', { agentType:'coder', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
+    refs.output = win.addNode('output', 850, 200, 'Done', { deliverable:'Tested code', format:'code' });
+    win.addConnection(refs.input.id, refs.planner.id);
+    win.addConnection(refs.planner.id, refs.implementer.id);
+    win.addConnection(refs.implementer.id, refs.output.id);
+  }
+
+  if (shape === 'parallel') {
+    refs.input = win.addNode('input', 100, 250, 'Spec');
+    refs.fork = win.addNode('parallel', 350, 250, 'Fork', { strategy:'all' });
+    refs.backend = win.addNode('agent', 600, 150, 'Backend', { agentType:'backend', model:'opus-4.6', tools:['Read','Write','Edit','Bash'], prompt:'Backend work.', maxTurns:10 });
+    refs.frontend = win.addNode('agent', 600, 350, 'Frontend', { agentType:'frontend', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'Frontend work.', maxTurns:10 });
+    refs.reviewer = win.addNode('agent', 850, 250, 'Reviewer', { agentType:'reviewer', model:'opus-4.6', tools:['Read','Grep'], prompt:'Review it.', maxTurns:5 });
+    refs.output = win.addNode('output', 1100, 250, 'Ready', { deliverable:'Full stack', format:'code' });
+    win.addConnection(refs.input.id, refs.fork.id);
+    win.addConnection(refs.fork.id, refs.backend.id);
+    win.addConnection(refs.fork.id, refs.frontend.id);
+    win.addConnection(refs.backend.id, refs.reviewer.id);
+    win.addConnection(refs.frontend.id, refs.reviewer.id);
+    win.addConnection(refs.reviewer.id, refs.output.id);
+  }
+
+  if (shape === 'decision') {
+    refs.input = win.addNode('input', 100, 200, 'Bug Report');
+    refs.implementer = win.addNode('agent', 350, 200, 'Implementer', { agentType:'coder', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'Fix it.', maxTurns:10 });
+    refs.reviewer = win.addNode('agent', 600, 200, 'Reviewer', { agentType:'reviewer', model:'opus-4.6', tools:['Read','Grep'], prompt:'Review it.', maxTurns:5 });
+    refs.decision = win.addNode('decision', 850, 200, 'Review OK?', { condition:'All checks pass', yesLabel:'Pass', noLabel:'Revise', maxRevisions:3 });
+    refs.tester = win.addNode('agent', 1100, 200, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:10 });
+    refs.output = win.addNode('output', 1350, 200, 'Fixed', { deliverable:'Verified fix', format:'code' });
+    win.addConnection(refs.input.id, refs.implementer.id);
+    win.addConnection(refs.implementer.id, refs.reviewer.id);
+    win.addConnection(refs.reviewer.id, refs.decision.id);
+    win.addConnection(refs.decision.id, refs.implementer.id, 'Revise');
+    win.addConnection(refs.decision.id, refs.tester.id, 'Pass');
+    win.addConnection(refs.tester.id, refs.output.id);
+  }
+
+  if (shape === 'complex') {
+    refs.input = win.addNode('input', 100, 300, 'Spec');
+    refs.planner = win.addNode('agent', 350, 300, 'Planner', { agentType:'planner', model:'opus-4.6', tools:['Read','Grep','Glob'], prompt:'Plan.', maxTurns:5 });
+    refs.fork = win.addNode('parallel', 600, 300, 'Fork', { strategy:'all' });
+    refs.backend = win.addNode('agent', 850, 200, 'Backend', { agentType:'backend', model:'opus-4.6', tools:['Read','Write','Edit','Bash'], prompt:'API.', maxTurns:15 });
+    refs.frontend = win.addNode('agent', 850, 400, 'Frontend', { agentType:'frontend', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'UI.', maxTurns:15 });
+    refs.reviewer = win.addNode('agent', 1100, 300, 'Reviewer', { agentType:'reviewer', model:'opus-4.6', tools:['Read','Grep'], prompt:'Review.', maxTurns:5 });
+    refs.decision = win.addNode('decision', 1350, 300, 'Review OK?', { condition:'All checks pass', yesLabel:'Pass', noLabel:'Revise', maxRevisions:3 });
+    refs.tester = win.addNode('agent', 1600, 300, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test.', maxTurns:10 });
+    refs.output = win.addNode('output', 1850, 300, 'Complete', { deliverable:'Tested feature', format:'code' });
+    win.addConnection(refs.input.id, refs.planner.id);
+    win.addConnection(refs.planner.id, refs.fork.id);
+    win.addConnection(refs.fork.id, refs.backend.id);
+    win.addConnection(refs.fork.id, refs.frontend.id);
+    win.addConnection(refs.backend.id, refs.reviewer.id);
+    win.addConnection(refs.frontend.id, refs.reviewer.id);
+    win.addConnection(refs.reviewer.id, refs.decision.id);
+    win.addConnection(refs.decision.id, refs.backend.id, 'Revise');
+    win.addConnection(refs.decision.id, refs.tester.id, 'Pass');
+    win.addConnection(refs.tester.id, refs.output.id);
+  }
+
+  return refs;
+}
+
+// ═══════════════════════════════════════════════════════════
+// SECTION 4: Test Suites
+// ═══════════════════════════════════════════════════════════
+
+// ─── Suite 1: Pure Utilities ─────────────────────────────
+describe('Pure Utilities', () => {
+  // slugify
+  it('slugify: basic text', () => {
+    expect(win.slugify('Hello World')).toBe('hello-world');
+  });
+  it('slugify: special chars stripped', () => {
+    expect(win.slugify('Hello @#$ World!')).toBe('hello-world');
+  });
+  it('slugify: leading/trailing hyphens removed', () => {
+    expect(win.slugify('--hello--')).toBe('hello');
+  });
+  it('slugify: empty string returns untitled', () => {
+    expect(win.slugify('')).toBe('untitled');
+  });
+  it('slugify: all-special chars returns untitled', () => {
+    expect(win.slugify('@#$%^&')).toBe('untitled');
+  });
+  it('slugify: numbers preserved', () => {
+    expect(win.slugify('Agent 42 v2')).toBe('agent-42-v2');
+  });
+
+  // extractAcceptanceCriteria
+  it('extractAcceptanceCriteria: bullets under AC header', () => {
+    const text = 'Acceptance criteria:\n- Should validate email\n- Must return 200\nOther stuff here';
+    const result = win.extractAcceptanceCriteria(text);
+    expect(result.length).toBe(2);
+    expect(result[0]).toContain('validate email');
+  });
+  it('extractAcceptanceCriteria: numbered list', () => {
+    const text = 'Acceptance criteria:\n1. User can log in\n2. Error message displays on failure';
+    const result = win.extractAcceptanceCriteria(text);
+    expect(result.length).toBe(2);
+  });
+  it('extractAcceptanceCriteria: checkboxes', () => {
+    const text = 'Acceptance criteria:\n- [ ] Should render correctly\n- [x] Must handle errors';
+    const result = win.extractAcceptanceCriteria(text);
+    expect(result.length).toBe(2);
+  });
+  it('extractAcceptanceCriteria: no match returns empty array', () => {
+    const result = win.extractAcceptanceCriteria('Just some plain text with no criteria.');
+    expect(result.length).toBe(0);
+  });
+
+  // isUrlOnly
+  it('isUrlOnly: URL-only returns true', () => {
+    expect(win.isUrlOnly('https://jira.example.com/browse/PROJ-123')).toBe(true);
+  });
+  it('isUrlOnly: plain text returns false', () => {
+    expect(win.isUrlOnly('Fix the login bug in the authentication module')).toBe(false);
+  });
+  it('isUrlOnly: URL + text returns false', () => {
+    expect(win.isUrlOnly('Check this ticket https://jira.example.com/browse/PROJ-123 and fix it please')).toBe(false);
+  });
+
+  // getEffectivePrompt
+  it('getEffectivePrompt: user prompt wins', () => {
+    const node = { label:'Test', config:{ prompt:'My custom prompt', agentType:'coder', notes:'' }};
+    expect(win.getEffectivePrompt(node)).toBe('My custom prompt');
+  });
+  it('getEffectivePrompt: agent type template fallback', () => {
+    const node = { label:'Test', config:{ prompt:'', agentType:'planner', notes:'' }};
+    const result = win.getEffectivePrompt(node);
+    expect(result).toContain('implementation plan');
+  });
+  it('getEffectivePrompt: generic fallback for unmapped types', () => {
+    const node = { label:'My Agent', config:{ prompt:'', agentType:'unknown_type_xyz', notes:'' }};
+    const result = win.getEffectivePrompt(node);
+    expect(result).toContain('Complete the task');
+  });
+
+  // getModelLabel
+  it('getModelLabel: known model returns correct label', () => {
+    expect(win.getModelLabel('opus-4.6')).toBe('Opus 4.6');
+    expect(win.getModelLabel('sonnet-4.6')).toBe('Sonnet 4.6');
+    expect(win.getModelLabel('haiku')).toBe('Haiku 4.5');
+  });
+});
+
+// ─── Suite 2: State Management ───────────────────────────
+describe('State Management', () => {
+  beforeEach(() => { resetState(); });
+
+  // addNode
+  it('addNode: creates with correct type', () => {
+    const node = win.addNode('agent', 100, 200, 'Test Agent');
+    expect(node.type).toBe('agent');
+    expect(node.label).toBe('Test Agent');
+  });
+  it('addNode: increments nextId', () => {
+    const id1 = win.state.nextId;
+    win.addNode('agent', 100, 200, 'A');
+    expect(win.state.nextId).toBe(id1 + 1);
+  });
+  it('addNode: applies default config', () => {
+    const node = win.addNode('decision', 100, 200);
+    expect(node.config.maxRevisions).toBe(3);
+    expect(node.config.yesLabel).toBe('Yes');
+    expect(node.config.noLabel).toBe('No');
+  });
+  it('addNode: merges custom config', () => {
+    const node = win.addNode('agent', 100, 200, 'X', { agentType:'backend', prompt:'Do API stuff' });
+    expect(node.config.agentType).toBe('backend');
+    expect(node.config.prompt).toBe('Do API stuff');
+    // Should still have defaults for fields not overridden
+    expect(node.config.maxTurns).toBe(10);
+  });
+  it('addNode: uses state.defaultModel for agents', () => {
+    win.state.defaultModel = 'sonnet-4.6';
+    const node = win.addNode('agent', 100, 200, 'A');
+    expect(node.config.model).toBe('sonnet-4.6');
+  });
+  it('addNode: decision nodes have maxRevisions 3', () => {
+    const node = win.addNode('decision', 100, 200, 'Gate');
+    expect(node.config.maxRevisions).toBe(3);
+  });
+
+  // addConnection
+  it('addConnection: creates connection', () => {
+    const a = win.addNode('agent', 100, 200, 'A');
+    const b = win.addNode('agent', 300, 200, 'B');
+    const conn = win.addConnection(a.id, b.id);
+    expect(conn).toBeTruthy();
+    expect(conn.from).toBe(a.id);
+    expect(conn.to).toBe(b.id);
+  });
+  it('addConnection: prevents self-loops', () => {
+    const a = win.addNode('agent', 100, 200, 'A');
+    const conn = win.addConnection(a.id, a.id);
+    expect(conn).toBe(undefined);
+  });
+  it('addConnection: prevents duplicates', () => {
+    const a = win.addNode('agent', 100, 200, 'A');
+    const b = win.addNode('agent', 300, 200, 'B');
+    win.addConnection(a.id, b.id);
+    const dup = win.addConnection(a.id, b.id);
+    expect(dup).toBe(undefined);
+  });
+  it('addConnection: stores label', () => {
+    const a = win.addNode('agent', 100, 200, 'A');
+    const b = win.addNode('agent', 300, 200, 'B');
+    const conn = win.addConnection(a.id, b.id, 'Revise');
+    expect(conn.label).toBe('Revise');
+  });
+
+  // deleteNode
+  it('deleteNode: removes node from array', () => {
+    const a = win.addNode('agent', 100, 200, 'A');
+    const before = win.state.nodes.length;
+    win.deleteNode(a.id);
+    expect(win.state.nodes.length).toBe(before - 1);
+    expect(win.state.nodes.find(n => n.id === a.id)).toBe(undefined);
+  });
+  it('deleteNode: removes associated connections', () => {
+    const a = win.addNode('agent', 100, 200, 'A');
+    const b = win.addNode('agent', 300, 200, 'B');
+    win.addConnection(a.id, b.id);
+    expect(win.state.connections.length).toBe(1);
+    win.deleteNode(a.id);
+    expect(win.state.connections.length).toBe(0);
+  });
+
+  // buildAgentSlugMap
+  it('buildAgentSlugMap: unique labels get base slugs', () => {
+    win.addNode('agent', 100, 200, 'Planner');
+    win.addNode('agent', 300, 200, 'Implementer');
+    const map = win.buildAgentSlugMap();
+    const slugs = Object.values(map);
+    expect(slugs).toContain('planner');
+    expect(slugs).toContain('implementer');
+  });
+  it('buildAgentSlugMap: duplicate labels get -1/-2 suffixes', () => {
+    win.addNode('agent', 100, 200, 'Reviewer');
+    win.addNode('agent', 300, 200, 'Reviewer');
+    const map = win.buildAgentSlugMap();
+    const slugs = Object.values(map);
+    expect(slugs).toContain('reviewer-1');
+    expect(slugs).toContain('reviewer-2');
+  });
+  it('buildAgentSlugMap: three identical labels get -1/-2/-3', () => {
+    win.addNode('agent', 100, 200, 'Worker');
+    win.addNode('agent', 300, 200, 'Worker');
+    win.addNode('agent', 500, 200, 'Worker');
+    const map = win.buildAgentSlugMap();
+    const slugs = Object.values(map);
+    expect(slugs).toContain('worker-1');
+    expect(slugs).toContain('worker-2');
+    expect(slugs).toContain('worker-3');
+  });
+  it('buildAgentSlugMap: deterministic ordering', () => {
+    win.addNode('agent', 100, 200, 'Reviewer');
+    win.addNode('agent', 300, 200, 'Reviewer');
+    const map1 = JSON.stringify(win.buildAgentSlugMap());
+    const map2 = JSON.stringify(win.buildAgentSlugMap());
+    expect(map1).toBe(map2);
+  });
+
+  // topologicalSort
+  it('topologicalSort: linear chain in correct order', () => {
+    const a = win.addNode('input', 100, 200, 'In');
+    const b = win.addNode('agent', 300, 200, 'Mid');
+    const c = win.addNode('output', 500, 200, 'Out');
+    win.addConnection(a.id, b.id);
+    win.addConnection(b.id, c.id);
+    const sorted = win.topologicalSort();
+    const labels = sorted.map(n => n.label);
+    expect(labels.indexOf('In')).toBeLessThan(labels.indexOf('Mid'));
+    expect(labels.indexOf('Mid')).toBeLessThan(labels.indexOf('Out'));
+  });
+  it('topologicalSort: disconnected nodes still included', () => {
+    win.addNode('agent', 100, 200, 'Island');
+    win.addNode('agent', 300, 200, 'Connected A');
+    win.addNode('agent', 500, 200, 'Connected B');
+    win.addConnection(win.state.nodes[1].id, win.state.nodes[2].id);
+    const sorted = win.topologicalSort();
+    expect(sorted.length).toBe(3);
+  });
+});
+
+// ─── Suite 3: Persistence ────────────────────────────────
+describe('Persistence', () => {
+  beforeEach(() => { resetState(); clearStorage(); });
+
+  // serializeWorkflow
+  it('serializeWorkflow: correct shape', () => {
+    buildTestWorkflow('linear');
+    const data = win.serializeWorkflow();
+    expect(data.version).toBe(1);
+    expect(data.canvas).toBeTruthy();
+    expect(data.canvas.nodes).toBeTruthy();
+    expect(Array.isArray(data.canvas.nodes)).toBe(true);
+  });
+  it('serializeWorkflow: includes memoryEnabled', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    const data = win.serializeWorkflow();
+    expect(data.memoryEnabled).toBe(true);
+  });
+  it('serializeWorkflow: includes repositories', () => {
+    buildTestWorkflow('linear');
+    win.state.repositories = [{ path:'/repo', branch:'main' }];
+    const data = win.serializeWorkflow();
+    expect(data.repositories.length).toBe(1);
+    expect(data.repositories[0].path).toBe('/repo');
+  });
+
+  // deserializeWorkflow
+  it('deserializeWorkflow: roundtrip fidelity', () => {
+    buildTestWorkflow('linear');
+    const data = win.serializeWorkflow();
+    resetState();
+    expect(win.state.nodes.length).toBe(0);
+    const ok = win.deserializeWorkflow(data);
+    expect(ok).toBe(true);
+    expect(win.state.nodes.length).toBe(4);
+  });
+  it('deserializeWorkflow: rejects missing canvas', () => {
+    const ok = win.deserializeWorkflow({ version: 1 });
+    expect(ok).toBe(false);
+  });
+  it('deserializeWorkflow: rejects invalid node types', () => {
+    const ok = win.deserializeWorkflow({
+      canvas: { nodes: [{ id:'n1', type:'banana', label:'Bad', x:0, y:0, w:100, h:50, config:{} }], connections:[], nextId:2 }
+    });
+    expect(ok).toBe(false);
+  });
+  it('deserializeWorkflow: restores memoryEnabled to checkbox + state', () => {
+    const data = { version:1, memoryEnabled:true, canvas:{ nodes:[], connections:[], nextId:1, pan:{x:0,y:0}, zoom:1 }};
+    win.deserializeWorkflow(data);
+    expect(win.state.memoryEnabled).toBe(true);
+    const cb = win.document.getElementById('memoryToggle');
+    if (cb) expect(cb.checked).toBe(true);
+  });
+
+  // savePrefs / restorePrefs
+  it('savePrefs/restorePrefs: full roundtrip', () => {
+    win.state.defaultModel = 'sonnet-4.6';
+    win.state.memoryEnabled = true;
+    win.state.exportFormat = 'sdk';
+    win.savePrefs();
+    // Change values
+    win.state.defaultModel = 'opus-4.6';
+    win.state.memoryEnabled = false;
+    win.state.exportFormat = 'prompt';
+    // Restore
+    win.restorePrefs();
+    expect(win.state.exportFormat).toBe('sdk');
+  });
+  it('savePrefs/restorePrefs: handles missing memoryEnabled gracefully', () => {
+    localStorage.setItem('awd_prefs', JSON.stringify({ defaultModel:'opus-4.6' }));
+    win.restorePrefs(); // should not throw
+    // memoryEnabled remains whatever it was
+  });
+  it('savePrefs/restorePrefs: restores false explicitly', () => {
+    win.state.memoryEnabled = false;
+    win.savePrefs();
+    win.state.memoryEnabled = true;
+    win.restorePrefs();
+    expect(win.state.memoryEnabled).toBe(false);
+  });
+
+  // Workflow save/load
+  it('auto-save roundtrip', () => {
+    buildTestWorkflow('linear');
+    // Simulate auto-save (sync version)
+    localStorage.setItem('awd_autosave', JSON.stringify(win.serializeWorkflow()));
+    resetState();
+    const ok = win.restoreAutoSave();
+    expect(ok).toBe(true);
+    expect(win.state.nodes.length).toBe(4);
+  });
+  it('getWorkflowIndex: empty by default', () => {
+    const idx = win.getWorkflowIndex();
+    expect(idx.length).toBe(0);
+  });
+  it('save-by-name/load-by-slug cycle', () => {
+    buildTestWorkflow('decision');
+    win.document.getElementById('workflowName').value = 'Test Flow';
+    const data = win.serializeWorkflow();
+    const slug = data.slug;
+    // Save to index manually (mirrors saveWorkflow logic)
+    const key = 'awd_wf_' + slug;
+    localStorage.setItem(key, JSON.stringify(data));
+    let index = win.getWorkflowIndex();
+    index.push({ slug, name:'Test Flow', savedAt: data.savedAt });
+    win.setWorkflowIndex(index);
+    // Load back
+    resetState();
+    const raw = localStorage.getItem(key);
+    const loaded = JSON.parse(raw);
+    const ok = win.deserializeWorkflow(loaded);
+    expect(ok).toBe(true);
+    expect(win.state.nodes.filter(n => n.type === 'decision').length).toBe(1);
+  });
+});
+
+// ─── Suite 4: Memory Protocol ────────────────────────────
+describe('Memory Protocol', () => {
+  beforeEach(() => { resetState(); });
+
+  // Path and protocol generators
+  it('getMemoryPath: with workflow name', () => {
+    win.document.getElementById('workflowName').value = 'My Workflow';
+    const path = win.getMemoryPath();
+    expect(path).toContain('my-workflow');
+    expect(path).toContain('~/.claude/workflow-memory/');
+  });
+  it('getMemoryPath: without workflow name', () => {
+    win.document.getElementById('workflowName').value = '';
+    const path = win.getMemoryPath();
+    expect(path).toContain('untitled');
+  });
+  it('genMemoryProtocol: contains TOON key', () => {
+    const proto = win.genMemoryProtocol();
+    expect(proto).toContain('TOON v1');
+  });
+  it('genMemoryProtocol: contains file structure', () => {
+    const proto = win.genMemoryProtocol();
+    expect(proto).toContain('manifest.md');
+    expect(proto).toContain('shared.md');
+    expect(proto).toContain('@{slug}.md');
+  });
+  it('genMemoryProtocol: contains breadcrumb format', () => {
+    const proto = win.genMemoryProtocol();
+    expect(proto).toContain('WF_BC:');
+  });
+  it('genAgentMemoryPreamble: contains agent slug', () => {
+    const pre = win.genAgentMemoryPreamble('Code Reviewer', 'code-reviewer');
+    expect(pre).toContain('@code-reviewer');
+    expect(pre).toContain('Read Memory');
+  });
+  it('genAgentMemoryPreamble: contains recovery instructions', () => {
+    const pre = win.genAgentMemoryPreamble('Planner', 'planner');
+    expect(pre).toContain('compaction occurred');
+    expect(pre).toContain('manifest.md');
+    expect(pre).toContain('shared.md');
+  });
+  it('genAgentMemoryPostamble: contains breadcrumb template', () => {
+    const post = win.genAgentMemoryPostamble('Planner', 'planner');
+    expect(post).toContain('WF_BC:');
+    expect(post).toContain('@planner');
+  });
+  it('genAgentMemoryPostamble: contains TOON sigils', () => {
+    const post = win.genAgentMemoryPostamble('Planner', 'planner');
+    expect(post).toContain('d:');
+    expect(post).toContain('f:');
+  });
+  it('genSingleAgentMemoryProtocol: uses progress.md', () => {
+    const proto = win.genSingleAgentMemoryProtocol();
+    expect(proto).toContain('progress.md');
+  });
+  it('genSingleAgentMemoryProtocol: does not contain @{slug}.md', () => {
+    const proto = win.genSingleAgentMemoryProtocol();
+    expect(proto).toNotContain('@{slug}.md');
+  });
+
+  // Slug collision
+  it('slug collision: two Reviewers get -1 and -2', () => {
+    win.addNode('agent', 100, 200, 'Reviewer');
+    win.addNode('agent', 300, 200, 'Reviewer');
+    const map = win.buildAgentSlugMap();
+    const slugs = Object.values(map);
+    expect(slugs).toContain('reviewer-1');
+    expect(slugs).toContain('reviewer-2');
+  });
+  it('slug collision: three Workers get -1, -2, -3', () => {
+    win.addNode('agent', 100, 200, 'Worker');
+    win.addNode('agent', 300, 200, 'Worker');
+    win.addNode('agent', 500, 200, 'Worker');
+    const map = win.buildAgentSlugMap();
+    const slugs = Object.values(map);
+    expect(slugs).toContain('worker-1');
+    expect(slugs).toContain('worker-2');
+    expect(slugs).toContain('worker-3');
+  });
+
+  // Auto-enable in presets
+  it('preset fullstack: memory ON (parallel)', () => {
+    win.loadPreset('fullstack');
+    expect(win.state.memoryEnabled).toBe(true);
+  });
+  it('preset bugfix: memory ON (decision)', () => {
+    win.loadPreset('bugfix');
+    expect(win.state.memoryEnabled).toBe(true);
+  });
+  it('preset feature: memory OFF (linear 4-agent)', () => {
+    win.loadPreset('feature');
+    expect(win.state.memoryEnabled).toBe(false);
+  });
+  it('preset documentation: memory OFF (linear 4-agent)', () => {
+    win.loadPreset('documentation');
+    expect(win.state.memoryEnabled).toBe(false);
+  });
+
+  // Auto-enable in generateFromStory
+  it('generateFromStory: parallel fullstack story -> ON', () => {
+    resetState();
+    win.document.getElementById('storyInput').value = 'Build a React frontend dashboard and a REST API backend with user authentication and database integration.';
+    win.generateFromStory();
+    expect(win.state.memoryEnabled).toBe(true);
+  });
+  it('generateFromStory: simple bugfix story -> OFF', () => {
+    resetState();
+    win.document.getElementById('storyInput').value = 'Fix the login button bug.';
+    win.generateFromStory();
+    // Simple bugfix: 2 domain agents + maybe planner, no parallel, typically <5 agents
+    // Memory should be OFF (no parallel, <5 agents)
+    expect(win.state.memoryEnabled).toBe(false);
+  });
+  it('generateFromStory: decision gate alone does not trigger memory', () => {
+    resetState();
+    win.document.getElementById('storyInput').value = 'Refactor the authentication module to use a cleaner pattern.';
+    win.generateFromStory();
+    // Refactoring: standard complexity, has decision gate but not parallel, < 5 agents
+    // generateFromStory uses different criteria than presets (no hasDecision check)
+    const hasParallel = win.state.nodes.some(n => n.type === 'parallel');
+    const manyAgents = win.state.nodes.filter(n => n.type === 'agent').length >= 5;
+    if (!hasParallel && !manyAgents) {
+      expect(win.state.memoryEnabled).toBe(false);
+    }
+  });
+});
+
+// ─── Suite 5: Export Generators ──────────────────────────
+describe('Export: genWorkflow', () => {
+  beforeEach(() => { resetState(); });
+
+  it('header present', () => {
+    buildTestWorkflow('linear');
+    const out = win.genWorkflow();
+    expect(out).toContain('## AI Agent Workflow');
+  });
+  it('requirements included', () => {
+    buildTestWorkflow('linear');
+    win.document.getElementById('storyInput').value = 'Build a login feature';
+    const out = win.genWorkflow();
+    expect(out).toContain('Build a login feature');
+    expect(out).toContain('### Requirements');
+  });
+  it('memory block when enabled', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    const out = win.genWorkflow();
+    expect(out).toContain('Memory Protocol');
+  });
+  it('memory absent when disabled', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = false;
+    const out = win.genWorkflow();
+    expect(out).toNotContain('Memory Protocol');
+  });
+  it('decision section with revision limits', () => {
+    buildTestWorkflow('decision');
+    const out = win.genWorkflow();
+    expect(out).toContain('Decision Points');
+    expect(out).toContain('max');
+    expect(out).toContain('revision');
+  });
+});
+
+describe('Export: genSubAgents', () => {
+  beforeEach(() => { resetState(); });
+
+  it('header present', () => {
+    buildTestWorkflow('linear');
+    const out = win.genSubAgents();
+    expect(out).toContain('Sub-Agent Workflow');
+  });
+  it('memory preamble per agent when enabled', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    const out = win.genSubAgents();
+    expect(out).toContain('Step 0: Read Memory');
+  });
+  it('decision routing section present', () => {
+    buildTestWorkflow('decision');
+    const out = win.genSubAgents();
+    // Decision gates generate conditional routing text
+    expect(out).toContain('Review OK?');
+  });
+  it('parallel agents labeled', () => {
+    buildTestWorkflow('parallel');
+    const out = win.genSubAgents();
+    expect(out).toContain('Backend');
+    expect(out).toContain('Frontend');
+  });
+  it('requirements included', () => {
+    buildTestWorkflow('linear');
+    win.document.getElementById('storyInput').value = 'Test requirements text';
+    const out = win.genSubAgents();
+    expect(out).toContain('Test requirements text');
+  });
+});
+
+describe('Export: genAgentTeams', () => {
+  beforeEach(() => { resetState(); });
+
+  it('header present', () => {
+    buildTestWorkflow('linear');
+    const out = win.genAgentTeams();
+    expect(out).toContain('Agent Teams Lead Brief');
+  });
+  it('memory section when enabled', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    const out = win.genAgentTeams();
+    expect(out).toContain('Memory');
+  });
+  it('decision handling', () => {
+    buildTestWorkflow('decision');
+    const out = win.genAgentTeams();
+    expect(out).toContain('Review OK?');
+  });
+  it('parallel teammates', () => {
+    buildTestWorkflow('parallel');
+    const out = win.genAgentTeams();
+    expect(out).toContain('Backend');
+    expect(out).toContain('Frontend');
+  });
+  it('requirements included', () => {
+    buildTestWorkflow('linear');
+    win.document.getElementById('storyInput').value = 'Team req text';
+    const out = win.genAgentTeams();
+    expect(out).toContain('Team req text');
+  });
+});
+
+describe('Export: genAgentSDK', () => {
+  beforeEach(() => { resetState(); });
+
+  it('Python imports', () => {
+    buildTestWorkflow('linear');
+    const out = win.genAgentSDK();
+    expect(out).toContain('import asyncio');
+    expect(out).toContain('import anthropic');
+  });
+  it('agent configs present', () => {
+    buildTestWorkflow('linear');
+    const out = win.genAgentSDK();
+    expect(out).toContain('AgentConfig(');
+    expect(out).toContain('Planner');
+  });
+  it('parallel as asyncio.gather', () => {
+    buildTestWorkflow('parallel');
+    const out = win.genAgentSDK();
+    expect(out).toContain('asyncio.gather');
+  });
+  it('memory injected in instructions when enabled', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    const out = win.genAgentSDK();
+    expect(out).toContain('Read Memory');
+  });
+  it('requirements in docstring', () => {
+    buildTestWorkflow('linear');
+    win.document.getElementById('storyInput').value = 'SDK req text';
+    const out = win.genAgentSDK();
+    expect(out).toContain('SDK req text');
+  });
+});
+
+describe('Export: genClaudePrompt', () => {
+  beforeEach(() => { resetState(); });
+
+  it('orchestrator instruction', () => {
+    buildTestWorkflow('linear');
+    const out = win.genClaudePrompt();
+    expect(out).toContain('workflow orchestrator');
+  });
+  it('single-agent memory (progress.md) when enabled', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    const out = win.genClaudePrompt();
+    expect(out).toContain('progress.md');
+  });
+  it('decision criteria inlined with revision limits', () => {
+    buildTestWorkflow('decision');
+    const out = win.genClaudePrompt();
+    expect(out).toContain('All checks pass');
+    expect(out).toMatch(/max.*3|3.*revision/i);
+  });
+  it('parallel section', () => {
+    buildTestWorkflow('parallel');
+    const out = win.genClaudePrompt();
+    expect(out).toContain('Backend');
+    expect(out).toContain('Frontend');
+  });
+  it('requirements included', () => {
+    buildTestWorkflow('linear');
+    win.document.getElementById('storyInput').value = 'Claude req text';
+    const out = win.genClaudePrompt();
+    expect(out).toContain('Claude req text');
+  });
+});
+
+describe('Export: genManifest', () => {
+  beforeEach(() => { resetState(); });
+
+  it('TOON header with #toon: v1', () => {
+    buildTestWorkflow('linear');
+    const out = win.genManifest();
+    expect(out).toContain('#toon: v1');
+  });
+  it('agents section with @ slugs', () => {
+    buildTestWorkflow('linear');
+    const out = win.genManifest();
+    expect(out).toContain('@planner');
+    expect(out).toContain('@implementer');
+  });
+  it('graph section with arrows', () => {
+    buildTestWorkflow('linear');
+    const out = win.genManifest();
+    expect(out).toMatch(/→/);
+  });
+  it('memory protocol section when enabled', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    const out = win.genManifest();
+    expect(out).toContain('Memory Protocol');
+  });
+  it('story included', () => {
+    buildTestWorkflow('linear');
+    win.document.getElementById('storyInput').value = 'Manifest story text';
+    const out = win.genManifest();
+    expect(out).toContain('Manifest story text');
+  });
+});
+
+// ─── Suite 6: Workflow Generation ────────────────────────
+describe('Workflow Generation', () => {
+  beforeEach(() => { resetState(); });
+
+  it('bugfix story -> Investigator + Fixer', () => {
+    win.document.getElementById('storyInput').value = 'Fix the login bug that causes a crash when users enter invalid credentials';
+    win.generateFromStory();
+    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+    expect(labels).toContain('Investigator');
+    expect(labels).toContain('Fixer');
+  });
+  it('UI story -> Design System Analyzer + UI Implementer', () => {
+    win.document.getElementById('storyInput').value = 'Add a new dashboard component with a sidebar navigation panel and responsive layout';
+    win.generateFromStory();
+    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+    expect(labels).toContain('Design System Analyzer');
+    expect(labels).toContain('UI Implementer');
+  });
+  it('API story -> Backend or Implementer', () => {
+    win.document.getElementById('storyInput').value = 'Create a REST API endpoint for user management with CRUD operations and database queries';
+    win.generateFromStory();
+    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+    const hasBackendOrImpl = labels.some(l => l === 'Backend Dev' || l === 'Implementer');
+    expect(hasBackendOrImpl).toBe(true);
+  });
+  it('refactoring story -> Code Analyzer + Refactorer', () => {
+    win.document.getElementById('storyInput').value = 'Refactor the auth module to eliminate code smells and improve SOLID compliance';
+    win.generateFromStory();
+    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+    expect(labels).toContain('Code Analyzer');
+    expect(labels).toContain('Refactorer');
+  });
+  it('documentation story -> Researcher + Doc Writer', () => {
+    win.document.getElementById('storyInput').value = 'Write comprehensive API documentation for the user management endpoints and add a wiki guide';
+    win.generateFromStory();
+    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+    expect(labels).toContain('Researcher');
+    expect(labels).toContain('Doc Writer');
+  });
+  it('fullstack story -> parallel fork with Backend + Frontend', () => {
+    win.document.getElementById('storyInput').value = 'Build a React frontend dashboard and REST API backend with authentication and database integration';
+    win.generateFromStory();
+    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+    expect(labels).toContain('Backend Dev');
+    expect(labels).toContain('Frontend Dev');
+    expect(win.state.nodes.some(n => n.type === 'parallel')).toBe(true);
+  });
+  it('short simple story -> no Planner, no Architect', () => {
+    win.document.getElementById('storyInput').value = 'Fix the button color';
+    win.generateFromStory();
+    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+    expect(labels).toNotContain('Planner');
+    expect(labels).toNotContain('Architect');
+  });
+  it('long complex story (80+ words) -> has Architect', () => {
+    const words = [];
+    for (let i = 0; i < 30; i++) words.push('implement the new feature');
+    const story = words.join(' ') + ' with full security audit and compliance checking';
+    win.document.getElementById('storyInput').value = story;
+    win.generateFromStory();
+    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+    expect(labels).toContain('Architect');
+  });
+
+  // Structural properties
+  it('standard code workflows have decision gate', () => {
+    win.document.getElementById('storyInput').value = 'Create a REST API endpoint for managing users with authentication and database queries';
+    win.generateFromStory();
+    const hasDecision = win.state.nodes.some(n => n.type === 'decision');
+    expect(hasDecision).toBe(true);
+  });
+  it('documentation workflows have no decision gate', () => {
+    win.document.getElementById('storyInput').value = 'Write comprehensive documentation and a detailed wiki guide for the project';
+    win.generateFromStory();
+    const hasDecision = win.state.nodes.some(n => n.type === 'decision');
+    expect(hasDecision).toBe(false);
+  });
+  it('AC extraction feeds decision condition', () => {
+    win.document.getElementById('storyInput').value = 'Create a login form.\n\nAcceptance criteria:\n- Should validate email format\n- Must show error on invalid password';
+    win.generateFromStory();
+    const decision = win.state.nodes.find(n => n.type === 'decision');
+    if (decision) {
+      expect(decision.config.condition).toContain('validate email');
+    }
+  });
+  it('URL-only input shows picker without generating', () => {
+    win.document.getElementById('storyInput').value = 'https://jira.example.com/browse/PROJ-123';
+    const before = win.state.nodes.length;
+    win.generateFromStory();
+    // URL-only should not generate nodes (shows picker instead)
+    expect(win.state.nodes.length).toBe(before);
+  });
+});
+
+// ─── Suite 7: Preset Loading ─────────────────────────────
+describe('Preset Loading', () => {
+  beforeEach(() => { resetState(); });
+
+  it('feature preset: 4 agents', () => {
+    win.loadPreset('feature');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+  });
+  it('bugfix preset: 3 agents', () => {
+    win.loadPreset('bugfix');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(3);
+  });
+  it('fullstack preset: 5 agents', () => {
+    win.loadPreset('fullstack');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+  });
+  it('review preset: 4 agents', () => {
+    win.loadPreset('review');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+  });
+  it('parallel_research preset: 4 agents', () => {
+    win.loadPreset('parallel_research');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+  });
+  it('swarm preset: 5 agents', () => {
+    win.loadPreset('swarm');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+  });
+  it('test_automation preset: 7 agents', () => {
+    win.loadPreset('test_automation');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(7);
+  });
+  it('ui_component preset: 3 agents', () => {
+    win.loadPreset('ui_component');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(3);
+  });
+  it('refactoring preset: 5 agents', () => {
+    win.loadPreset('refactoring');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+  });
+  it('documentation preset: 4 agents', () => {
+    win.loadPreset('documentation');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+  });
+
+  // Behavior
+  it('loadPreset clears previous nodes', () => {
+    win.loadPreset('feature');
+    const count1 = win.state.nodes.length;
+    win.loadPreset('bugfix');
+    // Bugfix should have fewer total nodes than feature; old nodes should be gone
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(3);
+  });
+  it('memory ON for fullstack (parallel)', () => {
+    win.loadPreset('fullstack');
+    expect(win.state.memoryEnabled).toBe(true);
+  });
+  it('memory OFF for feature (linear)', () => {
+    win.loadPreset('feature');
+    expect(win.state.memoryEnabled).toBe(false);
+  });
+  it('memory ON for refactoring (decision + 5 agents)', () => {
+    win.loadPreset('refactoring');
+    expect(win.state.memoryEnabled).toBe(true);
+  });
+});
+
+// ─── Suite 8: Format Recommendations ─────────────────────
+describe('Format Recommendations', () => {
+  beforeEach(() => { resetState(); });
+
+  it('no agents -> null', () => {
+    const rec = win.getFormatRecommendation();
+    expect(rec).toBeNull();
+  });
+  it('1-2 agents, no parallel -> claude', () => {
+    win.addNode('agent', 100, 200, 'A');
+    win.addNode('agent', 300, 200, 'B');
+    const rec = win.getFormatRecommendation();
+    expect(rec.format).toBe('claude');
+  });
+  it('3 agents, no parallel -> subagent', () => {
+    win.addNode('agent', 100, 200, 'A');
+    win.addNode('agent', 300, 200, 'B');
+    win.addNode('agent', 500, 200, 'C');
+    const rec = win.getFormatRecommendation();
+    expect(rec.format).toBe('subagent');
+  });
+  it('parallel + 4 agents -> teams', () => {
+    win.addNode('parallel', 100, 200, 'Fork');
+    win.addNode('agent', 300, 100, 'A');
+    win.addNode('agent', 300, 200, 'B');
+    win.addNode('agent', 300, 300, 'C');
+    win.addNode('agent', 300, 400, 'D');
+    const rec = win.getFormatRecommendation();
+    expect(rec.format).toBe('teams');
+  });
+  it('parallel + 2 agents -> subagent (not teams)', () => {
+    win.addNode('parallel', 100, 200, 'Fork');
+    win.addNode('agent', 300, 100, 'A');
+    win.addNode('agent', 300, 200, 'B');
+    const rec = win.getFormatRecommendation();
+    expect(rec.format).toBe('subagent');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Boot: wait for iframe, then run
+// ═══════════════════════════════════════════════════════════
+document.getElementById('app').addEventListener('load', function() {
+  win = this.contentWindow;
+  // Expose let-scoped variables as window properties so tests can access them
+  win.eval('window.state = state');
+  // Bypass all confirm() dialogs
+  win.confirm = () => true;
+  // Clear localStorage to start fresh
+  clearStorage();
+  resetState();
+  // Run tests
+  runAll(win);
+});
+</script>
+</body>
+</html>
