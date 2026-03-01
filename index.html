@@ -852,6 +852,15 @@ function toggleMemory() {
   savePrefs();
 }
 
+function setMemoryEnabled(enabled) {
+  state.memoryEnabled = enabled;
+  const cb = $('memoryToggle');
+  if (cb) cb.checked = enabled;
+  $('memoryPathField').style.display = enabled ? 'block' : 'none';
+  updateMemoryPath();
+  savePrefs();
+}
+
 function updateMemoryPath() {
   const el = $('memoryPathDisplay');
   if (el) el.textContent = getMemoryPath();
@@ -2732,6 +2741,13 @@ function generateFromStory() {
     addConnection(tester.id, output.id);
   }
 
+  // Auto-enable memory for complex generated workflows (parallel forks or 5+ agents).
+  // Note: generateFromStory always adds a decision gate for code workflows, so unlike
+  // presets we don't use hasDecision here -- it's not a complexity signal in this context.
+  const hasParallel = state.nodes.some(n => n.type === 'parallel');
+  const manyAgents = state.nodes.filter(n => n.type === 'agent').length >= 5;
+  if (hasParallel || manyAgents) setMemoryEnabled(true);
+
   autoLayout();
   setMode('select');
 }
@@ -2958,7 +2974,17 @@ function loadPreset(preset) {
       addConnection(d.id, t.id, 'Pass'); addConnection(t.id, o.id);
     }
   };
-  if (presets[preset]) { presets[preset](); state.activePreset = preset; autoLayout(); updateStoryPlaceholder(preset); }
+  if (presets[preset]) {
+    presets[preset]();
+    state.activePreset = preset;
+    autoLayout();
+    updateStoryPlaceholder(preset);
+    // Auto-enable memory for complex presets (parallel forks, decision loops, or 5+ agents)
+    const hasParallel = state.nodes.some(n => n.type === 'parallel');
+    const hasDecision = state.nodes.some(n => n.type === 'decision');
+    const manyAgents = state.nodes.filter(n => n.type === 'agent').length >= 5;
+    if (hasParallel || hasDecision || manyAgents) setMemoryEnabled(true);
+  }
 }
 
 const STORY_PLACEHOLDERS = {
