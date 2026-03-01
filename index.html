@@ -2044,15 +2044,22 @@ wrap.addEventListener('mouseup', e => {
 
 wrap.addEventListener('wheel', e => {
   e.preventDefault();
-  const rect = svg().getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
-  const delta = e.deltaY > 0 ? 0.9 : 1.1;
-  const newZoom = Math.max(0.2, Math.min(3, state.zoom * delta));
-  const scale = newZoom / state.zoom;
-  state.pan.x = mx - (mx - state.pan.x) * scale;
-  state.pan.y = my - (my - state.pan.y) * scale;
-  state.zoom = newZoom;
+  if (e.ctrlKey || e.metaKey) {
+    // Pinch-to-zoom or Ctrl+scroll → zoom
+    const rect = svg().getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.max(0.2, Math.min(3, state.zoom * delta));
+    const scale = newZoom / state.zoom;
+    state.pan.x = mx - (mx - state.pan.x) * scale;
+    state.pan.y = my - (my - state.pan.y) * scale;
+    state.zoom = newZoom;
+  } else {
+    // Two-finger scroll / trackpad → pan
+    state.pan.x -= e.deltaX;
+    state.pan.y -= e.deltaY;
+  }
   updateTransform();
 }, { passive: false });
 
@@ -2143,11 +2150,18 @@ function autoLayout() {
     if (adj[c.from]) { adj[c.from].push(c.to); inDeg[c.to] = (inDeg[c.to] || 0) + 1; }
   });
 
-  // Topological layers (BFS)
+  // Topological layers (BFS with cycle breaking)
   const layers = [];
   let queue = state.nodes.filter(n => (inDeg[n.id] || 0) === 0).map(n => n.id);
   const visited = new Set();
-  while (queue.length > 0) {
+  while (visited.size < state.nodes.length) {
+    if (queue.length === 0) {
+      // Cycle detected — break it by picking unvisited node with lowest remaining inDeg
+      const unvisited = state.nodes.filter(n => !visited.has(n.id));
+      if (unvisited.length === 0) break;
+      unvisited.sort((a, b) => (inDeg[a.id] || 0) - (inDeg[b.id] || 0));
+      queue = [unvisited[0].id];
+    }
     layers.push([...queue]);
     queue.forEach(id => visited.add(id));
     const next = [];
@@ -2162,11 +2176,6 @@ function autoLayout() {
     });
     queue = next;
   }
-  // Add unvisited nodes
-  state.nodes.filter(n => !visited.has(n.id)).forEach(n => {
-    if (layers.length === 0) layers.push([]);
-    layers[layers.length - 1].push(n.id);
-  });
 
   // Position nodes
   const xGap = 280, yGap = 100;
