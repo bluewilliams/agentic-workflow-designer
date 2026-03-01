@@ -33,6 +33,9 @@ Toggle **Enable workflow memory** in the sidebar to inject a compaction-resilien
 - Compaction recovery is automatic. Agents detect missing breadcrumbs and re-read state from disk
 - Inter-agent communication flows through `shared.md` using TOON notation
 - Memory files: `manifest.md` (read-only), `shared.md` (append-only), `@{agent}.md` (per-agent)
+- Duplicate agent labels are handled automatically with unique slug suffixes
+
+Memory auto-enables for complex workflows (parallel forks, decision gate loops, or 5+ agents) when loading presets or generating from a story. You can always toggle it off manually.
 
 No install required. The memory protocol is embedded directly in the generated prompts.
 
@@ -67,7 +70,7 @@ No install required. The memory protocol is embedded directly in the generated p
 - **Save/Load workflows** - save by name, auto-restore work-in-progress on refresh, export/import `.json` for sharing
 - **Persistent preferences** - default model, memory toggle, export format, app source path, and repositories auto-save across sessions
 - **Multi-repository support** - specify multiple repos with branches; agents check out the right branch and pull latest before starting
-- **Memory Protocol** - optional compaction-resilient memory with TOON v1 notation
+- **Memory Protocol** - optional compaction-resilient memory with TOON v1 notation, auto-enabled for complex workflows
 - **TOON Manifest** - portable, git-friendly workflow definition format
 - **Pull Request creation** - opt-in PR output format with git provider auto-detection (GitHub, Bitbucket, GitLab), configurable feature branch and target branch, and safety-first prompt injection. All presets default to Code Changes; PR creation requires explicit opt-in
 - **Custom workflows** - add your own nodes and connections; export generators add smart scaffolding automatically
