@@ -132,6 +132,7 @@ function expect(val) { return new Expectation(val); }
 async function runAll(win) {
   const t0 = performance.now();
   let totalPass = 0, totalFail = 0;
+  const failures = [];
   const resultsEl = document.getElementById('results');
   resultsEl.innerHTML = '';
 
@@ -153,6 +154,7 @@ async function runAll(win) {
       } catch (e) {
         suiteFail++;
         totalFail++;
+        failures.push({ suite: suite.name, test: test.name, error: e.message });
         testsDiv.innerHTML += `<div class="test-row"><span class="icon">❌</span><span class="test-name failed">${esc(test.name)}</span></div>`;
         testsDiv.innerHTML += `<div class="error-detail">${esc(e.message)}</div>`;
       }
@@ -174,6 +176,15 @@ async function runAll(win) {
     + (totalFail > 0 ? `<span class="fail">❌ ${totalFail} failed</span>` : '')
     + `<span class="total">${totalPass + totalFail} total</span>`
     + `<span class="time">${elapsed}ms</span>`;
+
+  // CLI-readable output: hidden element + console for headless Chrome
+  const cliData = { pass: totalPass, fail: totalFail, total: totalPass + totalFail, elapsed, failures };
+  const cliEl = document.createElement('pre');
+  cliEl.id = 'cli-output';
+  cliEl.style.display = 'none';
+  cliEl.textContent = JSON.stringify(cliData);
+  document.body.appendChild(cliEl);
+  console.log('TEST_RESULT:' + JSON.stringify(cliData));
 }
 
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }

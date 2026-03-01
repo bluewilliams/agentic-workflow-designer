@@ -359,6 +359,7 @@ After generation, memory is auto-enabled if the workflow has parallel forks or 5
 agentic-workflow-designer/
 ├── index.html       # The entire application (~4,300 lines)
 ├── tests.html       # iframe-based test suite (~1,180 lines, 129 tests)
+├── run-tests.sh     # Headless CLI test runner (Chrome + Python 3, zero npm deps)
 ├── TECHNICAL.md     # This document
 ├── README.md        # User-facing overview
 ├── LICENSE          # MIT
@@ -446,14 +447,16 @@ JavaScript:
 - **Preset loading**: agent count verification for all 10 presets, memory auto-enable behavior
 - **Format recommendations**: agent count and parallel fork heuristics
 
-**Running tests**: Open `tests.html` in a browser. Results render immediately — green/red badges per suite, expandable failure details with expected vs actual values.
+**Running tests in a browser**: Open `tests.html` in a browser. Results render immediately — green/red badges per suite, expandable failure details with expected vs actual values.
+
+**Running tests from CLI**: `./run-tests.sh` runs the full suite headlessly via Chrome and Python 3 (no npm). Use `--verbose` to print individual failure details. Exit code 0 = all pass, 1 = failures.
 
 ---
 
 ## Development Guidelines
 
 - **Keep it single-file**: Resist the urge to add a build step unless complexity demands it
-- **Run tests after changes**: Open `tests.html` in a browser to catch regressions. All 129 tests should pass
+- **Run tests after changes**: Run `./run-tests.sh` from CLI or open `tests.html` in a browser. All 129 tests should pass
 - **Render on demand**: Call `render()` and `updatePrompt()` after any state mutation (`render()` triggers auto-save automatically)
 - **Export completeness**: Every export format must include the full user story as context. Never assume the recipient has seen it
 - **Prompt quality first**: The quality of exported prompts is the product's core value proposition. `getEffectivePrompt()` and the `PROMPTS` library are the most important code in the file
