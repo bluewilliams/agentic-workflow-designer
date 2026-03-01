@@ -1,6 +1,6 @@
 # Agentic Workflow Designer
 
-Turn any Jira ticket, user story, or task description into a production-quality agentic workflow in seconds. Built on context engineering best practices, the generated prompts handle the details you'd forget to include - role context, tool selection, upstream dependencies, success criteria, output format - so every agent gets exactly the right instructions without you having to think of everything.
+Turn any Jira ticket, user story, or task description into a production-quality agentic workflow in seconds. Built on context engineering best practices, the generated prompts handle the details you'd forget to include - tool selection (like telling agents to use LSP), upstream dependencies, success criteria, output format - so every agent gets exactly the right instructions without you having to think of everything.
 
 Design multi-agent pipelines visually, configure each agent's role, model, and tools, then export optimized prompts ready to paste into Claude Code, Claude.ai, or the Anthropic Agent SDK.
 
