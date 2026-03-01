@@ -69,7 +69,7 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 | `awd_wf_{slug}` | `{ version, slug, name, story, savedAt, repositories, canvas: { nodes, connections, nextId, pan, zoom } }` | Full saved workflow data |
 | `awd_autosave` | Same shape as `awd_wf_{slug}` | Single-slot auto-save, debounced 1s on `render()` |
 
-**Serialization boundary**: Nodes (full config), connections, nextId, pan, zoom, workflowName, storyInput, and repositories are persisted. Transient UI state (selectedId, mode, connectFrom, dragging, isPanning, mousePos) is excluded.
+**Serialization boundary**: Nodes (full config), connections, nextId, pan, zoom, workflowName, storyInput, repositories, and memoryEnabled are persisted. Transient UI state (selectedId, mode, connectFrom, dragging, isPanning, mousePos) is excluded.
 
 **Error handling**: All localStorage operations are wrapped in try/catch. Auto-save fails silently; explicit save/export shows a toast on failure.
 
@@ -192,6 +192,21 @@ All generators use `topologicalSort()` to process nodes in dependency order. Eac
 ### Overview
 The Memory Protocol is an optional system that makes agent workflows resilient to context compaction. When enabled via the sidebar toggle, all export formats inject structured memory instructions that tell agents how to persist their work to disk and recover from context loss.
 
+### Auto-Enable Logic
+Memory auto-enables when loading a preset or generating from a story if the workflow meets any of these criteria:
+- **Parallel forks** - concurrent agents need shared state coordination via `shared.md`
+- **Decision gates** (presets only) - revision loops may re-spawn agents that need to recover context
+- **5+ agents** - long-running workflows are more likely to hit compaction
+
+For `generateFromStory()`, decision gates are excluded from the criteria because every generated code workflow gets one by default (it's not a complexity signal in that context). Simple linear chains (e.g. Feature Build, Code Review) stay memory-off. Users can always toggle memory on or off manually.
+
+### Duplicate Label Handling
+`buildAgentSlugMap()` generates unique slugs for all agents. When multiple agents share a label (e.g. two "Reviewer" nodes), numeric suffixes are appended (`reviewer-1`, `reviewer-2`). Agents are sorted by node ID before suffix assignment for deterministic output across renders.
+
+### Format-Specific Variants
+- **Multi-agent formats** (Sub-Agents, Agent Teams, Agent SDK, Manifest): Each agent gets its own `@{slug}.md` file, inter-agent handoffs flow through `shared.md`, and breadcrumbs include the agent identifier
+- **Single-agent format** (Claude Prompt): Uses `genSingleAgentMemoryProtocol()` with a single `progress.md` file instead of per-agent files, since the entire workflow runs in one conversation
+
 ### Design Principle: Structural Injection Order
 Memory instructions are **structurally embedded** in each agent's prompt flow, not appended as an afterthought:
 
@@ -264,7 +279,7 @@ Parses the user story with keyword detection to build an appropriate workflow au
 | UI only or API only | Input → Planner → Parallel(Researcher, Implementer) → Reviewer → Decision → Tester → Output |
 | Security keywords | Adds a Security Review agent before the main reviewer |
 
-After generation, `autoLayout()` is called to arrange nodes cleanly.
+After generation, memory is auto-enabled if the workflow has parallel forks or 5+ agents, then `autoLayout()` arranges nodes cleanly.
 
 ---
 
@@ -305,6 +320,7 @@ After generation, `autoLayout()` is called to arrange nodes cleanly.
 | Safe-by-default output format | All presets use `format: 'code'` (local changes only). PR creation requires explicit opt-in to prevent agents from pushing code or creating branches without user intent |
 | `prBlock()` prompt injection | PR instructions are only injected when at least one output node has `format: pr`. Provider detection via `git remote -v` works for GitHub, Bitbucket, and GitLab with graceful fallback |
 | TOON v1 for memory files | Compact notation reduces token usage in agent context while preserving structured state |
+| Memory auto-enable criteria | Parallel forks, decision loops, or 5+ agents. Simple linear chains stay off to avoid unnecessary overhead. `generateFromStory` excludes decision gates from criteria since it adds one to every code workflow by default |
 | Manifest as 6th format | Portable workflow definition enables sharing, diffing, and reproducibility |
 | localStorage for persistence | No server needed; keeps single-file portability; auto-save + named save + JSON export covers all sharing needs |
 | Debounced auto-save (1s) | Saves on every render without impacting interaction performance |
@@ -364,12 +380,13 @@ JavaScript:
   │     └── PROMPTS library (25+ templates)
   ├── TOON v1 + MEMORY HELPERS
   │     ├── TOON_KEY constant
-  │     ├── slugify(), getMemoryPath()
+  │     ├── slugify(), getMemoryPath(), buildAgentSlugMap()
   │     ├── setDefaultModel(), initDefaultModelSelect()
-  │     ├── toggleMemory(), updateMemoryPath()
-  │     ├── genMemoryProtocol()        # orchestrator-level memory block
-  │     ├── genAgentMemoryPreamble()   # per-agent read-first (step 0)
-  │     └── genAgentMemoryPostamble()  # per-agent write-last (final steps)
+  │     ├── toggleMemory(), setMemoryEnabled(), updateMemoryPath()
+  │     ├── genMemoryProtocol()            # orchestrator-level memory block
+  │     ├── genAgentMemoryPreamble()       # per-agent read-first (step 0)
+  │     ├── genAgentMemoryPostamble()      # per-agent write-last (final steps)
+  │     └── genSingleAgentMemoryProtocol() # simplified memory for Claude Prompt format
   ├── PERSISTENCE (localStorage)
   │     ├── showToast()                # reusable toast notification
   │     ├── savePrefs(), restorePrefs() # preference auto-save/restore
