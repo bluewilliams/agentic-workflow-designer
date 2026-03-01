@@ -56,13 +56,45 @@ No install required. The memory protocol is embedded directly in the generated p
 - **Testing** - Planner > Code Analyzer > Test Suite Writer > Reviewer > Decision gate > Tester
 - **Data Migration** - Planner > Researcher > Migration Engineer > Reviewer > Decision gate > Tester
 
-## Node Types
+## Node Types & Configuration
 
-- **Agent** - Configurable AI agent with role, model, tools, and prompt
-- **Decision** - Conditional gate with pass/fail criteria, configurable max revision cycles (integrated into agent prompts with reasoning requirements)
-- **Parallel Fork** - Split workflow into concurrent branches
-- **Input** - Story/requirements entry point
-- **Output** - Deliverable definition (format: Code Changes, Pull Request, Report, or Documentation). When format is Pull Request, additional fields appear for Branch Name and Target Branch
+Click any node on the canvas to open its configuration panel. Each node type has unique settings:
+
+### Agent
+The core building block. Every agent can be individually configured:
+- **Agent Type** - Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, or General. Each type has a built-in prompt template that activates when you leave the prompt blank
+- **Model** - Opus 4.6, Sonnet 4.6, Sonnet 4.5, Haiku 4.5. Set a default model in the sidebar; override per-node as needed
+- **Tools** - Toggle individual tools on/off: Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP. Presets assign sensible defaults (e.g. Reviewers get read-only tools, Coders get everything)
+- **Agent Prompt** - Custom instructions. Leave blank to use the agent type's built-in template, or write your own
+- **Custom Notes** - Additional context injected into the generated prompt (constraints, implementation details)
+- **Max Turns** - Limits how many agentic turns the agent can take (default: 10)
+
+### Decision
+A conditional gate that loops agents back for revisions when criteria aren't met:
+- **Condition** - The criteria to evaluate (e.g. "All tests pass and code review has no critical findings")
+- **Yes/No Labels** - Customize the branch labels (default: Yes/No, presets use Pass/Revise)
+- **Max Revisions** - Caps the revision loop to prevent infinite cycles (default: 3)
+
+Decision criteria are automatically embedded into upstream agent prompts so agents know what they're being evaluated against.
+
+### Parallel Fork
+Splits the workflow into concurrent branches:
+- **Strategy** - Wait for All (default), First Complete, or Race
+
+### Input
+- **Source** - Jira Ticket, User Story, PRD, or Custom
+- **Description** - Requirements text. Preset-specific placeholder templates guide you to provide the right information
+
+### Output
+- **Format** - Code Changes, Pull Request, Report, or Documentation
+- **Deliverable** - Description of what's produced
+- **Branch Name / Target Branch** - Appear when format is Pull Request, with git provider auto-detection
+
+### Preset-Specific Settings
+
+Some presets reveal additional sidebar sections:
+- **Test Automation** shows an **App Under Test** field - specify the local path to the app being tested so agents can explore its source for DOM selectors, screen structure, and locator patterns (Selenium, Playwright, etc.)
+- **UI Design & Development** shows a **UI Context** field for styling preferences and design system notes (e.g. "Use vanilla-extract + clsx, avoid SCSS")
 
 ## Key Features
 
