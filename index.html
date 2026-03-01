@@ -2112,7 +2112,7 @@ function zoomFit() {
   const pad = 80;
   const scaleX = (rect.width - pad * 2) / (bounds.maxX - bounds.minX + 100);
   const scaleY = (rect.height - pad * 2) / (bounds.maxY - bounds.minY + 100);
-  state.zoom = Math.max(0.3, Math.min(1.5, Math.min(scaleX, scaleY)));
+  state.zoom = Math.max(0.3, Math.min(1, Math.min(scaleX, scaleY)));
   state.pan.x = rect.width / 2 - ((bounds.minX + bounds.maxX) / 2) * state.zoom;
   state.pan.y = rect.height / 2 - ((bounds.minY + bounds.maxY) / 2) * state.zoom;
   updateTransform();
