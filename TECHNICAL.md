@@ -357,7 +357,8 @@ After generation, memory is auto-enabled if the workflow has parallel forks or 5
 
 ```
 agentic-workflow-designer/
-├── index.html       # The entire application (~3,300 lines)
+├── index.html       # The entire application (~4,300 lines)
+├── tests.html       # iframe-based test suite (~1,180 lines, 129 tests)
 ├── TECHNICAL.md     # This document
 ├── README.md        # User-facing overview
 ├── LICENSE          # MIT
@@ -429,9 +430,30 @@ JavaScript:
 
 ---
 
+## Test Suite
+
+`tests.html` is a zero-dependency, iframe-based test harness. Open it in any browser to run all tests — no build step, no server required.
+
+**How it works**: Loads `index.html` in a hidden `<iframe>`, accesses its `contentWindow` for all functions, state, and DOM. Tests run against the real app with real localStorage and real initialization.
+
+**Coverage** (129 tests across 13 suites):
+- **Pure utilities**: `slugify`, `extractAcceptanceCriteria`, `isUrlOnly`, `getEffectivePrompt`, `getModelLabel`
+- **State management**: `addNode`, `addConnection`, `deleteNode`, `buildAgentSlugMap`, `topologicalSort`
+- **Persistence**: serialize/deserialize roundtrips, prefs save/restore, workflow save/load
+- **Memory protocol**: path generation, TOON notation, slug collisions, auto-enable logic
+- **Export generators**: all 6 formats (Workflow, Sub-Agents, Agent Teams, Agent SDK, Claude Prompt, Manifest) with memory on/off
+- **Workflow generation**: keyword scoring, structural properties, AC extraction
+- **Preset loading**: agent count verification for all 10 presets, memory auto-enable behavior
+- **Format recommendations**: agent count and parallel fork heuristics
+
+**Running tests**: Open `tests.html` in a browser. Results render immediately — green/red badges per suite, expandable failure details with expected vs actual values.
+
+---
+
 ## Development Guidelines
 
 - **Keep it single-file**: Resist the urge to add a build step unless complexity demands it
+- **Run tests after changes**: Open `tests.html` in a browser to catch regressions. All 129 tests should pass
 - **Render on demand**: Call `render()` and `updatePrompt()` after any state mutation (`render()` triggers auto-save automatically)
 - **Export completeness**: Every export format must include the full user story as context. Never assume the recipient has seen it
 - **Prompt quality first**: The quality of exported prompts is the product's core value proposition. `getEffectivePrompt()` and the `PROMPTS` library are the most important code in the file

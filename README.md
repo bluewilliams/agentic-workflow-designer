@@ -89,6 +89,10 @@ Click **Export .json** to download the workflow as a portable file. Click **Impo
 ### Preferences
 Your default model, memory toggle, export format tab, app source path/branch, and repositories are remembered automatically. No explicit save needed. Just change a setting and it persists across sessions.
 
+## Testing
+
+Open `tests.html` in any browser to run the full test suite (129 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 6 export generators, workflow generation, preset loading, and format recommendations. Green/red results render instantly with expandable failure details.
+
 ## Usage
 
 Open `index.html` in any modern browser. No dependencies, no build step, no server required.
