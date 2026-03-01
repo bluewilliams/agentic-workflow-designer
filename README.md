@@ -13,7 +13,7 @@ All data stays in your browser (localStorage). Nothing is sent to a server. Expo
 ## What It Does
 
 1. **Paste your requirements** - a Jira URL, user story, task description, or any freeform text. Jira links are detected automatically and resolved via the Atlassian MCP server
-2. **Auto-generate a workflow** or build one manually from the node palette
+2. **Build a workflow** - auto-generate from your input, choose from 14 curated presets, or build one manually from the node palette
 3. **Configure each agent** - model, tools, prompt, max turns
 4. **Export** in 6 formats optimized for different execution environments
 5. **Save & load workflows** by name, export/import as `.json` files for sharing
