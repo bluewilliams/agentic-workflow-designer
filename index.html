@@ -69,6 +69,13 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 .preset-item.active{border-color:var(--accent);background:rgba(99,144,255,.1)}
 .preset-item .preset-name{font-weight:600;margin-bottom:2px}
 .preset-item .preset-desc{font-size:10px;color:var(--text3)}
+.preset-more{display:flex;flex-direction:column;gap:4px;overflow:hidden;
+  max-height:0;transition:max-height .25s ease}
+.preset-more.open{max-height:800px}
+.preset-toggle{padding:6px 10px;background:none;border:1px dashed var(--border);
+  border-radius:var(--radius-sm);cursor:pointer;font-size:11px;color:var(--text2);
+  text-align:center;transition:all .15s}
+.preset-toggle:hover{border-color:var(--accent);color:var(--text)}
 /* Node Config */
 .config-panel{display:none;flex-direction:column;gap:10px}
 .config-panel.visible{display:flex}
@@ -356,37 +363,40 @@ svg.canvas{width:100%;height:100%;display:block}
         <div class="preset-name">Documentation</div>
         <div class="preset-desc">Research &rarr; Write Docs &rarr; Review</div>
       </div>
-      <div class="preset-item" data-preset="devops" onclick="loadPreset('devops')">
-        <div class="preset-name">DevOps / Infrastructure</div>
-        <div class="preset-desc">Plan &rarr; Implement &rarr; Review &rarr; Test</div>
-      </div>
-      <div class="preset-item" data-preset="performance" onclick="loadPreset('performance')">
-        <div class="preset-name">Performance Optimization</div>
-        <div class="preset-desc">Profile &rarr; Optimize &rarr; Review &rarr; Test</div>
-      </div>
-      <div class="preset-item" data-preset="data_migration" onclick="loadPreset('data_migration')">
-        <div class="preset-name">Data Migration</div>
-        <div class="preset-desc">Research &rarr; Migrate &rarr; Review &rarr; Test</div>
-      </div>
-      <div class="preset-item" data-preset="testing" onclick="loadPreset('testing')">
-        <div class="preset-name">Testing</div>
-        <div class="preset-desc">Analyze &rarr; Write Tests &rarr; Review &rarr; Verify</div>
-      </div>
-      <div class="preset-item" data-preset="test_automation" onclick="loadPreset('test_automation')">
-        <div class="preset-name">Test Automation</div>
-        <div class="preset-desc">Plan + Explore App &rarr; [Feature | Screens | Steps] &rarr; Review</div>
-      </div>
-      <div class="preset-item" data-preset="review" onclick="loadPreset('review')">
-        <div class="preset-name">Code Review</div>
-        <div class="preset-desc">Analyze &rarr; Review &rarr; Improve &rarr; Validate</div>
-      </div>
-      <div class="preset-item" data-preset="parallel_research" onclick="loadPreset('parallel_research')">
-        <div class="preset-name">Parallel Research</div>
-        <div class="preset-desc">[Codebase | Docs | Patterns] &rarr; Synthesize</div>
-      </div>
-      <div class="preset-item" data-preset="swarm" onclick="loadPreset('swarm')">
-        <div class="preset-name">Agent Swarm</div>
-        <div class="preset-desc">[Security | Quality | Performance | Architecture] &rarr; Report</div>
+      <div class="preset-toggle" id="presetToggle" onclick="toggleMorePresets()">More presets&hellip;</div>
+      <div class="preset-more" id="presetMore">
+        <div class="preset-item" data-preset="devops" onclick="loadPreset('devops')">
+          <div class="preset-name">DevOps / Infrastructure</div>
+          <div class="preset-desc">Plan &rarr; Implement &rarr; Review &rarr; Test</div>
+        </div>
+        <div class="preset-item" data-preset="performance" onclick="loadPreset('performance')">
+          <div class="preset-name">Performance Optimization</div>
+          <div class="preset-desc">Profile &rarr; Optimize &rarr; Review &rarr; Test</div>
+        </div>
+        <div class="preset-item" data-preset="data_migration" onclick="loadPreset('data_migration')">
+          <div class="preset-name">Data Migration</div>
+          <div class="preset-desc">Research &rarr; Migrate &rarr; Review &rarr; Test</div>
+        </div>
+        <div class="preset-item" data-preset="testing" onclick="loadPreset('testing')">
+          <div class="preset-name">Testing</div>
+          <div class="preset-desc">Analyze &rarr; Write Tests &rarr; Review &rarr; Verify</div>
+        </div>
+        <div class="preset-item" data-preset="test_automation" onclick="loadPreset('test_automation')">
+          <div class="preset-name">Test Automation</div>
+          <div class="preset-desc">Plan + Explore App &rarr; [Feature | Screens | Steps] &rarr; Review</div>
+        </div>
+        <div class="preset-item" data-preset="review" onclick="loadPreset('review')">
+          <div class="preset-name">Code Review</div>
+          <div class="preset-desc">Analyze &rarr; Review &rarr; Improve &rarr; Validate</div>
+        </div>
+        <div class="preset-item" data-preset="parallel_research" onclick="loadPreset('parallel_research')">
+          <div class="preset-name">Parallel Research</div>
+          <div class="preset-desc">[Codebase | Docs | Patterns] &rarr; Synthesize</div>
+        </div>
+        <div class="preset-item" data-preset="swarm" onclick="loadPreset('swarm')">
+          <div class="preset-name">Agent Swarm</div>
+          <div class="preset-desc">[Security | Quality | Performance | Architecture] &rarr; Report</div>
+        </div>
       </div>
     </div>
   </div>
@@ -2634,7 +2644,20 @@ function generateFromStory() {
 // ═══════════════════════════════════════════════════════════
 // PRESETS
 // ═══════════════════════════════════════════════════════════
+function toggleMorePresets() {
+  const more = $('presetMore');
+  const btn = $('presetToggle');
+  const open = more.classList.toggle('open');
+  btn.textContent = open ? 'Fewer presets' : 'More presets\u2026';
+}
+
 function loadPreset(preset) {
+  // Auto-expand the "more" section if the selected preset lives there
+  const moreSection = $('presetMore');
+  if (moreSection && moreSection.querySelector(`[data-preset="${preset}"]`)) {
+    moreSection.classList.add('open');
+    $('presetToggle').textContent = 'Fewer presets';
+  }
   if (state.nodes.length > 0 && !confirm('This will replace your current workflow with the selected preset. Continue?')) return;
   // Only clear nodes and connections, preserve all user inputs (name, story, repos, app source)
   state.nodes = [];
