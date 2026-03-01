@@ -560,7 +560,7 @@ const NODE_DEFAULTS = {
   task: { w: 180, h: 52, color: '#10b981', icon: '\u2713', label: 'Task',
     config: { description: '', acceptance: '' }},
   decision: { w: 140, h: 80, color: '#f59e0b', icon: '?', label: 'Decision',
-    config: { condition: '', yesLabel: 'Yes', noLabel: 'No' }},
+    config: { condition: '', yesLabel: 'Yes', noLabel: 'No', maxRevisions: 3 }},
   parallel: { w: 220, h: 36, color: '#8b5cf6', icon: '\u2261', label: 'Parallel Fork',
     config: { strategy: 'all', description: '' }},
   input: { w: 180, h: 52, color: '#06b6d4', icon: '\u{1F4CB}', label: 'Input',
@@ -1829,6 +1829,7 @@ function updateConfig() {
     fields.innerHTML += configInput('Condition', 'condition', node.config.condition);
     fields.innerHTML += configInput('Yes Label', 'yesLabel', node.config.yesLabel);
     fields.innerHTML += configInput('No Label', 'noLabel', node.config.noLabel);
+    fields.innerHTML += configInput('Max Revisions', 'maxRevisions', node.config.maxRevisions || 3, 'number');
   } else if (node.type === 'parallel') {
     fields.innerHTML += configSelect('Strategy', 'strategy', node.config.strategy,
       [{ value:'all', label:'Wait for All' },{ value:'any', label:'First Complete' },{ value:'race', label:'Race' }]);
@@ -3123,9 +3124,9 @@ function genWorkflow() {
       const reviseConns = state.connections.filter(c => c.from === d.id && c.label === (d.config.noLabel || 'Revise'));
       const reviseTargets = reviseConns.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
       if (reviseTargets.length > 0) {
-        p.push(`  - ${d.config.noLabel || 'No'} \u2192 re-run ${reviseTargets.map(t => t.label).join(', ')} with feedback`);
+        p.push(`  - ${d.config.noLabel || 'No'} \u2192 re-run ${reviseTargets.map(t => t.label).join(', ')} with specific feedback (max ${d.config.maxRevisions || 3} revision cycles \u2014 after that, proceed with best version and document remaining concerns)`);
       } else {
-        p.push(`  - ${d.config.noLabel || 'No'} \u2192 re-run previous implementation step with feedback`);
+        p.push(`  - ${d.config.noLabel || 'No'} \u2192 re-run previous implementation step with specific feedback (max ${d.config.maxRevisions || 3} revision cycles \u2014 after that, proceed with best version and document remaining concerns)`);
       }
     }); p.push('');
   }
@@ -3269,7 +3270,7 @@ function genSubAgents() {
       promptLines.push('## Success Gate');
       downstreamDecisions.forEach(d => {
         promptLines.push(`Your output must clearly address: "${d.config.condition || d.label}"`);
-        promptLines.push(`Provide an explicit ${d.config.yesLabel || 'Pass'}/${d.config.noLabel || 'Fail'} verdict with supporting evidence.`);
+        promptLines.push(`Evaluate each criterion systematically, showing your reasoning. Then provide an explicit ${d.config.yesLabel || 'Pass'}/${d.config.noLabel || 'Fail'} verdict with supporting evidence. If ${d.config.noLabel || 'Fail'}, specify exactly what must change.`);
       });
       promptLines.push('');
     } else {
@@ -3353,6 +3354,39 @@ function genSubAgents() {
       i++;
     }
     stepNum++;
+  }
+
+  // Decision routing for orchestrator
+  const decisions = ordered.filter(n => n.type === 'decision');
+  if (decisions.length > 0) {
+    p.push('## Decision Routing');
+    p.push('');
+    p.push('After receiving output from the relevant agent, evaluate these gates yourself:');
+    p.push('');
+    decisions.forEach(d => {
+      const feeders = state.connections.filter(c => c.to === d.id).map(c => {
+        const n = state.nodes.find(nd => nd.id === c.from);
+        return n ? n.label : null;
+      }).filter(Boolean);
+      const reviseConns = state.connections.filter(c => c.from === d.id && c.label === (d.config.noLabel || 'Revise'));
+      const reviseTargets = reviseConns.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
+      const passConns = state.connections.filter(c => c.from === d.id && c.label === (d.config.yesLabel || 'Pass'));
+      const passTargets = passConns.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
+
+      p.push(`**${d.label}**: ${d.config.condition || 'Evaluate condition'}`);
+      if (feeders.length > 0) p.push(`- Review output from: ${feeders.join(', ')}`);
+      if (passTargets.length > 0) {
+        p.push(`- If **${d.config.yesLabel || 'Pass'}**: proceed to ${passTargets.map(t => t.label).join(', ')}`);
+      } else {
+        p.push(`- If **${d.config.yesLabel || 'Pass'}**: proceed to the next step`);
+      }
+      if (reviseTargets.length > 0) {
+        p.push(`- If **${d.config.noLabel || 'Revise'}**: re-spawn **${reviseTargets.map(t => t.label).join(', ')}** with the reviewer's feedback as additional context (max ${d.config.maxRevisions || 3} cycles)`);
+      } else {
+        p.push(`- If **${d.config.noLabel || 'Revise'}**: re-spawn the relevant agent with feedback (max ${d.config.maxRevisions || 3} cycles)`);
+      }
+      p.push('');
+    });
   }
 
   return p.join('\n');
@@ -3452,7 +3486,7 @@ function genAgentTeams() {
     if (downDec.length > 0) {
       downDec.forEach(d => {
         lines.push(`${pre}- **Success gate**: This teammate's output will be evaluated against: "${d.config.condition || d.label}"`);
-        lines.push(`${pre}  Tell them to provide an explicit ${d.config.yesLabel || 'Pass'}/${d.config.noLabel || 'Fail'} verdict with evidence.`);
+        lines.push(`${pre}  Tell them to evaluate each criterion systematically, show reasoning, then state an explicit ${d.config.yesLabel || 'Pass'}/${d.config.noLabel || 'Fail'} verdict. If ${d.config.noLabel || 'Fail'}, they must specify exactly what needs to change.`);
       });
     }
 
@@ -3519,9 +3553,9 @@ function genAgentTeams() {
       const _rcT = state.connections.filter(c => c.from === d.id && c.label === (d.config.noLabel || 'Revise'));
       const _rtT = _rcT.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
       if (_rtT.length > 0) {
-        p.push(`- If **${d.config.noLabel || 'No'}**: re-assign to **${_rtT.map(t => t.label).join(', ')}** with specific feedback on what needs to change`);
+        p.push(`- If **${d.config.noLabel || 'No'}**: re-assign to **${_rtT.map(t => t.label).join(', ')}** with specific feedback on what needs to change (max ${d.config.maxRevisions || 3} cycles — after that, proceed and document remaining issues)`);
       } else {
-        p.push(`- If **${d.config.noLabel || 'No'}**: re-assign to the relevant teammate with specific feedback on what needs to change`);
+        p.push(`- If **${d.config.noLabel || 'No'}**: re-assign to the relevant teammate with specific feedback on what needs to change (max ${d.config.maxRevisions || 3} cycles — after that, proceed and document remaining issues)`);
       }
       p.push('');
     });
@@ -3607,7 +3641,7 @@ function genAgentSDK() {
     const downDec = getDownstreamDecisions(node.id);
     if (downDec.length > 0) {
       downDec.forEach(d => {
-        instructions.push(`Success gate: Your output must address "${d.config.condition || d.label}". Provide an explicit ${d.config.yesLabel || 'Pass'}/${d.config.noLabel || 'Fail'} verdict.`);
+        instructions.push(`Success gate: Your output must address "${d.config.condition || d.label}". Evaluate each criterion, show your reasoning, then state an explicit ${d.config.yesLabel || 'Pass'}/${d.config.noLabel || 'Fail'} verdict. If ${d.config.noLabel || 'Fail'}, specify exactly what must change.`);
       });
     }
 
@@ -3808,7 +3842,7 @@ function genClaudePrompt() {
           const downDec = getDownstreamDecisions(s.id);
           if (downDec.length > 0) {
             downDec.forEach(d => {
-              p.push(`Success criteria: "${d.config.condition || d.label}" — provide a clear ${d.config.yesLabel || 'Pass'}/${d.config.noLabel || 'Fail'} verdict.`);
+              p.push(`Success criteria: "${d.config.condition || d.label}" — evaluate each criterion, show your reasoning, then state a clear ${d.config.yesLabel || 'Pass'}/${d.config.noLabel || 'Fail'} verdict.`);
             });
             p.push('');
           }
@@ -3836,13 +3870,13 @@ function genClaudePrompt() {
         const downDec = getDownstreamDecisions(node.id);
         if (downDec.length > 0) {
           downDec.forEach(d => {
-            p.push(`**Before proceeding**: Evaluate against "${d.config.condition || d.label}".`);
+            p.push(`**Before proceeding**: Evaluate against "${d.config.condition || d.label}". Show your assessment for each criterion before stating your verdict.`);
             const _rc = state.connections.filter(c => c.from === d.id && c.label === (d.config.noLabel || 'Revise'));
             const _rt = _rc.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
             if (_rt.length > 0) {
-              p.push(`If ${d.config.yesLabel || 'Pass'}: continue. If ${d.config.noLabel || 'Fail'}: go back to the ${_rt.map(t => t.label).join(', ')} step and revise until the criteria is met.`);
+              p.push(`If ${d.config.yesLabel || 'Pass'}: continue. If ${d.config.noLabel || 'Fail'}: go back to the ${_rt.map(t => t.label).join(', ')} step and revise. Maximum ${d.config.maxRevisions || 3} revision cycles — after that, proceed with the best available version and document any remaining concerns in your output.`);
             } else {
-              p.push(`If ${d.config.yesLabel || 'Pass'}: continue. If ${d.config.noLabel || 'Fail'}: go back and revise the implementation until the criteria is met.`);
+              p.push(`If ${d.config.yesLabel || 'Pass'}: continue. If ${d.config.noLabel || 'Fail'}: go back and revise the implementation. Maximum ${d.config.maxRevisions || 3} revision cycles — after that, proceed with the best available version and document any remaining concerns in your output.`);
             }
           });
           p.push('');
@@ -3868,9 +3902,9 @@ function genClaudePrompt() {
       const _rc2 = state.connections.filter(c => c.from === d.id && c.label === (d.config.noLabel || 'Revise'));
       const _rt2 = _rc2.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
       if (_rt2.length > 0) {
-        p.push(`If ${d.config.noLabel || 'no'}: go back to the ${_rt2.map(t => t.label).join(', ')} step and address the shortcomings.`);
+        p.push(`If ${d.config.noLabel || 'no'}: go back to the ${_rt2.map(t => t.label).join(', ')} step and address the shortcomings. Maximum ${d.config.maxRevisions || 3} revision cycles — if criteria still not met, proceed with best version and note remaining issues.`);
       } else {
-        p.push(`If ${d.config.noLabel || 'no'}: revisit the implementation step and address the shortcomings.`);
+        p.push(`If ${d.config.noLabel || 'no'}: revisit the implementation step and address the shortcomings. Maximum ${d.config.maxRevisions || 3} revision cycles — if criteria still not met, proceed with best version and note remaining issues.`);
       }
       p.push('');
     });
