@@ -1,6 +1,8 @@
 # Agentic Workflow Designer
 
-A visual, interactive playground for designing AI agent workflows from Jira tickets and user stories. Design multi-agent pipelines, configure each agent's role, model, and tools, then export optimized prompts ready to paste into Claude Code, Claude.ai, or the Anthropic Agent SDK.
+Turn any Jira ticket, user story, or task description into a production-quality agentic workflow in seconds. Built on context engineering best practices, the generated prompts give agents the right role, tools, context, and success criteria to produce predictably high-quality outcomes - not just "good enough" first drafts.
+
+Design multi-agent pipelines visually, configure each agent's role, model, and tools, then export optimized prompts ready to paste into Claude Code, Claude.ai, or the Anthropic Agent SDK.
 
 **[Try it live](https://bluewilliams.github.io/agentic-workflow-designer/)** - No install required, runs entirely in-browser.
 
