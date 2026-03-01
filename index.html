@@ -2996,16 +2996,16 @@ function getFormatRecommendation() {
   let rec, why;
   if (agentCount <= 2 && !hasParallel) {
     rec = 'claude';
-    why = 'Simple linear workflow \u2014 a single Claude conversation handles this well.';
+    why = 'Simple linear workflow - a single Claude conversation handles this well.';
   } else if (hasParallel && agentCount >= 4) {
     rec = 'teams';
-    why = 'Parallel agents with 4+ steps \u2014 Agent Teams can run them concurrently.';
+    why = 'Parallel agents with 4+ steps - Agent Teams can run them concurrently.';
   } else if (hasParallel || agentCount >= 3) {
     rec = 'subagent';
-    why = 'Multi-step workflow \u2014 Sub-Agents gives each step a focused context window.';
+    why = 'Multi-step workflow - Sub-Agents gives each step a focused context window.';
   } else {
     rec = 'claude';
-    why = 'Straightforward workflow \u2014 a single Claude conversation works well here.';
+    why = 'Straightforward workflow - a single Claude conversation works well here.';
   }
   return { format: rec, why };
 }

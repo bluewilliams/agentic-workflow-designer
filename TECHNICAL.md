@@ -81,7 +81,7 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 |------|-------|-------|---------|
 | **Agent** | Rounded rect | Blue | A Claude agent with configurable type, model, tools, prompt, notes, and max turns |
 | **Task** | Rounded rect | Green | A discrete unit of work with description + acceptance criteria (non-agent) |
-| **Decision** | Diamond | Amber | A conditional branch with yes/no routing based on agent output |
+| **Decision** | Diamond | Amber | A conditional branch with yes/no routing, configurable max revision cycles, and explicit reasoning requirements |
 | **Parallel** | Flat rect | Purple | Fork/Join control flow. Splits into concurrent branches or collects results |
 | **Input** | Pill | Cyan | Entry point: Jira ticket, user story, PRD, or custom input. Optional App Source Path and App Branch fields for test automation workflows |
 | **Output** | Pill | Rose | Deliverable: code changes, PR, report, or documentation. When format is PR, shows Branch Name and Target Branch fields |
@@ -152,6 +152,31 @@ When any output node has `format: pr`, the `prBlock()` helper injects PR creatio
 - **Graceful fallback**: if PR creation fails (auth, missing tool), pushes the branch and provides the user a URL to create the PR manually
 
 All presets default to `format: 'code'`. PR creation is strictly opt-in: users must select "Pull Request" from the Format dropdown and configure the branch fields.
+
+### Decision Gate Quality
+All export formats enforce structured decision evaluation:
+- **Reasoning requirement**: Agents must evaluate each criterion systematically and show reasoning before stating a verdict
+- **Revision limits**: Decision gates include a configurable max revision count (default 3) to prevent infinite loops. After the limit, agents proceed with the best version and document remaining concerns
+- **Decision Routing (Sub-Agents)**: The Sub-Agents format includes a dedicated "Decision Routing" section that tells the orchestrator exactly how to handle pass/fail results, including which agents to re-spawn on failure
+
+### Format Recommendations
+A smart banner above the export tabs analyzes the current workflow shape and suggests the best export format:
+- 1-2 agents, no parallel fork: Claude Prompt
+- 3+ agents or parallel fork: Sub-Agents
+- 4+ agents with parallel fork: Agent Teams
+
+The banner updates live as nodes are added or removed. Clicking the recommended format name switches tabs.
+
+### Requirements Scaffolding
+When a preset is loaded and the requirements field is empty, the textarea placeholder changes to a preset-specific template. All 14 presets have tailored templates (e.g. Bug Fix shows "Steps to reproduce / Expected behavior / Actual behavior", Feature shows "User story / Acceptance criteria / Relevant files"). Templates are placeholders only and never overwrite user content.
+
+### Acceptance Criteria Extraction
+`extractAcceptanceCriteria(text)` parses the story text for structured criteria:
+- Detects "Acceptance criteria:", "Definition of done:", "Done when:", etc. as section headers
+- Within an AC section, all bullet/numbered/checkbox items are captured
+- Outside an AC section, items containing requirement language (should, must, verify, ensure, etc.) are captured
+- Extracted criteria populate the decision gate `condition` field as a numbered list
+- Falls back to `'All review checks pass'` when no criteria are detected
 
 ### Topology Awareness in Exports
 All generators use `topologicalSort()` to process nodes in dependency order. Each agent's export block includes:
@@ -295,7 +320,7 @@ After generation, `autoLayout()` is called to arrange nodes cleanly.
 - **No undo/redo**: Changes are irreversible without clearing the canvas
 - **No multi-select**: Can only select one node or edge at a time
 - **Agent SDK export is pseudocode**: The Python output requires manual adaptation to real SDK patterns
-- **Decision routing in exports is informational**: The export describes decision gates but doesn't generate conditional execution code
+- **Decision routing in exports is informational**: Most exports describe decision gates as prompt instructions. The Sub-Agents format includes explicit routing, but the Agent SDK still requires manual conditional logic
 - **Memory is prompt-only**: No deterministic pre-compaction hook exists; agents rely on frequent writes and breadcrumb detection
 - **localStorage only**: Persistence is browser-local; clearing browser data deletes saved workflows
 
@@ -362,8 +387,15 @@ JavaScript:
   ├── MODE & ZOOM
   ├── AUTO LAYOUT
   ├── STORY PARSING & WORKFLOW GENERATION
+  │     ├── extractAcceptanceCriteria()  # AC extraction from story text
+  │     └── generateFromStory()          # keyword scoring + workflow shape selection
   ├── PRESETS
+  │     ├── loadPreset()                 # loads preset + updates story placeholder
+  │     ├── STORY_PLACEHOLDERS           # per-preset requirements templates
+  │     └── updateStoryPlaceholder()     # dynamic placeholder on story textarea
   ├── EXPORT FORMAT SYSTEM
+  │     ├── getFormatRecommendation()    # workflow shape analysis
+  │     ├── updateFormatRec()            # recommendation banner rendering
   │     ├── prBlock()          # PR creation prompt injection (when format=pr)
   │     ├── genWorkflow()      # Format 1: Workflow Markdown
   │     ├── genSubAgents()     # Format 2: Sub-Agent Task calls
@@ -392,4 +424,4 @@ JavaScript:
 
 ---
 
-*Last updated: 2026-02-28*
+*Last updated: 2026-03-01*

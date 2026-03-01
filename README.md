@@ -50,7 +50,7 @@ No install required. The memory protocol is embedded directly in the generated p
 ## Node Types
 
 - **Agent** - Configurable AI agent with role, model, tools, and prompt
-- **Decision** - Conditional gate with pass/fail criteria (integrated into agent prompts)
+- **Decision** - Conditional gate with pass/fail criteria, configurable max revision cycles (integrated into agent prompts with reasoning requirements)
 - **Parallel Fork** - Split workflow into concurrent branches
 - **Input** - Story/requirements entry point
 - **Output** - Deliverable definition (format: Code Changes, Pull Request, Report, or Documentation). When format is Pull Request, additional fields appear for Branch Name and Target Branch
@@ -59,7 +59,10 @@ No install required. The memory protocol is embedded directly in the generated p
 
 - **SVG canvas** with pan, zoom, and drag-and-drop
 - **Smart story detection** - auto-generates appropriate workflow from story keywords
-- **Decision gate integration** - downstream decisions are embedded as success criteria in agent prompts
+- **Decision gate integration** - downstream decisions are embedded as success criteria in agent prompts, with explicit reasoning requirements and configurable revision limits
+- **Format recommendations** - a smart banner above the export tabs suggests the best format based on your workflow shape (agent count, parallel forks)
+- **Requirements scaffolding** - preset-specific placeholder templates guide you to provide the right information (steps to reproduce for bugs, acceptance criteria for features, etc.)
+- **Acceptance criteria extraction** - when generating from requirements, bullet/numbered acceptance criteria are automatically extracted and used as decision gate conditions
 - **Workflow-aware prompts** - agents know their upstream dependencies and downstream consumers
 - **Save/Load workflows** - save by name, auto-restore work-in-progress on refresh, export/import `.json` for sharing
 - **Persistent preferences** - default model, memory toggle, export format, app source path, and repositories auto-save across sessions
