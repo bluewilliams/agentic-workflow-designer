@@ -48,6 +48,8 @@ No install required. The memory protocol is embedded directly in the generated p
 - **Parallel Research** - Codebase Explorer + Doc Researcher + Pattern Analyzer > Synthesizer
 - **Agent Swarm** - Security + Quality + Performance + Architecture audit > Report
 - **Test Automation** - [Test Planner | App Explorer] > parallel Feature Writer + Screen Objects + Step Definitions > Test Reviewer (with app source path + branch support)
+- **Refactoring** - Analyzer > Planner > parallel Extract + Restructure > Reviewer > Tester
+- **Documentation** - Researcher > Outline Writer > Draft Writer > Editor
 - **UI Design & Development** - Design System Analyzer > UI Implementer > UI Reviewer
 
 ## Node Types
@@ -95,9 +97,16 @@ Open `tests.html` in any browser to run the full test suite (129 tests, zero dep
 
 **CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3 (no npm). Use `--verbose` for failure details. Exit code 0 = all pass.
 
+## Requirements
+
+- Any modern browser (Chrome, Firefox, Safari, Edge)
+- No server, no build step, no dependencies
+
+For the CLI test runner (`run-tests.sh`): Chrome/Chromium + Python 3.
+
 ## Usage
 
-Open `index.html` in any modern browser. No dependencies, no build step, no server required.
+Open `index.html` in any modern browser. That's it.
 
 Or deploy via GitHub Pages - the file is named `index.html` so it works automatically.
 
