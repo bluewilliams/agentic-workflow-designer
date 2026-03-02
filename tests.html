@@ -375,6 +375,40 @@ describe('Pure Utilities', () => {
     expect(result).toContain('Complete the task');
   });
 
+  // Writer agent type and writing styles
+  it('should include writer in AGENT_TYPES', () => {
+    const writer = win.AGENT_TYPES.find(a => a.id === 'writer');
+    expect(!!writer).toBe(true);
+    expect(writer.name).toBe('Writer');
+    expect(win.AGENT_TYPES.length).toBe(11);
+  });
+  it('should return writerTechnical prompt for writer with default style', () => {
+    const node = { label:'Writer', config:{ prompt:'', agentType:'writer', notes:'' }};
+    const result = win.getEffectivePrompt(node);
+    expect(result).toContain('technical writer');
+  });
+  it('should return style-specific prompt for writer with writingStyle', () => {
+    const node = { label:'Writer', config:{ prompt:'', agentType:'writer', writingStyle:'business', notes:'' }};
+    const result = win.getEffectivePrompt(node);
+    expect(result).toContain('business writer');
+  });
+  it('should prefer custom prompt over writer template', () => {
+    const node = { label:'Writer', config:{ prompt:'My custom writing prompt', agentType:'writer', writingStyle:'api', notes:'' }};
+    expect(win.getEffectivePrompt(node)).toBe('My custom writing prompt');
+  });
+  it('should have PROMPTS key for each WRITING_STYLES entry', () => {
+    win.WRITING_STYLES.forEach(s => {
+      const key = 'writer' + win.capitalize(s.id);
+      expect(!!win.PROMPTS[key]).toBe(true);
+    });
+  });
+  it('should have WRITER_TOOL_DEFAULTS for each writing style', () => {
+    win.WRITING_STYLES.forEach(s => {
+      expect(Array.isArray(win.WRITER_TOOL_DEFAULTS[s.id])).toBe(true);
+      expect(win.WRITER_TOOL_DEFAULTS[s.id].length > 0).toBe(true);
+    });
+  });
+
   // getModelLabel
   it('should return correct label for known models', () => {
     expect(win.getModelLabel('opus-4.6')).toBe('Opus 4.6');
@@ -1081,6 +1115,12 @@ describe('Preset Loading', () => {
     win.loadPreset('documentation');
     expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
   });
+  it('should use writer agent type in documentation preset', () => {
+    win.loadPreset('documentation');
+    const dw = win.state.nodes.find(n => n.label === 'Doc Writer');
+    expect(dw.config.agentType).toBe('writer');
+    expect(dw.config.writingStyle).toBe('technical');
+  });
 
   // Behavior
   it('should clear previous nodes when loading preset', () => {
@@ -1211,7 +1251,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

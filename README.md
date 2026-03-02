@@ -57,7 +57,7 @@ No install required. The memory protocol is embedded directly in the generated p
 - **Test Automation** - [Test Planner | App Explorer] > parallel Feature Writer + Screen Objects + Step Definitions > Test Reviewer (with app source path + branch support)
 - **UI Design & Development** - Design System Analyzer > UI Implementer > UI Reviewer
 - **Refactoring** - Planner > Code Analyzer > Refactorer > Reviewer > Decision gate > Tester
-- **Documentation** - Planner > Researcher > Doc Writer > Doc Reviewer
+- **Documentation** - Planner > Researcher > Doc Writer (Writer: Technical) > Doc Reviewer
 - **DevOps** - Planner > DevOps Engineer > Reviewer > Decision gate > Tester
 - **Performance** - Planner > Profiler > Optimizer > Reviewer > Decision gate > Tester
 - **Testing** - Planner > Code Analyzer > Test Suite Writer > Reviewer > Decision gate > Tester
@@ -69,7 +69,7 @@ Click any node on the canvas to open its configuration panel. Each node type has
 
 ### Agent
 The core building block. Every agent can be individually configured:
-- **Agent Type** - Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, or General. Each type has a built-in prompt template that activates when you leave the prompt blank
+- **Agent Type** - Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, Writer, or General. Each type has a built-in prompt template that activates when you leave the prompt blank. Writer agents have a **Writing Style** selector (Technical, User Guide, Business, API Reference, Runbook) that auto-configures tools and prompt for each discipline
 - **Model** - Opus 4.6, Sonnet 4.6, Sonnet 4.5, Haiku 4.5. Set a default model in the sidebar; override per-node as needed
 - **Tools** - Toggle individual tools on/off: Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP. Presets assign sensible defaults (e.g. Reviewers get read-only tools, Coders get everything)
 - **Agent Prompt** - Custom instructions. Leave blank to use the agent type's built-in template, or write your own
@@ -135,7 +135,7 @@ Your default model, memory toggle, export format tab, app source path/branch, an
 
 ## Testing
 
-Open `tests.html` in any browser to run the full test suite (132 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, and workflow auto-naming. Green/red results render instantly with expandable failure details.
+Open `tests.html` in any browser to run the full test suite (139 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, and workflow auto-naming. Green/red results render instantly with expandable failure details.
 
 **CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3 (no npm). Use `--verbose` for failure details. Exit code 0 = all pass.
 
