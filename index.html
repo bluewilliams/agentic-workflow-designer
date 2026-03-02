@@ -3112,6 +3112,9 @@ function clearCanvas(skipConfirm) {
   if ($('appSourceBranch')) $('appSourceBranch').value = '';
   if ($('uiContextNotes')) $('uiContextNotes').value = '';
   if ($('urlPresetPicker')) $('urlPresetPicker').style.display = 'none';
+  state.memoryEnabled = false;
+  const _mcb = $('memoryToggle');
+  if (_mcb) { _mcb.checked = false; $('memoryPathField').style.display = 'none'; }
   render();
   updateConfig();
   updateMemoryPath();
