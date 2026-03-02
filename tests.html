@@ -1242,6 +1242,118 @@ describe('Workflow Auto-Naming', () => {
   });
 });
 
+// ─── Suite 14: Writer Agent Type ──────────────────────────
+describe('Writer Agent Type', () => {
+  beforeEach(() => { resetState(); });
+
+  // Config panel: Writing Style dropdown visibility
+  it('should show Writing Style dropdown when agent type is writer', () => {
+    const node = win.addNode('agent', 100, 200, 'Writer', { agentType:'writer', writingStyle:'technical', prompt:win.PROMPTS.writerTechnical });
+    win.selectNode(node.id);
+    win.updateConfig();
+    const styleSelect = win.document.querySelector('[data-key="writingStyle"]');
+    expect(!!styleSelect).toBe(true);
+  });
+  it('should not show Writing Style dropdown for non-writer agents', () => {
+    const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'Build it.' });
+    win.selectNode(node.id);
+    win.updateConfig();
+    const styleSelect = win.document.querySelector('[data-key="writingStyle"]');
+    expect(styleSelect).toBeNull();
+  });
+
+  // Config panel: agent type change to writer populates prompt
+  it('should populate prompt when switching agent type to writer', () => {
+    const node = win.addNode('agent', 100, 200, 'Agent', { agentType:'general', prompt:'' });
+    win.selectNode(node.id);
+    win.updateConfig();
+    // Simulate changing agent type to writer
+    const typeSelect = win.document.querySelector('[data-key="agentType"]');
+    typeSelect.value = 'writer';
+    typeSelect.dispatchEvent(new win.Event('change'));
+    expect(node.config.agentType).toBe('writer');
+    expect(node.config.writingStyle).toBe('technical');
+    expect(node.config.prompt).toContain('technical writer');
+  });
+
+  // Config panel: writing style change swaps prompt template
+  it('should swap prompt when writing style changes from template', () => {
+    const node = win.addNode('agent', 100, 200, 'Writer', {
+      agentType:'writer', writingStyle:'technical', prompt:win.PROMPTS.writerTechnical
+    });
+    win.selectNode(node.id);
+    win.updateConfig();
+    const styleSelect = win.document.querySelector('[data-key="writingStyle"]');
+    styleSelect.value = 'business';
+    styleSelect.dispatchEvent(new win.Event('change'));
+    expect(node.config.writingStyle).toBe('business');
+    expect(node.config.prompt).toContain('business writer');
+  });
+  it('should update tools when writing style changes', () => {
+    const node = win.addNode('agent', 100, 200, 'Writer', {
+      agentType:'writer', writingStyle:'technical',
+      tools:win.WRITER_TOOL_DEFAULTS.technical, prompt:win.PROMPTS.writerTechnical
+    });
+    win.selectNode(node.id);
+    win.updateConfig();
+    const styleSelect = win.document.querySelector('[data-key="writingStyle"]');
+    styleSelect.value = 'business';
+    styleSelect.dispatchEvent(new win.Event('change'));
+    expect(node.config.tools).toContain('WebSearch');
+    expect(node.config.tools).toContain('WebFetch');
+  });
+  it('should preserve custom prompt when writing style changes', () => {
+    const customPrompt = 'My own custom writing instructions here';
+    const node = win.addNode('agent', 100, 200, 'Writer', {
+      agentType:'writer', writingStyle:'technical', prompt:customPrompt
+    });
+    win.selectNode(node.id);
+    win.updateConfig();
+    const styleSelect = win.document.querySelector('[data-key="writingStyle"]');
+    styleSelect.value = 'runbook';
+    styleSelect.dispatchEvent(new win.Event('change'));
+    // Prompt should NOT be overwritten — user customized it
+    expect(node.config.prompt).toBe(customPrompt);
+    // But tools SHOULD update
+    expect(node.config.tools).toContain('Bash');
+  });
+
+  // Config panel: switching away from writer hides dropdown
+  it('should hide Writing Style dropdown when switching away from writer', () => {
+    const node = win.addNode('agent', 100, 200, 'Writer', {
+      agentType:'writer', writingStyle:'technical', prompt:win.PROMPTS.writerTechnical
+    });
+    win.selectNode(node.id);
+    win.updateConfig();
+    // Verify it's there first
+    expect(!!win.document.querySelector('[data-key="writingStyle"]')).toBe(true);
+    // Switch to coder
+    const typeSelect = win.document.querySelector('[data-key="agentType"]');
+    typeSelect.value = 'coder';
+    typeSelect.dispatchEvent(new win.Event('change'));
+    // After re-render, Writing Style dropdown should be gone
+    expect(win.document.querySelector('[data-key="writingStyle"]')).toBeNull();
+  });
+
+  // generateFromStory: doc workflow uses writer type
+  it('should use writer agent type for documentation story generation', () => {
+    win.document.getElementById('storyInput').value = 'Write comprehensive API documentation for the user management endpoints and add a wiki guide';
+    win.generateFromStory();
+    const docWriter = win.state.nodes.find(n => n.label === 'Doc Writer');
+    expect(docWriter.config.agentType).toBe('writer');
+    expect(docWriter.config.writingStyle).toBe('technical');
+    expect(docWriter.config.prompt).toContain('technical writer');
+  });
+
+  // Export: writer nodes produce correct prompt in exports
+  it('should include writer prompt in generated sub-agents export', () => {
+    win.document.getElementById('storyInput').value = 'Write comprehensive documentation and a README guide for the project architecture';
+    win.generateFromStory();
+    const output = win.genSubAgents();
+    expect(output).toContain('technical writer');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
