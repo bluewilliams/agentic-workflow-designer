@@ -37,7 +37,7 @@ The entire application is a **single `index.html` file** (~2,800 lines). There i
 │   (320px)    │                                  │
 │              ├──────────────────────────────────┤
 │              │      Prompt Output Panel         │
-│              │   (6 export format tabs)         │
+│              │   (5 export format tabs)         │
 └──────────────┴──────────────────────────────────┘
 ```
 
@@ -140,11 +140,8 @@ Generates Python code using the Anthropic Agent SDK patterns. Includes model fam
 ### 5. Claude Prompt
 A conversational prompt suitable for Claude.ai, structured as a role-assignment prompt with the full workflow described in natural language.
 
-### 6. Manifest (TOON v1)
-A portable, git-committable workflow definition using Token-Optimized Orchestration Notation. Contains the workflow name, story, agent graph, connection topology, parallel groups, decisions, outputs, memory path, and TOON key. Designed for sharing between colleagues, diffing across iterations, and machine-readable workflow portability.
-
 ### Pull Request Creation (`prBlock()`)
-When any output node has `format: pr`, the `prBlock()` helper injects PR creation instructions into all 6 export formats. The block includes:
+When any output node has `format: pr`, the `prBlock()` helper injects PR creation instructions into all 5 export formats. The block includes:
 - **Hard safety rule**: never commit or push directly to the target branch
 - **Branch name**: uses the user-provided name, or derives from ticket ID in requirements, or generates a descriptive name
 - **Target branch**: uses the user-provided value, or defaults to `main`
@@ -204,7 +201,7 @@ For `generateFromStory()`, decision gates are excluded from the criteria because
 `buildAgentSlugMap()` generates unique slugs for all agents. When multiple agents share a label (e.g. two "Reviewer" nodes), numeric suffixes are appended (`reviewer-1`, `reviewer-2`). Agents are sorted by node ID before suffix assignment for deterministic output across renders.
 
 ### Format-Specific Variants
-- **Multi-agent formats** (Sub-Agents, Agent Teams, Agent SDK, Manifest): Each agent gets its own `@{slug}.md` file, inter-agent handoffs flow through `shared.md`, and breadcrumbs include the agent identifier
+- **Multi-agent formats** (Sub-Agents, Agent Teams, Agent SDK): Each agent gets its own `@{slug}.md` file, inter-agent handoffs flow through `shared.md`, and breadcrumbs include the agent identifier
 - **Single-agent format** (Claude Prompt): Uses `genSingleAgentMemoryProtocol()` with a single `progress.md` file instead of per-agent files, since the entire workflow runs in one conversation
 
 ### Design Principle: Structural Injection Order
@@ -227,11 +224,10 @@ A compact structured notation for agent memory and inter-agent communication:
 | **Entry format** | `## @name \| ISO-ts \| status-emoji` then `d:` `f:` `→` `←` `!:` `💡:` lines |
 
 ### Memory Files
-Three file types stored at `~/.claude/workflow-memory/{workflow-slug}/`:
+Two file types stored at `~/.claude/workflow-memory/{workflow-slug}/`:
 
 | File | Access | Purpose |
 |------|--------|---------|
-| `manifest.md` | Read-only | Workflow definition (from Manifest export) |
 | `shared.md` | Append-only | Inter-agent communication channel |
 | `@{agent}.md` | Read/write (owning agent) | Per-agent progress and state |
 
@@ -240,7 +236,7 @@ Each agent ends every response with a breadcrumb comment:
 ```
 <!-- WF_BC: {workflow} @{agent} {ISO-timestamp} -->
 ```
-If an agent's previous breadcrumb is missing from context, compaction has occurred. The agent reads `manifest.md` + `shared.md` + `@{agent}.md` to recover full context before resuming work.
+If an agent's previous breadcrumb is missing from context, compaction has occurred. The agent reads `shared.md` + `@{agent}.md` to recover full context before resuming work.
 
 ### Inter-Agent Communication
 Downstream agents read `shared.md` to get upstream handoffs. Agents address each other with:
@@ -327,12 +323,11 @@ After generation, memory is auto-enabled if the workflow has parallel forks or 5
 | `prBlock()` prompt injection | PR instructions are only injected when at least one output node has `format: pr`. Provider detection via `git remote -v` works for GitHub, Bitbucket, and GitLab with graceful fallback |
 | TOON v1 for memory files | Compact notation reduces token usage in agent context while preserving structured state |
 | Memory auto-enable criteria | Parallel forks, decision loops, or 5+ agents. Simple linear chains stay off to avoid unnecessary overhead. `generateFromStory` excludes decision gates from criteria since it adds one to every code workflow by default |
-| Manifest as 6th format | Portable workflow definition enables sharing, diffing, and reproducibility |
 | localStorage for persistence | No server needed; keeps single-file portability; auto-save + named save + JSON export covers all sharing needs |
 | Debounced auto-save (1s) | Saves on every render without impacting interaction performance |
 | Separate prefs vs. workflow storage | Preferences (model, memory, format) persist globally; workflows persist individually by slug |
 | App Under Test after Presets | Contextual placement. Appears directly below the preset that triggers it (Test Automation) |
-| Repositories between Default Model and Add Nodes | Always visible. Persists across sessions (prefs) and saved workflows. Injected into all 6 export formats |
+| Repositories between Default Model and Add Nodes | Always visible. Persists across sessions (prefs) and saved workflows. Injected into all 5 export formats |
 
 ---
 
@@ -379,7 +374,7 @@ HTML structure (lines 232–380)
   ├── Sidebar: Workflow Name, Story Input, Default Model, Repositories,
   │            Add Nodes, Presets, App Under Test (conditional), Saved Workflows, Tip, Memory, Node Config
   ├── Canvas: Toolbar, SVG canvas, Empty state
-  └── Prompt Output: 6 format tabs, Copy button
+  └── Prompt Output: 5 format tabs, Copy button
 JavaScript:
   ├── STATE & CONSTANTS
   │     ├── NODE_DEFAULTS, AGENT_TYPES, ALL_TOOLS, MODELS
@@ -427,8 +422,7 @@ JavaScript:
   │     ├── genSubAgents()     # Format 2: Sub-Agent Task calls
   │     ├── genAgentTeams()    # Format 3: Agent Teams brief
   │     ├── genAgentSDK()      # Format 4: Python SDK code
-  │     ├── genClaudePrompt()  # Format 5: Claude conversational prompt
-  │     └── genManifest()      # Format 6: TOON v1 Manifest
+  │     └── genClaudePrompt()  # Format 5: Claude conversational prompt
   └── INIT
         ├── initDefaultModelSelect()
         ├── restorePrefs()
@@ -444,12 +438,12 @@ JavaScript:
 
 **How it works**: Loads `index.html` in a hidden `<iframe>`, accesses its `contentWindow` for all functions, state, and DOM. Tests run against the real app with real localStorage and real initialization.
 
-**Coverage** (137 tests across 14 suites):
+**Coverage** (132 tests across 13 suites):
 - **Pure utilities**: `slugify`, `extractAcceptanceCriteria`, `isUrlOnly`, `getEffectivePrompt`, `getModelLabel`
 - **State management**: `addNode`, `addConnection`, `deleteNode`, `buildAgentSlugMap`, `topologicalSort`
 - **Persistence**: serialize/deserialize roundtrips, prefs save/restore, workflow save/load
 - **Memory protocol**: path generation, TOON notation, slug collisions, auto-enable logic
-- **Export generators**: all 6 formats (Workflow, Sub-Agents, Agent Teams, Agent SDK, Claude Prompt, Manifest) with memory on/off
+- **Export generators**: all 5 formats (Workflow, Sub-Agents, Agent Teams, Agent SDK, Claude Prompt) with memory on/off
 - **Workflow generation**: keyword scoring, structural properties, AC extraction
 - **Preset loading**: agent count verification for all 10 presets, memory auto-enable behavior
 - **Format recommendations**: agent count and parallel fork heuristics
