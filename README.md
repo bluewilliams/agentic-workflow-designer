@@ -118,7 +118,7 @@ Some presets reveal additional sidebar sections:
 - **Memory Protocol** - optional compaction-resilient memory with TOON v1 notation, auto-enabled for complex workflows
 - **Pull Request creation** - opt-in PR output format with git provider auto-detection (GitHub, Bitbucket, GitLab), configurable feature branch and target branch, and safety-first prompt injection. All presets default to Code Changes; PR creation requires explicit opt-in
 - **Custom workflows** - add your own nodes and connections; export generators add smart scaffolding automatically
-- **Model selection** - Sonnet 4.5/4.6, Opus 4.5/4.6, Haiku 4.5 per node. 4.5 variants inject `/model` override instructions in Sub-Agents export since the Task tool defaults to latest. Full model IDs shown in all exports
+- **Model selection** - Sonnet 4.5/4.6, Opus 4.5/4.6, Haiku 4.5 per node. Full model IDs (e.g. `claude-opus-4-6`, `claude-sonnet-4-5-20251001`) are passed directly in all exports for precise version control
 
 ## Save & Load
 

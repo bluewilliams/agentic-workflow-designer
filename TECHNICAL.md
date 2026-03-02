@@ -453,7 +453,7 @@ JavaScript:
 - **Format recommendations**: agent count and parallel fork heuristics
 - **Workflow auto-naming**: name generation format, variety, empty-field population, user name preservation
 - **Writer Agent Type**: config panel interactions, writing style switching, prompt/tool updates, export output
-- **Model Version Handling**: `isNonLatestModel` detection, `/model` override injection in Sub-Agents export, full model IDs in exports
+- **Model Version Handling**: Full model IDs (e.g. `claude-opus-4-6`, `claude-sonnet-4-5-20251001`) passed directly in Task tool `model` parameter and all export formats
 
 **Running tests in a browser**: Open `tests.html` in a browser. Results render immediately — green/red badges per suite, expandable failure details with expected vs actual values.
 
