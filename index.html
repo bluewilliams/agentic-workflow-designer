@@ -617,7 +617,9 @@ const MODELS = [
 function getModelLabel(val) { const m = MODELS.find(m => m.value === val); return m ? m.label : val; }
 function getModelFamily(val) { const m = MODELS.find(m => m.value === val); return m ? m.family : val; }
 function getModelId(val) { const m = MODELS.find(m => m.value === val); return m ? m.id : val; }
-function isNonLatestModel(val) { return val === 'sonnet' || val === 'opus'; }
+// Latest (4.6) models use shorthand aliases; 4.5 models use full IDs for precise version pinning
+const taskModelMap = { 'sonnet-4.6': 'sonnet', 'opus-4.6': 'opus', 'haiku': 'haiku' };
+function getTaskModelParam(val) { return taskModelMap[val] || getModelId(val); }
 
 // ── Atlassian URL detection ──────────────────────────────────────────────────
 // Matches cloud (*.atlassian.net) and common self-hosted (jira.*, confluence.*) URLs
@@ -3371,7 +3373,7 @@ function genWorkflow() {
         siblings.forEach(s => {
           const sAt = getAgentTypeName(s.config.agentType);
           p.push(`  **${s.label}** (${sAt} Agent)`);
-          p.push(`  - Model: ${getModelLabel(s.config.model)} (\`${getModelId(s.config.model)}\`)`);
+          p.push(`  - Model: ${getModelLabel(s.config.model)} (\`${getTaskModelParam(s.config.model)}\`)`);
           if (s.config.tools.length > 0) p.push(`  - Tools: ${s.config.tools.join(', ')}`);
           p.push(`  - Instructions: ${getEffectivePrompt(s)}`);
           if (s.config.notes && s.config.notes.trim()) p.push(`  - Context: ${s.config.notes.trim()}`);
@@ -3382,7 +3384,7 @@ function genWorkflow() {
         const deps = getDeps(node.id);
         const at = getAgentTypeName(node.config.agentType);
         p.push(`**Step ${stepNum}: ${node.label}** (${at} Agent)`);
-        p.push(`- Model: ${getModelLabel(node.config.model)} (\`${getModelId(node.config.model)}\`)`);
+        p.push(`- Model: ${getModelLabel(node.config.model)} (\`${getTaskModelParam(node.config.model)}\`)`);
         if (node.config.tools.length > 0) p.push(`- Tools: ${node.config.tools.join(', ')}`);
         p.push(`- Instructions: ${getEffectivePrompt(node)}`);
         if (node.config.notes && node.config.notes.trim()) p.push(`- Additional context: ${node.config.notes.trim()}`);
@@ -3513,21 +3515,10 @@ function genSubAgents() {
     });
   });
 
-  // Map internal model value to Claude Code Task tool model shorthand
-  const taskModelMap = { 'sonnet-4.6': 'sonnet', 'opus-4.6': 'opus', 'sonnet': 'sonnet', 'opus': 'opus', 'haiku': 'haiku' };
-
   function emitAgentBlock(node, promptLines) {
-    const taskModel = taskModelMap[node.config.model] || 'sonnet';
-    // For non-latest model versions, inject a /model override at the top of the prompt
-    if (isNonLatestModel(node.config.model)) {
-      const fullId = getModelId(node.config.model);
-      promptLines.unshift(
-        `IMPORTANT: Run \`/model ${fullId}\` before starting any work. The Task tool defaults to the latest model version — this override ensures you use ${getModelLabel(node.config.model)}.`,
-        ''
-      );
-    }
+    const modelParam = getTaskModelParam(node.config.model);
     p.push('```');
-    p.push(`Task(subagent_type="general-purpose", model="${taskModel}", prompt="`);
+    p.push(`Task(subagent_type="general-purpose", model="${modelParam}", prompt="`);
     p.push(promptLines.join('\n'));
     p.push('")');
     p.push('```');
@@ -3630,7 +3621,7 @@ function genSubAgents() {
         emitAgentBlock(s, buildAgentPrompt(s));
         p.push('');
         p.push(`- **Agent type**: ${at}`);
-        p.push(`- **Model**: ${getModelLabel(s.config.model)} (\`${s.config.model}\`)`);
+        p.push(`- **Model**: ${getModelLabel(s.config.model)} (\`${getTaskModelParam(s.config.model)}\`)`);
         p.push(`- **Tools**: ${s.config.tools.join(', ')}`);
         p.push(`- **Max turns**: ${s.config.maxTurns}`);
         if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
@@ -3645,7 +3636,7 @@ function genSubAgents() {
       emitAgentBlock(node, buildAgentPrompt(node));
       p.push('');
       p.push(`- **Agent type**: ${at}`);
-      p.push(`- **Model**: ${getModelLabel(node.config.model)} (\`${getModelId(node.config.model)}\`)`);
+      p.push(`- **Model**: ${getModelLabel(node.config.model)} (\`${getTaskModelParam(node.config.model)}\`)`);
       p.push(`- **Tools**: ${node.config.tools.join(', ')}`);
       p.push(`- **Max turns**: ${node.config.maxTurns}`);
       if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
@@ -3752,7 +3743,7 @@ function genAgentTeams() {
     const lines = [];
 
     lines.push(`${pre}**Teammate: "${node.label}"** (${at})`);
-    lines.push(`${pre}- Model: \`${getModelId(node.config.model)}\` (${getModelLabel(node.config.model)})`);
+    lines.push(`${pre}- Model: \`${getTaskModelParam(node.config.model)}\` (${getModelLabel(node.config.model)})`);
     lines.push(`${pre}- Tools: ${node.config.tools.join(', ')}`);
     lines.push(`${pre}- Max turns: ${node.config.maxTurns}`);
 
