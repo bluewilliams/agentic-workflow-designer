@@ -17,7 +17,7 @@ All data stays in your browser (localStorage). Nothing is sent to a server. Expo
 1. **Paste your requirements** - a Jira URL, user story, task description, or any freeform text. Jira links are detected automatically and resolved via the Atlassian MCP server
 2. **Build a workflow** - auto-generate from your input, choose from 14 curated presets, or build one manually from the node palette
 3. **Configure each agent** - model, tools, prompt, max turns
-4. **Export** in 6 formats optimized for different execution environments
+4. **Export** in 5 formats optimized for different execution environments
 5. **Save & load workflows** by name, export/import as `.json` files for sharing
 6. **Enable Memory Protocol** (optional) for compaction-resilient workflows with TOON notation
 
@@ -30,7 +30,6 @@ All data stays in your browser (localStorage). Nothing is sent to a server. Expo
 | **Agent Teams** | Claude Code Teams | Team lead brief with TeamCreate/TaskCreate delegation plan |
 | **Agent SDK** | Anthropic Agent SDK | Python skeleton with agent configs and async orchestration |
 | **Claude Prompt** | Claude.ai / API | Step-by-step role-based prompt for single-agent execution |
-| **Manifest** | Portability & sharing | TOON v1 workflow definition. Git-committable, diff-friendly |
 
 ## Memory Protocol
 
@@ -40,7 +39,7 @@ Toggle **Enable workflow memory** in the sidebar to inject a compaction-resilien
 - Each agent writes progress + breadcrumb **after** completing work (final step)
 - Compaction recovery is automatic. Agents detect missing breadcrumbs and re-read state from disk
 - Inter-agent communication flows through `shared.md` using TOON notation
-- Memory files: `manifest.md` (read-only), `shared.md` (append-only), `@{agent}.md` (per-agent)
+- Memory files: `shared.md` (append-only), `@{agent}.md` (per-agent)
 - Duplicate agent labels are handled automatically with unique slug suffixes
 
 Memory auto-enables for complex workflows (parallel forks, decision gate loops, or 5+ agents) when loading presets or generating from a story. Workflows created without a name get an auto-generated two-part name (e.g. `swift-falcon`) so every workflow has a unique memory path. You can always overwrite the name or toggle memory off manually.
@@ -117,7 +116,6 @@ Some presets reveal additional sidebar sections:
 - **Persistent preferences** - default model, memory toggle, export format, app source path, and repositories auto-save across sessions
 - **Multi-repository support** - specify multiple repos with branches; agents check out the right branch and pull latest before starting
 - **Memory Protocol** - optional compaction-resilient memory with TOON v1 notation, auto-enabled for complex workflows
-- **TOON Manifest** - portable, git-friendly workflow definition format
 - **Pull Request creation** - opt-in PR output format with git provider auto-detection (GitHub, Bitbucket, GitLab), configurable feature branch and target branch, and safety-first prompt injection. All presets default to Code Changes; PR creation requires explicit opt-in
 - **Custom workflows** - add your own nodes and connections; export generators add smart scaffolding automatically
 - **Model selection** - Sonnet 4.5/4.6, Opus 4.5/4.6, Haiku 4.5 with correct Task tool keys
@@ -137,7 +135,7 @@ Your default model, memory toggle, export format tab, app source path/branch, an
 
 ## Testing
 
-Open `tests.html` in any browser to run the full test suite (137 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 6 export generators, workflow generation, preset loading, format recommendations, and workflow auto-naming. Green/red results render instantly with expandable failure details.
+Open `tests.html` in any browser to run the full test suite (132 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, and workflow auto-naming. Green/red results render instantly with expandable failure details.
 
 **CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3 (no npm). Use `--verbose` for failure details. Exit code 0 = all pass.
 
