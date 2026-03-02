@@ -29,7 +29,7 @@ All data stays in your browser (localStorage). Nothing is sent to a server. Expo
 | **Sub-Agents** | Claude Code (Task tool) | Ready-to-paste Task tool calls with comprehensive prompts |
 | **Agent Teams** | Claude Code Teams | Team lead brief with TeamCreate/TaskCreate delegation plan |
 | **Agent SDK** | Anthropic Agent SDK | Python skeleton with agent configs and async orchestration |
-| **Claude Prompt** | Claude.ai / API | Step-by-step role-based prompt for single-agent execution |
+| **Claude.ai** | Claude.ai / API | Step-by-step role-based prompt for single-agent execution |
 
 ## Memory Protocol
 

@@ -137,7 +137,7 @@ Generates a "team lead brief" for use with the experimental Claude Code Agent Te
 ### 4. Agent SDK (Python)
 Generates Python code using the Anthropic Agent SDK patterns. Includes model family mapping (e.g., `claude-sonnet-4-5-20251001`), tool lists, and agent prompt construction. Useful for programmatic workflow execution.
 
-### 5. Claude Prompt
+### 5. Claude.ai
 A conversational prompt suitable for Claude.ai, structured as a role-assignment prompt with the full workflow described in natural language.
 
 ### Pull Request Creation (`prBlock()`)
@@ -158,7 +158,7 @@ All export formats enforce structured decision evaluation:
 
 ### Format Recommendations
 A smart banner above the export tabs analyzes the current workflow shape and suggests the best export format:
-- 1-2 agents, no parallel fork: Claude Prompt
+- 1-2 agents, no parallel fork: Claude.ai
 - 3+ agents or parallel fork: Sub-Agents
 - 4+ agents with parallel fork: Agent Teams
 
@@ -202,7 +202,7 @@ For `generateFromStory()`, decision gates are excluded from the criteria because
 
 ### Format-Specific Variants
 - **Multi-agent formats** (Sub-Agents, Agent Teams, Agent SDK): Each agent gets its own `@{slug}.md` file, inter-agent handoffs flow through `shared.md`, and breadcrumbs include the agent identifier
-- **Single-agent format** (Claude Prompt): Uses `genSingleAgentMemoryProtocol()` with a single `progress.md` file instead of per-agent files, since the entire workflow runs in one conversation
+- **Single-agent format** (Claude.ai): Uses `genSingleAgentMemoryProtocol()` with a single `progress.md` file instead of per-agent files, since the entire workflow runs in one conversation
 
 ### Design Principle: Structural Injection Order
 Memory instructions are **structurally embedded** in each agent's prompt flow, not appended as an afterthought:
@@ -390,7 +390,7 @@ JavaScript:
   │     ├── genMemoryProtocol()            # orchestrator-level memory block
   │     ├── genAgentMemoryPreamble()       # per-agent read-first (step 0)
   │     ├── genAgentMemoryPostamble()      # per-agent write-last (final steps)
-  │     └── genSingleAgentMemoryProtocol() # simplified memory for Claude Prompt format
+  │     └── genSingleAgentMemoryProtocol() # simplified memory for Claude.ai format
   ├── PERSISTENCE (localStorage)
   │     ├── showToast()                # reusable toast notification
   │     ├── savePrefs(), restorePrefs() # preference auto-save/restore
@@ -422,7 +422,7 @@ JavaScript:
   │     ├── genSubAgents()     # Format 2: Sub-Agent Task calls
   │     ├── genAgentTeams()    # Format 3: Agent Teams brief
   │     ├── genAgentSDK()      # Format 4: Python SDK code
-  │     └── genClaudePrompt()  # Format 5: Claude conversational prompt
+  │     └── genClaudePrompt()  # Format 5: Claude.ai single-conversation prompt
   └── INIT
         ├── initDefaultModelSelect()
         ├── restorePrefs()
@@ -443,7 +443,7 @@ JavaScript:
 - **State management**: `addNode`, `addConnection`, `deleteNode`, `buildAgentSlugMap`, `topologicalSort`
 - **Persistence**: serialize/deserialize roundtrips, prefs save/restore, workflow save/load
 - **Memory protocol**: path generation, TOON notation, slug collisions, auto-enable logic
-- **Export generators**: all 5 formats (Workflow, Sub-Agents, Agent Teams, Agent SDK, Claude Prompt) with memory on/off
+- **Export generators**: all 5 formats (Workflow, Sub-Agents, Agent Teams, Agent SDK, Claude.ai) with memory on/off
 - **Workflow generation**: keyword scoring, structural properties, AC extraction
 - **Preset loading**: agent count verification for all 10 presets, memory auto-enable behavior
 - **Format recommendations**: agent count and parallel fork heuristics

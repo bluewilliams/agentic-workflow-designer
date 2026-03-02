@@ -536,7 +536,7 @@ svg.canvas{width:100%;height:100%;display:block}
       <button class="format-tab" data-format="subagent" onclick="setExportFormat('subagent')">Sub-Agents</button>
       <button class="format-tab" data-format="teams" onclick="setExportFormat('teams')">Agent Teams<span class="tab-badge">Preview</span></button>
       <button class="format-tab" data-format="sdk" onclick="setExportFormat('sdk')">Agent SDK<span class="tab-badge">Python</span></button>
-      <button class="format-tab" data-format="claude" onclick="setExportFormat('claude')">Claude Prompt</button>
+      <button class="format-tab" data-format="claude" onclick="setExportFormat('claude')">Claude.ai</button>
     </div>
     <div class="prompt-actions">
       <button class="btn sm primary" onclick="copyPrompt()">Copy</button>
@@ -1339,7 +1339,7 @@ function genAgentMemoryPostamble(agentLabel, slug) {
   return p.join('\n');
 }
 
-// Single-agent memory variant for Claude Prompt format (one conversation, all roles)
+// Single-agent memory variant for Claude.ai format (one conversation, all roles)
 function genSingleAgentMemoryProtocol() {
   const path = getMemoryPath();
   const wfName = getName() || 'workflow';
@@ -3095,7 +3095,7 @@ function updateFormatRec() {
   if (!el) return;
   const rec = getFormatRecommendation();
   if (!rec) { el.innerHTML = ''; return; }
-  const labels = { prompt:'Workflow', subagent:'Sub-Agents', teams:'Agent Teams', sdk:'Agent SDK', claude:'Claude Prompt' };
+  const labels = { prompt:'Workflow', subagent:'Sub-Agents', teams:'Agent Teams', sdk:'Agent SDK', claude:'Claude.ai' };
   if (state.exportFormat === rec.format) {
     el.innerHTML = '\u2705 ' + rec.why;
   } else {
@@ -3960,7 +3960,7 @@ function genAgentSDK() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// FORMAT 5: Claude Prompt (for Claude.ai / API)
+// FORMAT 5: Claude.ai (single-conversation prompt)
 // ═══════════════════════════════════════════════════════════
 function genClaudePrompt() {
   const story = getStory(), name = getName();
