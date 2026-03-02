@@ -1115,6 +1115,38 @@ describe('Preset Loading', () => {
     win.loadPreset('documentation');
     expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
   });
+  it('should load devops preset with 4 agents', () => {
+    win.loadPreset('devops');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+  });
+  it('should load performance preset with 5 agents', () => {
+    win.loadPreset('performance');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+  });
+  it('should load testing preset with 5 agents', () => {
+    win.loadPreset('testing');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+  });
+  it('should load data_migration preset with 5 agents', () => {
+    win.loadPreset('data_migration');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+  });
+  it('should enable memory for devops preset', () => {
+    win.loadPreset('devops');
+    expect(win.state.memoryEnabled).toBe(true);
+  });
+  it('should enable memory for performance preset', () => {
+    win.loadPreset('performance');
+    expect(win.state.memoryEnabled).toBe(true);
+  });
+  it('should enable memory for testing preset', () => {
+    win.loadPreset('testing');
+    expect(win.state.memoryEnabled).toBe(true);
+  });
+  it('should enable memory for data_migration preset', () => {
+    win.loadPreset('data_migration');
+    expect(win.state.memoryEnabled).toBe(true);
+  });
   it('should use writer agent type in documentation preset', () => {
     win.loadPreset('documentation');
     const dw = win.state.nodes.find(n => n.label === 'Doc Writer');
@@ -1242,7 +1274,7 @@ describe('Workflow Auto-Naming', () => {
   });
 });
 
-// ─── Suite 14: Writer Agent Type ──────────────────────────
+// ─── Suite 10: Writer Agent Type ─────────────────────────
 describe('Writer Agent Type', () => {
   beforeEach(() => { resetState(); });
 

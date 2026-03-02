@@ -3936,8 +3936,10 @@ function genAgentSDK() {
     p.push(`    requirements = """`);
     p.push(`    ${story}`);
     p.push('    """');
-    p.push('');
+  } else {
+    p.push('    requirements = "Start the workflow"');
   }
+  p.push('');
   const _sdkApp = getAppSource();
   if (_sdkApp) {
     p.push(`    app_source_path = "${_sdkApp.path}"  # READ-ONLY — explore for selectors, do not modify`);
@@ -3980,7 +3982,7 @@ function genAgentSDK() {
   });
 
   let i = 0;
-  let lastResultVar = 'requirements' + (story ? '' : ' = "Start the workflow"');
+  let lastResultVar = 'requirements';
   while (i < agents.length) {
     const node = agents[i];
     const varName = node.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();

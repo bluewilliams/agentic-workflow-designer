@@ -27,7 +27,7 @@ The Agentic Workflow Designer is a **visual, browser-based playground** that bri
 ## Architecture
 
 ### Single-File Design
-The entire application is a **single `index.html` file** (~2,800 lines). There is no build step, no server, no dependencies. Open the file in a browser and it works. This is intentional: it keeps the tool portable, shareable as a GitHub link, and trivially deployable as a static page.
+The entire application is a **single `index.html` file** (~4,200 lines). There is no build step, no server, no dependencies. Open the file in a browser and it works. This is intentional: it keeps the tool portable, shareable as a GitHub link, and trivially deployable as a static page.
 
 ### Layout Grid
 ```
@@ -362,7 +362,7 @@ After generation, memory is auto-enabled if the workflow has parallel forks or 5
 ```
 agentic-workflow-designer/
 ├── index.html       # The entire application (~4,300 lines)
-├── tests.html       # iframe-based test suite (~1,210 lines, 148 tests)
+├── tests.html       # iframe-based test suite (~1,210 lines, 156 tests)
 ├── run-tests.sh     # Headless CLI test runner (Chrome + Python 3, zero npm deps)
 ├── TECHNICAL.md     # This document
 ├── README.md        # User-facing overview
@@ -372,8 +372,8 @@ agentic-workflow-designer/
 
 The `index.html` is internally organized into clearly delimited sections:
 ```
-CSS styles (lines 7–230)
-HTML structure (lines 232–380)
+CSS styles (lines 7–258)
+HTML structure (lines 259–559)
   ├── Sidebar: Workflow Name, Story Input, Default Model, Repositories,
   │            Add Nodes, Presets, App Under Test (conditional), Saved Workflows, Tip, Memory, Node Config
   ├── Canvas: Toolbar, SVG canvas, Empty state
@@ -442,14 +442,14 @@ JavaScript:
 
 **How it works**: Loads `index.html` in a hidden `<iframe>`, accesses its `contentWindow` for all functions, state, and DOM. Tests run against the real app with real localStorage and real initialization.
 
-**Coverage** (148 tests across 14 suites):
+**Coverage** (156 tests across 10 suites):
 - **Pure utilities**: `slugify`, `extractAcceptanceCriteria`, `isUrlOnly`, `getEffectivePrompt`, `getModelLabel`
 - **State management**: `addNode`, `addConnection`, `deleteNode`, `buildAgentSlugMap`, `topologicalSort`
 - **Persistence**: serialize/deserialize roundtrips, prefs save/restore, workflow save/load
 - **Memory protocol**: path generation, TOON notation, slug collisions, auto-enable logic
 - **Export generators**: all 5 formats (Workflow, Sub-Agents, Agent Teams, Agent SDK, Claude.ai) with memory on/off
 - **Workflow generation**: keyword scoring, structural properties, AC extraction
-- **Preset loading**: agent count verification for all 10 presets, memory auto-enable behavior
+- **Preset loading**: agent count verification for all 14 presets, memory auto-enable behavior
 - **Format recommendations**: agent count and parallel fork heuristics
 - **Workflow auto-naming**: name generation format, variety, empty-field population, user name preservation
 - **Writer Agent Type**: config panel interactions, writing style switching, prompt/tool updates, export output
@@ -463,7 +463,7 @@ JavaScript:
 ## Development Guidelines
 
 - **Keep it single-file**: Resist the urge to add a build step unless complexity demands it
-- **Run tests after changes**: Run `./run-tests.sh` from CLI or open `tests.html` in a browser. All 148 tests should pass
+- **Run tests after changes**: Run `./run-tests.sh` from CLI or open `tests.html` in a browser. All 156 tests should pass
 - **Render on demand**: Call `render()` and `updatePrompt()` after any state mutation (`render()` triggers auto-save automatically)
 - **Export completeness**: Every export format must include the full user story as context. Never assume the recipient has seen it
 - **Prompt quality first**: The quality of exported prompts is the product's core value proposition. `getEffectivePrompt()` and the `PROMPTS` library are the most important code in the file
