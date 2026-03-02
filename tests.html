@@ -662,7 +662,7 @@ describe('Memory Protocol', () => {
   });
   it('should include file structure in memory protocol', () => {
     const proto = win.genMemoryProtocol();
-    expect(proto).toContain('manifest.md');
+    expect(proto).toNotContain('manifest.md');
     expect(proto).toContain('shared.md');
     expect(proto).toContain('@{slug}.md');
   });
@@ -678,7 +678,7 @@ describe('Memory Protocol', () => {
   it('should include recovery instructions in memory preamble', () => {
     const pre = win.genAgentMemoryPreamble('Planner', 'planner');
     expect(pre).toContain('compaction occurred');
-    expect(pre).toContain('manifest.md');
+    expect(pre).toNotContain('manifest.md');
     expect(pre).toContain('shared.md');
   });
   it('should include breadcrumb template in memory postamble', () => {
@@ -938,39 +938,6 @@ describe('Export: genClaudePrompt', () => {
     win.document.getElementById('storyInput').value = 'Claude req text';
     const out = win.genClaudePrompt();
     expect(out).toContain('Claude req text');
-  });
-});
-
-describe('Export: genManifest', () => {
-  beforeEach(() => { resetState(); });
-
-  it('should include TOON v1 header', () => {
-    buildTestWorkflow('linear');
-    const out = win.genManifest();
-    expect(out).toContain('#toon: v1');
-  });
-  it('should include agents section with @ slugs', () => {
-    buildTestWorkflow('linear');
-    const out = win.genManifest();
-    expect(out).toContain('@planner');
-    expect(out).toContain('@implementer');
-  });
-  it('should include graph section with arrows', () => {
-    buildTestWorkflow('linear');
-    const out = win.genManifest();
-    expect(out).toMatch(/→/);
-  });
-  it('should include memory protocol section when enabled', () => {
-    buildTestWorkflow('linear');
-    win.state.memoryEnabled = true;
-    const out = win.genManifest();
-    expect(out).toContain('Memory Protocol');
-  });
-  it('should include story text in manifest', () => {
-    buildTestWorkflow('linear');
-    win.document.getElementById('storyInput').value = 'Manifest story text';
-    const out = win.genManifest();
-    expect(out).toContain('Manifest story text');
   });
 });
 
