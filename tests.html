@@ -1391,40 +1391,58 @@ describe('Writer Agent Type', () => {
 describe('Model Version Handling', () => {
   beforeEach(() => { resetState(); });
 
-  it('should identify Sonnet 4.5 as non-latest', () => {
-    expect(win.isNonLatestModel('sonnet')).toBe(true);
-  });
-  it('should identify Opus 4.5 as non-latest', () => {
-    expect(win.isNonLatestModel('opus')).toBe(true);
-  });
-  it('should identify Sonnet 4.6 as latest', () => {
-    expect(win.isNonLatestModel('sonnet-4.6')).toBe(false);
-  });
-  it('should identify Opus 4.6 as latest', () => {
-    expect(win.isNonLatestModel('opus-4.6')).toBe(false);
-  });
-  it('should identify Haiku as latest', () => {
-    expect(win.isNonLatestModel('haiku')).toBe(false);
-  });
-  it('should inject /model override for Sonnet 4.5 in sub-agents export', () => {
+  it('should use full model ID for Sonnet 4.5 in sub-agents export', () => {
     buildTestWorkflow('linear');
-    // Change the implementer to Sonnet 4.5
     const impl = win.state.nodes.find(n => n.label === 'Implementer');
     impl.config.model = 'sonnet';
     const output = win.genSubAgents();
-    expect(output).toContain('/model claude-sonnet-4-5');
+    expect(output).toContain('model="claude-sonnet-4-5-20251001"');
   });
-  it('should not inject /model override for Sonnet 4.6 in sub-agents export', () => {
+  it('should use full model ID for Opus 4.5 in sub-agents export', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.model = 'opus';
+    const output = win.genSubAgents();
+    expect(output).toContain('model="claude-opus-4-5-20251001"');
+  });
+  it('should use shorthand for Sonnet 4.6 in sub-agents export', () => {
     buildTestWorkflow('linear');
     const impl = win.state.nodes.find(n => n.label === 'Implementer');
     impl.config.model = 'sonnet-4.6';
     const output = win.genSubAgents();
+    expect(output).toContain('model="sonnet"');
+  });
+  it('should use shorthand for Opus 4.6 in sub-agents export', () => {
+    buildTestWorkflow('linear');
+    const output = win.genSubAgents();
+    // Default model is opus-4.6
+    expect(output).toContain('model="opus"');
+  });
+  it('should use shorthand for Haiku in sub-agents export', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.model = 'haiku';
+    const output = win.genSubAgents();
+    expect(output).toContain('model="haiku"');
+  });
+  it('should not inject /model prompt override in sub-agents export', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.model = 'sonnet';
+    const output = win.genSubAgents();
     expect(output).toNotContain('/model claude-sonnet');
   });
-  it('should show full model ID in workflow export', () => {
+  it('should use shorthand model in workflow export for 4.6', () => {
     buildTestWorkflow('linear');
     const output = win.genWorkflow();
-    expect(output).toContain('claude-opus-4-6');
+    expect(output).toContain('`opus`');
+  });
+  it('should use full model ID in workflow export for 4.5', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.model = 'opus';
+    const output = win.genWorkflow();
+    expect(output).toContain('claude-opus-4-5-20251001');
   });
 });
 
@@ -1437,7 +1455,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.isNonLatestModel = isNonLatestModel;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
