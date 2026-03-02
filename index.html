@@ -617,6 +617,7 @@ const MODELS = [
 function getModelLabel(val) { const m = MODELS.find(m => m.value === val); return m ? m.label : val; }
 function getModelFamily(val) { const m = MODELS.find(m => m.value === val); return m ? m.family : val; }
 function getModelId(val) { const m = MODELS.find(m => m.value === val); return m ? m.id : val; }
+function isNonLatestModel(val) { return val === 'sonnet' || val === 'opus'; }
 
 // ── Atlassian URL detection ──────────────────────────────────────────────────
 // Matches cloud (*.atlassian.net) and common self-hosted (jira.*, confluence.*) URLs
@@ -1957,11 +1958,37 @@ function updateConfig() {
     }
   }
 
-  // Bind events
-  fields.querySelectorAll('input,select,textarea').forEach(el => {
+  // Bind events for inputs and textareas
+  fields.querySelectorAll('input,textarea').forEach(el => {
     const handler = () => {
       const key = el.dataset.key;
       const val = el.type === 'number' ? parseInt(el.value) || 0 : el.value;
+      if (key === 'label') node.label = val;
+      else node.config[key] = val;
+      render();
+    };
+    el.addEventListener('input', handler);
+  });
+
+  // Bind events for custom select dropdowns
+  fields.querySelectorAll('.config-select').forEach(cs => {
+    const trigger = cs.querySelector('.custom-select-trigger');
+    const optsContainer = cs.querySelector('.custom-select-options');
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Close any other open selects first
+      fields.querySelectorAll('.config-select.open').forEach(other => { if (other !== cs) other.classList.remove('open'); });
+      cs.classList.toggle('open');
+    });
+    optsContainer.addEventListener('click', (e) => {
+      const opt = e.target.closest('.custom-select-option');
+      if (!opt) return;
+      const key = cs.dataset.key;
+      const val = opt.dataset.value;
+      trigger.textContent = opt.textContent;
+      optsContainer.querySelectorAll('.custom-select-option').forEach(o => o.classList.toggle('selected', o === opt));
+      cs.classList.remove('open');
+
       if (key === 'label') node.label = val;
       else node.config[key] = val;
 
@@ -1992,7 +2019,6 @@ function updateConfig() {
         if (WRITER_TOOL_DEFAULTS[val]) node.config.tools = [...WRITER_TOOL_DEFAULTS[val]];
         const promptEl = fields.querySelector('[data-key="prompt"]');
         if (promptEl) {
-          // Swap prompt if it's empty or still matches a writer template (not user-customized)
           const current = promptEl.value.trim();
           const isTemplate = !current || WRITING_STYLES.some(s => {
             const k = 'writer' + capitalize(s.id);
@@ -2006,15 +2032,11 @@ function updateConfig() {
             }
           }
         }
-        // Re-render to update tools grid
         updateConfig();
       }
 
       render();
-    };
-    el.addEventListener('input', handler);
-    // Select elements need 'change' for reliable cross-browser support
-    if (el.tagName === 'SELECT') el.addEventListener('change', handler);
+    });
   });
 
   // Tools grid
@@ -2043,8 +2065,15 @@ function configInput(label, key, value, type, placeholder) {
     <input type="${type||'text'}" data-key="${key}" value="${escHtml(String(value||''))}"${placeholder ? ` placeholder="${escHtml(placeholder)}"` : ''} /></div>`;
 }
 function configSelect(label, key, value, options) {
-  const opts = options.map(o => `<option value="${o.value}"${o.value===value?' selected':''}>${o.label}</option>`).join('');
-  return `<div class="config-field"><label>${label}</label><select data-key="${key}">${opts}</select></div>`;
+  const selected = options.find(o => o.value === value) || options[0];
+  const optHtml = options.map(o =>
+    `<div class="custom-select-option${o.value === value ? ' selected' : ''}" data-value="${o.value}">${o.label}</div>`
+  ).join('');
+  return `<div class="config-field"><label>${label}</label>
+    <div class="custom-select config-select" data-key="${key}">
+      <div class="custom-select-trigger">${selected ? selected.label : ''}</div>
+      <div class="custom-select-options">${optHtml}</div>
+    </div></div>`;
 }
 function configTextarea(label, key, value, placeholder) {
   return `<div class="config-field"><label>${label}</label>
@@ -2232,6 +2261,10 @@ function showContextMenu(x, y) {
 function hideContextMenu() { $('contextMenu').classList.remove('show'); }
 document.addEventListener('click', e => {
   if (!e.target.closest('.context-menu')) hideContextMenu();
+  // Close config-panel custom selects when clicking outside
+  if (!e.target.closest('.config-select')) {
+    document.querySelectorAll('.config-select.open').forEach(cs => cs.classList.remove('open'));
+  }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -3338,7 +3371,7 @@ function genWorkflow() {
         siblings.forEach(s => {
           const sAt = getAgentTypeName(s.config.agentType);
           p.push(`  **${s.label}** (${sAt} Agent)`);
-          p.push(`  - Model: ${getModelLabel(s.config.model)}`);
+          p.push(`  - Model: ${getModelLabel(s.config.model)} (\`${getModelId(s.config.model)}\`)`);
           if (s.config.tools.length > 0) p.push(`  - Tools: ${s.config.tools.join(', ')}`);
           p.push(`  - Instructions: ${getEffectivePrompt(s)}`);
           if (s.config.notes && s.config.notes.trim()) p.push(`  - Context: ${s.config.notes.trim()}`);
@@ -3349,7 +3382,7 @@ function genWorkflow() {
         const deps = getDeps(node.id);
         const at = getAgentTypeName(node.config.agentType);
         p.push(`**Step ${stepNum}: ${node.label}** (${at} Agent)`);
-        p.push(`- Model: ${getModelLabel(node.config.model)}`);
+        p.push(`- Model: ${getModelLabel(node.config.model)} (\`${getModelId(node.config.model)}\`)`);
         if (node.config.tools.length > 0) p.push(`- Tools: ${node.config.tools.join(', ')}`);
         p.push(`- Instructions: ${getEffectivePrompt(node)}`);
         if (node.config.notes && node.config.notes.trim()) p.push(`- Additional context: ${node.config.notes.trim()}`);
@@ -3485,6 +3518,14 @@ function genSubAgents() {
 
   function emitAgentBlock(node, promptLines) {
     const taskModel = taskModelMap[node.config.model] || 'sonnet';
+    // For non-latest model versions, inject a /model override at the top of the prompt
+    if (isNonLatestModel(node.config.model)) {
+      const fullId = getModelId(node.config.model);
+      promptLines.unshift(
+        `IMPORTANT: Run \`/model ${fullId}\` before starting any work. The Task tool defaults to the latest model version — this override ensures you use ${getModelLabel(node.config.model)}.`,
+        ''
+      );
+    }
     p.push('```');
     p.push(`Task(subagent_type="general-purpose", model="${taskModel}", prompt="`);
     p.push(promptLines.join('\n'));
@@ -3604,7 +3645,7 @@ function genSubAgents() {
       emitAgentBlock(node, buildAgentPrompt(node));
       p.push('');
       p.push(`- **Agent type**: ${at}`);
-      p.push(`- **Model**: ${getModelLabel(node.config.model)} (\`${node.config.model}\`)`);
+      p.push(`- **Model**: ${getModelLabel(node.config.model)} (\`${getModelId(node.config.model)}\`)`);
       p.push(`- **Tools**: ${node.config.tools.join(', ')}`);
       p.push(`- **Max turns**: ${node.config.maxTurns}`);
       if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
@@ -3711,7 +3752,7 @@ function genAgentTeams() {
     const lines = [];
 
     lines.push(`${pre}**Teammate: "${node.label}"** (${at})`);
-    lines.push(`${pre}- Model: \`${node.config.model}\``);
+    lines.push(`${pre}- Model: \`${getModelId(node.config.model)}\` (${getModelLabel(node.config.model)})`);
     lines.push(`${pre}- Tools: ${node.config.tools.join(', ')}`);
     lines.push(`${pre}- Max turns: ${node.config.maxTurns}`);
 

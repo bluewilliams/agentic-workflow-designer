@@ -362,7 +362,7 @@ After generation, memory is auto-enabled if the workflow has parallel forks or 5
 ```
 agentic-workflow-designer/
 ├── index.html       # The entire application (~4,300 lines)
-├── tests.html       # iframe-based test suite (~1,210 lines, 156 tests)
+├── tests.html       # iframe-based test suite (~1,210 lines, 164 tests)
 ├── run-tests.sh     # Headless CLI test runner (Chrome + Python 3, zero npm deps)
 ├── TECHNICAL.md     # This document
 ├── README.md        # User-facing overview
@@ -442,7 +442,7 @@ JavaScript:
 
 **How it works**: Loads `index.html` in a hidden `<iframe>`, accesses its `contentWindow` for all functions, state, and DOM. Tests run against the real app with real localStorage and real initialization.
 
-**Coverage** (156 tests across 10 suites):
+**Coverage** (164 tests across 11 suites):
 - **Pure utilities**: `slugify`, `extractAcceptanceCriteria`, `isUrlOnly`, `getEffectivePrompt`, `getModelLabel`
 - **State management**: `addNode`, `addConnection`, `deleteNode`, `buildAgentSlugMap`, `topologicalSort`
 - **Persistence**: serialize/deserialize roundtrips, prefs save/restore, workflow save/load
@@ -453,6 +453,7 @@ JavaScript:
 - **Format recommendations**: agent count and parallel fork heuristics
 - **Workflow auto-naming**: name generation format, variety, empty-field population, user name preservation
 - **Writer Agent Type**: config panel interactions, writing style switching, prompt/tool updates, export output
+- **Model Version Handling**: `isNonLatestModel` detection, `/model` override injection in Sub-Agents export, full model IDs in exports
 
 **Running tests in a browser**: Open `tests.html` in a browser. Results render immediately — green/red badges per suite, expandable failure details with expected vs actual values.
 
@@ -463,7 +464,7 @@ JavaScript:
 ## Development Guidelines
 
 - **Keep it single-file**: Resist the urge to add a build step unless complexity demands it
-- **Run tests after changes**: Run `./run-tests.sh` from CLI or open `tests.html` in a browser. All 156 tests should pass
+- **Run tests after changes**: Run `./run-tests.sh` from CLI or open `tests.html` in a browser. All 164 tests should pass
 - **Render on demand**: Call `render()` and `updatePrompt()` after any state mutation (`render()` triggers auto-save automatically)
 - **Export completeness**: Every export format must include the full user story as context. Never assume the recipient has seen it
 - **Prompt quality first**: The quality of exported prompts is the product's core value proposition. `getEffectivePrompt()` and the `PROMPTS` library are the most important code in the file
