@@ -300,6 +300,12 @@ function buildTestWorkflow(shape) {
   return refs;
 }
 
+// Helper: simulate selecting a value in a custom-select dropdown
+function selectCustomOption(container, value) {
+  const opt = container.querySelector(`.custom-select-option[data-value="${value}"]`);
+  if (opt) opt.click();
+}
+
 // ═══════════════════════════════════════════════════════════
 // SECTION 4: Test Suites
 // ═══════════════════════════════════════════════════════════
@@ -1299,10 +1305,9 @@ describe('Writer Agent Type', () => {
     const node = win.addNode('agent', 100, 200, 'Agent', { agentType:'general', prompt:'' });
     win.selectNode(node.id);
     win.updateConfig();
-    // Simulate changing agent type to writer
-    const typeSelect = win.document.querySelector('[data-key="agentType"]');
-    typeSelect.value = 'writer';
-    typeSelect.dispatchEvent(new win.Event('change'));
+    // Simulate changing agent type to writer via custom dropdown
+    const typeSelect = win.document.querySelector('.config-select[data-key="agentType"]');
+    selectCustomOption(typeSelect, 'writer');
     expect(node.config.agentType).toBe('writer');
     expect(node.config.writingStyle).toBe('technical');
     expect(node.config.prompt).toContain('technical writer');
@@ -1315,9 +1320,8 @@ describe('Writer Agent Type', () => {
     });
     win.selectNode(node.id);
     win.updateConfig();
-    const styleSelect = win.document.querySelector('[data-key="writingStyle"]');
-    styleSelect.value = 'business';
-    styleSelect.dispatchEvent(new win.Event('change'));
+    const styleSelect = win.document.querySelector('.config-select[data-key="writingStyle"]');
+    selectCustomOption(styleSelect, 'business');
     expect(node.config.writingStyle).toBe('business');
     expect(node.config.prompt).toContain('business writer');
   });
@@ -1328,9 +1332,8 @@ describe('Writer Agent Type', () => {
     });
     win.selectNode(node.id);
     win.updateConfig();
-    const styleSelect = win.document.querySelector('[data-key="writingStyle"]');
-    styleSelect.value = 'business';
-    styleSelect.dispatchEvent(new win.Event('change'));
+    const styleSelect = win.document.querySelector('.config-select[data-key="writingStyle"]');
+    selectCustomOption(styleSelect, 'business');
     expect(node.config.tools).toContain('WebSearch');
     expect(node.config.tools).toContain('WebFetch');
   });
@@ -1341,9 +1344,8 @@ describe('Writer Agent Type', () => {
     });
     win.selectNode(node.id);
     win.updateConfig();
-    const styleSelect = win.document.querySelector('[data-key="writingStyle"]');
-    styleSelect.value = 'runbook';
-    styleSelect.dispatchEvent(new win.Event('change'));
+    const styleSelect = win.document.querySelector('.config-select[data-key="writingStyle"]');
+    selectCustomOption(styleSelect, 'runbook');
     // Prompt should NOT be overwritten — user customized it
     expect(node.config.prompt).toBe(customPrompt);
     // But tools SHOULD update
@@ -1359,10 +1361,9 @@ describe('Writer Agent Type', () => {
     win.updateConfig();
     // Verify it's there first
     expect(!!win.document.querySelector('[data-key="writingStyle"]')).toBe(true);
-    // Switch to coder
-    const typeSelect = win.document.querySelector('[data-key="agentType"]');
-    typeSelect.value = 'coder';
-    typeSelect.dispatchEvent(new win.Event('change'));
+    // Switch to coder via custom dropdown
+    const typeSelect = win.document.querySelector('.config-select[data-key="agentType"]');
+    selectCustomOption(typeSelect, 'coder');
     // After re-render, Writing Style dropdown should be gone
     expect(win.document.querySelector('[data-key="writingStyle"]')).toBeNull();
   });
@@ -1386,6 +1387,47 @@ describe('Writer Agent Type', () => {
   });
 });
 
+// ─── Suite 11: Model Version Handling ────────────────────
+describe('Model Version Handling', () => {
+  beforeEach(() => { resetState(); });
+
+  it('should identify Sonnet 4.5 as non-latest', () => {
+    expect(win.isNonLatestModel('sonnet')).toBe(true);
+  });
+  it('should identify Opus 4.5 as non-latest', () => {
+    expect(win.isNonLatestModel('opus')).toBe(true);
+  });
+  it('should identify Sonnet 4.6 as latest', () => {
+    expect(win.isNonLatestModel('sonnet-4.6')).toBe(false);
+  });
+  it('should identify Opus 4.6 as latest', () => {
+    expect(win.isNonLatestModel('opus-4.6')).toBe(false);
+  });
+  it('should identify Haiku as latest', () => {
+    expect(win.isNonLatestModel('haiku')).toBe(false);
+  });
+  it('should inject /model override for Sonnet 4.5 in sub-agents export', () => {
+    buildTestWorkflow('linear');
+    // Change the implementer to Sonnet 4.5
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.model = 'sonnet';
+    const output = win.genSubAgents();
+    expect(output).toContain('/model claude-sonnet-4-5');
+  });
+  it('should not inject /model override for Sonnet 4.6 in sub-agents export', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.model = 'sonnet-4.6';
+    const output = win.genSubAgents();
+    expect(output).toNotContain('/model claude-sonnet');
+  });
+  it('should show full model ID in workflow export', () => {
+    buildTestWorkflow('linear');
+    const output = win.genWorkflow();
+    expect(output).toContain('claude-opus-4-6');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
@@ -1395,7 +1437,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.isNonLatestModel = isNonLatestModel;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
