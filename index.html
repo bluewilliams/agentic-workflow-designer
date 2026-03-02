@@ -1991,11 +1991,19 @@ function updateConfig() {
       if (key === 'writingStyle' && node.config.agentType === 'writer') {
         if (WRITER_TOOL_DEFAULTS[val]) node.config.tools = [...WRITER_TOOL_DEFAULTS[val]];
         const promptEl = fields.querySelector('[data-key="prompt"]');
-        if (promptEl && !promptEl.value.trim()) {
-          const styleKey = 'writer' + capitalize(val);
-          if (PROMPTS[styleKey]) {
-            node.config.prompt = PROMPTS[styleKey];
-            promptEl.value = PROMPTS[styleKey];
+        if (promptEl) {
+          // Swap prompt if it's empty or still matches a writer template (not user-customized)
+          const current = promptEl.value.trim();
+          const isTemplate = !current || WRITING_STYLES.some(s => {
+            const k = 'writer' + capitalize(s.id);
+            return PROMPTS[k] && current === PROMPTS[k].trim();
+          });
+          if (isTemplate) {
+            const styleKey = 'writer' + capitalize(val);
+            if (PROMPTS[styleKey]) {
+              node.config.prompt = PROMPTS[styleKey];
+              promptEl.value = PROMPTS[styleKey];
+            }
           }
         }
         // Re-render to update tools grid
@@ -2567,7 +2575,7 @@ function generateFromStory() {
     const docWriter = addNode('agent', 0, 0, 'Doc Writer', {
       agentType: 'writer', writingStyle: 'technical', model: state.defaultModel,
       tools: WRITER_TOOL_DEFAULTS.technical,
-      prompt: '',
+      prompt: PROMPTS.writerTechnical,
       maxTurns: 15
     });
     addConnection(researcher.id, docWriter.id);
@@ -2988,7 +2996,7 @@ function loadPreset(preset) {
       const i = addNode('input', 80, 250, 'Documentation Scope');
       const p = addNode('agent', 340, 250, 'Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.planner, maxTurns:5 });
       const res = addNode('agent', 620, 250, 'Researcher', { agentType:'researcher', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.researcher, maxTurns:10 });
-      const dw = addNode('agent', 900, 250, 'Doc Writer', { agentType:'writer', writingStyle:'technical', model:state.defaultModel, tools:WRITER_TOOL_DEFAULTS.technical, prompt:'', maxTurns:15 });
+      const dw = addNode('agent', 900, 250, 'Doc Writer', { agentType:'writer', writingStyle:'technical', model:state.defaultModel, tools:WRITER_TOOL_DEFAULTS.technical, prompt:PROMPTS.writerTechnical, maxTurns:15 });
       const r = addNode('agent', 1180, 250, 'Doc Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, notes:'Review documentation for accuracy, completeness, clarity, and adherence to project documentation conventions.', maxTurns:5 });
       const o = addNode('output', 1460, 250, 'Documentation', { deliverable:'Complete documentation deliverable', format:'docs' });
       addConnection(i.id, p.id); addConnection(p.id, res.id); addConnection(res.id, dw.id);
