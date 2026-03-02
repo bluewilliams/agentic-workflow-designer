@@ -88,7 +88,8 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 
 ### Agent Node Config
 Each Agent node has:
-- **Agent Type**: Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, General
+- **Agent Type**: Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, Writer, General
+- **Writing Style** (Writer only): Technical, User Guide, Business, API Reference, Runbook. Auto-configures tools and prompt template per style
 - **Model**: Opus 4.6 (default), Sonnet 4.6, Sonnet 4.5, Opus 4.5, Haiku 4.5
 - **Tools**: Checkboxes for Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP
 - **Agent Prompt**: Freeform textarea. If left blank, falls back to `getEffectivePrompt()`
@@ -99,13 +100,14 @@ Each Agent node has:
 
 ## Prompt Generation System
 
-### `getEffectivePrompt(node)`: 3-Tier Fallback
+### `getEffectivePrompt(node)`: 3-Tier Fallback (with Writer style resolution)
 ```
 User-entered prompt
-  → Agent type template (AGENT_TYPE_PROMPT_MAP → PROMPTS[key])
-    → Smart generic fallback using node label
+  → Writer style template (writer + capitalize(writingStyle) → PROMPTS[writerTechnical|writerBusiness|...])
+    → Agent type template (AGENT_TYPE_PROMPT_MAP → PROMPTS[key])
+      → Smart generic fallback using node label
 ```
-This ensures exported prompts always contain real instructions, even if the user never touches the prompt field.
+For Writer agents, the writing style (stored in `node.config.writingStyle`) is resolved to a style-specific prompt key before falling back to the generic agent type map. This ensures exported prompts always contain real instructions, even if the user never touches the prompt field.
 
 ### `PROMPTS` Library
 30+ pre-written agent prompt templates covering:
@@ -117,6 +119,7 @@ This ensures exported prompts always contain real instructions, even if the user
 - **Research**: `codebaseExplorer`, `docResearcher`, `patternAnalyzer`, `synthesizer`
 - **Audit**: `securityAuditor`, `qualityAnalyst`, `perfProfiler`, `archReviewer`, `reportBuilder`
 - **Test Automation (SET)**: `appExplorer`, `testPlanner`, `featureWriter`, `screenObjectWriter`, `stepDefWriter`, `testReviewer`
+- **Writer**: `writerTechnical`, `writerUserguide`, `writerBusiness`, `writerApi`, `writerRunbook`
 - **Cross-cutting**: `securityReview`, `testWriter`, `researcher`
 
 Each template is structured with numbered steps, expected outputs, handoff summaries, and output format guidance.
@@ -292,7 +295,7 @@ After generation, memory is auto-enabled if the workflow has parallel forks or 5
 | **Test Automation** | (Jira Ticket + App Source) → Fork → (Test Planner ‖ App Explorer) → Join → Fork → (Feature Writer ‖ Screen Objects ‖ Step Definitions) → Join → Test Reviewer → Decision → Test Suite (code) |
 | **UI Design & Development** | Input → Design System Analyzer → UI Implementer → UI Reviewer → Component Ready (code) |
 | **Refactoring** | Input → Planner → Code Analyzer → Refactorer → Reviewer → Decision → Tester → Refactored Code (code) |
-| **Documentation** | Input → Planner → Researcher → Doc Writer → Doc Reviewer → Documentation (docs) |
+| **Documentation** | Input → Planner → Researcher → Doc Writer (Writer: Technical) → Doc Reviewer → Documentation (docs) |
 | **DevOps** | Input → Planner → DevOps Engineer → Reviewer → Decision → Tester → Infrastructure Ready (code) |
 | **Performance** | Input → Planner → Profiler → Optimizer → Reviewer → Decision → Tester → Optimized (report) |
 | **Testing** | Input → Planner → Code Analyzer → Test Suite Writer → Reviewer → Decision → Tester → Test Suite (code) |
@@ -359,7 +362,7 @@ After generation, memory is auto-enabled if the workflow has parallel forks or 5
 ```
 agentic-workflow-designer/
 ├── index.html       # The entire application (~4,300 lines)
-├── tests.html       # iframe-based test suite (~1,180 lines, 129 tests)
+├── tests.html       # iframe-based test suite (~1,210 lines, 139 tests)
 ├── run-tests.sh     # Headless CLI test runner (Chrome + Python 3, zero npm deps)
 ├── TECHNICAL.md     # This document
 ├── README.md        # User-facing overview
@@ -377,10 +380,11 @@ HTML structure (lines 232–380)
   └── Prompt Output: 5 format tabs, Copy button
 JavaScript:
   ├── STATE & CONSTANTS
-  │     ├── NODE_DEFAULTS, AGENT_TYPES, ALL_TOOLS, MODELS
+  │     ├── NODE_DEFAULTS, AGENT_TYPES (11 types), ALL_TOOLS, MODELS
+  │     ├── WRITING_STYLES (5 styles), WRITER_TOOL_DEFAULTS (per-style tool sets)
   │     ├── Atlassian URL detection
-  │     ├── AGENT_TYPE_PROMPT_MAP, getEffectivePrompt()
-  │     └── PROMPTS library (25+ templates)
+  │     ├── AGENT_TYPE_PROMPT_MAP, capitalize(), getEffectivePrompt()
+  │     └── PROMPTS library (30+ templates incl. 5 writer style-specific)
   ├── TOON v1 + MEMORY HELPERS
   │     ├── TOON_KEY constant
   │     ├── slugify(), generateWorkflowName(), ensureWorkflowName()
@@ -438,7 +442,7 @@ JavaScript:
 
 **How it works**: Loads `index.html` in a hidden `<iframe>`, accesses its `contentWindow` for all functions, state, and DOM. Tests run against the real app with real localStorage and real initialization.
 
-**Coverage** (132 tests across 13 suites):
+**Coverage** (139 tests across 13 suites):
 - **Pure utilities**: `slugify`, `extractAcceptanceCriteria`, `isUrlOnly`, `getEffectivePrompt`, `getModelLabel`
 - **State management**: `addNode`, `addConnection`, `deleteNode`, `buildAgentSlugMap`, `topologicalSort`
 - **Persistence**: serialize/deserialize roundtrips, prefs save/restore, workflow save/load
@@ -458,7 +462,7 @@ JavaScript:
 ## Development Guidelines
 
 - **Keep it single-file**: Resist the urge to add a build step unless complexity demands it
-- **Run tests after changes**: Run `./run-tests.sh` from CLI or open `tests.html` in a browser. All 129 tests should pass
+- **Run tests after changes**: Run `./run-tests.sh` from CLI or open `tests.html` in a browser. All 139 tests should pass
 - **Render on demand**: Call `render()` and `updatePrompt()` after any state mutation (`render()` triggers auto-save automatically)
 - **Export completeness**: Every export format must include the full user story as context. Never assume the recipient has seen it
 - **Prompt quality first**: The quality of exported prompts is the product's core value proposition. `getEffectivePrompt()` and the `PROMPTS` library are the most important code in the file

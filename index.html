@@ -586,8 +586,25 @@ const AGENT_TYPES = [
   { id: 'tester', name: 'Tester', desc: 'Writes and runs tests' },
   { id: 'debugger', name: 'Debugger', desc: 'Investigates and fixes bugs' },
   { id: 'researcher', name: 'Researcher', desc: 'Explores codebase, gathers context' },
+  { id: 'writer', name: 'Writer', desc: 'Documentation and content creation specialist' },
   { id: 'general', name: 'General', desc: 'General-purpose agent' }
 ];
+
+const WRITING_STYLES = [
+  { id: 'technical', name: 'Technical', desc: 'Technical documentation, architecture docs, READMEs' },
+  { id: 'userguide', name: 'User Guide', desc: 'End-user guides, tutorials, how-tos' },
+  { id: 'business', name: 'Business', desc: 'Business analysis, proposals, stakeholder reports' },
+  { id: 'api', name: 'API Reference', desc: 'API docs, endpoint references, SDK guides' },
+  { id: 'runbook', name: 'Runbook', desc: 'Operations runbooks, incident playbooks, SRE docs' }
+];
+
+const WRITER_TOOL_DEFAULTS = {
+  technical: ['Read', 'Grep', 'Glob', 'LSP', 'Write', 'Edit', 'Bash'],
+  userguide: ['Read', 'Grep', 'Glob', 'Write', 'Edit', 'WebSearch'],
+  business:  ['Read', 'Grep', 'Glob', 'Write', 'Edit', 'WebSearch', 'WebFetch'],
+  api:       ['Read', 'Grep', 'Glob', 'LSP', 'Write', 'Edit', 'Bash'],
+  runbook:   ['Read', 'Grep', 'Glob', 'Write', 'Edit', 'Bash']
+};
 
 const ALL_TOOLS = ['Read','Write','Edit','Bash','Grep','Glob','WebSearch','WebFetch','Task','LSP'];
 const MODELS = [
@@ -628,12 +645,17 @@ const AGENT_TYPE_PROMPT_MAP = {
   planner: 'planner', architect: 'architect', coder: 'implementer',
   frontend: 'frontend', backend: 'backend', reviewer: 'reviewer',
   tester: 'tester', debugger: 'investigator', researcher: 'researcher',
-  general: 'researcher'
+  writer: 'writerTechnical', general: 'researcher'
 };
 
 // Returns a quality prompt for any node - user prompt > agentType template > smart fallback
+function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 function getEffectivePrompt(node) {
   if (node.config.prompt && node.config.prompt.trim()) return node.config.prompt;
+  if (node.config.agentType === 'writer') {
+    const styleKey = 'writer' + capitalize(node.config.writingStyle || 'technical');
+    if (PROMPTS[styleKey]) return PROMPTS[styleKey];
+  }
   const mapped = AGENT_TYPE_PROMPT_MAP[node.config.agentType];
   if (mapped && PROMPTS[mapped]) return PROMPTS[mapped];
   // Smart fallback for general/unknown types using the node label + notes
@@ -720,7 +742,16 @@ const PROMPTS = {
   // --- Specialized Implementation ---
   refactorer: 'Apply refactorings mapped to analysis findings.\n\n1. Read the analysis report and prioritize refactorings by impact and risk\n2. Use `LSP findReferences` on each symbol targeted for refactoring to confirm the full blast radius before changing it\n3. Use `LSP incomingCalls` on functions being extracted, inlined, or restructured to ensure all callers are updated\n4. Use `LSP outgoingCalls` on the target function to understand its dependency chain — preserve all dependencies when moving or splitting code\n5. Use `LSP goToDefinition` on types being refactored to understand their contracts before modifying them\n6. Apply refactorings incrementally — one transformation at a time, verify tests pass between each\n7. Run linter and type checker after each significant change\n8. Preserve external behavior — refactoring must not change what the code does, only how it is structured\n\nFor each refactoring: describe the transformation, files changed, complexity reduction, and LSP-confirmed blast radius.\n\n## Handoff Summary\nEnd your response with:\n- **Refactorings Applied**: Each transformation with before/after description\n- **Files Changed**: Each file with what was restructured\n- **Complexity Reduction**: Measurable improvements (nesting depth, function length, coupling)\n- **Behavior Preserved**: Confirmation that external behavior is unchanged\n- **Deferred Items**: Refactorings skipped and why',
 
-  docWriter: 'Write or update documentation following existing project conventions.\n\n1. Use `LSP documentSymbol` on each key file to enumerate all public functions, classes, and exports — these define the documentation surface\n2. Use `LSP goToDefinition` on key types and interfaces to understand their contracts and document them accurately\n3. Use `LSP findReferences` on public APIs to understand usage patterns and provide meaningful examples\n4. Use `Glob` to find existing documentation files (README, docs/, wiki/, *.md) and match their format and style\n5. Use `Grep` to find inline documentation patterns (JSDoc, docstrings, comments) and follow the same conventions\n6. Write clear, accurate documentation that matches the existing project style\n7. Include code examples derived from actual usage patterns found via LSP\n8. Cover API signatures, parameters, return types, error cases, and usage examples\n\nOutput: documentation files created or updated, coverage assessment, and any gaps requiring subject matter expertise.\n\n## Handoff Summary\nEnd your response with:\n- **Files Created**: New documentation files with purpose\n- **Files Updated**: Existing docs that were enhanced\n- **Coverage**: Which public APIs and features are now documented\n- **Gaps**: Areas requiring additional subject matter expertise\n- **Style**: Documentation conventions followed',
+  // --- Writer (style-specific documentation & content) ---
+  writerTechnical: 'You are a technical writer producing precise, developer-focused documentation.\n\nYour audience is engineers who will use this documentation as a daily reference. Prioritize accuracy, scannability, and completeness over prose quality. Every claim must be verifiable against the codebase.\n\n1. Use `LSP documentSymbol` on each key file to enumerate all public functions, classes, and exports — these define the documentation surface\n2. Use `LSP goToDefinition` on key types and interfaces to understand their contracts and document them accurately\n3. Use `LSP findReferences` on public APIs to understand usage patterns and derive meaningful code examples\n4. Use `Glob` to find existing documentation files (README, docs/, wiki/, *.md) and match their format, structure, and tone\n5. Use `Grep` to find inline documentation patterns (JSDoc, docstrings, comments) and follow the same conventions\n6. Structure documentation with clear hierarchical headings, tables for parameters/options, and fenced code blocks for examples\n7. Include architecture context: how components connect, data flow direction, and dependency relationships discovered via LSP\n8. Document edge cases, error conditions, and known limitations — engineers need to know what can go wrong\n9. Add a prerequisites/setup section where relevant so readers can get started without guessing\n10. Cross-reference related documentation and source files with relative links\n\nWrite in a direct, imperative style. Use present tense. Avoid marketing language, subjective claims, and filler phrases. Every sentence should convey technical information.\n\n## Handoff Summary\nEnd your response with:\n- **Files Created**: New documentation files with purpose\n- **Files Updated**: Existing docs that were enhanced\n- **Coverage**: Which public APIs and features are now documented\n- **Architecture Notes**: Key system relationships documented\n- **Gaps**: Areas requiring additional subject matter expertise',
+
+  writerUserguide: 'You are a user guide writer producing clear, task-oriented documentation for end users.\n\nYour audience is people who use the product but do not need to understand its internals. Prioritize clarity, logical task flow, and empathy for users who may be encountering the feature for the first time.\n\n1. Use `Read` and `Glob` to explore the codebase and understand feature behavior, UI flows, and configuration options\n2. Use `Grep` to find user-facing strings, error messages, labels, and help text — these reflect the vocabulary your audience knows\n3. Study existing user documentation to match its tone, structure, and formatting conventions\n4. Use `WebSearch` to find comparable product documentation for similar features — understand what users typically expect\n5. Organize content by user tasks, not system features. Each section should answer "How do I [accomplish X]?"\n6. Write step-by-step instructions with numbered lists. Each step should be one concrete action\n7. Describe what the user will see after each action (confirmation messages, UI changes, expected results)\n8. Include a "Before you begin" section listing prerequisites, required permissions, and initial setup\n9. Add troubleshooting sections for common errors — pair each error message with its cause and resolution\n10. Use callout boxes (Note, Tip, Warning, Important) to highlight key information without interrupting the flow\n11. Include annotated screenshots guidance: describe what should be captured and highlighted in each screenshot\n12. End with a "What\'s next" section linking to related tasks and advanced features\n\nWrite in second person ("you"). Use short sentences and active voice. Define jargon on first use. Assume no prior technical knowledge.\n\n## Handoff Summary\nEnd your response with:\n- **Files Created**: Documentation files with purpose\n- **Tasks Covered**: User tasks documented (as "How to..." list)\n- **Prerequisites Listed**: Setup requirements identified\n- **Troubleshooting Items**: Common errors and resolutions documented\n- **Screenshot Guidance**: Descriptions of screenshots needed',
+
+  writerBusiness: 'You are a business writer producing executive-ready documents for non-technical stakeholders.\n\nYour audience is business leaders, product managers, and stakeholders who need to make decisions based on your analysis. Prioritize clarity of business impact, data-driven conclusions, and actionable recommendations.\n\n1. Use `Read` and `Glob` to explore the codebase and understand the feature scope, complexity, and technical boundaries\n2. Use `Grep` to find metrics, analytics events, feature flags, and configuration that indicate business impact\n3. Use `WebSearch` and `WebFetch` to research industry context, competitive landscape, and market data relevant to the topic\n4. Identify the business problem being solved — frame everything in terms of user value, revenue impact, or operational efficiency\n5. Translate technical details into business language. Replace implementation specifics with outcomes and capabilities\n6. Structure the document with an executive summary first — the key conclusion and recommendation in 2-3 sentences\n7. Support claims with quantitative data: metrics, estimates, timelines, resource requirements, and ROI projections\n8. Present options as a decision matrix when multiple approaches exist — include trade-offs across cost, timeline, risk, and value\n9. Use visual aids: comparison tables, bullet-point summaries, and clear section headers for scanning\n10. Include a risk assessment section with likelihood, impact, and proposed mitigations\n11. End with specific, actionable recommendations and clear next steps with owners\n\nWrite in third person, professional tone. Avoid technical jargon — explain any necessary technical terms in parenthetical plain language. Keep paragraphs short (2-3 sentences). Lead every section with the conclusion, then support it.\n\n## Handoff Summary\nEnd your response with:\n- **Documents Created**: Files with purpose and intended audience\n- **Key Findings**: Top 3-5 business insights\n- **Recommendations**: Prioritized action items\n- **Data Sources**: Where metrics and estimates were derived\n- **Decision Points**: Open questions requiring stakeholder input',
+
+  writerApi: 'You are an API reference writer producing precise, specification-grade documentation for developers integrating with this API.\n\nYour audience is developers who will call these endpoints or use these interfaces. Prioritize completeness, accuracy of types and parameters, and practical code examples. API docs are a contract — errors cause integration bugs.\n\n1. Use `LSP workspaceSymbol` to inventory all controllers, handlers, route definitions, and service interfaces\n2. Use `LSP documentSymbol` on each controller/handler to enumerate all public endpoints and their method signatures\n3. Use `LSP goToDefinition` on request/response types, DTOs, and model classes to document exact field shapes, types, and constraints\n4. Use `LSP findReferences` on shared types to understand which endpoints consume or produce them\n5. Use `Grep` to find validation rules, constraints, required fields, and default values applied to request parameters\n6. Use `Grep` to find error response patterns, status codes, and error message formats\n7. Document each endpoint with: HTTP method, path, description, authentication requirements, request parameters (path/query/body with types and constraints), response shape (with all fields typed), error responses (status codes and conditions), and a curl/code example\n8. Group endpoints by resource or domain area with a table of contents\n9. Document authentication and authorization: token format, header name, scopes/permissions required per endpoint\n10. Include rate limiting, pagination patterns, and versioning conventions if they exist\n11. Add a "Getting Started" section: base URL, authentication setup, and a complete request/response example\n12. Document webhook payloads and event types if the API produces async notifications\n\nUse consistent formatting: tables for parameters, fenced code blocks for request/response examples, inline code for field names and types. Be exhaustive — omitting a parameter or constraint from API docs causes real integration failures.\n\n## Handoff Summary\nEnd your response with:\n- **Files Created**: API documentation files with scope\n- **Endpoints Documented**: Count and grouping summary\n- **Types Documented**: Key request/response shapes defined\n- **Auth Requirements**: Authentication and authorization patterns documented\n- **Gaps**: Undocumented endpoints or types needing SME input',
+
+  writerRunbook: 'You are a runbook writer producing operations-focused procedural documentation for SRE and DevOps teams.\n\nYour audience is on-call engineers who will follow these procedures during incidents, deployments, and maintenance windows — often under time pressure. Prioritize actionable steps, copy-pasteable commands, and clear decision points. Ambiguity in a runbook causes downtime.\n\n1. Use `Read` and `Glob` to find infrastructure configs, deployment scripts, CI/CD pipelines, Dockerfiles, and environment definitions\n2. Use `Grep` to find environment variables, secrets references, service names, ports, health check endpoints, and monitoring queries\n3. Use `Grep` to find error handling, retry logic, circuit breakers, and fallback mechanisms in the codebase\n4. Document the service architecture: what components exist, how they communicate, and their critical dependencies\n5. For each procedure, write numbered steps where every step is a single concrete action with a copy-pasteable command\n6. After each command step, include the expected output so the engineer can verify success before proceeding\n7. Add explicit decision points with if/then branching: "If the output shows X, proceed to step N. If it shows Y, go to the Troubleshooting section"\n8. Include a "Prerequisites" section: required access (SSH keys, VPN, cloud console roles), tools (kubectl, terraform, aws-cli), and environment context\n9. Write a "Rollback" section for every destructive or risky procedure — the rollback must be testable independently\n10. Add a "Troubleshooting" section with symptom → cause → resolution tables for common failure modes\n11. Document monitoring: what dashboards to watch, what alerts fire, what metrics indicate success or failure\n12. Include escalation paths: when to escalate, who to contact, and what information to provide\n\nWrite in imperative mood ("Run the command", "Verify the output"). Use present tense. No prose paragraphs — every line should be an action, a verification, or a decision point. Format commands in fenced code blocks with the shell specified. Mark dangerous commands with a WARNING callout.\n\n## Handoff Summary\nEnd your response with:\n- **Files Created**: Runbook files with scope\n- **Procedures Documented**: List of operational procedures covered\n- **Commands Verified**: Commands that were tested vs assumed\n- **Rollback Coverage**: Procedures with verified rollback steps\n- **Escalation Paths**: Contacts and criteria documented\n- **Monitoring**: Dashboards and alerts referenced',
 
   devopsEngineer: 'Implement infrastructure and deployment changes.\n\n1. Use `Glob` to find existing infrastructure files (Dockerfile, docker-compose, .github/workflows, terraform/, k8s/, CI configs)\n2. Use `Grep` to find environment variable references and ensure all are documented\n3. Read existing CI/CD configurations to understand the current pipeline structure before modifying\n4. Implement the requested infrastructure changes following existing patterns\n5. Validate configurations with dry-run or lint commands where available (e.g., `docker build --check`, `terraform validate`, `actionlint`)\n6. Document all environment variables, secrets, and configuration requirements\n7. Ensure changes are backward-compatible or include a migration path\n8. Write a rollback plan for each significant change\n\nOutput: files changed, validation results, environment requirements, and rollback procedures.\n\n## Handoff Summary\nEnd your response with:\n- **Files Changed**: Infrastructure files created or modified\n- **Validation Results**: Dry-run and lint output\n- **Environment Variables**: New or changed env vars with descriptions\n- **Rollback Plan**: How to revert each change safely\n- **Dependencies**: External services or permissions required',
 
@@ -1500,7 +1531,12 @@ function renderNodes() {
       sub.setAttribute('y', h / 2 + 10);
       sub.setAttribute('class', 'node-sublabel');
       const at = AGENT_TYPES.find(a => a.id === node.config.agentType);
-      sub.textContent = (at ? at.name : 'General') + ' \u00B7 ' + getModelFamily(node.config.model);
+      let typeName = at ? at.name : 'General';
+      if (node.config.agentType === 'writer' && node.config.writingStyle) {
+        const ws = WRITING_STYLES.find(s => s.id === node.config.writingStyle);
+        if (ws) typeName = 'Writer: ' + ws.name;
+      }
+      sub.textContent = typeName + ' \u00B7 ' + getModelFamily(node.config.model);
       g.appendChild(sub);
     }
 
@@ -1883,6 +1919,10 @@ function updateConfig() {
   if (node.type === 'agent') {
     fields.innerHTML += configSelect('Agent Type', 'agentType', node.config.agentType,
       AGENT_TYPES.map(a => ({ value: a.id, label: a.name })));
+    if (node.config.agentType === 'writer') {
+      fields.innerHTML += configSelect('Writing Style', 'writingStyle', node.config.writingStyle || 'technical',
+        WRITING_STYLES.map(s => ({ value: s.id, label: s.name })));
+    }
     fields.innerHTML += configSelect('Model', 'model', node.config.model,
       MODELS.map(m => ({ value: m.value, label: m.label })));
     fields.innerHTML += configTextarea('Agent Prompt', 'prompt', node.config.prompt,
@@ -1930,16 +1970,36 @@ function updateConfig() {
         updateConfig();
       }
 
-      // Auto-populate prompt when agent type changes and prompt is empty
+      // Auto-populate prompt and handle writer-specific logic when agent type changes
       if (key === 'agentType' && node.type === 'agent') {
+        if (val === 'writer') {
+          node.config.writingStyle = node.config.writingStyle || 'technical';
+          const style = node.config.writingStyle;
+          if (WRITER_TOOL_DEFAULTS[style]) node.config.tools = [...WRITER_TOOL_DEFAULTS[style]];
+        }
         const promptEl = fields.querySelector('[data-key="prompt"]');
         if (promptEl && !promptEl.value.trim()) {
-          const mapped = AGENT_TYPE_PROMPT_MAP[val];
-          if (mapped && PROMPTS[mapped]) {
-            node.config.prompt = PROMPTS[mapped];
-            promptEl.value = PROMPTS[mapped];
+          const p = getEffectivePrompt(node);
+          node.config.prompt = p;
+          promptEl.value = p;
+        }
+        // Re-render to show/hide Writing Style dropdown
+        updateConfig();
+      }
+
+      // Update tools and prompt when writing style changes
+      if (key === 'writingStyle' && node.config.agentType === 'writer') {
+        if (WRITER_TOOL_DEFAULTS[val]) node.config.tools = [...WRITER_TOOL_DEFAULTS[val]];
+        const promptEl = fields.querySelector('[data-key="prompt"]');
+        if (promptEl && !promptEl.value.trim()) {
+          const styleKey = 'writer' + capitalize(val);
+          if (PROMPTS[styleKey]) {
+            node.config.prompt = PROMPTS[styleKey];
+            promptEl.value = PROMPTS[styleKey];
           }
         }
+        // Re-render to update tools grid
+        updateConfig();
       }
 
       render();
@@ -2505,9 +2565,9 @@ function generateFromStory() {
     addConnection(entryNode.id, researcher.id);
 
     const docWriter = addNode('agent', 0, 0, 'Doc Writer', {
-      agentType: 'coder', model: state.defaultModel,
-      tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LSP'],
-      prompt: PROMPTS.docWriter,
+      agentType: 'writer', writingStyle: 'technical', model: state.defaultModel,
+      tools: WRITER_TOOL_DEFAULTS.technical,
+      prompt: '',
       maxTurns: 15
     });
     addConnection(researcher.id, docWriter.id);
@@ -2928,7 +2988,7 @@ function loadPreset(preset) {
       const i = addNode('input', 80, 250, 'Documentation Scope');
       const p = addNode('agent', 340, 250, 'Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.planner, maxTurns:5 });
       const res = addNode('agent', 620, 250, 'Researcher', { agentType:'researcher', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.researcher, maxTurns:10 });
-      const dw = addNode('agent', 900, 250, 'Doc Writer', { agentType:'coder', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.docWriter, maxTurns:15 });
+      const dw = addNode('agent', 900, 250, 'Doc Writer', { agentType:'writer', writingStyle:'technical', model:state.defaultModel, tools:WRITER_TOOL_DEFAULTS.technical, prompt:'', maxTurns:15 });
       const r = addNode('agent', 1180, 250, 'Doc Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, notes:'Review documentation for accuracy, completeness, clarity, and adherence to project documentation conventions.', maxTurns:5 });
       const o = addNode('output', 1460, 250, 'Documentation', { deliverable:'Complete documentation deliverable', format:'docs' });
       addConnection(i.id, p.id); addConnection(p.id, res.id); addConnection(res.id, dw.id);
