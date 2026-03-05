@@ -441,6 +441,21 @@ svg.canvas{width:100%;height:100%;display:block}
     <span><strong>Better outcomes:</strong> agents work best when an Atlassian MCP tool and a language-appropriate LSP server are installed, authenticated, and available.<br><br><strong>Atlassian MCP setup:</strong><br><code style="font-size:10px;word-break:break-all;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">claude mcp add --transport http atlassian https://mcp.atlassian.com/v1/mcp --scope user</code><br><br><strong>PR creation:</strong> GitHub repos use <code style="font-size:10px;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">gh</code> CLI (built-in). Bitbucket repos can use the same Atlassian MCP above. GitLab repos need <code style="font-size:10px;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">glab</code> CLI or a GitLab MCP.</span>
   </div>
 
+  <div class="sidebar-section">
+    <h3>MCP Integrations <span style="color:var(--text3);font-weight:400;font-size:11px">prompt hints</span></h3>
+    <label class="memory-toggle">
+      <input type="checkbox" id="mcpAtlassianToggle" onchange="toggleMcpAtlassian()" checked/>
+      <span>Atlassian <span style="color:var(--text3);font-weight:400">(Jira &amp; Confluence)</span></span>
+    </label>
+    <label class="memory-toggle">
+      <input type="checkbox" id="mcpCodeSearchToggle" onchange="toggleMcpCodeSearch()"/>
+      <span>CodeSearch <span style="color:var(--text3);font-weight:400">(semantic code search)</span></span>
+    </label>
+    <div style="margin-top:8px">
+      <textarea id="mcpCustomNotes" placeholder="Describe other MCPs available to your agents (e.g. Playwright MCP for browser testing)..." oninput="savePrefsDebounced()" rows="2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;font-family:inherit"></textarea>
+    </div>
+  </div>
+
   <div class="sidebar-section memory-section">
     <h3>Memory Protocol</h3>
     <label class="memory-toggle">
@@ -639,9 +654,18 @@ function getWorkflowAtlassianUrls() {
   return [...new Set(texts.flatMap(t => extractAtlassianUrls(t)))];
 }
 function atlassianHint(urls) {
-  if (!urls || urls.length === 0) return null;
+  if (!state.mcpAtlassian || !urls || urls.length === 0) return null;
   const list = urls.map(u => `  - ${u}`).join('\n');
   return `> **Atlassian Context**: If an Atlassian MCP tool is available, use it to fetch the following URL(s) for full ticket/page details before proceeding:\n${list}`;
+}
+function codeSearchHint() {
+  if (!state.mcpCodeSearch) return null;
+  return '> **CodeSearch MCP**: A semantic code search server is available. Prefer `search_code` for concept/feature lookups, `find_class` for type lookups, `find_usages`/`find_dependents` for impact analysis, and `find_implementations` for interface implementations — instead of Grep/Glob when exploring or understanding code.';
+}
+function customMcpHint() {
+  const notes = ($('mcpCustomNotes') ? $('mcpCustomNotes').value : state.mcpCustom || '').trim();
+  if (!notes) return null;
+  return `> **Custom MCP Tools**: The following MCP integrations are available to agents:\n> ${notes.replace(/\n/g, '\n> ')}`;
 }
 
 // Maps agentType to a PROMPTS key for fallback when user leaves prompt blank
@@ -796,7 +820,10 @@ let state = {
   memoryEnabled: false,
   defaultModel: 'opus-4.6',
   repositories: [],
-  activePreset: null
+  activePreset: null,
+  mcpAtlassian: true,
+  mcpCodeSearch: false,
+  mcpCustom: ''
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -909,6 +936,15 @@ function toggleMemory() {
   savePrefs();
 }
 
+function toggleMcpAtlassian() {
+  state.mcpAtlassian = $('mcpAtlassianToggle').checked;
+  savePrefs();
+}
+function toggleMcpCodeSearch() {
+  state.mcpCodeSearch = $('mcpCodeSearchToggle').checked;
+  savePrefs();
+}
+
 function setMemoryEnabled(enabled) {
   state.memoryEnabled = enabled;
   const cb = $('memoryToggle');
@@ -943,7 +979,10 @@ function savePrefs() {
       appSourceBranch: $('appSourceBranch') ? $('appSourceBranch').value : '',
       uiContextNotes: $('uiContextNotes') ? $('uiContextNotes').value : '',
       exportFormat: state.exportFormat,
-      repositories: state.repositories
+      repositories: state.repositories,
+      mcpAtlassian: state.mcpAtlassian,
+      mcpCodeSearch: state.mcpCodeSearch,
+      mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : ''
     }));
   } catch(e) { /* localStorage unavailable or full */ }
 }
@@ -968,6 +1007,20 @@ function restorePrefs() {
     if (p.uiContextNotes && $('uiContextNotes')) $('uiContextNotes').value = p.uiContextNotes;
     if (p.exportFormat) setExportFormat(p.exportFormat);
     if (Array.isArray(p.repositories)) { state.repositories = p.repositories; renderRepoRows(); }
+    if (p.mcpAtlassian !== undefined) {
+      state.mcpAtlassian = !!p.mcpAtlassian;
+      const cb = $('mcpAtlassianToggle');
+      if (cb) cb.checked = state.mcpAtlassian;
+    }
+    if (p.mcpCodeSearch !== undefined) {
+      state.mcpCodeSearch = !!p.mcpCodeSearch;
+      const cb = $('mcpCodeSearchToggle');
+      if (cb) cb.checked = state.mcpCodeSearch;
+    }
+    if (p.mcpCustom) {
+      state.mcpCustom = p.mcpCustom;
+      if ($('mcpCustomNotes')) $('mcpCustomNotes').value = p.mcpCustom;
+    }
   } catch(e) { /* ignore */ }
 }
 
@@ -3151,6 +3204,12 @@ function clearCanvas(skipConfirm) {
   state.memoryEnabled = false;
   const _mcb = $('memoryToggle');
   if (_mcb) { _mcb.checked = false; $('memoryPathField').style.display = 'none'; }
+  state.mcpAtlassian = true;
+  state.mcpCodeSearch = false;
+  state.mcpCustom = '';
+  const _matl = $('mcpAtlassianToggle'); if (_matl) _matl.checked = true;
+  const _mcs = $('mcpCodeSearchToggle'); if (_mcs) _mcs.checked = false;
+  const _mcn = $('mcpCustomNotes'); if (_mcn) _mcn.value = '';
   render();
   updateConfig();
   updateMemoryPath();
@@ -3345,6 +3404,10 @@ function genWorkflow() {
   repoBlock('### Repositories').forEach(l => p.push(l));
   const _wfAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_wfAtl) { p.push(_wfAtl); p.push(''); }
+  const _wfCs = codeSearchHint();
+  if (_wfCs) { p.push(_wfCs); p.push(''); }
+  const _wfCm = customMcpHint();
+  if (_wfCm) { p.push(_wfCm); p.push(''); }
 
   // Identify parallel groups — nodeToForkId maps each child to its specific fork
   const parallelChildren = new Set();
@@ -3486,6 +3549,10 @@ function genSubAgents() {
   }
   const _saAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_saAtl) { p.push(_saAtl); p.push(''); }
+  const _saCs = codeSearchHint();
+  if (_saCs) { p.push(_saCs); p.push(''); }
+  const _saCm = customMcpHint();
+  if (_saCm) { p.push(_saCm); p.push(''); }
 
   if (state.memoryEnabled) {
     p.push('## Memory System (CRITICAL)');
@@ -3722,6 +3789,10 @@ function genAgentTeams() {
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _atAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_atAtl) { p.push(_atAtl); p.push(''); }
+  const _atCs = codeSearchHint();
+  if (_atCs) { p.push(_atCs); p.push(''); }
+  const _atCm = customMcpHint();
+  if (_atCm) { p.push(_atCm); p.push(''); }
 
   p.push('## Team Delegation Plan');
   p.push('');
@@ -3906,10 +3977,25 @@ function genAgentSDK() {
   p.push('import anthropic');
   p.push('');
   const _sdkAtlUrls = getWorkflowAtlassianUrls();
-  if (_sdkAtlUrls.length > 0) {
+  if (state.mcpAtlassian && _sdkAtlUrls.length > 0) {
     p.push('# ── Atlassian Context ──────────────────────────────────────────────────────');
     p.push('# If an Atlassian MCP tool is available, fetch these for full ticket details:');
     _sdkAtlUrls.forEach(u => p.push(`#   ${u}`));
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
+  if (state.mcpCodeSearch) {
+    p.push('# ── CodeSearch MCP ────────────────────────────────────────────────────────');
+    p.push('# A semantic code search server is available. Prefer search_code for concept');
+    p.push('# lookups, find_class for types, find_usages/find_dependents for impact');
+    p.push('# analysis — instead of grep/glob when exploring code.');
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
+  const _sdkCmNotes = ($('mcpCustomNotes') ? $('mcpCustomNotes').value : state.mcpCustom || '').trim();
+  if (_sdkCmNotes) {
+    p.push('# ── Custom MCP Tools ──────────────────────────────────────────────────────');
+    _sdkCmNotes.split('\n').forEach(line => p.push(`# ${line}`));
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
@@ -4098,6 +4184,10 @@ function genClaudePrompt() {
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _cpAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_cpAtl) { p.push(_cpAtl); p.push(''); }
+  const _cpCs = codeSearchHint();
+  if (_cpCs) { p.push(_cpCs); p.push(''); }
+  const _cpCm = customMcpHint();
+  if (_cpCm) { p.push(_cpCm); p.push(''); }
 
   if (agents.length > 0) {
     p.push('## Workflow');
