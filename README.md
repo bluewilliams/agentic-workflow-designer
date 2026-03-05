@@ -113,12 +113,13 @@ Some presets reveal additional sidebar sections:
 - **Acceptance criteria extraction** - when generating from requirements, bullet/numbered acceptance criteria are automatically extracted and used as decision gate conditions
 - **Workflow-aware prompts** - agents know their upstream dependencies and downstream consumers
 - **Save/Load workflows** - save by name, auto-restore work-in-progress on refresh, export/import `.json` for sharing
-- **Persistent preferences** - default model, memory toggle, export format, app source path, and repositories auto-save across sessions
+- **Persistent preferences** - default model, memory toggle, MCP integrations, export format, app source path, and repositories auto-save across sessions
 - **Multi-repository support** - specify multiple repos with branches; agents check out the right branch and pull latest before starting
 - **Memory Protocol** - optional compaction-resilient memory with TOON v1 notation, auto-enabled for complex workflows
 - **Pull Request creation** - opt-in PR output format with git provider auto-detection (GitHub, Bitbucket, GitLab), configurable feature branch and target branch, and safety-first prompt injection. All presets default to Code Changes; PR creation requires explicit opt-in
 - **Custom workflows** - add your own nodes and connections; export generators add smart scaffolding automatically
 - **Model selection** - Sonnet 4.5/4.6, Opus 4.5/4.6, Haiku 4.5 per node. Full model IDs (e.g. `claude-opus-4-6`, `claude-sonnet-4-5-20251001`) are passed directly in all exports for precise version control
+- **MCP Integrations** - global toggles for Atlassian (on by default) and CodeSearch MCPs, plus a freeform field for custom MCPs. When enabled, prompt hints are injected into all exports so agents prefer these tools over built-in alternatives
 
 ## Save & Load
 
@@ -135,7 +136,7 @@ Your default model, memory toggle, export format tab, app source path/branch, an
 
 ## Testing
 
-Open `tests.html` in any browser to run the full test suite (164 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, and workflow auto-naming. Green/red results render instantly with expandable failure details.
+Open `tests.html` in any browser to run the full test suite (173 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, and workflow auto-naming. Green/red results render instantly with expandable failure details.
 
 **CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3 (no npm). Use `--verbose` for failure details. Exit code 0 = all pass.
 
