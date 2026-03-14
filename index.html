@@ -297,8 +297,8 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-section">
     <h3>Implementation Plan <span style="color:var(--text3);font-weight:400;font-size:11px">optional</span></h3>
-    <textarea class="story-input" id="planInput" placeholder="Paste a Claude Code plan here (from plan mode) to give agents codebase-specific context — file paths, patterns, architecture decisions.&#10;&#10;This enriches all agent prompts so they know HOW to implement in your specific codebase, not just WHAT to build." oninput="autoSaveWorkflow()" style="min-height:60px"></textarea>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5">Run <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">/plan</code> in Claude Code to generate a plan, then paste it here. Agents will use it as implementation guidance.</div>
+    <textarea class="story-input" id="planInput" placeholder="Paste a Claude Code plan here (from plan mode) to give agents codebase-specific context — file paths, patterns, architecture decisions.&#10;&#10;Used as a starting point, not a constraint. Agents adapt the plan based on what they discover during research." oninput="autoSaveWorkflow()" style="min-height:60px"></textarea>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5">Run <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">/plan</code> in Claude Code to generate a plan, then paste it here. Agents use it as starting guidance and adapt based on their findings.</div>
   </div>
 
   <div class="sidebar-section">
@@ -3409,7 +3409,7 @@ function genWorkflow() {
   p.push('');
   if (story) { p.push('### Requirements'); p.push(''); p.push(story); p.push(''); }
   const _wfPlan = getPlan();
-  if (_wfPlan) { p.push('### Implementation Plan'); p.push(''); p.push(_wfPlan); p.push(''); }
+  if (_wfPlan) { p.push('### Implementation Plan (starting guidance — adapt based on findings)'); p.push(''); p.push('The following plan provides codebase-specific context from an initial analysis. Use it as a starting point, not a rigid constraint. If your research reveals better approaches, contradictory patterns, or additional considerations, update the approach accordingly and note what changed and why.'); p.push(''); p.push(_wfPlan); p.push(''); }
   appSourceBlock('### App Source').forEach(l => p.push(l));
   uiContextBlock('### UI Context').forEach(l => p.push(l));
   prBlock('### Pull Request Creation').forEach(l => p.push(l));
@@ -3561,7 +3561,9 @@ function genSubAgents() {
   }
   const _saPlan = getPlan();
   if (_saPlan) {
-    p.push('## Implementation Plan');
+    p.push('## Implementation Plan (starting guidance — adapt based on findings)');
+    p.push('');
+    p.push('The following plan provides codebase-specific context from an initial analysis. Use it as a starting point, not a rigid constraint. If your research reveals better approaches, contradictory patterns, or additional considerations, update the approach accordingly and note what changed and why.');
     p.push('');
     p.push(_saPlan);
     p.push('');
@@ -3804,7 +3806,9 @@ function genAgentTeams() {
   }
   const _atPlan = getPlan();
   if (_atPlan) {
-    p.push('## Implementation Plan');
+    p.push('## Implementation Plan (starting guidance — adapt based on findings)');
+    p.push('');
+    p.push('The following plan provides codebase-specific context from an initial analysis. Use it as a starting point, not a rigid constraint. If your research reveals better approaches, contradictory patterns, or additional considerations, update the approach accordingly and note what changed and why.');
     p.push('');
     p.push(_atPlan);
     p.push('');
@@ -4004,7 +4008,11 @@ function genAgentSDK() {
   p.push('');
   const _sdkPlan = getPlan();
   if (_sdkPlan) {
-    p.push('# ── Implementation Plan ───────────────────────────────────────────────────');
+    p.push('# ── Implementation Plan (starting guidance — adapt based on findings) ────');
+    p.push('# The following plan provides codebase-specific context from an initial');
+    p.push('# analysis. Use it as a starting point, not a rigid constraint. If research');
+    p.push('# reveals better approaches, update accordingly and note what changed.');
+    p.push('#');
     _sdkPlan.split('\n').forEach(line => p.push(`# ${line}`));
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
@@ -4214,7 +4222,9 @@ function genClaudePrompt() {
   }
   const _cpPlan = getPlan();
   if (_cpPlan) {
-    p.push('## Implementation Plan');
+    p.push('## Implementation Plan (starting guidance — adapt based on findings)');
+    p.push('');
+    p.push('The following plan provides codebase-specific context from an initial analysis. Use it as a starting point, not a rigid constraint. If your research reveals better approaches, contradictory patterns, or additional considerations, update the approach accordingly and note what changed and why.');
     p.push('');
     p.push(_cpPlan);
     p.push('');
