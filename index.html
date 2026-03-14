@@ -3680,7 +3680,8 @@ function genSubAgents() {
     } else {
       promptLines.push('3. Key deliverables or results');
     }
-    promptLines.push('4. Any concerns, risks, or blockers for the next step');
+    promptLines.push('4. **Self-validation**: Before finishing, verify your work against the original requirements. List each requirement and confirm it is addressed. If any requirement is partially met or unmet, state what remains and why.');
+    promptLines.push('5. Any concerns, risks, or blockers for the next step');
 
     if (state.memoryEnabled) {
       promptLines.push('');
