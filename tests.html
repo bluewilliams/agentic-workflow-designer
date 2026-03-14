@@ -1534,6 +1534,7 @@ describe('Implementation Plan', () => {
     const output = win.genSubAgents();
     expect(output).toContain('Implementation Plan');
     expect(output).toContain('repository pattern');
+    expect(output).toContain('starting point, not a rigid constraint');
   });
   it('should NOT include plan section in export when empty', () => {
     buildTestWorkflow('linear');
