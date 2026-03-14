@@ -630,17 +630,20 @@ const WRITER_TOOL_DEFAULTS = {
 
 const ALL_TOOLS = ['Read','Write','Edit','Bash','Grep','Glob','WebSearch','WebFetch','Task','LSP'];
 const MODELS = [
-  { value: 'opus-4.6',   label: 'Opus 4.6',   family: 'opus-4.6',   id: 'claude-opus-4-6' },
-  { value: 'sonnet-4.6', label: 'Sonnet 4.6', family: 'sonnet-4.6', id: 'claude-sonnet-4-6' },
-  { value: 'haiku',      label: 'Haiku 4.5',             family: 'haiku-4.5',  id: 'claude-haiku-4-5-20251001' },
-  { value: 'sonnet',     label: 'Sonnet 4.5',            family: 'sonnet-4.5', id: 'claude-sonnet-4-5-20251001' },
-  { value: 'opus',       label: 'Opus 4.5',              family: 'opus-4.5',   id: 'claude-opus-4-5-20251001' },
+  { value: 'opus-4.6',      label: 'Opus 4.6',      family: 'opus-4.6',   id: 'claude-opus-4-6' },
+  { value: 'opus-4.6-1m',   label: 'Opus 4.6 [1M]', family: 'opus-4.6',   id: 'claude-opus-4-6' },
+  { value: 'sonnet-4.6',    label: 'Sonnet 4.6',    family: 'sonnet-4.6', id: 'claude-sonnet-4-6' },
+  { value: 'sonnet-4.6-1m', label: 'Sonnet 4.6 [1M]', family: 'sonnet-4.6', id: 'claude-sonnet-4-6' },
+  { value: 'haiku',         label: 'Haiku 4.5',     family: 'haiku-4.5',  id: 'claude-haiku-4-5-20251001' },
+  { value: 'sonnet',        label: 'Sonnet 4.5',    family: 'sonnet-4.5', id: 'claude-sonnet-4-5-20251001' },
+  { value: 'opus',          label: 'Opus 4.5',      family: 'opus-4.5',   id: 'claude-opus-4-5-20251001' },
 ];
 function getModelLabel(val) { const m = MODELS.find(m => m.value === val); return m ? m.label : val; }
 function getModelFamily(val) { const m = MODELS.find(m => m.value === val); return m ? m.family : val; }
 function getModelId(val) { const m = MODELS.find(m => m.value === val); return m ? m.id : val; }
 // Latest (4.6) models use shorthand aliases; 4.5 models use full IDs for precise version pinning
-const taskModelMap = { 'sonnet-4.6': 'sonnet', 'opus-4.6': 'opus', 'haiku': 'haiku' };
+// [1M] variants append the Claude Code context window suffix for 1M token sessions
+const taskModelMap = { 'sonnet-4.6': 'sonnet', 'opus-4.6': 'opus', 'sonnet-4.6-1m': 'sonnet[1m]', 'opus-4.6-1m': 'opus[1m]', 'haiku': 'haiku' };
 function getTaskModelParam(val) { return taskModelMap[val] || getModelId(val); }
 
 // ── Atlassian URL detection ──────────────────────────────────────────────────

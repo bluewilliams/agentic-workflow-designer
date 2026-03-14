@@ -70,7 +70,7 @@ Click any node on the canvas to open its configuration panel. Each node type has
 ### Agent
 The core building block. Every agent can be individually configured:
 - **Agent Type** - Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, Writer, or General. Each type has a built-in prompt template that activates when you leave the prompt blank. Writer agents have a **Writing Style** selector (Technical, User Guide, Business, API Reference, Runbook) that auto-configures tools and prompt for each discipline
-- **Model** - Opus 4.6, Sonnet 4.6, Sonnet 4.5, Haiku 4.5. Set a default model in the sidebar; override per-node as needed
+- **Model** - Opus 4.6, Sonnet 4.6, Haiku 4.5, Sonnet 4.5, Opus 4.5 — plus 1M context variants for Opus 4.6 and Sonnet 4.6. Set a default model in the sidebar; override per-node as needed
 - **Tools** - Toggle individual tools on/off: Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP. Presets assign sensible defaults (e.g. Reviewers get read-only tools, Coders get everything)
 - **Agent Prompt** - Custom instructions. Leave blank to use the agent type's built-in template, or write your own
 - **Custom Notes** - Additional context injected into the generated prompt (constraints, implementation details)
@@ -118,7 +118,7 @@ Some presets reveal additional sidebar sections:
 - **Memory Protocol** - optional compaction-resilient memory with TOON v1 notation, auto-enabled for complex workflows
 - **Pull Request creation** - opt-in PR output format with git provider auto-detection (GitHub, Bitbucket, GitLab), configurable feature branch and target branch, and safety-first prompt injection. All presets default to Code Changes; PR creation requires explicit opt-in
 - **Custom workflows** - add your own nodes and connections; export generators add smart scaffolding automatically
-- **Model selection** - Sonnet 4.5/4.6, Opus 4.5/4.6, Haiku 4.5 per node. Full model IDs (e.g. `claude-opus-4-6`, `claude-sonnet-4-5-20251001`) are passed directly in all exports for precise version control
+- **Model selection** - Sonnet 4.5/4.6, Opus 4.5/4.6, Haiku 4.5 per node, plus 1M context variants for Opus 4.6 and Sonnet 4.6. Full model IDs (e.g. `claude-opus-4-6`, `claude-sonnet-4-5-20251001`) or Claude Code aliases (e.g. `opus[1m]`) are passed directly in all exports
 - **Implementation Plan** - optional field to paste a Claude Code plan (from `/plan` mode). Provides codebase-specific context — file paths, patterns, architecture — so agents know HOW to implement, not just WHAT to build. Included in all exports and persisted with saved workflows
 - **MCP Integrations** - global toggles for Atlassian (on by default) and Sourcebot (on by default, cross-repo code search) MCPs, plus a freeform field for custom MCPs. When enabled, prompt hints are injected into all exports so agents prefer these tools over built-in alternatives
 
@@ -137,7 +137,7 @@ Your default model, memory toggle, export format tab, app source path/branch, an
 
 ## Testing
 
-Open `tests.html` in any browser to run the full test suite (180 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, and workflow auto-naming. Green/red results render instantly with expandable failure details.
+Open `tests.html` in any browser to run the full test suite (183 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, and workflow auto-naming. Green/red results render instantly with expandable failure details.
 
 **CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3 (no npm). Use `--verbose` for failure details. Exit code 0 = all pass.
 
