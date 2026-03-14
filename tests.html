@@ -1444,6 +1444,27 @@ describe('Model Version Handling', () => {
     const output = win.genWorkflow();
     expect(output).toContain('claude-opus-4-5-20251001');
   });
+  it('should use opus[1m] shorthand for Opus 4.6 [1M] in sub-agents export', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.model = 'opus-4.6-1m';
+    const output = win.genSubAgents();
+    expect(output).toContain('model="opus[1m]"');
+  });
+  it('should use sonnet[1m] shorthand for Sonnet 4.6 [1M] in sub-agents export', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.model = 'sonnet-4.6-1m';
+    const output = win.genSubAgents();
+    expect(output).toContain('model="sonnet[1m]"');
+  });
+  it('should use [1M] label in workflow export for 1M variants', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.model = 'opus-4.6-1m';
+    const output = win.genWorkflow();
+    expect(output).toContain('opus[1m]');
+  });
 });
 
 // ─── Suite 12: MCP Integrations ──────────────────────────
