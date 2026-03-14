@@ -296,6 +296,12 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section">
+    <h3>Implementation Plan <span style="color:var(--text3);font-weight:400;font-size:11px">optional</span></h3>
+    <textarea class="story-input" id="planInput" placeholder="Paste a Claude Code plan here (from plan mode) to give agents codebase-specific context — file paths, patterns, architecture decisions.&#10;&#10;This enriches all agent prompts so they know HOW to implement in your specific codebase, not just WHAT to build." oninput="autoSaveWorkflow()" style="min-height:60px"></textarea>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5">Run <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">/plan</code> in Claude Code to generate a plan, then paste it here. Agents will use it as implementation guidance.</div>
+  </div>
+
+  <div class="sidebar-section">
     <h3>Default Model</h3>
     <div class="custom-select" id="defaultModelSelect">
       <div class="custom-select-trigger" id="defaultModelTrigger">Opus 4.6</div>
@@ -448,8 +454,8 @@ svg.canvas{width:100%;height:100%;display:block}
       <span style="font-size:12px">Atlassian <span style="color:var(--text3);font-weight:400">(Jira &amp; Confluence)</span></span>
     </label>
     <label class="memory-toggle">
-      <input type="checkbox" id="mcpCodeSearchToggle" onchange="toggleMcpCodeSearch()"/>
-      <span style="font-size:12px">CodeSearch <span style="color:var(--text3);font-weight:400">(semantic code search)</span></span>
+      <input type="checkbox" id="mcpSourcebotToggle" onchange="toggleMcpSourcebot()" checked/>
+      <span style="font-size:12px">Sourcebot <span style="color:var(--text3);font-weight:400">(cross-repo code search)</span></span>
     </label>
     <div style="margin-top:8px">
       <textarea id="mcpCustomNotes" placeholder="Describe other MCPs available to your agents (e.g. Playwright MCP for browser testing)..." oninput="savePrefsDebounced()" rows="2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;font-family:inherit"></textarea>
@@ -658,9 +664,9 @@ function atlassianHint(urls) {
   const list = urls.map(u => `  - ${u}`).join('\n');
   return `> **Atlassian Context**: If an Atlassian MCP tool is available, use it to fetch the following URL(s) for full ticket/page details before proceeding:\n${list}`;
 }
-function codeSearchHint() {
-  if (!state.mcpCodeSearch) return null;
-  return '> **CodeSearch MCP**: A semantic code search server is available. Prefer `search_code` for concept/feature lookups, `find_class` for type lookups, `find_usages`/`find_dependents` for impact analysis, and `find_implementations` for interface implementations — instead of Grep/Glob when exploring or understanding code.';
+function sourcebotHint() {
+  if (!state.mcpSourcebot) return null;
+  return '> **Sourcebot MCP** (cross-repo code search): A Sourcebot server is available with these tools:\n> - `search_code` — fast indexed search across all repos. Supports regex, language filters, repo filters. Use for pattern matching, finding implementations, and locating files (<1s).\n> - `ask_codebase` — AI-powered natural language Q&A. Ask complex questions about the codebase and get synthesized answers with references. Use for understanding architecture, tracing flows across repos, or answering "how does X work?" questions (30-60s).\n> - `read_file` — read file contents by repo name and path. Use after search_code finds a match you need to read in full.\n> - `list_tree` — browse directory structure of any repo. Use for discovery and understanding project layout.\n> - `list_repos` — discover available repositories with optional name filter.\n> - `list_commits` — view commit history with date/author filtering.\n>\n> **Recommended workflow**: `list_repos` (discover) → `list_tree` (explore structure) → `search_code` (find specific code) → `read_file` (read in full). Use `ask_codebase` for complex multi-repo questions where manual search would take multiple steps.';
 }
 function customMcpHint() {
   const notes = ($('mcpCustomNotes') ? $('mcpCustomNotes').value : state.mcpCustom || '').trim();
@@ -822,7 +828,7 @@ let state = {
   repositories: [],
   activePreset: null,
   mcpAtlassian: true,
-  mcpCodeSearch: false,
+  mcpSourcebot: true,
   mcpCustom: ''
 };
 
@@ -940,8 +946,8 @@ function toggleMcpAtlassian() {
   state.mcpAtlassian = $('mcpAtlassianToggle').checked;
   savePrefs();
 }
-function toggleMcpCodeSearch() {
-  state.mcpCodeSearch = $('mcpCodeSearchToggle').checked;
+function toggleMcpSourcebot() {
+  state.mcpSourcebot = $('mcpSourcebotToggle').checked;
   savePrefs();
 }
 
@@ -981,7 +987,7 @@ function savePrefs() {
       exportFormat: state.exportFormat,
       repositories: state.repositories,
       mcpAtlassian: state.mcpAtlassian,
-      mcpCodeSearch: state.mcpCodeSearch,
+      mcpSourcebot: state.mcpSourcebot,
       mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : ''
     }));
   } catch(e) { /* localStorage unavailable or full */ }
@@ -1012,10 +1018,10 @@ function restorePrefs() {
       const cb = $('mcpAtlassianToggle');
       if (cb) cb.checked = state.mcpAtlassian;
     }
-    if (p.mcpCodeSearch !== undefined) {
-      state.mcpCodeSearch = !!p.mcpCodeSearch;
-      const cb = $('mcpCodeSearchToggle');
-      if (cb) cb.checked = state.mcpCodeSearch;
+    if (p.mcpSourcebot !== undefined) {
+      state.mcpSourcebot = !!p.mcpSourcebot;
+      const cb = $('mcpSourcebotToggle');
+      if (cb) cb.checked = state.mcpSourcebot;
     }
     if (p.mcpCustom) {
       state.mcpCustom = p.mcpCustom;
@@ -1092,6 +1098,7 @@ function serializeWorkflow() {
     slug: slugify(getName() || 'untitled'),
     name: getName(),
     story: $('storyInput') ? $('storyInput').value : '',
+    plan: $('planInput') ? $('planInput').value : '',
     savedAt: new Date().toISOString(),
     repositories: state.repositories,
     memoryEnabled: state.memoryEnabled,
@@ -1127,6 +1134,7 @@ function deserializeWorkflow(data) {
   state.activePreset = null;
   if (data.name !== undefined) $('workflowName').value = data.name;
   if (data.story !== undefined && $('storyInput')) $('storyInput').value = data.story;
+  if ($('planInput')) $('planInput').value = data.plan || '';
   state.repositories = Array.isArray(data.repositories) ? data.repositories : [];
   // Restore memory toggle if saved in workflow
   if (data.memoryEnabled !== undefined) {
@@ -3204,11 +3212,12 @@ function clearCanvas(skipConfirm) {
   state.memoryEnabled = false;
   const _mcb = $('memoryToggle');
   if (_mcb) { _mcb.checked = false; $('memoryPathField').style.display = 'none'; }
+  if ($('planInput')) $('planInput').value = '';
   state.mcpAtlassian = true;
-  state.mcpCodeSearch = false;
+  state.mcpSourcebot = true;
   state.mcpCustom = '';
   const _matl = $('mcpAtlassianToggle'); if (_matl) _matl.checked = true;
-  const _mcs = $('mcpCodeSearchToggle'); if (_mcs) _mcs.checked = false;
+  const _msb = $('mcpSourcebotToggle'); if (_msb) _msb.checked = true;
   const _mcn = $('mcpCustomNotes'); if (_mcn) _mcn.value = '';
   render();
   updateConfig();
@@ -3290,6 +3299,7 @@ function updatePrompt() {
 // ── Helpers ──
 function getStory() { return $('storyInput').value.trim(); }
 function getName() { return $('workflowName').value.trim(); }
+function getPlan() { return $('planInput') ? $('planInput').value.trim() : ''; }
 function getAppSource() {
   const pathEl = $('appSourcePath');
   const branchEl = $('appSourceBranch');
@@ -3398,14 +3408,16 @@ function genWorkflow() {
   p.push('## AI Agent Workflow' + (name ? ': ' + name : ''));
   p.push('');
   if (story) { p.push('### Requirements'); p.push(''); p.push(story); p.push(''); }
+  const _wfPlan = getPlan();
+  if (_wfPlan) { p.push('### Implementation Plan'); p.push(''); p.push(_wfPlan); p.push(''); }
   appSourceBlock('### App Source').forEach(l => p.push(l));
   uiContextBlock('### UI Context').forEach(l => p.push(l));
   prBlock('### Pull Request Creation').forEach(l => p.push(l));
   repoBlock('### Repositories').forEach(l => p.push(l));
   const _wfAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_wfAtl) { p.push(_wfAtl); p.push(''); }
-  const _wfCs = codeSearchHint();
-  if (_wfCs) { p.push(_wfCs); p.push(''); }
+  const _wfSb = sourcebotHint();
+  if (_wfSb) { p.push(_wfSb); p.push(''); }
   const _wfCm = customMcpHint();
   if (_wfCm) { p.push(_wfCm); p.push(''); }
 
@@ -3547,10 +3559,17 @@ function genSubAgents() {
     p.push(story);
     p.push('');
   }
+  const _saPlan = getPlan();
+  if (_saPlan) {
+    p.push('## Implementation Plan');
+    p.push('');
+    p.push(_saPlan);
+    p.push('');
+  }
   const _saAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_saAtl) { p.push(_saAtl); p.push(''); }
-  const _saCs = codeSearchHint();
-  if (_saCs) { p.push(_saCs); p.push(''); }
+  const _saSb = sourcebotHint();
+  if (_saSb) { p.push(_saSb); p.push(''); }
   const _saCm = customMcpHint();
   if (_saCm) { p.push(_saCm); p.push(''); }
 
@@ -3783,14 +3802,21 @@ function genAgentTeams() {
     p.push(story);
     p.push('');
   }
+  const _atPlan = getPlan();
+  if (_atPlan) {
+    p.push('## Implementation Plan');
+    p.push('');
+    p.push(_atPlan);
+    p.push('');
+  }
   appSourceBlock('## App Source').forEach(l => p.push(l));
   uiContextBlock('## UI Context').forEach(l => p.push(l));
   prBlock('## Pull Request Creation').forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _atAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_atAtl) { p.push(_atAtl); p.push(''); }
-  const _atCs = codeSearchHint();
-  if (_atCs) { p.push(_atCs); p.push(''); }
+  const _atSb = sourcebotHint();
+  if (_atSb) { p.push(_atSb); p.push(''); }
   const _atCm = customMcpHint();
   if (_atCm) { p.push(_atCm); p.push(''); }
 
@@ -3976,6 +4002,13 @@ function genAgentSDK() {
   p.push('import asyncio');
   p.push('import anthropic');
   p.push('');
+  const _sdkPlan = getPlan();
+  if (_sdkPlan) {
+    p.push('# ── Implementation Plan ───────────────────────────────────────────────────');
+    _sdkPlan.split('\n').forEach(line => p.push(`# ${line}`));
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
   const _sdkAtlUrls = getWorkflowAtlassianUrls();
   if (state.mcpAtlassian && _sdkAtlUrls.length > 0) {
     p.push('# ── Atlassian Context ──────────────────────────────────────────────────────');
@@ -3984,11 +4017,12 @@ function genAgentSDK() {
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
-  if (state.mcpCodeSearch) {
-    p.push('# ── CodeSearch MCP ────────────────────────────────────────────────────────');
-    p.push('# A semantic code search server is available. Prefer search_code for concept');
-    p.push('# lookups, find_class for types, find_usages/find_dependents for impact');
-    p.push('# analysis — instead of grep/glob when exploring code.');
+  if (state.mcpSourcebot) {
+    p.push('# ── Sourcebot MCP (cross-repo code search) ───────────────────────────────');
+    p.push('# Tools: search_code (fast indexed search), ask_codebase (AI Q&A, 30-60s),');
+    p.push('# read_file (by repo/path), list_tree (directory structure), list_repos,');
+    p.push('# list_commits. Workflow: list_repos → list_tree → search_code → read_file.');
+    p.push('# Use ask_codebase for complex multi-repo understanding questions.');
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
@@ -4178,14 +4212,21 @@ function genClaudePrompt() {
     p.push(story);
     p.push('');
   }
+  const _cpPlan = getPlan();
+  if (_cpPlan) {
+    p.push('## Implementation Plan');
+    p.push('');
+    p.push(_cpPlan);
+    p.push('');
+  }
   appSourceBlock('## App Source').forEach(l => p.push(l));
   uiContextBlock('## UI Context').forEach(l => p.push(l));
   prBlock('## Pull Request Creation').forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _cpAtl = atlassianHint(getWorkflowAtlassianUrls());
   if (_cpAtl) { p.push(_cpAtl); p.push(''); }
-  const _cpCs = codeSearchHint();
-  if (_cpCs) { p.push(_cpCs); p.push(''); }
+  const _cpSb = sourcebotHint();
+  if (_cpSb) { p.push(_cpSb); p.push(''); }
   const _cpCm = customMcpHint();
   if (_cpCm) { p.push(_cpCm); p.push(''); }
 

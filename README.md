@@ -119,7 +119,8 @@ Some presets reveal additional sidebar sections:
 - **Pull Request creation** - opt-in PR output format with git provider auto-detection (GitHub, Bitbucket, GitLab), configurable feature branch and target branch, and safety-first prompt injection. All presets default to Code Changes; PR creation requires explicit opt-in
 - **Custom workflows** - add your own nodes and connections; export generators add smart scaffolding automatically
 - **Model selection** - Sonnet 4.5/4.6, Opus 4.5/4.6, Haiku 4.5 per node. Full model IDs (e.g. `claude-opus-4-6`, `claude-sonnet-4-5-20251001`) are passed directly in all exports for precise version control
-- **MCP Integrations** - global toggles for Atlassian (on by default) and CodeSearch MCPs, plus a freeform field for custom MCPs. When enabled, prompt hints are injected into all exports so agents prefer these tools over built-in alternatives
+- **Implementation Plan** - optional field to paste a Claude Code plan (from `/plan` mode). Provides codebase-specific context — file paths, patterns, architecture — so agents know HOW to implement, not just WHAT to build. Included in all exports and persisted with saved workflows
+- **MCP Integrations** - global toggles for Atlassian (on by default) and Sourcebot (on by default, cross-repo code search) MCPs, plus a freeform field for custom MCPs. When enabled, prompt hints are injected into all exports so agents prefer these tools over built-in alternatives
 
 ## Save & Load
 
@@ -136,7 +137,7 @@ Your default model, memory toggle, export format tab, app source path/branch, an
 
 ## Testing
 
-Open `tests.html` in any browser to run the full test suite (173 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, and workflow auto-naming. Green/red results render instantly with expandable failure details.
+Open `tests.html` in any browser to run the full test suite (180 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, and workflow auto-naming. Green/red results render instantly with expandable failure details.
 
 **CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3 (no npm). Use `--verbose` for failure details. Exit code 0 = all pass.
 

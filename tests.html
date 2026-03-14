@@ -1450,16 +1450,18 @@ describe('Model Version Handling', () => {
 describe('MCP Integrations', () => {
   beforeEach(() => { resetState(); });
 
-  it('should return null for codeSearchHint when disabled', () => {
-    win.state.mcpCodeSearch = false;
-    expect(win.codeSearchHint()).toBe(null);
+  it('should return null for sourcebotHint when disabled', () => {
+    win.state.mcpSourcebot = false;
+    expect(win.sourcebotHint()).toBe(null);
   });
-  it('should return prompt text for codeSearchHint when enabled', () => {
-    win.state.mcpCodeSearch = true;
-    const hint = win.codeSearchHint();
-    expect(hint).toContain('CodeSearch MCP');
+  it('should return prompt text for sourcebotHint when enabled', () => {
+    win.state.mcpSourcebot = true;
+    const hint = win.sourcebotHint();
+    expect(hint).toContain('Sourcebot MCP');
     expect(hint).toContain('search_code');
-    expect(hint).toContain('find_class');
+    expect(hint).toContain('ask_codebase');
+    expect(hint).toContain('read_file');
+    expect(hint).toContain('list_tree');
   });
   it('should return null for atlassianHint when toggle is off', () => {
     win.state.mcpAtlassian = false;
@@ -1486,11 +1488,11 @@ describe('MCP Integrations', () => {
     expect(hint).toContain('Custom MCP Tools');
     expect(hint).toContain('Playwright MCP');
   });
-  it('should include CodeSearch hint in sub-agents export when enabled', () => {
+  it('should include Sourcebot hint in sub-agents export when enabled', () => {
     buildTestWorkflow('linear');
-    win.state.mcpCodeSearch = true;
+    win.state.mcpSourcebot = true;
     const output = win.genSubAgents();
-    expect(output).toContain('CodeSearch MCP');
+    expect(output).toContain('Sourcebot MCP');
   });
   it('should include custom MCP hint in sub-agents export when populated', () => {
     buildTestWorkflow('linear');
@@ -1500,14 +1502,67 @@ describe('MCP Integrations', () => {
     const output = win.genSubAgents();
     expect(output).toContain('My custom MCP server');
   });
-  it('should reset MCP state on Clear All (Atlassian on, CodeSearch off)', () => {
+  it('should reset MCP state on Clear All (Atlassian on, Sourcebot on)', () => {
     win.state.mcpAtlassian = false;
-    win.state.mcpCodeSearch = true;
+    win.state.mcpSourcebot = false;
     win.state.mcpCustom = 'something';
     win.clearCanvas();
     expect(win.state.mcpAtlassian).toBe(true);
-    expect(win.state.mcpCodeSearch).toBe(false);
+    expect(win.state.mcpSourcebot).toBe(true);
     expect(win.state.mcpCustom).toBe('');
+  });
+});
+
+// ─── Suite 13: Implementation Plan ──────────────────────────
+describe('Implementation Plan', () => {
+  beforeEach(() => { resetState(); });
+
+  it('should return empty string for getPlan when plan input is empty', () => {
+    const pi = win.document.getElementById('planInput');
+    if (pi) pi.value = '';
+    expect(win.getPlan()).toBe('');
+  });
+  it('should return plan text for getPlan when populated', () => {
+    const pi = win.document.getElementById('planInput');
+    if (pi) pi.value = 'Step 1: Modify src/auth.ts\nStep 2: Update tests';
+    expect(win.getPlan()).toContain('src/auth.ts');
+  });
+  it('should include plan in sub-agents export when populated', () => {
+    buildTestWorkflow('linear');
+    const pi = win.document.getElementById('planInput');
+    if (pi) pi.value = 'Architecture: use repository pattern for data access';
+    const output = win.genSubAgents();
+    expect(output).toContain('Implementation Plan');
+    expect(output).toContain('repository pattern');
+  });
+  it('should NOT include plan section in export when empty', () => {
+    buildTestWorkflow('linear');
+    const pi = win.document.getElementById('planInput');
+    if (pi) pi.value = '';
+    const output = win.genSubAgents();
+    expect(output).toNotContain('Implementation Plan');
+  });
+  it('should include plan in workflow export when populated', () => {
+    buildTestWorkflow('linear');
+    const pi = win.document.getElementById('planInput');
+    if (pi) pi.value = 'Plan: modify controllers/UserController.cs';
+    const output = win.genWorkflow();
+    expect(output).toContain('Implementation Plan');
+    expect(output).toContain('UserController.cs');
+  });
+  it('should persist plan in serialized workflow', () => {
+    const pi = win.document.getElementById('planInput');
+    if (pi) pi.value = 'My test plan content';
+    buildTestWorkflow('linear');
+    const data = win.serializeWorkflow();
+    expect(data.plan).toBe('My test plan content');
+  });
+  it('should clear plan on Clear All', () => {
+    const pi = win.document.getElementById('planInput');
+    if (pi) pi.value = 'Some plan';
+    win.clearCanvas();
+    const piAfter = win.document.getElementById('planInput');
+    expect(piAfter ? piAfter.value : '').toBe('');
   });
 });
 
@@ -1520,7 +1575,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
