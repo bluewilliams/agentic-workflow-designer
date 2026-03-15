@@ -145,6 +145,7 @@ svg.canvas{width:100%;height:100%;display:block}
 .connection{fill:none;stroke:var(--text3);stroke-width:2;transition:stroke .15s}
 .connection:hover{stroke:var(--accent);cursor:pointer}
 .connection.selected{stroke:var(--accent);stroke-width:2.5}
+.connection.back-edge{stroke-dasharray:6 3;opacity:.5}
 .conn-label{fill:var(--text3);font-size:10px;font-family:var(--font);
   text-anchor:middle;pointer-events:none}
 .temp-connection{fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:6 4;
@@ -1726,17 +1727,18 @@ function renderConnections() {
     if (!from || !to) return;
 
     const pts = getConnectionPoints(from, to, conn.fromPort);
+    const isBack = (pts.x2 + 20) < pts.x1; // target is left of source = back-edge visually
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    const d = bezierPath(pts.x1, pts.y1, pts.x2, pts.y2);
+    const d = bezierPath(pts.x1, pts.y1, pts.x2, pts.y2, isBack);
     path.setAttribute('d', d);
-    path.setAttribute('class', `connection${state.selectedId === conn.id ? ' selected' : ''}`);
+    path.setAttribute('class', `connection${state.selectedId === conn.id ? ' selected' : ''}${isBack ? ' back-edge' : ''}`);
     path.setAttribute('marker-end', state.selectedId === conn.id ? 'url(#arrowhead-accent)' : 'url(#arrowhead)');
     path.setAttribute('data-id', conn.id);
     layer.appendChild(path);
 
     // Label
     if (conn.label) {
-      const mid = bezierMidpoint(pts.x1, pts.y1, pts.x2, pts.y2);
+      const mid = bezierMidpoint(pts.x1, pts.y1, pts.x2, pts.y2, isBack);
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       text.setAttribute('x', mid.x);
       text.setAttribute('y', mid.y - 8);
@@ -1760,17 +1762,33 @@ function getConnectionPoints(from, to, fromPort) {
   };
 }
 
-function bezierPath(x1, y1, x2, y2) {
+function bezierPath(x1, y1, x2, y2, isBackEdge) {
   const dx = Math.abs(x2 - x1);
+  if (isBackEdge && x2 < x1) {
+    // Back-edge: arc below the main chain so the line doesn't cut through intermediate nodes
+    const drop = Math.max(80, dx * 0.15);
+    const cpx = Math.max(60, dx * 0.3);
+    const midY = Math.max(y1, y2) + drop;
+    return `M${x1},${y1} C${x1 + cpx},${midY} ${x2 - cpx},${midY} ${x2},${y2}`;
+  }
   const cp = Math.max(50, dx * 0.4);
   return `M${x1},${y1} C${x1 + cp},${y1} ${x2 - cp},${y2} ${x2},${y2}`;
 }
 
-function bezierMidpoint(x1, y1, x2, y2) {
+function bezierMidpoint(x1, y1, x2, y2, isBackEdge) {
   const dx = Math.abs(x2 - x1);
-  const cp = Math.max(50, dx * 0.4);
   const t = 0.5;
   const mt = 1 - t;
+  if (isBackEdge && x2 < x1) {
+    const drop = Math.max(80, dx * 0.15);
+    const cpx = Math.max(60, dx * 0.3);
+    const midY = Math.max(y1, y2) + drop;
+    return {
+      x: mt*mt*mt*x1 + 3*mt*mt*t*(x1+cpx) + 3*mt*t*t*(x2-cpx) + t*t*t*x2,
+      y: mt*mt*mt*y1 + 3*mt*mt*t*midY + 3*mt*t*t*midY + t*t*t*y2
+    };
+  }
+  const cp = Math.max(50, dx * 0.4);
   return {
     x: mt*mt*mt*x1 + 3*mt*mt*t*(x1+cp) + 3*mt*t*t*(x2-cp) + t*t*t*x2,
     y: mt*mt*mt*y1 + 3*mt*mt*t*y1 + 3*mt*t*t*y2 + t*t*t*y2
@@ -2386,21 +2404,41 @@ function getNodesBounds() {
 function autoLayout() {
   if (state.nodes.length === 0) return;
 
-  // Build adjacency for topological sort
+  // Identify back-edges (revision/retry loops from decision gates) so they don't corrupt layer assignment
+  const backEdges = new Set();
+  // DFS-based cycle detection to find all back-edges
+  const color = {}; // 0=white, 1=gray, 2=black
+  state.nodes.forEach(n => { color[n.id] = 0; });
+  const fwdAdj = {};
+  state.nodes.forEach(n => { fwdAdj[n.id] = []; });
+  state.connections.forEach(c => {
+    if (fwdAdj[c.from]) fwdAdj[c.from].push(c);
+  });
+  function dfs(id) {
+    color[id] = 1;
+    for (const c of (fwdAdj[id] || [])) {
+      if (color[c.to] === 1) { backEdges.add(c.id); } // back-edge: target is in current DFS path
+      else if (color[c.to] === 0) { dfs(c.to); }
+    }
+    color[id] = 2;
+  }
+  state.nodes.forEach(n => { if (color[n.id] === 0) dfs(n.id); });
+
+  // Build adjacency for topological sort (excluding back-edges)
   const adj = {};
   const inDeg = {};
   state.nodes.forEach(n => { adj[n.id] = []; inDeg[n.id] = 0; });
   state.connections.forEach(c => {
+    if (backEdges.has(c.id)) return; // skip back-edges
     if (adj[c.from]) { adj[c.from].push(c.to); inDeg[c.to] = (inDeg[c.to] || 0) + 1; }
   });
 
-  // Topological layers (BFS with cycle breaking)
+  // Topological layers (BFS — no cycles since back-edges excluded)
   const layers = [];
   let queue = state.nodes.filter(n => (inDeg[n.id] || 0) === 0).map(n => n.id);
   const visited = new Set();
   while (visited.size < state.nodes.length) {
     if (queue.length === 0) {
-      // Cycle detected — break it by picking unvisited node with lowest remaining inDeg
       const unvisited = state.nodes.filter(n => !visited.has(n.id));
       if (unvisited.length === 0) break;
       unvisited.sort((a, b) => (inDeg[a.id] || 0) - (inDeg[b.id] || 0));
