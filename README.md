@@ -121,6 +121,7 @@ Some presets reveal additional sidebar sections:
 - **Model selection** - Sonnet 4.5/4.6, Opus 4.5/4.6, Haiku 4.5 per node, plus 1M context variants for Opus 4.6 and Sonnet 4.6. Full model IDs (e.g. `claude-opus-4-6`, `claude-sonnet-4-5-20251001`) or Claude Code aliases (e.g. `opus[1m]`) are passed directly in all exports
 - **Implementation Plan** - optional field to paste a Claude Code plan (from `/plan` mode). Provides codebase-specific context — file paths, patterns, architecture — so agents know HOW to implement, not just WHAT to build. Included in all exports and persisted with saved workflows
 - **MCP Integrations** - global toggles for Atlassian (on by default) and Sourcebot (on by default, cross-repo code search) MCPs, plus a freeform field for custom MCPs. When enabled, prompt hints are injected into all exports so agents prefer these tools over built-in alternatives
+- **Requirements Refinement** - click **Refine** to generate a discovery interview prompt. Run it in Claude Code and it interviews you about edge cases, UX decisions, tradeoffs, and technical constraints using `AskUserQuestion`, then writes a refined spec to `.claude/specs/{workflow-name}.md`. Paste the result back into Requirements for sharper prompts
 
 ## Save & Load
 
@@ -137,7 +138,7 @@ Your default model, memory toggle, export format tab, app source path/branch, an
 
 ## Testing
 
-Open `tests.html` in any browser to run the full test suite (183 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, and workflow auto-naming. Green/red results render instantly with expandable failure details.
+Open `tests.html` in any browser to run the full test suite (190 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, workflow auto-naming, and requirements refinement. Green/red results render instantly with expandable failure details.
 
 **CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3 (no npm). Use `--verbose` for failure details. Exit code 0 = all pass.
 

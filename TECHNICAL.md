@@ -362,7 +362,7 @@ After generation, memory is auto-enabled if the workflow has parallel forks or 5
 ```
 agentic-workflow-designer/
 ├── index.html       # The entire application (~4,300 lines)
-├── tests.html       # iframe-based test suite (~1,210 lines, 183 tests)
+├── tests.html       # iframe-based test suite (~1,210 lines, 190 tests)
 ├── run-tests.sh     # Headless CLI test runner (Chrome + Python 3, zero npm deps)
 ├── TECHNICAL.md     # This document
 ├── README.md        # User-facing overview
@@ -374,7 +374,7 @@ The `index.html` is internally organized into clearly delimited sections:
 ```
 CSS styles (lines 7–258)
 HTML structure (lines 259–559)
-  ├── Sidebar: Workflow Name, Story Input, Implementation Plan, Default Model, Repositories,
+  ├── Sidebar: Workflow Name, Story Input (+ Refine), Implementation Plan, Default Model, Repositories,
   │            Add Nodes, Presets, App Under Test (conditional), Saved Workflows, Tip, MCP Integrations, Memory, Node Config
   ├── Canvas: Toolbar, SVG canvas, Empty state
   └── Prompt Output: 5 format tabs, Copy button
@@ -442,7 +442,7 @@ JavaScript:
 
 **How it works**: Loads `index.html` in a hidden `<iframe>`, accesses its `contentWindow` for all functions, state, and DOM. Tests run against the real app with real localStorage and real initialization.
 
-**Coverage** (183 tests across 13 suites):
+**Coverage** (190 tests across 14 suites):
 - **Pure utilities**: `slugify`, `extractAcceptanceCriteria`, `isUrlOnly`, `getEffectivePrompt`, `getModelLabel`
 - **State management**: `addNode`, `addConnection`, `deleteNode`, `buildAgentSlugMap`, `topologicalSort`
 - **Persistence**: serialize/deserialize roundtrips, prefs save/restore, workflow save/load
@@ -456,6 +456,7 @@ JavaScript:
 - **Model Version Handling**: Full model IDs (e.g. `claude-opus-4-6`, `claude-sonnet-4-5-20251001`) and Claude Code aliases (e.g. `opus[1m]`) passed directly in Task tool `model` parameter and all export formats, including 1M context window variants
 - **MCP Integrations**: Atlassian/Sourcebot/custom MCP hint generation, toggle gating, export injection, persistence, clear-all reset
 - **Implementation Plan**: Plan field persistence, serialization, export injection across formats, clear-all reset
+- **Requirements Refinement**: Refine prompt generation with requirements inclusion, Atlassian/Sourcebot MCP awareness, workflow name slugification, spec file path generation
 
 **Running tests in a browser**: Open `tests.html` in a browser. Results render immediately — green/red badges per suite, expandable failure details with expected vs actual values.
 
@@ -466,7 +467,7 @@ JavaScript:
 ## Development Guidelines
 
 - **Keep it single-file**: Resist the urge to add a build step unless complexity demands it
-- **Run tests after changes**: Run `./run-tests.sh` from CLI or open `tests.html` in a browser. All 183 tests should pass
+- **Run tests after changes**: Run `./run-tests.sh` from CLI or open `tests.html` in a browser. All 190 tests should pass
 - **Render on demand**: Call `render()` and `updatePrompt()` after any state mutation (`render()` triggers auto-save automatically)
 - **Export completeness**: Every export format must include the full user story as context. Never assume the recipient has seen it
 - **Prompt quality first**: The quality of exported prompts is the product's core value proposition. `getEffectivePrompt()` and the `PROMPTS` library are the most important code in the file
