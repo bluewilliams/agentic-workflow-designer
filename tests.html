@@ -50,11 +50,23 @@ const suites = [];
 let currentSuite = null;
 
 function describe(name, fn) {
-  const suite = { name, tests: [], beforeEach: null, afterEach: null };
-  currentSuite = suite;
-  suites.push(suite);
-  fn();
-  currentSuite = null;
+  if (currentSuite) {
+    // Nested describe: create a child group inside the parent suite
+    const parent = currentSuite;
+    const child = { name, tests: [], beforeEach: parent.beforeEach, afterEach: parent.afterEach, parent };
+    parent.children = parent.children || [];
+    parent.children.push(child);
+    currentSuite = child;
+    fn();
+    currentSuite = parent;
+  } else {
+    // Top-level describe
+    const suite = { name, tests: [], children: [], beforeEach: null, afterEach: null };
+    currentSuite = suite;
+    suites.push(suite);
+    fn();
+    currentSuite = null;
+  }
 }
 
 function it(name, fn) {
@@ -64,7 +76,8 @@ function it(name, fn) {
 
 function beforeEach(fn) {
   if (!currentSuite) throw new Error('beforeEach() must be inside describe()');
-  currentSuite.beforeEach = fn;
+  const inherited = currentSuite.beforeEach;
+  currentSuite.beforeEach = inherited ? () => { inherited(); fn(); } : fn;
 }
 
 function afterEach(fn) {
@@ -136,29 +149,40 @@ async function runAll(win) {
   const resultsEl = document.getElementById('results');
   resultsEl.innerHTML = '';
 
+  function runGroup(group, testsDiv, suiteName) {
+    let gPass = 0, gFail = 0;
+    for (const test of group.tests) {
+      try {
+        if (group.beforeEach) group.beforeEach();
+        test.fn();
+        if (group.afterEach) group.afterEach();
+        gPass++; totalPass++;
+        testsDiv.innerHTML += `<div class="test-row"><span class="icon">✅</span><span class="test-name">${esc(test.name)}</span></div>`;
+      } catch (e) {
+        gFail++; totalFail++;
+        failures.push({ suite: suiteName, test: test.name, error: e.message });
+        testsDiv.innerHTML += `<div class="test-row"><span class="icon">❌</span><span class="test-name failed">${esc(test.name)}</span></div>`;
+        testsDiv.innerHTML += `<div class="error-detail">${esc(e.message)}</div>`;
+      }
+    }
+    if (group.children) {
+      for (const child of group.children) {
+        testsDiv.innerHTML += `<div class="test-row" style="padding:6px 0 2px;border-bottom:none"><span style="font-size:11px;font-weight:600;color:var(--text2)">${esc(child.name)}</span></div>`;
+        const childResult = runGroup(child, testsDiv, suiteName + ' > ' + child.name);
+        gPass += childResult.pass;
+        gFail += childResult.fail;
+      }
+    }
+    return { pass: gPass, fail: gFail };
+  }
+
   for (const suite of suites) {
     const details = document.createElement('details');
     const summary = document.createElement('summary');
     const testsDiv = document.createElement('div');
     testsDiv.className = 'tests';
-    let suitePass = 0, suiteFail = 0;
 
-    for (const test of suite.tests) {
-      try {
-        if (suite.beforeEach) suite.beforeEach();
-        test.fn();
-        if (suite.afterEach) suite.afterEach();
-        suitePass++;
-        totalPass++;
-        testsDiv.innerHTML += `<div class="test-row"><span class="icon">✅</span><span class="test-name">${esc(test.name)}</span></div>`;
-      } catch (e) {
-        suiteFail++;
-        totalFail++;
-        failures.push({ suite: suite.name, test: test.name, error: e.message });
-        testsDiv.innerHTML += `<div class="test-row"><span class="icon">❌</span><span class="test-name failed">${esc(test.name)}</span></div>`;
-        testsDiv.innerHTML += `<div class="error-detail">${esc(e.message)}</div>`;
-      }
-    }
+    const { pass: suitePass, fail: suiteFail } = runGroup(suite, testsDiv, suite.name);
 
     const badge = suiteFail === 0
       ? `<span class="badge green">${suitePass} passed</span>`
@@ -312,114 +336,120 @@ function selectCustomOption(container, value) {
 
 // ─── Suite 1: Pure Utilities ─────────────────────────────
 describe('Pure Utilities', () => {
-  // slugify
-  it('should slugify basic text', () => {
-    expect(win.slugify('Hello World')).toBe('hello-world');
-  });
-  it('should strip special chars in slugify', () => {
-    expect(win.slugify('Hello @#$ World!')).toBe('hello-world');
-  });
-  it('should remove leading and trailing hyphens in slugify', () => {
-    expect(win.slugify('--hello--')).toBe('hello');
-  });
-  it('should return untitled for empty string in slugify', () => {
-    expect(win.slugify('')).toBe('untitled');
-  });
-  it('should return untitled for all-special chars in slugify', () => {
-    expect(win.slugify('@#$%^&')).toBe('untitled');
-  });
-  it('should preserve numbers in slugify', () => {
-    expect(win.slugify('Agent 42 v2')).toBe('agent-42-v2');
-  });
-
-  // extractAcceptanceCriteria
-  it('should extract bullet criteria under AC header', () => {
-    const text = 'Acceptance criteria:\n- Should validate email\n- Must return 200\nOther stuff here';
-    const result = win.extractAcceptanceCriteria(text);
-    expect(result.length).toBe(2);
-    expect(result[0]).toContain('validate email');
-  });
-  it('should extract numbered list criteria', () => {
-    const text = 'Acceptance criteria:\n1. User can log in\n2. Error message displays on failure';
-    const result = win.extractAcceptanceCriteria(text);
-    expect(result.length).toBe(2);
-  });
-  it('should extract checkbox criteria', () => {
-    const text = 'Acceptance criteria:\n- [ ] Should render correctly\n- [x] Must handle errors';
-    const result = win.extractAcceptanceCriteria(text);
-    expect(result.length).toBe(2);
-  });
-  it('should return empty array when no criteria found', () => {
-    const result = win.extractAcceptanceCriteria('Just some plain text with no criteria.');
-    expect(result.length).toBe(0);
-  });
-
-  // isUrlOnly
-  it('should detect URL-only input', () => {
-    expect(win.isUrlOnly('https://jira.example.com/browse/PROJ-123')).toBe(true);
-  });
-  it('should reject plain text as non-URL', () => {
-    expect(win.isUrlOnly('Fix the login bug in the authentication module')).toBe(false);
-  });
-  it('should reject mixed URL and text', () => {
-    expect(win.isUrlOnly('Check this ticket https://jira.example.com/browse/PROJ-123 and fix it please')).toBe(false);
-  });
-
-  // getEffectivePrompt
-  it('should prefer user prompt over template', () => {
-    const node = { label:'Test', config:{ prompt:'My custom prompt', agentType:'coder', notes:'' }};
-    expect(win.getEffectivePrompt(node)).toBe('My custom prompt');
-  });
-  it('should fall back to agent type template', () => {
-    const node = { label:'Test', config:{ prompt:'', agentType:'planner', notes:'' }};
-    const result = win.getEffectivePrompt(node);
-    expect(result).toContain('implementation plan');
-  });
-  it('should use generic fallback for unmapped agent types', () => {
-    const node = { label:'My Agent', config:{ prompt:'', agentType:'unknown_type_xyz', notes:'' }};
-    const result = win.getEffectivePrompt(node);
-    expect(result).toContain('Complete the task');
-  });
-
-  // Writer agent type and writing styles
-  it('should include writer in AGENT_TYPES', () => {
-    const writer = win.AGENT_TYPES.find(a => a.id === 'writer');
-    expect(!!writer).toBe(true);
-    expect(writer.name).toBe('Writer');
-    expect(win.AGENT_TYPES.length).toBe(11);
-  });
-  it('should return writerTechnical prompt for writer with default style', () => {
-    const node = { label:'Writer', config:{ prompt:'', agentType:'writer', notes:'' }};
-    const result = win.getEffectivePrompt(node);
-    expect(result).toContain('technical writer');
-  });
-  it('should return style-specific prompt for writer with writingStyle', () => {
-    const node = { label:'Writer', config:{ prompt:'', agentType:'writer', writingStyle:'business', notes:'' }};
-    const result = win.getEffectivePrompt(node);
-    expect(result).toContain('business writer');
-  });
-  it('should prefer custom prompt over writer template', () => {
-    const node = { label:'Writer', config:{ prompt:'My custom writing prompt', agentType:'writer', writingStyle:'api', notes:'' }};
-    expect(win.getEffectivePrompt(node)).toBe('My custom writing prompt');
-  });
-  it('should have PROMPTS key for each WRITING_STYLES entry', () => {
-    win.WRITING_STYLES.forEach(s => {
-      const key = 'writer' + win.capitalize(s.id);
-      expect(!!win.PROMPTS[key]).toBe(true);
+  describe('slugify', () => {
+    it('should convert spaces to hyphens and lowercase', () => {
+      expect(win.slugify('Hello World')).toBe('hello-world');
     });
-  });
-  it('should have WRITER_TOOL_DEFAULTS for each writing style', () => {
-    win.WRITING_STYLES.forEach(s => {
-      expect(Array.isArray(win.WRITER_TOOL_DEFAULTS[s.id])).toBe(true);
-      expect(win.WRITER_TOOL_DEFAULTS[s.id].length > 0).toBe(true);
+    it('should strip special characters', () => {
+      expect(win.slugify('Hello @#$ World!')).toBe('hello-world');
+    });
+    it('should remove leading and trailing hyphens', () => {
+      expect(win.slugify('--hello--')).toBe('hello');
+    });
+    it('should return untitled for empty string', () => {
+      expect(win.slugify('')).toBe('untitled');
+    });
+    it('should return untitled for all-special chars', () => {
+      expect(win.slugify('@#$%^&')).toBe('untitled');
+    });
+    it('should preserve numbers', () => {
+      expect(win.slugify('Agent 42 v2')).toBe('agent-42-v2');
     });
   });
 
-  // getModelLabel
-  it('should return correct label for known models', () => {
-    expect(win.getModelLabel('opus-4.6')).toBe('Opus 4.6');
-    expect(win.getModelLabel('sonnet-4.6')).toBe('Sonnet 4.6');
-    expect(win.getModelLabel('haiku')).toBe('Haiku 4.5');
+  describe('extractAcceptanceCriteria', () => {
+    it('should extract bullet criteria under AC header', () => {
+      const text = 'Acceptance criteria:\n- Should validate email\n- Must return 200\nOther stuff here';
+      const result = win.extractAcceptanceCriteria(text);
+      expect(result.length).toBe(2);
+      expect(result[0]).toContain('validate email');
+    });
+    it('should extract numbered list criteria', () => {
+      const text = 'Acceptance criteria:\n1. User can log in\n2. Error message displays on failure';
+      const result = win.extractAcceptanceCriteria(text);
+      expect(result.length).toBe(2);
+    });
+    it('should extract checkbox criteria', () => {
+      const text = 'Acceptance criteria:\n- [ ] Should render correctly\n- [x] Must handle errors';
+      const result = win.extractAcceptanceCriteria(text);
+      expect(result.length).toBe(2);
+    });
+    it('should return empty array when no criteria found', () => {
+      const result = win.extractAcceptanceCriteria('Just some plain text with no criteria.');
+      expect(result.length).toBe(0);
+    });
+  });
+
+  describe('isUrlOnly', () => {
+    it('should detect URL-only input', () => {
+      expect(win.isUrlOnly('https://jira.example.com/browse/PROJ-123')).toBe(true);
+    });
+    it('should reject plain text', () => {
+      expect(win.isUrlOnly('Fix the login bug in the authentication module')).toBe(false);
+    });
+    it('should reject mixed URL and text', () => {
+      expect(win.isUrlOnly('Check this ticket https://jira.example.com/browse/PROJ-123 and fix it please')).toBe(false);
+    });
+  });
+
+  describe('getEffectivePrompt', () => {
+    it('should prefer user prompt over template', () => {
+      const node = { label:'Test', config:{ prompt:'My custom prompt', agentType:'coder', notes:'' }};
+      expect(win.getEffectivePrompt(node)).toBe('My custom prompt');
+    });
+    it('should fall back to agent type template', () => {
+      const node = { label:'Test', config:{ prompt:'', agentType:'planner', notes:'' }};
+      const result = win.getEffectivePrompt(node);
+      expect(result).toContain('implementation plan');
+    });
+    it('should use generic fallback for unmapped agent types', () => {
+      const node = { label:'My Agent', config:{ prompt:'', agentType:'unknown_type_xyz', notes:'' }};
+      const result = win.getEffectivePrompt(node);
+      expect(result).toContain('Complete the task');
+    });
+  });
+
+  describe('writer agent type', () => {
+    it('should include writer in AGENT_TYPES', () => {
+      const writer = win.AGENT_TYPES.find(a => a.id === 'writer');
+      expect(!!writer).toBe(true);
+      expect(writer.name).toBe('Writer');
+      expect(win.AGENT_TYPES.length).toBe(11);
+    });
+    it('should return technical prompt for default style', () => {
+      const node = { label:'Writer', config:{ prompt:'', agentType:'writer', notes:'' }};
+      const result = win.getEffectivePrompt(node);
+      expect(result).toContain('technical writer');
+    });
+    it('should return style-specific prompt for writingStyle', () => {
+      const node = { label:'Writer', config:{ prompt:'', agentType:'writer', writingStyle:'business', notes:'' }};
+      const result = win.getEffectivePrompt(node);
+      expect(result).toContain('business writer');
+    });
+    it('should prefer custom prompt over template', () => {
+      const node = { label:'Writer', config:{ prompt:'My custom writing prompt', agentType:'writer', writingStyle:'api', notes:'' }};
+      expect(win.getEffectivePrompt(node)).toBe('My custom writing prompt');
+    });
+    it('should have PROMPTS key for each WRITING_STYLES entry', () => {
+      win.WRITING_STYLES.forEach(s => {
+        const key = 'writer' + win.capitalize(s.id);
+        expect(!!win.PROMPTS[key]).toBe(true);
+      });
+    });
+    it('should have WRITER_TOOL_DEFAULTS for each writing style', () => {
+      win.WRITING_STYLES.forEach(s => {
+        expect(Array.isArray(win.WRITER_TOOL_DEFAULTS[s.id])).toBe(true);
+        expect(win.WRITER_TOOL_DEFAULTS[s.id].length > 0).toBe(true);
+      });
+    });
+  });
+
+  describe('getModelLabel', () => {
+    it('should return correct label for known models', () => {
+      expect(win.getModelLabel('opus-4.6')).toBe('Opus 4.6');
+      expect(win.getModelLabel('sonnet-4.6')).toBe('Sonnet 4.6');
+      expect(win.getModelLabel('haiku')).toBe('Haiku 4.5');
+    });
   });
 });
 
@@ -427,139 +457,143 @@ describe('Pure Utilities', () => {
 describe('State Management', () => {
   beforeEach(() => { resetState(); });
 
-  // addNode
-  it('should create node with correct type', () => {
-    const node = win.addNode('agent', 100, 200, 'Test Agent');
-    expect(node.type).toBe('agent');
-    expect(node.label).toBe('Test Agent');
-  });
-  it('should increment nextId after adding node', () => {
-    const id1 = win.state.nextId;
-    win.addNode('agent', 100, 200, 'A');
-    expect(win.state.nextId).toBe(id1 + 1);
-  });
-  it('should apply default config to new nodes', () => {
-    const node = win.addNode('decision', 100, 200);
-    expect(node.config.maxRevisions).toBe(3);
-    expect(node.config.yesLabel).toBe('Yes');
-    expect(node.config.noLabel).toBe('No');
-  });
-  it('should merge custom config with defaults', () => {
-    const node = win.addNode('agent', 100, 200, 'X', { agentType:'backend', prompt:'Do API stuff' });
-    expect(node.config.agentType).toBe('backend');
-    expect(node.config.prompt).toBe('Do API stuff');
-    // Should still have defaults for fields not overridden
-    expect(node.config.maxTurns).toBe(10);
-  });
-  it('should use default model for new agents', () => {
-    win.state.defaultModel = 'sonnet-4.6';
-    const node = win.addNode('agent', 100, 200, 'A');
-    expect(node.config.model).toBe('sonnet-4.6');
-  });
-  it('should set maxRevisions to 3 for decision nodes', () => {
-    const node = win.addNode('decision', 100, 200, 'Gate');
-    expect(node.config.maxRevisions).toBe(3);
-  });
-
-  // addConnection
-  it('should create connection between nodes', () => {
-    const a = win.addNode('agent', 100, 200, 'A');
-    const b = win.addNode('agent', 300, 200, 'B');
-    const conn = win.addConnection(a.id, b.id);
-    expect(conn).toBeTruthy();
-    expect(conn.from).toBe(a.id);
-    expect(conn.to).toBe(b.id);
-  });
-  it('should prevent self-loop connections', () => {
-    const a = win.addNode('agent', 100, 200, 'A');
-    const conn = win.addConnection(a.id, a.id);
-    expect(conn).toBe(undefined);
-  });
-  it('should prevent duplicate connections', () => {
-    const a = win.addNode('agent', 100, 200, 'A');
-    const b = win.addNode('agent', 300, 200, 'B');
-    win.addConnection(a.id, b.id);
-    const dup = win.addConnection(a.id, b.id);
-    expect(dup).toBe(undefined);
-  });
-  it('should store connection label', () => {
-    const a = win.addNode('agent', 100, 200, 'A');
-    const b = win.addNode('agent', 300, 200, 'B');
-    const conn = win.addConnection(a.id, b.id, 'Revise');
-    expect(conn.label).toBe('Revise');
+  describe('addNode', () => {
+    it('should create node with correct type', () => {
+      const node = win.addNode('agent', 100, 200, 'Test Agent');
+      expect(node.type).toBe('agent');
+      expect(node.label).toBe('Test Agent');
+    });
+    it('should increment nextId after adding node', () => {
+      const id1 = win.state.nextId;
+      win.addNode('agent', 100, 200, 'A');
+      expect(win.state.nextId).toBe(id1 + 1);
+    });
+    it('should apply default config to new nodes', () => {
+      const node = win.addNode('decision', 100, 200);
+      expect(node.config.maxRevisions).toBe(3);
+      expect(node.config.yesLabel).toBe('Yes');
+      expect(node.config.noLabel).toBe('No');
+    });
+    it('should merge custom config with defaults', () => {
+      const node = win.addNode('agent', 100, 200, 'X', { agentType:'backend', prompt:'Do API stuff' });
+      expect(node.config.agentType).toBe('backend');
+      expect(node.config.prompt).toBe('Do API stuff');
+      expect(node.config.maxTurns).toBe(10);
+    });
+    it('should use default model for new agents', () => {
+      win.state.defaultModel = 'sonnet-4.6';
+      const node = win.addNode('agent', 100, 200, 'A');
+      expect(node.config.model).toBe('sonnet-4.6');
+    });
+    it('should set maxRevisions to 3 for decision nodes', () => {
+      const node = win.addNode('decision', 100, 200, 'Gate');
+      expect(node.config.maxRevisions).toBe(3);
+    });
   });
 
-  // deleteNode
-  it('should remove node from array', () => {
-    const a = win.addNode('agent', 100, 200, 'A');
-    const before = win.state.nodes.length;
-    win.deleteNode(a.id);
-    expect(win.state.nodes.length).toBe(before - 1);
-    expect(win.state.nodes.find(n => n.id === a.id)).toBe(undefined);
-  });
-  it('should remove associated connections on delete', () => {
-    const a = win.addNode('agent', 100, 200, 'A');
-    const b = win.addNode('agent', 300, 200, 'B');
-    win.addConnection(a.id, b.id);
-    expect(win.state.connections.length).toBe(1);
-    win.deleteNode(a.id);
-    expect(win.state.connections.length).toBe(0);
-  });
-
-  // buildAgentSlugMap
-  it('should assign base slugs for unique labels', () => {
-    win.addNode('agent', 100, 200, 'Planner');
-    win.addNode('agent', 300, 200, 'Implementer');
-    const map = win.buildAgentSlugMap();
-    const slugs = Object.values(map);
-    expect(slugs).toContain('planner');
-    expect(slugs).toContain('implementer');
-  });
-  it('should add numeric suffixes for duplicate labels', () => {
-    win.addNode('agent', 100, 200, 'Reviewer');
-    win.addNode('agent', 300, 200, 'Reviewer');
-    const map = win.buildAgentSlugMap();
-    const slugs = Object.values(map);
-    expect(slugs).toContain('reviewer-1');
-    expect(slugs).toContain('reviewer-2');
-  });
-  it('should number three identical labels sequentially', () => {
-    win.addNode('agent', 100, 200, 'Worker');
-    win.addNode('agent', 300, 200, 'Worker');
-    win.addNode('agent', 500, 200, 'Worker');
-    const map = win.buildAgentSlugMap();
-    const slugs = Object.values(map);
-    expect(slugs).toContain('worker-1');
-    expect(slugs).toContain('worker-2');
-    expect(slugs).toContain('worker-3');
-  });
-  it('should produce deterministic slug ordering', () => {
-    win.addNode('agent', 100, 200, 'Reviewer');
-    win.addNode('agent', 300, 200, 'Reviewer');
-    const map1 = JSON.stringify(win.buildAgentSlugMap());
-    const map2 = JSON.stringify(win.buildAgentSlugMap());
-    expect(map1).toBe(map2);
+  describe('addConnection', () => {
+    it('should create connection between nodes', () => {
+      const a = win.addNode('agent', 100, 200, 'A');
+      const b = win.addNode('agent', 300, 200, 'B');
+      const conn = win.addConnection(a.id, b.id);
+      expect(conn).toBeTruthy();
+      expect(conn.from).toBe(a.id);
+      expect(conn.to).toBe(b.id);
+    });
+    it('should prevent self-loop connections', () => {
+      const a = win.addNode('agent', 100, 200, 'A');
+      const conn = win.addConnection(a.id, a.id);
+      expect(conn).toBe(undefined);
+    });
+    it('should prevent duplicate connections', () => {
+      const a = win.addNode('agent', 100, 200, 'A');
+      const b = win.addNode('agent', 300, 200, 'B');
+      win.addConnection(a.id, b.id);
+      const dup = win.addConnection(a.id, b.id);
+      expect(dup).toBe(undefined);
+    });
+    it('should store connection label', () => {
+      const a = win.addNode('agent', 100, 200, 'A');
+      const b = win.addNode('agent', 300, 200, 'B');
+      const conn = win.addConnection(a.id, b.id, 'Revise');
+      expect(conn.label).toBe('Revise');
+    });
   });
 
-  // topologicalSort
-  it('should sort linear chain in correct order', () => {
-    const a = win.addNode('input', 100, 200, 'In');
-    const b = win.addNode('agent', 300, 200, 'Mid');
-    const c = win.addNode('output', 500, 200, 'Out');
-    win.addConnection(a.id, b.id);
-    win.addConnection(b.id, c.id);
-    const sorted = win.topologicalSort();
-    const labels = sorted.map(n => n.label);
-    expect(labels.indexOf('In')).toBeLessThan(labels.indexOf('Mid'));
-    expect(labels.indexOf('Mid')).toBeLessThan(labels.indexOf('Out'));
+  describe('deleteNode', () => {
+    it('should remove node from array', () => {
+      const a = win.addNode('agent', 100, 200, 'A');
+      const before = win.state.nodes.length;
+      win.deleteNode(a.id);
+      expect(win.state.nodes.length).toBe(before - 1);
+      expect(win.state.nodes.find(n => n.id === a.id)).toBe(undefined);
+    });
+    it('should remove associated connections on delete', () => {
+      const a = win.addNode('agent', 100, 200, 'A');
+      const b = win.addNode('agent', 300, 200, 'B');
+      win.addConnection(a.id, b.id);
+      expect(win.state.connections.length).toBe(1);
+      win.deleteNode(a.id);
+      expect(win.state.connections.length).toBe(0);
+    });
   });
-  it('should include disconnected nodes in sort', () => {
-    win.addNode('agent', 100, 200, 'Island');
-    win.addNode('agent', 300, 200, 'Connected A');
-    win.addNode('agent', 500, 200, 'Connected B');
-    win.addConnection(win.state.nodes[1].id, win.state.nodes[2].id);
-    const sorted = win.topologicalSort();
-    expect(sorted.length).toBe(3);
+
+  describe('buildAgentSlugMap', () => {
+    it('should assign base slugs for unique labels', () => {
+      win.addNode('agent', 100, 200, 'Planner');
+      win.addNode('agent', 300, 200, 'Implementer');
+      const map = win.buildAgentSlugMap();
+      const slugs = Object.values(map);
+      expect(slugs).toContain('planner');
+      expect(slugs).toContain('implementer');
+    });
+    it('should add numeric suffixes for duplicate labels', () => {
+      win.addNode('agent', 100, 200, 'Reviewer');
+      win.addNode('agent', 300, 200, 'Reviewer');
+      const map = win.buildAgentSlugMap();
+      const slugs = Object.values(map);
+      expect(slugs).toContain('reviewer-1');
+      expect(slugs).toContain('reviewer-2');
+    });
+    it('should number three identical labels sequentially', () => {
+      win.addNode('agent', 100, 200, 'Worker');
+      win.addNode('agent', 300, 200, 'Worker');
+      win.addNode('agent', 500, 200, 'Worker');
+      const map = win.buildAgentSlugMap();
+      const slugs = Object.values(map);
+      expect(slugs).toContain('worker-1');
+      expect(slugs).toContain('worker-2');
+      expect(slugs).toContain('worker-3');
+    });
+    it('should produce deterministic slug ordering', () => {
+      win.addNode('agent', 100, 200, 'Reviewer');
+      win.addNode('agent', 300, 200, 'Reviewer');
+      const map1 = JSON.stringify(win.buildAgentSlugMap());
+      const map2 = JSON.stringify(win.buildAgentSlugMap());
+      expect(map1).toBe(map2);
+    });
+  });
+
+  describe('topologicalSort', () => {
+    it('should sort linear chain in correct order', () => {
+      const a = win.addNode('input', 100, 200, 'In');
+      const b = win.addNode('agent', 300, 200, 'Mid');
+      const c = win.addNode('output', 500, 200, 'Out');
+      win.addConnection(a.id, b.id);
+      win.addConnection(b.id, c.id);
+      const sorted = win.topologicalSort();
+      const labels = sorted.map(n => n.label);
+      expect(labels.indexOf('In')).toBeLessThan(labels.indexOf('Mid'));
+      expect(labels.indexOf('Mid')).toBeLessThan(labels.indexOf('Out'));
+    });
+    it('should include disconnected nodes in sort', () => {
+      win.addNode('agent', 100, 200, 'Island');
+      win.addNode('agent', 300, 200, 'Connected A');
+      win.addNode('agent', 500, 200, 'Connected B');
+      win.addConnection(win.state.nodes[1].id, win.state.nodes[2].id);
+      const sorted = win.topologicalSort();
+      expect(sorted.length).toBe(3);
+    });
   });
 });
 
@@ -567,116 +601,114 @@ describe('State Management', () => {
 describe('Persistence', () => {
   beforeEach(() => { resetState(); clearStorage(); });
 
-  // serializeWorkflow
-  it('should serialize workflow with correct shape', () => {
-    buildTestWorkflow('linear');
-    const data = win.serializeWorkflow();
-    expect(data.version).toBe(1);
-    expect(data.canvas).toBeTruthy();
-    expect(data.canvas.nodes).toBeTruthy();
-    expect(Array.isArray(data.canvas.nodes)).toBe(true);
-  });
-  it('should include memoryEnabled in serialization', () => {
-    buildTestWorkflow('linear');
-    win.state.memoryEnabled = true;
-    const data = win.serializeWorkflow();
-    expect(data.memoryEnabled).toBe(true);
-  });
-  it('should include repositories in serialization', () => {
-    buildTestWorkflow('linear');
-    win.state.repositories = [{ path:'/repo', branch:'main' }];
-    const data = win.serializeWorkflow();
-    expect(data.repositories.length).toBe(1);
-    expect(data.repositories[0].path).toBe('/repo');
-  });
-
-  // deserializeWorkflow
-  it('should preserve fidelity in serialize/deserialize roundtrip', () => {
-    buildTestWorkflow('linear');
-    const data = win.serializeWorkflow();
-    resetState();
-    expect(win.state.nodes.length).toBe(0);
-    const ok = win.deserializeWorkflow(data);
-    expect(ok).toBe(true);
-    expect(win.state.nodes.length).toBe(4);
-  });
-  it('should reject deserialization with missing canvas', () => {
-    const ok = win.deserializeWorkflow({ version: 1 });
-    expect(ok).toBe(false);
-  });
-  it('should reject deserialization with invalid node types', () => {
-    const ok = win.deserializeWorkflow({
-      canvas: { nodes: [{ id:'n1', type:'banana', label:'Bad', x:0, y:0, w:100, h:50, config:{} }], connections:[], nextId:2 }
+  describe('serializeWorkflow', () => {
+    it('should serialize workflow with correct shape', () => {
+      buildTestWorkflow('linear');
+      const data = win.serializeWorkflow();
+      expect(data.version).toBe(1);
+      expect(data.canvas).toBeTruthy();
+      expect(data.canvas.nodes).toBeTruthy();
+      expect(Array.isArray(data.canvas.nodes)).toBe(true);
     });
-    expect(ok).toBe(false);
-  });
-  it('should restore memoryEnabled to checkbox and state', () => {
-    const data = { version:1, memoryEnabled:true, canvas:{ nodes:[], connections:[], nextId:1, pan:{x:0,y:0}, zoom:1 }};
-    win.deserializeWorkflow(data);
-    expect(win.state.memoryEnabled).toBe(true);
-    const cb = win.document.getElementById('memoryToggle');
-    if (cb) expect(cb.checked).toBe(true);
-  });
-
-  // savePrefs / restorePrefs
-  it('should roundtrip preferences through save and restore', () => {
-    win.state.defaultModel = 'sonnet-4.6';
-    win.state.memoryEnabled = true;
-    win.state.exportFormat = 'sdk';
-    win.savePrefs();
-    // Change values
-    win.state.defaultModel = 'opus-4.6';
-    win.state.memoryEnabled = false;
-    win.state.exportFormat = 'prompt';
-    // Restore
-    win.restorePrefs();
-    expect(win.state.exportFormat).toBe('sdk');
-  });
-  it('should handle missing memoryEnabled in prefs gracefully', () => {
-    localStorage.setItem('awd_prefs', JSON.stringify({ defaultModel:'opus-4.6' }));
-    win.restorePrefs(); // should not throw
-    // memoryEnabled remains whatever it was
-  });
-  it('should restore false memoryEnabled explicitly', () => {
-    win.state.memoryEnabled = false;
-    win.savePrefs();
-    win.state.memoryEnabled = true;
-    win.restorePrefs();
-    expect(win.state.memoryEnabled).toBe(false);
+    it('should include memoryEnabled in serialization', () => {
+      buildTestWorkflow('linear');
+      win.state.memoryEnabled = true;
+      const data = win.serializeWorkflow();
+      expect(data.memoryEnabled).toBe(true);
+    });
+    it('should include repositories in serialization', () => {
+      buildTestWorkflow('linear');
+      win.state.repositories = [{ path:'/repo', branch:'main' }];
+      const data = win.serializeWorkflow();
+      expect(data.repositories.length).toBe(1);
+      expect(data.repositories[0].path).toBe('/repo');
+    });
   });
 
-  // Workflow save/load
-  it('should roundtrip through auto-save', () => {
-    buildTestWorkflow('linear');
-    // Simulate auto-save (sync version)
-    localStorage.setItem('awd_autosave', JSON.stringify(win.serializeWorkflow()));
-    resetState();
-    const ok = win.restoreAutoSave();
-    expect(ok).toBe(true);
-    expect(win.state.nodes.length).toBe(4);
+  describe('deserializeWorkflow', () => {
+    it('should preserve fidelity in serialize/deserialize roundtrip', () => {
+      buildTestWorkflow('linear');
+      const data = win.serializeWorkflow();
+      resetState();
+      expect(win.state.nodes.length).toBe(0);
+      const ok = win.deserializeWorkflow(data);
+      expect(ok).toBe(true);
+      expect(win.state.nodes.length).toBe(4);
+    });
+    it('should reject data with missing canvas', () => {
+      const ok = win.deserializeWorkflow({ version: 1 });
+      expect(ok).toBe(false);
+    });
+    it('should reject data with invalid node types', () => {
+      const ok = win.deserializeWorkflow({
+        canvas: { nodes: [{ id:'n1', type:'banana', label:'Bad', x:0, y:0, w:100, h:50, config:{} }], connections:[], nextId:2 }
+      });
+      expect(ok).toBe(false);
+    });
+    it('should restore memoryEnabled to checkbox and state', () => {
+      const data = { version:1, memoryEnabled:true, canvas:{ nodes:[], connections:[], nextId:1, pan:{x:0,y:0}, zoom:1 }};
+      win.deserializeWorkflow(data);
+      expect(win.state.memoryEnabled).toBe(true);
+      const cb = win.document.getElementById('memoryToggle');
+      if (cb) expect(cb.checked).toBe(true);
+    });
   });
-  it('should return empty workflow index by default', () => {
-    const idx = win.getWorkflowIndex();
-    expect(idx.length).toBe(0);
+
+  describe('savePrefs / restorePrefs', () => {
+    it('should roundtrip preferences through save and restore', () => {
+      win.state.defaultModel = 'sonnet-4.6';
+      win.state.memoryEnabled = true;
+      win.state.exportFormat = 'sdk';
+      win.savePrefs();
+      win.state.defaultModel = 'opus-4.6';
+      win.state.memoryEnabled = false;
+      win.state.exportFormat = 'prompt';
+      win.restorePrefs();
+      expect(win.state.exportFormat).toBe('sdk');
+    });
+    it('should handle missing memoryEnabled in prefs gracefully', () => {
+      localStorage.setItem('awd_prefs', JSON.stringify({ defaultModel:'opus-4.6' }));
+      win.restorePrefs();
+    });
+    it('should restore false memoryEnabled explicitly', () => {
+      win.state.memoryEnabled = false;
+      win.savePrefs();
+      win.state.memoryEnabled = true;
+      win.restorePrefs();
+      expect(win.state.memoryEnabled).toBe(false);
+    });
   });
-  it('should save by name and load by slug', () => {
-    buildTestWorkflow('decision');
-    win.document.getElementById('workflowName').value = 'Test Flow';
-    const data = win.serializeWorkflow();
-    const slug = data.slug;
-    // Save to index manually (mirrors saveWorkflow logic)
-    const key = 'awd_wf_' + slug;
-    localStorage.setItem(key, JSON.stringify(data));
-    let index = win.getWorkflowIndex();
-    index.push({ slug, name:'Test Flow', savedAt: data.savedAt });
-    win.setWorkflowIndex(index);
-    // Load back
-    resetState();
-    const raw = localStorage.getItem(key);
-    const loaded = JSON.parse(raw);
-    const ok = win.deserializeWorkflow(loaded);
-    expect(ok).toBe(true);
-    expect(win.state.nodes.filter(n => n.type === 'decision').length).toBe(1);
+
+  describe('workflow save/load', () => {
+    it('should roundtrip through auto-save', () => {
+      buildTestWorkflow('linear');
+      localStorage.setItem('awd_autosave', JSON.stringify(win.serializeWorkflow()));
+      resetState();
+      const ok = win.restoreAutoSave();
+      expect(ok).toBe(true);
+      expect(win.state.nodes.length).toBe(4);
+    });
+    it('should return empty workflow index by default', () => {
+      const idx = win.getWorkflowIndex();
+      expect(idx.length).toBe(0);
+    });
+    it('should save by name and load by slug', () => {
+      buildTestWorkflow('decision');
+      win.document.getElementById('workflowName').value = 'Test Flow';
+      const data = win.serializeWorkflow();
+      const slug = data.slug;
+      const key = 'awd_wf_' + slug;
+      localStorage.setItem(key, JSON.stringify(data));
+      let index = win.getWorkflowIndex();
+      index.push({ slug, name:'Test Flow', savedAt: data.savedAt });
+      win.setWorkflowIndex(index);
+      resetState();
+      const raw = localStorage.getItem(key);
+      const loaded = JSON.parse(raw);
+      const ok = win.deserializeWorkflow(loaded);
+      expect(ok).toBe(true);
+      expect(win.state.nodes.filter(n => n.type === 'decision').length).toBe(1);
+    });
   });
 });
 
@@ -684,128 +716,135 @@ describe('Persistence', () => {
 describe('Memory Protocol', () => {
   beforeEach(() => { resetState(); });
 
-  // Path and protocol generators
-  it('should generate memory path from workflow name', () => {
-    win.document.getElementById('workflowName').value = 'My Workflow';
-    const path = win.getMemoryPath();
-    expect(path).toContain('my-workflow');
-    expect(path).toContain('~/.claude/workflow-memory/');
-  });
-  it('should use untitled when workflow name is empty', () => {
-    win.document.getElementById('workflowName').value = '';
-    const path = win.getMemoryPath();
-    expect(path).toContain('untitled');
-  });
-  it('should include TOON key in memory protocol', () => {
-    const proto = win.genMemoryProtocol();
-    expect(proto).toContain('TOON v1');
-  });
-  it('should include file structure in memory protocol', () => {
-    const proto = win.genMemoryProtocol();
-    expect(proto).toNotContain('manifest.md');
-    expect(proto).toContain('shared.md');
-    expect(proto).toContain('@{slug}.md');
-  });
-  it('should include breadcrumb format in memory protocol', () => {
-    const proto = win.genMemoryProtocol();
-    expect(proto).toContain('WF_BC:');
-  });
-  it('should include agent slug in memory preamble', () => {
-    const pre = win.genAgentMemoryPreamble('Code Reviewer', 'code-reviewer');
-    expect(pre).toContain('@code-reviewer');
-    expect(pre).toContain('Read Memory');
-  });
-  it('should include recovery instructions in memory preamble', () => {
-    const pre = win.genAgentMemoryPreamble('Planner', 'planner');
-    expect(pre).toContain('compaction occurred');
-    expect(pre).toNotContain('manifest.md');
-    expect(pre).toContain('shared.md');
-  });
-  it('should include breadcrumb template in memory postamble', () => {
-    const post = win.genAgentMemoryPostamble('Planner', 'planner');
-    expect(post).toContain('WF_BC:');
-    expect(post).toContain('@planner');
-  });
-  it('should include TOON sigils in memory postamble', () => {
-    const post = win.genAgentMemoryPostamble('Planner', 'planner');
-    expect(post).toContain('d:');
-    expect(post).toContain('f:');
-  });
-  it('should use progress.md for single-agent memory', () => {
-    const proto = win.genSingleAgentMemoryProtocol();
-    expect(proto).toContain('progress.md');
-  });
-  it('should not contain @{slug}.md in single-agent memory', () => {
-    const proto = win.genSingleAgentMemoryProtocol();
-    expect(proto).toNotContain('@{slug}.md');
+  describe('path and protocol generators', () => {
+    it('should generate memory path from workflow name', () => {
+      win.document.getElementById('workflowName').value = 'My Workflow';
+      const path = win.getMemoryPath();
+      expect(path).toContain('my-workflow');
+      expect(path).toContain('~/.claude/workflow-memory/');
+    });
+    it('should use untitled when workflow name is empty', () => {
+      win.document.getElementById('workflowName').value = '';
+      const path = win.getMemoryPath();
+      expect(path).toContain('untitled');
+    });
+    it('should include TOON key in memory protocol', () => {
+      const proto = win.genMemoryProtocol();
+      expect(proto).toContain('TOON v1');
+    });
+    it('should include file structure in memory protocol', () => {
+      const proto = win.genMemoryProtocol();
+      expect(proto).toNotContain('manifest.md');
+      expect(proto).toContain('shared.md');
+      expect(proto).toContain('@{slug}.md');
+    });
+    it('should include breadcrumb format in memory protocol', () => {
+      const proto = win.genMemoryProtocol();
+      expect(proto).toContain('WF_BC:');
+    });
   });
 
-  // Slug collision
-  it('should suffix two duplicate Reviewers with -1 and -2', () => {
-    win.addNode('agent', 100, 200, 'Reviewer');
-    win.addNode('agent', 300, 200, 'Reviewer');
-    const map = win.buildAgentSlugMap();
-    const slugs = Object.values(map);
-    expect(slugs).toContain('reviewer-1');
-    expect(slugs).toContain('reviewer-2');
-  });
-  it('should suffix three duplicate Workers with -1, -2, -3', () => {
-    win.addNode('agent', 100, 200, 'Worker');
-    win.addNode('agent', 300, 200, 'Worker');
-    win.addNode('agent', 500, 200, 'Worker');
-    const map = win.buildAgentSlugMap();
-    const slugs = Object.values(map);
-    expect(slugs).toContain('worker-1');
-    expect(slugs).toContain('worker-2');
-    expect(slugs).toContain('worker-3');
+  describe('agent memory preamble', () => {
+    it('should include agent slug', () => {
+      const pre = win.genAgentMemoryPreamble('Code Reviewer', 'code-reviewer');
+      expect(pre).toContain('@code-reviewer');
+      expect(pre).toContain('Read Memory');
+    });
+    it('should include recovery instructions', () => {
+      const pre = win.genAgentMemoryPreamble('Planner', 'planner');
+      expect(pre).toContain('compaction occurred');
+      expect(pre).toNotContain('manifest.md');
+      expect(pre).toContain('shared.md');
+    });
   });
 
-  // Auto-enable in presets
-  it('should auto-enable memory for fullstack preset', () => {
-    win.loadPreset('fullstack');
-    expect(win.state.memoryEnabled).toBe(true);
-  });
-  it('should auto-enable memory for bugfix preset', () => {
-    win.loadPreset('bugfix');
-    expect(win.state.memoryEnabled).toBe(true);
-  });
-  it('should not auto-enable memory for feature preset', () => {
-    win.loadPreset('feature');
-    expect(win.state.memoryEnabled).toBe(false);
-  });
-  it('should not auto-enable memory for documentation preset', () => {
-    win.loadPreset('documentation');
-    expect(win.state.memoryEnabled).toBe(false);
+  describe('agent memory postamble', () => {
+    it('should include breadcrumb template', () => {
+      const post = win.genAgentMemoryPostamble('Planner', 'planner');
+      expect(post).toContain('WF_BC:');
+      expect(post).toContain('@planner');
+    });
+    it('should include TOON sigils', () => {
+      const post = win.genAgentMemoryPostamble('Planner', 'planner');
+      expect(post).toContain('d:');
+      expect(post).toContain('f:');
+    });
   });
 
-  // Auto-enable in generateFromStory
-  it('should auto-enable memory for parallel fullstack story', () => {
-    resetState();
-    win.document.getElementById('storyInput').value = 'Build a React frontend dashboard and a REST API backend with user authentication and database integration.';
-    win.generateFromStory();
-    expect(win.state.memoryEnabled).toBe(true);
+  describe('single-agent memory', () => {
+    it('should use progress.md', () => {
+      const proto = win.genSingleAgentMemoryProtocol();
+      expect(proto).toContain('progress.md');
+    });
+    it('should not contain @{slug}.md', () => {
+      const proto = win.genSingleAgentMemoryProtocol();
+      expect(proto).toNotContain('@{slug}.md');
+    });
   });
-  it('should not auto-enable memory for simple bugfix story', () => {
-    resetState();
-    // Story must only trigger ONE strong category (bugfix) to be classified as "simple".
-    // "button" would score 3 in UI, making strongCategories=2 and complexity="standard".
-    win.document.getElementById('storyInput').value = 'Fix the null pointer bug.';
-    win.generateFromStory();
-    // Simple bugfix: no Planner (simple), Investigator + Fixer + Code Reviewer + Tester = 4 agents
-    // Memory should be OFF (no parallel, 4 < 5 agents)
-    expect(win.state.memoryEnabled).toBe(false);
+
+  describe('slug collision', () => {
+    it('should suffix two duplicate Reviewers with -1 and -2', () => {
+      win.addNode('agent', 100, 200, 'Reviewer');
+      win.addNode('agent', 300, 200, 'Reviewer');
+      const map = win.buildAgentSlugMap();
+      const slugs = Object.values(map);
+      expect(slugs).toContain('reviewer-1');
+      expect(slugs).toContain('reviewer-2');
+    });
+    it('should suffix three duplicate Workers with -1, -2, -3', () => {
+      win.addNode('agent', 100, 200, 'Worker');
+      win.addNode('agent', 300, 200, 'Worker');
+      win.addNode('agent', 500, 200, 'Worker');
+      const map = win.buildAgentSlugMap();
+      const slugs = Object.values(map);
+      expect(slugs).toContain('worker-1');
+      expect(slugs).toContain('worker-2');
+      expect(slugs).toContain('worker-3');
+    });
   });
-  it('should not trigger memory for decision gate alone', () => {
-    resetState();
-    win.document.getElementById('storyInput').value = 'Refactor the authentication module to use a cleaner pattern.';
-    win.generateFromStory();
-    // Refactoring: standard complexity, has decision gate but not parallel, < 5 agents
-    // generateFromStory uses different criteria than presets (no hasDecision check)
-    const hasParallel = win.state.nodes.some(n => n.type === 'parallel');
-    const manyAgents = win.state.nodes.filter(n => n.type === 'agent').length >= 5;
-    if (!hasParallel && !manyAgents) {
+
+  describe('auto-enable in presets', () => {
+    it('should enable for fullstack preset', () => {
+      win.loadPreset('fullstack');
+      expect(win.state.memoryEnabled).toBe(true);
+    });
+    it('should enable for bugfix preset', () => {
+      win.loadPreset('bugfix');
+      expect(win.state.memoryEnabled).toBe(true);
+    });
+    it('should not enable for feature preset', () => {
+      win.loadPreset('feature');
       expect(win.state.memoryEnabled).toBe(false);
-    }
+    });
+    it('should not enable for documentation preset', () => {
+      win.loadPreset('documentation');
+      expect(win.state.memoryEnabled).toBe(false);
+    });
+  });
+
+  describe('auto-enable in generateFromStory', () => {
+    it('should enable for parallel fullstack story', () => {
+      resetState();
+      win.document.getElementById('storyInput').value = 'Build a React frontend dashboard and a REST API backend with user authentication and database integration.';
+      win.generateFromStory();
+      expect(win.state.memoryEnabled).toBe(true);
+    });
+    it('should not enable for simple bugfix story', () => {
+      resetState();
+      win.document.getElementById('storyInput').value = 'Fix the null pointer bug.';
+      win.generateFromStory();
+      expect(win.state.memoryEnabled).toBe(false);
+    });
+    it('should not trigger for decision gate alone', () => {
+      resetState();
+      win.document.getElementById('storyInput').value = 'Refactor the authentication module to use a cleaner pattern.';
+      win.generateFromStory();
+      const hasParallel = win.state.nodes.some(n => n.type === 'parallel');
+      const manyAgents = win.state.nodes.filter(n => n.type === 'agent').length >= 5;
+      if (!hasParallel && !manyAgents) {
+        expect(win.state.memoryEnabled).toBe(false);
+      }
+    });
   });
 });
 
@@ -985,95 +1024,98 @@ describe('Export: genClaudePrompt', () => {
 describe('Workflow Generation', () => {
   beforeEach(() => { resetState(); });
 
-  it('should generate Investigator and Fixer for bugfix story', () => {
-    win.document.getElementById('storyInput').value = 'Fix the login bug that causes a crash when users enter invalid credentials';
-    win.generateFromStory();
-    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
-    expect(labels).toContain('Investigator');
-    expect(labels).toContain('Fixer');
-  });
-  it('should generate Design System Analyzer and UI Implementer for UI story', () => {
-    win.document.getElementById('storyInput').value = 'Add a new dashboard component with a sidebar navigation panel and responsive layout';
-    win.generateFromStory();
-    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
-    expect(labels).toContain('Design System Analyzer');
-    expect(labels).toContain('UI Implementer');
-  });
-  it('should generate Backend Dev or Implementer for API story', () => {
-    win.document.getElementById('storyInput').value = 'Create a REST API endpoint for user management with CRUD operations and database queries';
-    win.generateFromStory();
-    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
-    const hasBackendOrImpl = labels.some(l => l === 'Backend Dev' || l === 'Implementer');
-    expect(hasBackendOrImpl).toBe(true);
-  });
-  it('should generate Code Analyzer and Refactorer for refactoring story', () => {
-    win.document.getElementById('storyInput').value = 'Refactor the auth module to eliminate code smells and improve SOLID compliance';
-    win.generateFromStory();
-    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
-    expect(labels).toContain('Code Analyzer');
-    expect(labels).toContain('Refactorer');
-  });
-  it('should generate Researcher and Doc Writer for documentation story', () => {
-    win.document.getElementById('storyInput').value = 'Write comprehensive API documentation for the user management endpoints and add a wiki guide';
-    win.generateFromStory();
-    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
-    expect(labels).toContain('Researcher');
-    expect(labels).toContain('Doc Writer');
-  });
-  it('should create parallel fork with Backend and Frontend for fullstack story', () => {
-    win.document.getElementById('storyInput').value = 'Build a React frontend dashboard and REST API backend with authentication and database integration';
-    win.generateFromStory();
-    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
-    expect(labels).toContain('Backend Dev');
-    expect(labels).toContain('Frontend Dev');
-    expect(win.state.nodes.some(n => n.type === 'parallel')).toBe(true);
-  });
-  it('should omit Planner and Architect for short simple story', () => {
-    // Story must only trigger ONE strong category to be classified as "simple".
-    // "button" scores 3 in UI, making strongCategories=2 and complexity="standard".
-    win.document.getElementById('storyInput').value = 'Fix the compile error';
-    win.generateFromStory();
-    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
-    expect(labels).toNotContain('Planner');
-    expect(labels).toNotContain('Architect');
-  });
-  it('should include Architect for long complex story', () => {
-    const words = [];
-    for (let i = 0; i < 30; i++) words.push('implement the new feature');
-    const story = words.join(' ') + ' with full security audit and compliance checking';
-    win.document.getElementById('storyInput').value = story;
-    win.generateFromStory();
-    const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
-    expect(labels).toContain('Architect');
+  describe('category detection', () => {
+    it('should generate Investigator and Fixer for bugfix story', () => {
+      win.document.getElementById('storyInput').value = 'Fix the login bug that causes a crash when users enter invalid credentials';
+      win.generateFromStory();
+      const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+      expect(labels).toContain('Investigator');
+      expect(labels).toContain('Fixer');
+    });
+    it('should generate Design System Analyzer and UI Implementer for UI story', () => {
+      win.document.getElementById('storyInput').value = 'Add a new dashboard component with a sidebar navigation panel and responsive layout';
+      win.generateFromStory();
+      const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+      expect(labels).toContain('Design System Analyzer');
+      expect(labels).toContain('UI Implementer');
+    });
+    it('should generate Backend Dev or Implementer for API story', () => {
+      win.document.getElementById('storyInput').value = 'Create a REST API endpoint for user management with CRUD operations and database queries';
+      win.generateFromStory();
+      const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+      const hasBackendOrImpl = labels.some(l => l === 'Backend Dev' || l === 'Implementer');
+      expect(hasBackendOrImpl).toBe(true);
+    });
+    it('should generate Code Analyzer and Refactorer for refactoring story', () => {
+      win.document.getElementById('storyInput').value = 'Refactor the auth module to eliminate code smells and improve SOLID compliance';
+      win.generateFromStory();
+      const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+      expect(labels).toContain('Code Analyzer');
+      expect(labels).toContain('Refactorer');
+    });
+    it('should generate Researcher and Doc Writer for documentation story', () => {
+      win.document.getElementById('storyInput').value = 'Write comprehensive API documentation for the user management endpoints and add a wiki guide';
+      win.generateFromStory();
+      const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+      expect(labels).toContain('Researcher');
+      expect(labels).toContain('Doc Writer');
+    });
+    it('should create parallel fork with Backend and Frontend for fullstack story', () => {
+      win.document.getElementById('storyInput').value = 'Build a React frontend dashboard and REST API backend with authentication and database integration';
+      win.generateFromStory();
+      const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+      expect(labels).toContain('Backend Dev');
+      expect(labels).toContain('Frontend Dev');
+      expect(win.state.nodes.some(n => n.type === 'parallel')).toBe(true);
+    });
   });
 
-  // Structural properties
-  it('should add decision gate for standard code workflows', () => {
-    win.document.getElementById('storyInput').value = 'Create a REST API endpoint for managing users with authentication and database queries';
-    win.generateFromStory();
-    const hasDecision = win.state.nodes.some(n => n.type === 'decision');
-    expect(hasDecision).toBe(true);
+  describe('complexity tiers', () => {
+    it('should omit Planner and Architect for short simple story', () => {
+      win.document.getElementById('storyInput').value = 'Fix the compile error';
+      win.generateFromStory();
+      const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+      expect(labels).toNotContain('Planner');
+      expect(labels).toNotContain('Architect');
+    });
+    it('should include Architect for long complex story', () => {
+      const words = [];
+      for (let i = 0; i < 30; i++) words.push('implement the new feature');
+      const story = words.join(' ') + ' with full security audit and compliance checking';
+      win.document.getElementById('storyInput').value = story;
+      win.generateFromStory();
+      const labels = win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+      expect(labels).toContain('Architect');
+    });
   });
-  it('should omit decision gate for documentation workflows', () => {
-    win.document.getElementById('storyInput').value = 'Write comprehensive documentation and a detailed wiki guide for the project';
-    win.generateFromStory();
-    const hasDecision = win.state.nodes.some(n => n.type === 'decision');
-    expect(hasDecision).toBe(false);
-  });
-  it('should feed extracted AC into decision condition', () => {
-    win.document.getElementById('storyInput').value = 'Create a login form.\n\nAcceptance criteria:\n- Should validate email format\n- Must show error on invalid password';
-    win.generateFromStory();
-    const decision = win.state.nodes.find(n => n.type === 'decision');
-    if (decision) {
-      expect(decision.config.condition).toContain('validate email');
-    }
-  });
-  it('should show picker without generating for URL-only input', () => {
-    win.document.getElementById('storyInput').value = 'https://jira.example.com/browse/PROJ-123';
-    const before = win.state.nodes.length;
-    win.generateFromStory();
-    // URL-only should not generate nodes (shows picker instead)
-    expect(win.state.nodes.length).toBe(before);
+
+  describe('structural properties', () => {
+    it('should add decision gate for standard code workflows', () => {
+      win.document.getElementById('storyInput').value = 'Create a REST API endpoint for managing users with authentication and database queries';
+      win.generateFromStory();
+      const hasDecision = win.state.nodes.some(n => n.type === 'decision');
+      expect(hasDecision).toBe(true);
+    });
+    it('should omit decision gate for documentation workflows', () => {
+      win.document.getElementById('storyInput').value = 'Write comprehensive documentation and a detailed wiki guide for the project';
+      win.generateFromStory();
+      const hasDecision = win.state.nodes.some(n => n.type === 'decision');
+      expect(hasDecision).toBe(false);
+    });
+    it('should feed extracted AC into decision condition', () => {
+      win.document.getElementById('storyInput').value = 'Create a login form.\n\nAcceptance criteria:\n- Should validate email format\n- Must show error on invalid password';
+      win.generateFromStory();
+      const decision = win.state.nodes.find(n => n.type === 'decision');
+      if (decision) {
+        expect(decision.config.condition).toContain('validate email');
+      }
+    });
+    it('should show picker without generating for URL-only input', () => {
+      win.document.getElementById('storyInput').value = 'https://jira.example.com/browse/PROJ-123';
+      const before = win.state.nodes.length;
+      win.generateFromStory();
+      expect(win.state.nodes.length).toBe(before);
+    });
   });
 });
 
@@ -1081,104 +1123,108 @@ describe('Workflow Generation', () => {
 describe('Preset Loading', () => {
   beforeEach(() => { resetState(); });
 
-  it('should load feature preset with 4 agents', () => {
-    win.loadPreset('feature');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
-  });
-  it('should load bugfix preset with 3 agents', () => {
-    win.loadPreset('bugfix');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(3);
-  });
-  it('should load fullstack preset with 5 agents', () => {
-    win.loadPreset('fullstack');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
-  });
-  it('should load review preset with 4 agents', () => {
-    win.loadPreset('review');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
-  });
-  it('should load parallel_research preset with 4 agents', () => {
-    win.loadPreset('parallel_research');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
-  });
-  it('should load swarm preset with 5 agents', () => {
-    win.loadPreset('swarm');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
-  });
-  it('should load test_automation preset with 6 agents', () => {
-    win.loadPreset('test_automation');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(6);
-  });
-  it('should load ui_component preset with 3 agents', () => {
-    win.loadPreset('ui_component');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(3);
-  });
-  it('should load refactoring preset with 5 agents', () => {
-    win.loadPreset('refactoring');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
-  });
-  it('should load documentation preset with 4 agents', () => {
-    win.loadPreset('documentation');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
-  });
-  it('should load devops preset with 4 agents', () => {
-    win.loadPreset('devops');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
-  });
-  it('should load performance preset with 5 agents', () => {
-    win.loadPreset('performance');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
-  });
-  it('should load testing preset with 5 agents', () => {
-    win.loadPreset('testing');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
-  });
-  it('should load data_migration preset with 5 agents', () => {
-    win.loadPreset('data_migration');
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
-  });
-  it('should enable memory for devops preset', () => {
-    win.loadPreset('devops');
-    expect(win.state.memoryEnabled).toBe(true);
-  });
-  it('should enable memory for performance preset', () => {
-    win.loadPreset('performance');
-    expect(win.state.memoryEnabled).toBe(true);
-  });
-  it('should enable memory for testing preset', () => {
-    win.loadPreset('testing');
-    expect(win.state.memoryEnabled).toBe(true);
-  });
-  it('should enable memory for data_migration preset', () => {
-    win.loadPreset('data_migration');
-    expect(win.state.memoryEnabled).toBe(true);
-  });
-  it('should use writer agent type in documentation preset', () => {
-    win.loadPreset('documentation');
-    const dw = win.state.nodes.find(n => n.label === 'Doc Writer');
-    expect(dw.config.agentType).toBe('writer');
-    expect(dw.config.writingStyle).toBe('technical');
+  describe('agent counts', () => {
+    it('should load feature preset with 4 agents', () => {
+      win.loadPreset('feature');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+    });
+    it('should load bugfix preset with 3 agents', () => {
+      win.loadPreset('bugfix');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(3);
+    });
+    it('should load fullstack preset with 5 agents', () => {
+      win.loadPreset('fullstack');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+    });
+    it('should load review preset with 4 agents', () => {
+      win.loadPreset('review');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+    });
+    it('should load parallel_research preset with 4 agents', () => {
+      win.loadPreset('parallel_research');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+    });
+    it('should load swarm preset with 5 agents', () => {
+      win.loadPreset('swarm');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+    });
+    it('should load test_automation preset with 6 agents', () => {
+      win.loadPreset('test_automation');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(6);
+    });
+    it('should load ui_component preset with 3 agents', () => {
+      win.loadPreset('ui_component');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(3);
+    });
+    it('should load refactoring preset with 5 agents', () => {
+      win.loadPreset('refactoring');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+    });
+    it('should load documentation preset with 4 agents', () => {
+      win.loadPreset('documentation');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+    });
+    it('should load devops preset with 4 agents', () => {
+      win.loadPreset('devops');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+    });
+    it('should load performance preset with 5 agents', () => {
+      win.loadPreset('performance');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+    });
+    it('should load testing preset with 5 agents', () => {
+      win.loadPreset('testing');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+    });
+    it('should load data_migration preset with 5 agents', () => {
+      win.loadPreset('data_migration');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+    });
   });
 
-  // Behavior
-  it('should clear previous nodes when loading preset', () => {
-    win.loadPreset('feature');
-    const count1 = win.state.nodes.length;
-    win.loadPreset('bugfix');
-    // Bugfix should have fewer total nodes than feature; old nodes should be gone
-    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(3);
+  describe('memory auto-enable', () => {
+    it('should enable for devops preset', () => {
+      win.loadPreset('devops');
+      expect(win.state.memoryEnabled).toBe(true);
+    });
+    it('should enable for performance preset', () => {
+      win.loadPreset('performance');
+      expect(win.state.memoryEnabled).toBe(true);
+    });
+    it('should enable for testing preset', () => {
+      win.loadPreset('testing');
+      expect(win.state.memoryEnabled).toBe(true);
+    });
+    it('should enable for data_migration preset', () => {
+      win.loadPreset('data_migration');
+      expect(win.state.memoryEnabled).toBe(true);
+    });
+    it('should enable for fullstack preset', () => {
+      win.loadPreset('fullstack');
+      expect(win.state.memoryEnabled).toBe(true);
+    });
+    it('should not enable for feature preset', () => {
+      win.loadPreset('feature');
+      expect(win.state.memoryEnabled).toBe(false);
+    });
+    it('should enable for refactoring preset', () => {
+      win.loadPreset('refactoring');
+      expect(win.state.memoryEnabled).toBe(true);
+    });
   });
-  it('should enable memory for fullstack preset', () => {
-    win.loadPreset('fullstack');
-    expect(win.state.memoryEnabled).toBe(true);
-  });
-  it('should not enable memory for feature preset', () => {
-    win.loadPreset('feature');
-    expect(win.state.memoryEnabled).toBe(false);
-  });
-  it('should enable memory for refactoring preset', () => {
-    win.loadPreset('refactoring');
-    expect(win.state.memoryEnabled).toBe(true);
+
+  describe('behavior', () => {
+    it('should clear previous nodes when loading preset', () => {
+      win.loadPreset('feature');
+      win.loadPreset('bugfix');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(3);
+    });
+    it('should use writer agent type in documentation preset', () => {
+      win.loadPreset('documentation');
+      const dw = win.state.nodes.find(n => n.label === 'Doc Writer');
+      expect(dw.config.agentType).toBe('writer');
+      expect(dw.config.writingStyle).toBe('technical');
+    });
   });
 });
 
@@ -1225,58 +1271,59 @@ describe('Format Recommendations', () => {
 describe('Workflow Auto-Naming', () => {
   beforeEach(() => { resetState(); });
 
-  it('should return adjective-noun format', () => {
-    const name = win.generateWorkflowName();
-    expect(name).toMatch(/^[a-z]+-[a-z]+$/);
+  describe('name generation', () => {
+    it('should return adjective-noun format', () => {
+      const name = win.generateWorkflowName();
+      expect(name).toMatch(/^[a-z]+-[a-z]+$/);
+    });
+    it('should produce variety across multiple calls', () => {
+      const names = new Set();
+      for (let i = 0; i < 20; i++) names.add(win.generateWorkflowName());
+      expect(names.size).toBeGreaterThan(1);
+    });
   });
 
-  it('should produce variety across multiple calls', () => {
-    const names = new Set();
-    for (let i = 0; i < 20; i++) names.add(win.generateWorkflowName());
-    expect(names.size).toBeGreaterThan(1);
+  describe('ensureWorkflowName', () => {
+    it('should set name when field is empty', () => {
+      win.document.getElementById('workflowName').value = '';
+      win.ensureWorkflowName();
+      const val = win.document.getElementById('workflowName').value;
+      expect(val).toMatch(/^[a-z]+-[a-z]+$/);
+    });
+    it('should preserve existing user name', () => {
+      win.document.getElementById('workflowName').value = 'my-custom-name';
+      win.ensureWorkflowName();
+      expect(win.document.getElementById('workflowName').value).toBe('my-custom-name');
+    });
+    it('should update memory path without untitled', () => {
+      win.document.getElementById('workflowName').value = '';
+      win.ensureWorkflowName();
+      const path = win.getMemoryPath();
+      expect(path).toNotContain('untitled');
+    });
   });
 
-  it('should set name when field is empty', () => {
-    win.document.getElementById('workflowName').value = '';
-    win.ensureWorkflowName();
-    const val = win.document.getElementById('workflowName').value;
-    expect(val).toMatch(/^[a-z]+-[a-z]+$/);
-  });
-
-  it('should preserve existing user name', () => {
-    win.document.getElementById('workflowName').value = 'my-custom-name';
-    win.ensureWorkflowName();
-    expect(win.document.getElementById('workflowName').value).toBe('my-custom-name');
-  });
-
-  it('should update memory path without untitled', () => {
-    win.document.getElementById('workflowName').value = '';
-    win.ensureWorkflowName();
-    const path = win.getMemoryPath();
-    expect(path).toNotContain('untitled');
-  });
-
-  it('should auto-name workflow on generateFromStory', () => {
-    win.document.getElementById('workflowName').value = '';
-    win.document.getElementById('storyInput').value = 'As a user I want login';
-    win.generateFromStory();
-    const val = win.document.getElementById('workflowName').value;
-    expect(val.length).toBeGreaterThan(0);
-    expect(val).toMatch(/^[a-z]+-[a-z]+$/);
-  });
-
-  it('should auto-name workflow on loadPreset', () => {
-    win.document.getElementById('workflowName').value = '';
-    win.loadPreset('feature');
-    const val = win.document.getElementById('workflowName').value;
-    expect(val.length).toBeGreaterThan(0);
-    expect(val).toMatch(/^[a-z]+-[a-z]+$/);
-  });
-
-  it('should preserve user name on loadPreset', () => {
-    win.document.getElementById('workflowName').value = 'my-project';
-    win.loadPreset('feature');
-    expect(win.document.getElementById('workflowName').value).toBe('my-project');
+  describe('auto-naming triggers', () => {
+    it('should auto-name workflow on generateFromStory', () => {
+      win.document.getElementById('workflowName').value = '';
+      win.document.getElementById('storyInput').value = 'As a user I want login';
+      win.generateFromStory();
+      const val = win.document.getElementById('workflowName').value;
+      expect(val.length).toBeGreaterThan(0);
+      expect(val).toMatch(/^[a-z]+-[a-z]+$/);
+    });
+    it('should auto-name workflow on loadPreset', () => {
+      win.document.getElementById('workflowName').value = '';
+      win.loadPreset('feature');
+      const val = win.document.getElementById('workflowName').value;
+      expect(val.length).toBeGreaterThan(0);
+      expect(val).toMatch(/^[a-z]+-[a-z]+$/);
+    });
+    it('should preserve user name on loadPreset', () => {
+      win.document.getElementById('workflowName').value = 'my-project';
+      win.loadPreset('feature');
+      expect(win.document.getElementById('workflowName').value).toBe('my-project');
+    });
   });
 });
 
@@ -1284,106 +1331,94 @@ describe('Workflow Auto-Naming', () => {
 describe('Writer Agent Type', () => {
   beforeEach(() => { resetState(); });
 
-  // Config panel: Writing Style dropdown visibility
-  it('should show Writing Style dropdown when agent type is writer', () => {
-    const node = win.addNode('agent', 100, 200, 'Writer', { agentType:'writer', writingStyle:'technical', prompt:win.PROMPTS.writerTechnical });
-    win.selectNode(node.id);
-    win.updateConfig();
-    const styleSelect = win.document.querySelector('[data-key="writingStyle"]');
-    expect(!!styleSelect).toBe(true);
-  });
-  it('should not show Writing Style dropdown for non-writer agents', () => {
-    const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'Build it.' });
-    win.selectNode(node.id);
-    win.updateConfig();
-    const styleSelect = win.document.querySelector('[data-key="writingStyle"]');
-    expect(styleSelect).toBeNull();
-  });
-
-  // Config panel: agent type change to writer populates prompt
-  it('should populate prompt when switching agent type to writer', () => {
-    const node = win.addNode('agent', 100, 200, 'Agent', { agentType:'general', prompt:'' });
-    win.selectNode(node.id);
-    win.updateConfig();
-    // Simulate changing agent type to writer via custom dropdown
-    const typeSelect = win.document.querySelector('.config-select[data-key="agentType"]');
-    selectCustomOption(typeSelect, 'writer');
-    expect(node.config.agentType).toBe('writer');
-    expect(node.config.writingStyle).toBe('technical');
-    expect(node.config.prompt).toContain('technical writer');
-  });
-
-  // Config panel: writing style change swaps prompt template
-  it('should swap prompt when writing style changes from template', () => {
-    const node = win.addNode('agent', 100, 200, 'Writer', {
-      agentType:'writer', writingStyle:'technical', prompt:win.PROMPTS.writerTechnical
+  describe('config panel', () => {
+    it('should show Writing Style dropdown when agent type is writer', () => {
+      const node = win.addNode('agent', 100, 200, 'Writer', { agentType:'writer', writingStyle:'technical', prompt:win.PROMPTS.writerTechnical });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const styleSelect = win.document.querySelector('[data-key="writingStyle"]');
+      expect(!!styleSelect).toBe(true);
     });
-    win.selectNode(node.id);
-    win.updateConfig();
-    const styleSelect = win.document.querySelector('.config-select[data-key="writingStyle"]');
-    selectCustomOption(styleSelect, 'business');
-    expect(node.config.writingStyle).toBe('business');
-    expect(node.config.prompt).toContain('business writer');
-  });
-  it('should update tools when writing style changes', () => {
-    const node = win.addNode('agent', 100, 200, 'Writer', {
-      agentType:'writer', writingStyle:'technical',
-      tools:win.WRITER_TOOL_DEFAULTS.technical, prompt:win.PROMPTS.writerTechnical
+    it('should not show Writing Style dropdown for non-writer agents', () => {
+      const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'Build it.' });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const styleSelect = win.document.querySelector('[data-key="writingStyle"]');
+      expect(styleSelect).toBeNull();
     });
-    win.selectNode(node.id);
-    win.updateConfig();
-    const styleSelect = win.document.querySelector('.config-select[data-key="writingStyle"]');
-    selectCustomOption(styleSelect, 'business');
-    expect(node.config.tools).toContain('WebSearch');
-    expect(node.config.tools).toContain('WebFetch');
-  });
-  it('should preserve custom prompt when writing style changes', () => {
-    const customPrompt = 'My own custom writing instructions here';
-    const node = win.addNode('agent', 100, 200, 'Writer', {
-      agentType:'writer', writingStyle:'technical', prompt:customPrompt
+    it('should populate prompt when switching agent type to writer', () => {
+      const node = win.addNode('agent', 100, 200, 'Agent', { agentType:'general', prompt:'' });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const typeSelect = win.document.querySelector('.config-select[data-key="agentType"]');
+      selectCustomOption(typeSelect, 'writer');
+      expect(node.config.agentType).toBe('writer');
+      expect(node.config.writingStyle).toBe('technical');
+      expect(node.config.prompt).toContain('technical writer');
     });
-    win.selectNode(node.id);
-    win.updateConfig();
-    const styleSelect = win.document.querySelector('.config-select[data-key="writingStyle"]');
-    selectCustomOption(styleSelect, 'runbook');
-    // Prompt should NOT be overwritten — user customized it
-    expect(node.config.prompt).toBe(customPrompt);
-    // But tools SHOULD update
-    expect(node.config.tools).toContain('Bash');
+    it('should swap prompt when writing style changes from template', () => {
+      const node = win.addNode('agent', 100, 200, 'Writer', {
+        agentType:'writer', writingStyle:'technical', prompt:win.PROMPTS.writerTechnical
+      });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const styleSelect = win.document.querySelector('.config-select[data-key="writingStyle"]');
+      selectCustomOption(styleSelect, 'business');
+      expect(node.config.writingStyle).toBe('business');
+      expect(node.config.prompt).toContain('business writer');
+    });
+    it('should update tools when writing style changes', () => {
+      const node = win.addNode('agent', 100, 200, 'Writer', {
+        agentType:'writer', writingStyle:'technical',
+        tools:win.WRITER_TOOL_DEFAULTS.technical, prompt:win.PROMPTS.writerTechnical
+      });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const styleSelect = win.document.querySelector('.config-select[data-key="writingStyle"]');
+      selectCustomOption(styleSelect, 'business');
+      expect(node.config.tools).toContain('WebSearch');
+      expect(node.config.tools).toContain('WebFetch');
+    });
+    it('should preserve custom prompt when writing style changes', () => {
+      const customPrompt = 'My own custom writing instructions here';
+      const node = win.addNode('agent', 100, 200, 'Writer', {
+        agentType:'writer', writingStyle:'technical', prompt:customPrompt
+      });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const styleSelect = win.document.querySelector('.config-select[data-key="writingStyle"]');
+      selectCustomOption(styleSelect, 'runbook');
+      expect(node.config.prompt).toBe(customPrompt);
+      expect(node.config.tools).toContain('Bash');
+    });
+    it('should hide Writing Style dropdown when switching away from writer', () => {
+      const node = win.addNode('agent', 100, 200, 'Writer', {
+        agentType:'writer', writingStyle:'technical', prompt:win.PROMPTS.writerTechnical
+      });
+      win.selectNode(node.id);
+      win.updateConfig();
+      expect(!!win.document.querySelector('[data-key="writingStyle"]')).toBe(true);
+      const typeSelect = win.document.querySelector('.config-select[data-key="agentType"]');
+      selectCustomOption(typeSelect, 'coder');
+      expect(win.document.querySelector('[data-key="writingStyle"]')).toBeNull();
+    });
   });
 
-  // Config panel: switching away from writer hides dropdown
-  it('should hide Writing Style dropdown when switching away from writer', () => {
-    const node = win.addNode('agent', 100, 200, 'Writer', {
-      agentType:'writer', writingStyle:'technical', prompt:win.PROMPTS.writerTechnical
+  describe('workflow integration', () => {
+    it('should use writer agent type for documentation story generation', () => {
+      win.document.getElementById('storyInput').value = 'Write comprehensive API documentation for the user management endpoints and add a wiki guide';
+      win.generateFromStory();
+      const docWriter = win.state.nodes.find(n => n.label === 'Doc Writer');
+      expect(docWriter.config.agentType).toBe('writer');
+      expect(docWriter.config.writingStyle).toBe('technical');
+      expect(docWriter.config.prompt).toContain('technical writer');
     });
-    win.selectNode(node.id);
-    win.updateConfig();
-    // Verify it's there first
-    expect(!!win.document.querySelector('[data-key="writingStyle"]')).toBe(true);
-    // Switch to coder via custom dropdown
-    const typeSelect = win.document.querySelector('.config-select[data-key="agentType"]');
-    selectCustomOption(typeSelect, 'coder');
-    // After re-render, Writing Style dropdown should be gone
-    expect(win.document.querySelector('[data-key="writingStyle"]')).toBeNull();
-  });
-
-  // generateFromStory: doc workflow uses writer type
-  it('should use writer agent type for documentation story generation', () => {
-    win.document.getElementById('storyInput').value = 'Write comprehensive API documentation for the user management endpoints and add a wiki guide';
-    win.generateFromStory();
-    const docWriter = win.state.nodes.find(n => n.label === 'Doc Writer');
-    expect(docWriter.config.agentType).toBe('writer');
-    expect(docWriter.config.writingStyle).toBe('technical');
-    expect(docWriter.config.prompt).toContain('technical writer');
-  });
-
-  // Export: writer nodes produce correct prompt in exports
-  it('should include writer prompt in generated sub-agents export', () => {
-    win.document.getElementById('storyInput').value = 'Write comprehensive documentation and a README guide for the project architecture';
-    win.generateFromStory();
-    const output = win.genSubAgents();
-    expect(output).toContain('technical writer');
+    it('should include writer prompt in generated sub-agents export', () => {
+      win.document.getElementById('storyInput').value = 'Write comprehensive documentation and a README guide for the project architecture';
+      win.generateFromStory();
+      const output = win.genSubAgents();
+      expect(output).toContain('technical writer');
+    });
   });
 });
 
@@ -1391,79 +1426,83 @@ describe('Writer Agent Type', () => {
 describe('Model Version Handling', () => {
   beforeEach(() => { resetState(); });
 
-  it('should use full model ID for Sonnet 4.5 in sub-agents export', () => {
-    buildTestWorkflow('linear');
-    const impl = win.state.nodes.find(n => n.label === 'Implementer');
-    impl.config.model = 'sonnet';
-    const output = win.genSubAgents();
-    expect(output).toContain('model="claude-sonnet-4-5-20251001"');
+  describe('sub-agents export', () => {
+    it('should use full model ID for Sonnet 4.5', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'sonnet';
+      const output = win.genSubAgents();
+      expect(output).toContain('model="claude-sonnet-4-5-20251001"');
+    });
+    it('should use full model ID for Opus 4.5', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'opus';
+      const output = win.genSubAgents();
+      expect(output).toContain('model="claude-opus-4-5-20251001"');
+    });
+    it('should use shorthand for Sonnet 4.6', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'sonnet-4.6';
+      const output = win.genSubAgents();
+      expect(output).toContain('model="sonnet"');
+    });
+    it('should use shorthand for Opus 4.6', () => {
+      buildTestWorkflow('linear');
+      const output = win.genSubAgents();
+      expect(output).toContain('model="opus"');
+    });
+    it('should use shorthand for Haiku', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'haiku';
+      const output = win.genSubAgents();
+      expect(output).toContain('model="haiku"');
+    });
+    it('should not inject /model prompt override', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'sonnet';
+      const output = win.genSubAgents();
+      expect(output).toNotContain('/model claude-sonnet');
+    });
+    it('should use opus[1m] shorthand for Opus 4.6 [1M]', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'opus-4.6-1m';
+      const output = win.genSubAgents();
+      expect(output).toContain('model="opus[1m]"');
+    });
+    it('should use sonnet[1m] shorthand for Sonnet 4.6 [1M]', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'sonnet-4.6-1m';
+      const output = win.genSubAgents();
+      expect(output).toContain('model="sonnet[1m]"');
+    });
   });
-  it('should use full model ID for Opus 4.5 in sub-agents export', () => {
-    buildTestWorkflow('linear');
-    const impl = win.state.nodes.find(n => n.label === 'Implementer');
-    impl.config.model = 'opus';
-    const output = win.genSubAgents();
-    expect(output).toContain('model="claude-opus-4-5-20251001"');
-  });
-  it('should use shorthand for Sonnet 4.6 in sub-agents export', () => {
-    buildTestWorkflow('linear');
-    const impl = win.state.nodes.find(n => n.label === 'Implementer');
-    impl.config.model = 'sonnet-4.6';
-    const output = win.genSubAgents();
-    expect(output).toContain('model="sonnet"');
-  });
-  it('should use shorthand for Opus 4.6 in sub-agents export', () => {
-    buildTestWorkflow('linear');
-    const output = win.genSubAgents();
-    // Default model is opus-4.6
-    expect(output).toContain('model="opus"');
-  });
-  it('should use shorthand for Haiku in sub-agents export', () => {
-    buildTestWorkflow('linear');
-    const impl = win.state.nodes.find(n => n.label === 'Implementer');
-    impl.config.model = 'haiku';
-    const output = win.genSubAgents();
-    expect(output).toContain('model="haiku"');
-  });
-  it('should not inject /model prompt override in sub-agents export', () => {
-    buildTestWorkflow('linear');
-    const impl = win.state.nodes.find(n => n.label === 'Implementer');
-    impl.config.model = 'sonnet';
-    const output = win.genSubAgents();
-    expect(output).toNotContain('/model claude-sonnet');
-  });
-  it('should use shorthand model in workflow export for 4.6', () => {
-    buildTestWorkflow('linear');
-    const output = win.genWorkflow();
-    expect(output).toContain('`opus`');
-  });
-  it('should use full model ID in workflow export for 4.5', () => {
-    buildTestWorkflow('linear');
-    const impl = win.state.nodes.find(n => n.label === 'Implementer');
-    impl.config.model = 'opus';
-    const output = win.genWorkflow();
-    expect(output).toContain('claude-opus-4-5-20251001');
-  });
-  it('should use opus[1m] shorthand for Opus 4.6 [1M] in sub-agents export', () => {
-    buildTestWorkflow('linear');
-    const impl = win.state.nodes.find(n => n.label === 'Implementer');
-    impl.config.model = 'opus-4.6-1m';
-    const output = win.genSubAgents();
-    expect(output).toContain('model="opus[1m]"');
-  });
-  it('should use sonnet[1m] shorthand for Sonnet 4.6 [1M] in sub-agents export', () => {
-    buildTestWorkflow('linear');
-    const impl = win.state.nodes.find(n => n.label === 'Implementer');
-    impl.config.model = 'sonnet-4.6-1m';
-    const output = win.genSubAgents();
-    expect(output).toContain('model="sonnet[1m]"');
-  });
-  it('should use [1M] label in workflow export for 1M variants', () => {
-    buildTestWorkflow('linear');
-    const impl = win.state.nodes.find(n => n.label === 'Implementer');
-    impl.config.model = 'opus-4.6-1m';
-    const output = win.genWorkflow();
-    expect(output).toContain('opus[1m]');
+
+  describe('workflow export', () => {
+    it('should use shorthand model for 4.6', () => {
+      buildTestWorkflow('linear');
+      const output = win.genWorkflow();
+      expect(output).toContain('`opus`');
+    });
+    it('should use full model ID for 4.5', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'opus';
+      const output = win.genWorkflow();
+      expect(output).toContain('claude-opus-4-5-20251001');
+    });
+    it('should use [1M] label for 1M variants', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'opus-4.6-1m';
+      const output = win.genWorkflow();
+      expect(output).toContain('opus[1m]');
+    });
   });
 });
 
@@ -1471,58 +1510,64 @@ describe('Model Version Handling', () => {
 describe('MCP Integrations', () => {
   beforeEach(() => { resetState(); });
 
-  it('should return null for sourcebotHint when disabled', () => {
-    win.state.mcpSourcebot = false;
-    expect(win.sourcebotHint()).toBe(null);
+  describe('hint functions', () => {
+    it('should return null for sourcebotHint when disabled', () => {
+      win.state.mcpSourcebot = false;
+      expect(win.sourcebotHint()).toBe(null);
+    });
+    it('should return prompt text for sourcebotHint when enabled', () => {
+      win.state.mcpSourcebot = true;
+      const hint = win.sourcebotHint();
+      expect(hint).toContain('Sourcebot MCP');
+      expect(hint).toContain('search_code');
+      expect(hint).toContain('ask_codebase');
+      expect(hint).toContain('read_file');
+      expect(hint).toContain('list_tree');
+    });
+    it('should return null for atlassianHint when toggle is off', () => {
+      win.state.mcpAtlassian = false;
+      const result = win.atlassianHint(['https://foo.atlassian.net/browse/TEST-1']);
+      expect(result).toBe(null);
+    });
+    it('should return hint for atlassianHint when toggle is on', () => {
+      win.state.mcpAtlassian = true;
+      const result = win.atlassianHint(['https://foo.atlassian.net/browse/TEST-1']);
+      expect(result).toContain('Atlassian Context');
+      expect(result).toContain('TEST-1');
+    });
+    it('should return null for customMcpHint when text is empty', () => {
+      const ta = win.document.getElementById('mcpCustomNotes');
+      if (ta) ta.value = '';
+      win.state.mcpCustom = '';
+      expect(win.customMcpHint()).toBe(null);
+    });
+    it('should return formatted text for customMcpHint when populated', () => {
+      const ta = win.document.getElementById('mcpCustomNotes');
+      if (ta) ta.value = 'Playwright MCP for browser testing';
+      else win.state.mcpCustom = 'Playwright MCP for browser testing';
+      const hint = win.customMcpHint();
+      expect(hint).toContain('Custom MCP Tools');
+      expect(hint).toContain('Playwright MCP');
+    });
   });
-  it('should return prompt text for sourcebotHint when enabled', () => {
-    win.state.mcpSourcebot = true;
-    const hint = win.sourcebotHint();
-    expect(hint).toContain('Sourcebot MCP');
-    expect(hint).toContain('search_code');
-    expect(hint).toContain('ask_codebase');
-    expect(hint).toContain('read_file');
-    expect(hint).toContain('list_tree');
+
+  describe('export integration', () => {
+    it('should include Sourcebot hint in sub-agents export when enabled', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpSourcebot = true;
+      const output = win.genSubAgents();
+      expect(output).toContain('Sourcebot MCP');
+    });
+    it('should include custom MCP hint in sub-agents export when populated', () => {
+      buildTestWorkflow('linear');
+      const ta = win.document.getElementById('mcpCustomNotes');
+      if (ta) ta.value = 'My custom MCP server';
+      else win.state.mcpCustom = 'My custom MCP server';
+      const output = win.genSubAgents();
+      expect(output).toContain('My custom MCP server');
+    });
   });
-  it('should return null for atlassianHint when toggle is off', () => {
-    win.state.mcpAtlassian = false;
-    const result = win.atlassianHint(['https://foo.atlassian.net/browse/TEST-1']);
-    expect(result).toBe(null);
-  });
-  it('should return hint for atlassianHint when toggle is on', () => {
-    win.state.mcpAtlassian = true;
-    const result = win.atlassianHint(['https://foo.atlassian.net/browse/TEST-1']);
-    expect(result).toContain('Atlassian Context');
-    expect(result).toContain('TEST-1');
-  });
-  it('should return null for customMcpHint when text is empty', () => {
-    const ta = win.document.getElementById('mcpCustomNotes');
-    if (ta) ta.value = '';
-    win.state.mcpCustom = '';
-    expect(win.customMcpHint()).toBe(null);
-  });
-  it('should return formatted text for customMcpHint when populated', () => {
-    const ta = win.document.getElementById('mcpCustomNotes');
-    if (ta) ta.value = 'Playwright MCP for browser testing';
-    else win.state.mcpCustom = 'Playwright MCP for browser testing';
-    const hint = win.customMcpHint();
-    expect(hint).toContain('Custom MCP Tools');
-    expect(hint).toContain('Playwright MCP');
-  });
-  it('should include Sourcebot hint in sub-agents export when enabled', () => {
-    buildTestWorkflow('linear');
-    win.state.mcpSourcebot = true;
-    const output = win.genSubAgents();
-    expect(output).toContain('Sourcebot MCP');
-  });
-  it('should include custom MCP hint in sub-agents export when populated', () => {
-    buildTestWorkflow('linear');
-    const ta = win.document.getElementById('mcpCustomNotes');
-    if (ta) ta.value = 'My custom MCP server';
-    else win.state.mcpCustom = 'My custom MCP server';
-    const output = win.genSubAgents();
-    expect(output).toContain('My custom MCP server');
-  });
+
   it('should reset MCP state on Clear All (Atlassian on, Sourcebot on)', () => {
     win.state.mcpAtlassian = false;
     win.state.mcpSourcebot = false;
@@ -1538,66 +1583,73 @@ describe('MCP Integrations', () => {
 describe('Implementation Plan', () => {
   beforeEach(() => { resetState(); });
 
-  it('should return empty string for getPlan when plan input is empty', () => {
-    const pi = win.document.getElementById('planInput');
-    if (pi) pi.value = '';
-    expect(win.getPlan()).toBe('');
+  describe('getPlan helper', () => {
+    it('should return empty string when plan input is empty', () => {
+      const pi = win.document.getElementById('planInput');
+      if (pi) pi.value = '';
+      expect(win.getPlan()).toBe('');
+    });
+    it('should return plan text when populated', () => {
+      const pi = win.document.getElementById('planInput');
+      if (pi) pi.value = 'Step 1: Modify src/auth.ts\nStep 2: Update tests';
+      expect(win.getPlan()).toContain('src/auth.ts');
+    });
   });
-  it('should return plan text for getPlan when populated', () => {
-    const pi = win.document.getElementById('planInput');
-    if (pi) pi.value = 'Step 1: Modify src/auth.ts\nStep 2: Update tests';
-    expect(win.getPlan()).toContain('src/auth.ts');
+
+  describe('export integration', () => {
+    it('should include plan in sub-agents export when populated', () => {
+      buildTestWorkflow('linear');
+      const pi = win.document.getElementById('planInput');
+      if (pi) pi.value = 'Architecture: use repository pattern for data access';
+      const output = win.genSubAgents();
+      expect(output).toContain('Implementation Plan');
+      expect(output).toContain('repository pattern');
+      expect(output).toContain('starting point, not a rigid constraint');
+    });
+    it('should NOT include plan section in export when empty', () => {
+      buildTestWorkflow('linear');
+      const pi = win.document.getElementById('planInput');
+      if (pi) pi.value = '';
+      const output = win.genSubAgents();
+      expect(output).toNotContain('Implementation Plan');
+    });
+    it('should include plan in workflow export when populated', () => {
+      buildTestWorkflow('linear');
+      const pi = win.document.getElementById('planInput');
+      if (pi) pi.value = 'Plan: modify controllers/UserController.cs';
+      const output = win.genWorkflow();
+      expect(output).toContain('Implementation Plan');
+      expect(output).toContain('UserController.cs');
+    });
   });
-  it('should include plan in sub-agents export when populated', () => {
-    buildTestWorkflow('linear');
-    const pi = win.document.getElementById('planInput');
-    if (pi) pi.value = 'Architecture: use repository pattern for data access';
-    const output = win.genSubAgents();
-    expect(output).toContain('Implementation Plan');
-    expect(output).toContain('repository pattern');
-    expect(output).toContain('starting point, not a rigid constraint');
-  });
-  it('should NOT include plan section in export when empty', () => {
-    buildTestWorkflow('linear');
-    const pi = win.document.getElementById('planInput');
-    if (pi) pi.value = '';
-    const output = win.genSubAgents();
-    expect(output).toNotContain('Implementation Plan');
-  });
-  it('should include plan in workflow export when populated', () => {
-    buildTestWorkflow('linear');
-    const pi = win.document.getElementById('planInput');
-    if (pi) pi.value = 'Plan: modify controllers/UserController.cs';
-    const output = win.genWorkflow();
-    expect(output).toContain('Implementation Plan');
-    expect(output).toContain('UserController.cs');
-  });
-  it('should persist plan in serialized workflow', () => {
-    const pi = win.document.getElementById('planInput');
-    if (pi) pi.value = 'My test plan content';
-    buildTestWorkflow('linear');
-    const data = win.serializeWorkflow();
-    expect(data.plan).toBe('My test plan content');
-  });
-  it('should clear plan on Clear All', () => {
-    const pi = win.document.getElementById('planInput');
-    if (pi) pi.value = 'Some plan';
-    win.clearCanvas();
-    const piAfter = win.document.getElementById('planInput');
-    expect(piAfter ? piAfter.value : '').toBe('');
+
+  describe('persistence', () => {
+    it('should persist plan in serialized workflow', () => {
+      const pi = win.document.getElementById('planInput');
+      if (pi) pi.value = 'My test plan content';
+      buildTestWorkflow('linear');
+      const data = win.serializeWorkflow();
+      expect(data.plan).toBe('My test plan content');
+    });
+    it('should clear plan on Clear All', () => {
+      const pi = win.document.getElementById('planInput');
+      if (pi) pi.value = 'Some plan';
+      win.clearCanvas();
+      const piAfter = win.document.getElementById('planInput');
+      expect(piAfter ? piAfter.value : '').toBe('');
+    });
   });
 });
 
 // ═══════════════════════════════════════════════════════════
 // Suite 14: Refine Prompt Generation
 // ═══════════════════════════════════════════════════════════
-describe('Suite 14: Refine Prompt Generation', () => {
+describe('Refine Prompt Generation', () => {
   beforeEach(() => { clearStorage(); resetState(); });
 
   it('should generate refine prompt with requirements text', () => {
     win.document.getElementById('storyInput').value = 'As a user I want to reset my password';
     win.document.getElementById('workflowName').value = 'password-reset';
-    // Mock clipboard
     let copied = '';
     win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
     win.generateRefinePrompt();
@@ -1610,87 +1662,87 @@ describe('Suite 14: Refine Prompt Generation', () => {
     expect(copied).toContain('paste them into the **Requirements** field');
   });
 
-  it('should include Atlassian hint when Jira URL present and MCP enabled', () => {
-    win.document.getElementById('storyInput').value = 'See https://myco.atlassian.net/browse/PROJ-123 for details';
-    win.document.getElementById('workflowName').value = 'jira-feature';
-    win.state.mcpAtlassian = true;
-    let copied = '';
-    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-    win.generateRefinePrompt();
-    expect(copied).toContain('Atlassian Context');
-    expect(copied).toContain('PROJ-123');
-    expect(copied).toContain('additional source material');
+  describe('Atlassian integration', () => {
+    it('should include hint when Jira URL present and MCP enabled', () => {
+      win.document.getElementById('storyInput').value = 'See https://myco.atlassian.net/browse/PROJ-123 for details';
+      win.document.getElementById('workflowName').value = 'jira-feature';
+      win.state.mcpAtlassian = true;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generateRefinePrompt();
+      expect(copied).toContain('Atlassian Context');
+      expect(copied).toContain('PROJ-123');
+      expect(copied).toContain('additional source material');
+    });
+    it('should treat Jira ticket as source requirements when URL-only input', () => {
+      win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-456';
+      win.document.getElementById('workflowName').value = 'jira-only';
+      win.state.mcpAtlassian = true;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generateRefinePrompt();
+      expect(copied).toContain('Jira ticket IS the source requirements');
+      expect(copied).toContain('from the fetched Jira ticket content MUST');
+      expect(copied).toNotContain('Source Requirements above AND');
+    });
+    it('should NOT include hint when MCP disabled', () => {
+      win.document.getElementById('storyInput').value = 'See https://myco.atlassian.net/browse/PROJ-123 for details';
+      win.document.getElementById('workflowName').value = 'jira-feature';
+      win.state.mcpAtlassian = false;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generateRefinePrompt();
+      expect(copied).toNotContain('Atlassian Context');
+    });
   });
 
-  it('should treat Jira ticket as source requirements when URL-only input', () => {
-    win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-456';
-    win.document.getElementById('workflowName').value = 'jira-only';
-    win.state.mcpAtlassian = true;
-    let copied = '';
-    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-    win.generateRefinePrompt();
-    expect(copied).toContain('Jira ticket IS the source requirements');
-    // sourceLabel should reference ONLY ticket content, not "Source Requirements above"
-    expect(copied).toContain('from the fetched Jira ticket content MUST');
-    expect(copied).toNotContain('Source Requirements above AND');
+  describe('Sourcebot integration', () => {
+    it('should include hint when enabled', () => {
+      win.document.getElementById('storyInput').value = 'Build a new auth service';
+      win.document.getElementById('workflowName').value = 'auth-service';
+      win.state.mcpSourcebot = true;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generateRefinePrompt();
+      expect(copied).toContain('Sourcebot MCP');
+    });
+    it('should NOT include hint when disabled', () => {
+      win.document.getElementById('storyInput').value = 'Build a new auth service';
+      win.document.getElementById('workflowName').value = 'auth-service';
+      win.state.mcpSourcebot = false;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generateRefinePrompt();
+      expect(copied).toNotContain('Sourcebot MCP');
+    });
   });
 
-  it('should NOT include Atlassian hint when MCP disabled', () => {
-    win.document.getElementById('storyInput').value = 'See https://myco.atlassian.net/browse/PROJ-123 for details';
-    win.document.getElementById('workflowName').value = 'jira-feature';
-    win.state.mcpAtlassian = false;
-    let copied = '';
-    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-    win.generateRefinePrompt();
-    expect(copied).toNotContain('Atlassian Context');
-  });
-
-  it('should include Sourcebot hint when enabled', () => {
-    win.document.getElementById('storyInput').value = 'Build a new auth service';
-    win.document.getElementById('workflowName').value = 'auth-service';
-    win.state.mcpSourcebot = true;
-    let copied = '';
-    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-    win.generateRefinePrompt();
-    expect(copied).toContain('Sourcebot MCP');
-  });
-
-  it('should NOT include Sourcebot hint when disabled', () => {
-    win.document.getElementById('storyInput').value = 'Build a new auth service';
-    win.document.getElementById('workflowName').value = 'auth-service';
-    win.state.mcpSourcebot = false;
-    let copied = '';
-    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-    win.generateRefinePrompt();
-    expect(copied).toNotContain('Sourcebot MCP');
-  });
-
-  it('should slugify workflow name for spec file path', () => {
-    win.document.getElementById('storyInput').value = 'Some requirements here';
-    win.document.getElementById('workflowName').value = 'My Feature Build';
-    let copied = '';
-    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-    win.generateRefinePrompt();
-    expect(copied).toContain('.claude/specs/my-feature-build.md');
-  });
-
-  it('should auto-generate workflow name if empty', () => {
-    win.document.getElementById('storyInput').value = 'Some requirements';
-    win.document.getElementById('workflowName').value = '';
-    let copied = '';
-    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-    win.generateRefinePrompt();
-    // Should have generated a name and used it
-    const nameField = win.document.getElementById('workflowName').value;
-    expect(nameField.length > 0).toBe(true);
-    expect(copied).toContain('.claude/specs/');
+  describe('workflow naming', () => {
+    it('should slugify workflow name for spec file path', () => {
+      win.document.getElementById('storyInput').value = 'Some requirements here';
+      win.document.getElementById('workflowName').value = 'My Feature Build';
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generateRefinePrompt();
+      expect(copied).toContain('.claude/specs/my-feature-build.md');
+    });
+    it('should auto-generate workflow name if empty', () => {
+      win.document.getElementById('storyInput').value = 'Some requirements';
+      win.document.getElementById('workflowName').value = '';
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generateRefinePrompt();
+      const nameField = win.document.getElementById('workflowName').value;
+      expect(nameField.length > 0).toBe(true);
+      expect(copied).toContain('.claude/specs/');
+    });
   });
 });
 
 // ═══════════════════════════════════════════════════════════
 // Suite 15: Plan Prompt Generation
 // ═══════════════════════════════════════════════════════════
-describe('Suite 15: Plan Prompt Generation', () => {
+describe('Plan Prompt Generation', () => {
   beforeEach(() => { clearStorage(); resetState(); });
 
   it('should generate plan prompt with requirements context', () => {
@@ -1705,37 +1757,46 @@ describe('Suite 15: Plan Prompt Generation', () => {
     expect(copied).toContain('paste them into the **Implementation Plan** field');
   });
 
-  it('should include Sourcebot exploration guidance when enabled', () => {
-    win.document.getElementById('storyInput').value = 'Refactor data layer';
-    win.document.getElementById('workflowName').value = 'data-refactor';
-    win.state.mcpSourcebot = true;
-    let copied = '';
-    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-    win.generatePlanPrompt();
-    expect(copied).toContain('Sourcebot MCP');
-    expect(copied).toContain('search_code');
-    expect(copied).toContain('Explore the codebase thoroughly');
-  });
-
-  it('should NOT include Sourcebot when disabled', () => {
-    win.document.getElementById('storyInput').value = 'Refactor data layer';
-    win.document.getElementById('workflowName').value = 'data-refactor';
-    win.state.mcpSourcebot = false;
-    let copied = '';
-    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-    win.generatePlanPrompt();
-    expect(copied).toNotContain('Sourcebot MCP');
-  });
-
-  it('should include Atlassian hint when Jira URL present', () => {
-    win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-789';
-    win.document.getElementById('workflowName').value = 'jira-plan';
-    win.state.mcpAtlassian = true;
-    let copied = '';
-    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-    win.generatePlanPrompt();
-    expect(copied).toContain('Atlassian Context');
-    expect(copied).toContain('PROJ-789');
+  describe('MCP integration', () => {
+    it('should include Sourcebot exploration guidance when enabled', () => {
+      win.document.getElementById('storyInput').value = 'Refactor data layer';
+      win.document.getElementById('workflowName').value = 'data-refactor';
+      win.state.mcpSourcebot = true;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generatePlanPrompt();
+      expect(copied).toContain('Sourcebot MCP');
+      expect(copied).toContain('search_code');
+      expect(copied).toContain('Explore the codebase thoroughly');
+    });
+    it('should NOT include Sourcebot when disabled', () => {
+      win.document.getElementById('storyInput').value = 'Refactor data layer';
+      win.document.getElementById('workflowName').value = 'data-refactor';
+      win.state.mcpSourcebot = false;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generatePlanPrompt();
+      expect(copied).toNotContain('Sourcebot MCP');
+    });
+    it('should include Atlassian hint when Jira URL present', () => {
+      win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-789';
+      win.document.getElementById('workflowName').value = 'jira-plan';
+      win.state.mcpAtlassian = true;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generatePlanPrompt();
+      expect(copied).toContain('Atlassian Context');
+      expect(copied).toContain('PROJ-789');
+    });
+    it('should handle Jira URL-only input for plan generation', () => {
+      win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-999';
+      win.document.getElementById('workflowName').value = 'jira-plan-only';
+      win.state.mcpAtlassian = true;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generatePlanPrompt();
+      expect(copied).toContain('Jira ticket IS the requirements');
+    });
   });
 
   it('should auto-generate workflow name if empty', () => {
@@ -1748,22 +1809,12 @@ describe('Suite 15: Plan Prompt Generation', () => {
     expect(nameField.length > 0).toBe(true);
     expect(copied).toContain('.claude/plans/');
   });
-
-  it('should handle Jira URL-only input for plan generation', () => {
-    win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-999';
-    win.document.getElementById('workflowName').value = 'jira-plan-only';
-    win.state.mcpAtlassian = true;
-    let copied = '';
-    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-    win.generatePlanPrompt();
-    expect(copied).toContain('Jira ticket IS the requirements');
-  });
 });
 
 // ═══════════════════════════════════════════════════════════
 // Suite 16: Cross-Feature Edge Cases
 // ═══════════════════════════════════════════════════════════
-describe('Suite 16: Cross-Feature Edge Cases', () => {
+describe('Cross-Feature Edge Cases', () => {
   beforeEach(() => { clearStorage(); resetState(); });
 
   it('should not include find_class in Refine Sourcebot hint', () => {
@@ -1831,7 +1882,7 @@ describe('Suite 16: Cross-Feature Edge Cases', () => {
     expect(output).toNotContain('Implementation Plan');
   });
 
-  it('Refine prompt should not show empty requirements toast with content', () => {
+  it('should not show empty Refine prompt toast when requirements have content', () => {
     win.document.getElementById('storyInput').value = 'Some requirements';
     win.document.getElementById('workflowName').value = 'test';
     let copied = '';
@@ -1840,13 +1891,141 @@ describe('Suite 16: Cross-Feature Edge Cases', () => {
     expect(copied.length > 0).toBe(true);
   });
 
-  it('Plan prompt should not show empty requirements toast with content', () => {
+  it('should not show empty Plan prompt toast when requirements have content', () => {
     win.document.getElementById('storyInput').value = 'Some requirements';
     win.document.getElementById('workflowName').value = 'test';
     let copied = '';
     win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
     win.generatePlanPrompt();
     expect(copied.length > 0).toBe(true);
+  });
+});
+
+// ─── Suite 17: Auto Layout ──────────────────────────────
+describe('Auto Layout', () => {
+  beforeEach(() => { clearStorage(); resetState(); });
+
+  describe('linear chain', () => {
+    it('should place nodes left-to-right in ascending x order', () => {
+      const refs = buildTestWorkflow('linear');
+      win.autoLayout();
+      expect(refs.input.x < refs.planner.x).toBe(true);
+      expect(refs.planner.x < refs.implementer.x).toBe(true);
+      expect(refs.implementer.x < refs.output.x).toBe(true);
+    });
+
+    it('should place all nodes on the same y (single row)', () => {
+      const refs = buildTestWorkflow('linear');
+      win.autoLayout();
+      expect(refs.input.y).toBe(refs.planner.y);
+      expect(refs.planner.y).toBe(refs.implementer.y);
+      expect(refs.implementer.y).toBe(refs.output.y);
+    });
+
+    it('should assign each layer a unique x position', () => {
+      const refs = buildTestWorkflow('linear');
+      win.autoLayout();
+      const xs = [refs.input.x, refs.planner.x, refs.implementer.x, refs.output.x];
+      const unique = new Set(xs);
+      expect(unique.size).toBe(4);
+    });
+  });
+
+  describe('decision loop', () => {
+    it('should place output node rightmost (last layer)', () => {
+      const refs = buildTestWorkflow('decision');
+      win.autoLayout();
+      const allX = win.state.nodes.map(n => n.x);
+      const maxX = Math.max(...allX);
+      expect(refs.output.x).toBe(maxX);
+    });
+
+    it('should not corrupt layer ordering from back-edge', () => {
+      const refs = buildTestWorkflow('decision');
+      win.autoLayout();
+      expect(refs.input.x < refs.implementer.x).toBe(true);
+      expect(refs.implementer.x < refs.reviewer.x).toBe(true);
+      expect(refs.reviewer.x < refs.decision.x).toBe(true);
+      expect(refs.decision.x < refs.tester.x).toBe(true);
+      expect(refs.tester.x < refs.output.x).toBe(true);
+    });
+  });
+
+  describe('parallel fork', () => {
+    it('should place forked branches on the same x layer', () => {
+      const refs = buildTestWorkflow('parallel');
+      win.autoLayout();
+      expect(refs.backend.x).toBe(refs.frontend.x);
+    });
+
+    it('should place forked branches at different y positions', () => {
+      const refs = buildTestWorkflow('parallel');
+      win.autoLayout();
+      expect(refs.backend.y === refs.frontend.y).toBe(false);
+    });
+
+    it('should place reviewer after both branches', () => {
+      const refs = buildTestWorkflow('parallel');
+      win.autoLayout();
+      expect(refs.reviewer.x > refs.backend.x).toBe(true);
+      expect(refs.reviewer.x > refs.frontend.x).toBe(true);
+    });
+  });
+
+  describe('complex workflow', () => {
+    it('should place output as rightmost node', () => {
+      const refs = buildTestWorkflow('complex');
+      win.autoLayout();
+      const allX = win.state.nodes.map(n => n.x);
+      const maxX = Math.max(...allX);
+      expect(refs.output.x).toBe(maxX);
+    });
+
+    it('should place parallel branches on a shared layer', () => {
+      const refs = buildTestWorkflow('complex');
+      win.autoLayout();
+      expect(refs.backend.x).toBe(refs.frontend.x);
+    });
+
+    it('should place reviewer after latest branch in fork-join convergence', () => {
+      const refs = buildTestWorkflow('complex');
+      win.autoLayout();
+      expect(refs.reviewer.x > refs.backend.x).toBe(true);
+      expect(refs.reviewer.x > refs.frontend.x).toBe(true);
+    });
+
+    it('should place decision gate after reviewer and tester after decision', () => {
+      const refs = buildTestWorkflow('complex');
+      win.autoLayout();
+      expect(refs.decision.x > refs.reviewer.x).toBe(true);
+      expect(refs.tester.x > refs.decision.x).toBe(true);
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should not throw on empty state', () => {
+      resetState();
+      let threw = false;
+      try { win.autoLayout(); } catch (e) { threw = true; }
+      expect(threw).toBe(false);
+    });
+
+    it('should position single node without error', () => {
+      resetState();
+      const n = win.addNode('agent', 0, 0, 'Solo', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'Go.', maxTurns:5 });
+      win.autoLayout();
+      expect(typeof n.x).toBe('number');
+      expect(typeof n.y).toBe('number');
+    });
+
+    it('should position all disconnected nodes', () => {
+      resetState();
+      const a = win.addNode('agent', 0, 0, 'A', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'A.', maxTurns:5 });
+      const b = win.addNode('agent', 0, 0, 'B', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'B.', maxTurns:5 });
+      win.autoLayout();
+      expect(typeof a.x).toBe('number');
+      expect(typeof b.x).toBe('number');
+    });
   });
 });
 
@@ -1859,7 +2038,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
