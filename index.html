@@ -2404,10 +2404,9 @@ function getNodesBounds() {
 function autoLayout() {
   if (state.nodes.length === 0) return;
 
-  // Identify back-edges (revision/retry loops from decision gates) so they don't corrupt layer assignment
+  // ── Step 1: Identify back-edges (cycles from decision revision loops) ──
   const backEdges = new Set();
-  // DFS-based cycle detection to find all back-edges
-  const color = {}; // 0=white, 1=gray, 2=black
+  const color = {}; // DFS coloring: 0=white, 1=gray (in stack), 2=black (done)
   state.nodes.forEach(n => { color[n.id] = 0; });
   const fwdAdj = {};
   state.nodes.forEach(n => { fwdAdj[n.id] = []; });
@@ -2417,49 +2416,69 @@ function autoLayout() {
   function dfs(id) {
     color[id] = 1;
     for (const c of (fwdAdj[id] || [])) {
-      if (color[c.to] === 1) { backEdges.add(c.id); } // back-edge: target is in current DFS path
+      if (color[c.to] === 1) { backEdges.add(c.id); }
       else if (color[c.to] === 0) { dfs(c.to); }
     }
     color[id] = 2;
   }
   state.nodes.forEach(n => { if (color[n.id] === 0) dfs(n.id); });
 
-  // Build adjacency for topological sort (excluding back-edges)
+  // ── Step 2: Build DAG adjacency (excluding back-edges) ──
   const adj = {};
+  const rev = {}; // reverse adjacency for longest-path
   const inDeg = {};
-  state.nodes.forEach(n => { adj[n.id] = []; inDeg[n.id] = 0; });
+  state.nodes.forEach(n => { adj[n.id] = []; rev[n.id] = []; inDeg[n.id] = 0; });
   state.connections.forEach(c => {
-    if (backEdges.has(c.id)) return; // skip back-edges
-    if (adj[c.from]) { adj[c.from].push(c.to); inDeg[c.to] = (inDeg[c.to] || 0) + 1; }
+    if (backEdges.has(c.id)) return;
+    if (adj[c.from]) {
+      adj[c.from].push(c.to);
+      rev[c.to].push(c.from);
+      inDeg[c.to] = (inDeg[c.to] || 0) + 1;
+    }
   });
 
-  // Topological layers (BFS — no cycles since back-edges excluded)
-  const layers = [];
-  let queue = state.nodes.filter(n => (inDeg[n.id] || 0) === 0).map(n => n.id);
-  const visited = new Set();
-  while (visited.size < state.nodes.length) {
-    if (queue.length === 0) {
-      const unvisited = state.nodes.filter(n => !visited.has(n.id));
-      if (unvisited.length === 0) break;
-      unvisited.sort((a, b) => (inDeg[a.id] || 0) - (inDeg[b.id] || 0));
-      queue = [unvisited[0].id];
-    }
-    layers.push([...queue]);
-    queue.forEach(id => visited.add(id));
+  // ── Step 3: Topological order via Kahn's algorithm ──
+  const topo = [];
+  const degCopy = {};
+  state.nodes.forEach(n => { degCopy[n.id] = inDeg[n.id]; });
+  let queue = state.nodes.filter(n => degCopy[n.id] === 0).map(n => n.id);
+  while (queue.length > 0) {
     const next = [];
-    queue.forEach(id => {
-      (adj[id] || []).forEach(to => {
-        inDeg[to]--;
-        if (inDeg[to] <= 0 && !visited.has(to)) {
-          next.push(to);
-          visited.add(to);
-        }
-      });
-    });
+    for (const id of queue) {
+      topo.push(id);
+      for (const to of (adj[id] || [])) {
+        degCopy[to]--;
+        if (degCopy[to] === 0) next.push(to);
+      }
+    }
     queue = next;
   }
+  // Add any remaining nodes not reached (disconnected components)
+  state.nodes.forEach(n => { if (!topo.includes(n.id)) topo.push(n.id); });
 
-  // Position nodes
+  // ── Step 4: Longest-path layering (Sugiyama method) ──
+  // Each node's layer = max(predecessors' layers) + 1. Sources get layer 0.
+  // This guarantees every forward edge goes from lower to higher layer.
+  const layerOf = {};
+  for (const id of topo) {
+    let maxPred = -1;
+    for (const pred of (rev[id] || [])) {
+      if (layerOf[pred] !== undefined && layerOf[pred] > maxPred) {
+        maxPred = layerOf[pred];
+      }
+    }
+    layerOf[id] = maxPred + 1;
+  }
+
+  // Group nodes by layer
+  const maxLayer = Math.max(0, ...Object.values(layerOf));
+  const layers = [];
+  for (let i = 0; i <= maxLayer; i++) layers.push([]);
+  for (const id of topo) {
+    layers[layerOf[id]].push(id);
+  }
+
+  // ── Step 5: Position nodes ──
   const xGap = 280, yGap = 100;
   const startX = 100;
   layers.forEach((layer, li) => {
