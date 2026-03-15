@@ -278,6 +278,7 @@ svg.canvas{width:100%;height:100%;display:block}
     <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset — the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Generate to auto-build a workflow from keywords." oninput="autoSaveWorkflow()"></textarea>
     <div class="btn-row mt">
       <button class="btn primary" onclick="generateFromStory()">Generate from Requirements</button>
+      <button class="btn sm" onclick="generateRefinePrompt()">Refine</button>
       <button class="btn sm" onclick="clearCanvas()">Clear All</button>
     </div>
     <div id="urlPresetPicker" style="display:none;margin-top:8px;padding:10px;background:var(--surface2);border:1px solid var(--accent);border-radius:8px">
@@ -292,13 +293,13 @@ svg.canvas{width:100%;height:100%;display:block}
         <button class="btn sm" onclick="dismissUrlPicker()" style="font-size:10px;opacity:.6">Dismiss</button>
       </div>
     </div>
-    <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5"><strong style="color:var(--text2)">Presets</strong> below give you a ready-made pipeline, just paste context above and copy the prompt. <strong style="color:var(--text2)">Generate from Requirements</strong> auto-builds a workflow from your requirements.</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5"><strong style="color:var(--text2)">Presets</strong> below give you a ready-made pipeline, just paste context above and copy the prompt. <strong style="color:var(--text2)">Generate</strong> auto-builds a workflow from keywords. <strong style="color:var(--text2)">Refine</strong> generates an interview prompt — run it in Claude Code to clarify requirements before building.</div>
   </div>
 
   <div class="sidebar-section">
     <h3>Implementation Plan <span style="color:var(--text3);font-weight:400;font-size:11px">optional</span></h3>
     <textarea class="story-input" id="planInput" placeholder="Paste a Claude Code plan here (from plan mode) to give agents codebase-specific context — file paths, patterns, architecture decisions.&#10;&#10;Used as a starting point, not a constraint. Agents adapt the plan based on what they discover during research." oninput="autoSaveWorkflow()" style="min-height:60px"></textarea>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5">Run <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">/plan</code> in Claude Code to generate a plan, then paste it here. Agents use it as starting guidance and adapt based on their findings.</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5">Paste a plan from Claude Code's <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">/plan</code> mode to give agents an implementation blueprint (which files, what patterns). Used as guidance, not a constraint.</div>
   </div>
 
   <div class="sidebar-section">
@@ -2479,6 +2480,78 @@ function extractAcceptanceCriteria(text) {
     }
   }
   return criteria;
+}
+
+function generateRefinePrompt() {
+  const story = $('storyInput').value.trim();
+  if (!story) {
+    showToast('Paste requirements first');
+    return;
+  }
+  ensureWorkflowName();
+  const name = getName();
+  const slug = slugify(name);
+  const atlUrls = extractAtlassianUrls(story);
+  const lines = [];
+
+  lines.push(`# Requirements Refinement Interview: ${name}`);
+  lines.push('');
+  lines.push('You are a senior technical analyst conducting a requirements discovery interview. Your goal is to uncover every detail needed to build this feature — edge cases, UX decisions, tradeoffs, constraints, and technical preferences that the requirements document leaves ambiguous or unspoken.');
+  lines.push('');
+  lines.push('## Source Requirements');
+  lines.push('');
+  lines.push(story);
+  lines.push('');
+
+  // Atlassian hint — if Jira URLs detected, tell Claude to fetch them first
+  if (state.mcpAtlassian && atlUrls.length > 0) {
+    lines.push('## Atlassian Context');
+    lines.push('');
+    lines.push('If an Atlassian MCP tool is available, fetch the following URL(s) for full ticket details BEFORE starting the interview:');
+    atlUrls.forEach(u => lines.push(`- ${u}`));
+    lines.push('');
+  }
+
+  // Sourcebot hint — mention cross-repo search for context gathering
+  if (state.mcpSourcebot) {
+    lines.push('> **Sourcebot MCP** is available for cross-repo code search. Use `search_code`, `find_class`, `read_file`, etc. to explore the existing codebase and inform your questions about integration points, existing patterns, and architectural constraints.');
+    lines.push('');
+  }
+
+  lines.push('## Interview Process');
+  lines.push('');
+  lines.push('1. Read and analyze the requirements above thoroughly');
+  lines.push('2. Interview the user using `AskUserQuestion` — ask about:');
+  lines.push('   - Ambiguous requirements that could be interpreted multiple ways');
+  lines.push('   - Edge cases and error scenarios not covered');
+  lines.push('   - UX/UI preferences and interaction details');
+  lines.push('   - Technical constraints, performance requirements, security considerations');
+  lines.push('   - Tradeoffs where multiple valid approaches exist');
+  lines.push('   - Integration points with existing systems');
+  lines.push('   - Acceptance criteria that would prove the feature works');
+  lines.push('3. Ask follow-up questions to drill deeper — do NOT ask obvious questions whose answers are already in the requirements');
+  lines.push('4. Continue interviewing until you have a complete picture — this may take many rounds');
+  lines.push('5. When complete, write the refined specification');
+  lines.push('');
+  lines.push('## Output');
+  lines.push('');
+  lines.push(`Write the refined specification to \`.claude/specs/${slug}.md\` with:`);
+  lines.push('- Clear problem statement');
+  lines.push('- Detailed functional requirements (incorporating all interview findings)');
+  lines.push('- Edge cases and error handling');
+  lines.push('- UX/interaction details');
+  lines.push('- Technical constraints and considerations');
+  lines.push('- Acceptance criteria');
+  lines.push('- Any tradeoff decisions made during the interview');
+  lines.push('');
+  lines.push('After writing the file, provide a brief summary of what was clarified beyond the original requirements.');
+
+  const prompt = lines.join('\n');
+  navigator.clipboard.writeText(prompt).then(() => {
+    showToast('Refine prompt copied to clipboard');
+  }).catch(() => {
+    showToast('Could not copy — check clipboard permissions');
+  });
 }
 
 function generateFromStory() {
