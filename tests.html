@@ -1618,6 +1618,18 @@ describe('Suite 14: Refine Prompt Generation', () => {
     win.generateRefinePrompt();
     expect(copied).toContain('Atlassian Context');
     expect(copied).toContain('PROJ-123');
+    expect(copied).toContain('additional source material');
+  });
+
+  it('should treat Jira ticket as source requirements when URL-only input', () => {
+    win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-456';
+    win.document.getElementById('workflowName').value = 'jira-only';
+    win.state.mcpAtlassian = true;
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generateRefinePrompt();
+    expect(copied).toContain('Jira ticket IS the source requirements');
+    expect(copied).toContain('fetched Jira ticket content');
   });
 
   it('should NOT include Atlassian hint when MCP disabled', () => {
