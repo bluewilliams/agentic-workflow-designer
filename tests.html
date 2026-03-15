@@ -1605,6 +1605,8 @@ describe('Suite 14: Refine Prompt Generation', () => {
     expect(copied).toContain('reset my password');
     expect(copied).toContain('AskUserQuestion');
     expect(copied).toContain('.claude/specs/password-reset.md');
+    expect(copied).toContain('superset');
+    expect(copied).toContain('preserved verbatim or enhanced');
   });
 
   it('should include Atlassian hint when Jira URL present and MCP enabled', () => {
