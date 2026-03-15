@@ -975,11 +975,11 @@ function updateMemoryPath() {
 // ═══════════════════════════════════════════════════════════
 // PERSISTENCE (localStorage)
 // ═══════════════════════════════════════════════════════════
-function showToast(msg) {
+function showToast(msg, duration) {
   const t = $('toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 1800);
+  setTimeout(() => t.classList.remove('show'), duration || 1800);
 }
 
 // -- Preferences --
@@ -2570,7 +2570,7 @@ function generateRefinePrompt() {
 
   const prompt = lines.join('\n');
   navigator.clipboard.writeText(prompt).then(() => {
-    showToast('Refine prompt copied - paste into Claude Code');
+    showToast('Refine prompt copied - paste into Claude Code', 4000);
   }).catch(() => {
     showToast('Could not copy - check clipboard permissions');
   });
@@ -2647,7 +2647,7 @@ function generatePlanPrompt() {
 
   const prompt = lines.join('\n');
   navigator.clipboard.writeText(prompt).then(() => {
-    showToast('Plan prompt copied - paste into Claude Code');
+    showToast('Plan prompt copied - paste into Claude Code', 4000);
   }).catch(() => {
     showToast('Could not copy - check clipboard permissions');
   });
