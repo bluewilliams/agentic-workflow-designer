@@ -1589,6 +1589,88 @@ describe('Implementation Plan', () => {
 });
 
 // ═══════════════════════════════════════════════════════════
+// Suite 14: Refine Prompt Generation
+// ═══════════════════════════════════════════════════════════
+describe('Suite 14: Refine Prompt Generation', () => {
+  beforeEach(() => { clearStorage(); resetState(); });
+
+  it('should generate refine prompt with requirements text', () => {
+    win.document.getElementById('storyInput').value = 'As a user I want to reset my password';
+    win.document.getElementById('workflowName').value = 'password-reset';
+    // Mock clipboard
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generateRefinePrompt();
+    expect(copied).toContain('Requirements Refinement Interview');
+    expect(copied).toContain('reset my password');
+    expect(copied).toContain('AskUserQuestion');
+    expect(copied).toContain('.claude/specs/password-reset.md');
+  });
+
+  it('should include Atlassian hint when Jira URL present and MCP enabled', () => {
+    win.document.getElementById('storyInput').value = 'See https://myco.atlassian.net/browse/PROJ-123 for details';
+    win.document.getElementById('workflowName').value = 'jira-feature';
+    win.state.mcpAtlassian = true;
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generateRefinePrompt();
+    expect(copied).toContain('Atlassian Context');
+    expect(copied).toContain('PROJ-123');
+  });
+
+  it('should NOT include Atlassian hint when MCP disabled', () => {
+    win.document.getElementById('storyInput').value = 'See https://myco.atlassian.net/browse/PROJ-123 for details';
+    win.document.getElementById('workflowName').value = 'jira-feature';
+    win.state.mcpAtlassian = false;
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generateRefinePrompt();
+    expect(copied).toNotContain('Atlassian Context');
+  });
+
+  it('should include Sourcebot hint when enabled', () => {
+    win.document.getElementById('storyInput').value = 'Build a new auth service';
+    win.document.getElementById('workflowName').value = 'auth-service';
+    win.state.mcpSourcebot = true;
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generateRefinePrompt();
+    expect(copied).toContain('Sourcebot MCP');
+  });
+
+  it('should NOT include Sourcebot hint when disabled', () => {
+    win.document.getElementById('storyInput').value = 'Build a new auth service';
+    win.document.getElementById('workflowName').value = 'auth-service';
+    win.state.mcpSourcebot = false;
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generateRefinePrompt();
+    expect(copied).toNotContain('Sourcebot MCP');
+  });
+
+  it('should slugify workflow name for spec file path', () => {
+    win.document.getElementById('storyInput').value = 'Some requirements here';
+    win.document.getElementById('workflowName').value = 'My Feature Build';
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generateRefinePrompt();
+    expect(copied).toContain('.claude/specs/my-feature-build.md');
+  });
+
+  it('should auto-generate workflow name if empty', () => {
+    win.document.getElementById('storyInput').value = 'Some requirements';
+    win.document.getElementById('workflowName').value = '';
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generateRefinePrompt();
+    // Should have generated a name and used it
+    const nameField = win.document.getElementById('workflowName').value;
+    expect(nameField.length > 0).toBe(true);
+    expect(copied).toContain('.claude/specs/');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
 document.getElementById('app').addEventListener('load', function() {
@@ -1597,7 +1679,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.slugify = slugify;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
