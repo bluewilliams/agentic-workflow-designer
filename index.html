@@ -298,8 +298,11 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-section">
     <h3>Implementation Plan <span style="color:var(--text3);font-weight:400;font-size:11px">optional</span></h3>
-    <textarea class="story-input" id="planInput" placeholder="Paste a Claude Code plan here (from plan mode) to give agents codebase-specific context — file paths, patterns, architecture decisions.&#10;&#10;Used as a starting point, not a constraint. Agents adapt the plan based on what they discover during research." oninput="autoSaveWorkflow()" style="min-height:60px"></textarea>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5">Paste a plan from Claude Code's <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">/plan</code> mode to give agents an implementation blueprint (which files, what patterns). Used as guidance, not a constraint.</div>
+    <textarea class="story-input" id="planInput" placeholder="Paste an implementation plan here to give agents codebase-specific context — file paths, patterns, architecture decisions.&#10;&#10;Used as a starting point, not a constraint. Agents adapt the plan based on what they discover during research." oninput="autoSaveWorkflow()" style="min-height:60px"></textarea>
+    <div class="btn-row mt">
+      <button class="btn sm" onclick="generatePlanPrompt()">Generate Plan</button>
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5">Click <strong style="color:var(--text2)">Generate Plan</strong> to create a planning prompt — run it in Claude Code and paste the result here. Or paste a plan from <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">/plan</code> mode directly.</div>
   </div>
 
   <div class="sidebar-section">
@@ -2559,10 +2562,88 @@ function generateRefinePrompt() {
   lines.push('- Tradeoff decisions made during the interview');
   lines.push('');
   lines.push('After writing the file, provide a brief summary of what was clarified beyond the original requirements.');
+  lines.push('');
+  lines.push('**Finally**, tell the user:');
+  lines.push('> Your refined specification has been written to the file above. Copy its contents and paste them into the **Requirements** field of the Workflow Designer, replacing the original text. If you want an implementation plan next, click **Generate Plan** in the Workflow Designer.');
 
   const prompt = lines.join('\n');
   navigator.clipboard.writeText(prompt).then(() => {
-    showToast('Refine prompt copied to clipboard');
+    showToast('Refine prompt copied — paste into Claude Code');
+  }).catch(() => {
+    showToast('Could not copy — check clipboard permissions');
+  });
+}
+
+function generatePlanPrompt() {
+  const story = $('storyInput').value.trim();
+  if (!story) {
+    showToast('Paste requirements first');
+    return;
+  }
+  ensureWorkflowName();
+  const name = getName();
+  const slug = slugify(name);
+  const atlUrls = extractAtlassianUrls(story);
+  const lines = [];
+
+  lines.push(`# Implementation Planning: ${name}`);
+  lines.push('');
+  lines.push('You are a senior software architect creating an implementation plan. Analyze the codebase and produce a detailed blueprint for how to implement the following requirements. The plan should give implementers codebase-specific context — which files to modify, what patterns to follow, architectural decisions — so they know HOW to build it, not just WHAT to build.');
+  lines.push('');
+  lines.push('## Requirements');
+  lines.push('');
+  lines.push(story);
+  lines.push('');
+
+  // Atlassian hint
+  if (state.mcpAtlassian && atlUrls.length > 0) {
+    lines.push('## Atlassian Context');
+    lines.push('');
+    lines.push('If an Atlassian MCP tool is available, fetch the following URL(s) for full ticket details:');
+    atlUrls.forEach(u => lines.push(`- ${u}`));
+    lines.push('');
+  }
+
+  // Sourcebot hint — critical for plan generation since it needs to explore the codebase
+  if (state.mcpSourcebot) {
+    lines.push('## Codebase Exploration');
+    lines.push('');
+    lines.push('A **Sourcebot MCP** server is available for cross-repo code search. Use it extensively:');
+    lines.push('- `search_code` — find existing implementations, patterns, and related code');
+    lines.push('- `ask_codebase` — understand architecture and trace flows across repos');
+    lines.push('- `read_file` — read specific files to understand current structure');
+    lines.push('- `list_tree` — explore directory structure and project layout');
+    lines.push('- `list_repos` — discover available repositories');
+    lines.push('');
+    lines.push('Explore the codebase thoroughly before writing the plan. The plan should reference real file paths, real patterns, and real architectural decisions from the codebase.');
+    lines.push('');
+  }
+
+  lines.push('## Planning Process');
+  lines.push('');
+  lines.push('1. Explore the codebase to understand the current architecture, conventions, and patterns');
+  lines.push('2. Identify which files need to be created or modified');
+  lines.push('3. Note existing patterns that the implementation should follow');
+  lines.push('4. Identify potential risks or architectural decisions that need to be made');
+  lines.push('5. Produce the implementation plan');
+  lines.push('');
+  lines.push('## Output');
+  lines.push('');
+  lines.push(`Write the implementation plan to \`.claude/plans/${slug}.md\` with:`);
+  lines.push('');
+  lines.push('- Summary of the approach');
+  lines.push('- Files to create or modify (with real paths from the codebase)');
+  lines.push('- Key patterns to follow (reference existing code that demonstrates the pattern)');
+  lines.push('- Architecture decisions and rationale');
+  lines.push('- Implementation sequence (what to build first, dependencies between changes)');
+  lines.push('- Risks or open questions');
+  lines.push('');
+  lines.push('**Finally**, tell the user:');
+  lines.push('> Your implementation plan has been written to the file above. Copy its contents and paste them into the **Implementation Plan** field of the Workflow Designer. Then pick a preset or click **Generate** to build your workflow, and copy the exported prompt to run the implementation.');
+
+  const prompt = lines.join('\n');
+  navigator.clipboard.writeText(prompt).then(() => {
+    showToast('Plan prompt copied — paste into Claude Code');
   }).catch(() => {
     showToast('Could not copy — check clipboard permissions');
   });
