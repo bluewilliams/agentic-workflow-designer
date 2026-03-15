@@ -277,7 +277,7 @@ svg.canvas{width:100%;height:100%;display:block}
     <h3>Requirements</h3>
     <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset — the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Generate to auto-build a workflow from keywords." oninput="autoSaveWorkflow()"></textarea>
     <div class="btn-row mt">
-      <button class="btn primary" onclick="generateFromStory()">Generate from Requirements</button>
+      <button class="btn primary" onclick="generateFromStory()">Generate</button>
       <button class="btn sm" onclick="generateRefinePrompt()">Refine</button>
       <button class="btn sm" onclick="clearCanvas()">Clear All</button>
     </div>
