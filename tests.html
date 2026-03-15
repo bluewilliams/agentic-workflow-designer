@@ -1607,6 +1607,7 @@ describe('Suite 14: Refine Prompt Generation', () => {
     expect(copied).toContain('.claude/specs/password-reset.md');
     expect(copied).toContain('superset');
     expect(copied).toContain('preserved verbatim or enhanced');
+    expect(copied).toContain('paste them into the **Requirements** field');
   });
 
   it('should include Atlassian hint when Jira URL present and MCP enabled', () => {
@@ -1685,6 +1686,69 @@ describe('Suite 14: Refine Prompt Generation', () => {
 });
 
 // ═══════════════════════════════════════════════════════════
+// Suite 15: Plan Prompt Generation
+// ═══════════════════════════════════════════════════════════
+describe('Suite 15: Plan Prompt Generation', () => {
+  beforeEach(() => { clearStorage(); resetState(); });
+
+  it('should generate plan prompt with requirements context', () => {
+    win.document.getElementById('storyInput').value = 'Add user authentication with OAuth2';
+    win.document.getElementById('workflowName').value = 'user-auth';
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generatePlanPrompt();
+    expect(copied).toContain('Implementation Planning');
+    expect(copied).toContain('OAuth2');
+    expect(copied).toContain('.claude/plans/user-auth.md');
+    expect(copied).toContain('paste them into the **Implementation Plan** field');
+  });
+
+  it('should include Sourcebot exploration guidance when enabled', () => {
+    win.document.getElementById('storyInput').value = 'Refactor data layer';
+    win.document.getElementById('workflowName').value = 'data-refactor';
+    win.state.mcpSourcebot = true;
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generatePlanPrompt();
+    expect(copied).toContain('Sourcebot MCP');
+    expect(copied).toContain('search_code');
+    expect(copied).toContain('Explore the codebase thoroughly');
+  });
+
+  it('should NOT include Sourcebot when disabled', () => {
+    win.document.getElementById('storyInput').value = 'Refactor data layer';
+    win.document.getElementById('workflowName').value = 'data-refactor';
+    win.state.mcpSourcebot = false;
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generatePlanPrompt();
+    expect(copied).toNotContain('Sourcebot MCP');
+  });
+
+  it('should include Atlassian hint when Jira URL present', () => {
+    win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-789';
+    win.document.getElementById('workflowName').value = 'jira-plan';
+    win.state.mcpAtlassian = true;
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generatePlanPrompt();
+    expect(copied).toContain('Atlassian Context');
+    expect(copied).toContain('PROJ-789');
+  });
+
+  it('should auto-generate workflow name if empty', () => {
+    win.document.getElementById('storyInput').value = 'Some feature';
+    win.document.getElementById('workflowName').value = '';
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generatePlanPrompt();
+    const nameField = win.document.getElementById('workflowName').value;
+    expect(nameField.length > 0).toBe(true);
+    expect(copied).toContain('.claude/plans/');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
 document.getElementById('app').addEventListener('load', function() {
@@ -1693,7 +1757,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.slugify = slugify;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
