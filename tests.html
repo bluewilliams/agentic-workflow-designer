@@ -1630,7 +1630,9 @@ describe('Suite 14: Refine Prompt Generation', () => {
     win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
     win.generateRefinePrompt();
     expect(copied).toContain('Jira ticket IS the source requirements');
-    expect(copied).toContain('fetched Jira ticket content');
+    // sourceLabel should reference ONLY ticket content, not "Source Requirements above"
+    expect(copied).toContain('from the fetched Jira ticket content MUST');
+    expect(copied).toNotContain('Source Requirements above AND');
   });
 
   it('should NOT include Atlassian hint when MCP disabled', () => {
@@ -1745,6 +1747,106 @@ describe('Suite 15: Plan Prompt Generation', () => {
     const nameField = win.document.getElementById('workflowName').value;
     expect(nameField.length > 0).toBe(true);
     expect(copied).toContain('.claude/plans/');
+  });
+
+  it('should handle Jira URL-only input for plan generation', () => {
+    win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-999';
+    win.document.getElementById('workflowName').value = 'jira-plan-only';
+    win.state.mcpAtlassian = true;
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generatePlanPrompt();
+    expect(copied).toContain('Jira ticket IS the requirements');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Suite 16: Cross-Feature Edge Cases
+// ═══════════════════════════════════════════════════════════
+describe('Suite 16: Cross-Feature Edge Cases', () => {
+  beforeEach(() => { clearStorage(); resetState(); });
+
+  it('should not include find_class in Refine Sourcebot hint', () => {
+    win.document.getElementById('storyInput').value = 'Build a service';
+    win.document.getElementById('workflowName').value = 'test-svc';
+    win.state.mcpSourcebot = true;
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generateRefinePrompt();
+    expect(copied).toNotContain('find_class');
+    expect(copied).toContain('ask_codebase');
+  });
+
+  it('should include Sourcebot hint in sub-agents export when enabled', () => {
+    buildTestWorkflow('linear');
+    win.state.mcpSourcebot = true;
+    const output = win.genSubAgents();
+    expect(output).toContain('Sourcebot MCP');
+    expect(output).toContain('search_code');
+  });
+
+  it('should NOT include Sourcebot hint in sub-agents export when disabled', () => {
+    buildTestWorkflow('linear');
+    win.state.mcpSourcebot = false;
+    const output = win.genSubAgents();
+    expect(output).toNotContain('Sourcebot MCP');
+  });
+
+  it('should include plan in all export formats when populated', () => {
+    buildTestWorkflow('linear');
+    const pi = win.document.getElementById('planInput');
+    if (pi) pi.value = 'Modify src/auth/handler.ts to add OAuth2 flow';
+    const wf = win.genWorkflow();
+    const sa = win.genSubAgents();
+    const at = win.genAgentTeams();
+    const cp = win.genClaudePrompt();
+    [wf, sa, at, cp].forEach(output => {
+      expect(output).toContain('Implementation Plan');
+      expect(output).toContain('handler.ts');
+      expect(output).toContain('starting point, not a rigid constraint');
+    });
+  });
+
+  it('should include self-validation step in sub-agents export', () => {
+    buildTestWorkflow('linear');
+    const output = win.genSubAgents();
+    expect(output).toContain('Self-validation');
+    expect(output).toContain('verify your work against the original requirements');
+  });
+
+  it('should use correct model aliases for 1M variants in sub-agents export', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.model = 'sonnet-4.6-1m';
+    const output = win.genSubAgents();
+    expect(output).toContain('model="sonnet[1m]"');
+    expect(output).toNotContain('sonnet-4.6-1m');
+  });
+
+  it('should not produce empty plan section when plan is whitespace-only', () => {
+    buildTestWorkflow('linear');
+    const pi = win.document.getElementById('planInput');
+    if (pi) pi.value = '   ';
+    const output = win.genSubAgents();
+    expect(output).toNotContain('Implementation Plan');
+  });
+
+  it('Refine prompt should not show empty requirements toast with content', () => {
+    win.document.getElementById('storyInput').value = 'Some requirements';
+    win.document.getElementById('workflowName').value = 'test';
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generateRefinePrompt();
+    expect(copied.length > 0).toBe(true);
+  });
+
+  it('Plan prompt should not show empty requirements toast with content', () => {
+    win.document.getElementById('storyInput').value = 'Some requirements';
+    win.document.getElementById('workflowName').value = 'test';
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generatePlanPrompt();
+    expect(copied.length > 0).toBe(true);
   });
 });
 

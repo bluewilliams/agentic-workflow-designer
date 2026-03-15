@@ -362,7 +362,7 @@ After generation, memory is auto-enabled if the workflow has parallel forks or 5
 ```
 agentic-workflow-designer/
 ├── index.html       # The entire application (~4,300 lines)
-├── tests.html       # iframe-based test suite (~1,210 lines, 196 tests)
+├── tests.html       # iframe-based test suite (~1,210 lines, 206 tests)
 ├── run-tests.sh     # Headless CLI test runner (Chrome + Python 3, zero npm deps)
 ├── TECHNICAL.md     # This document
 ├── README.md        # User-facing overview
@@ -442,7 +442,7 @@ JavaScript:
 
 **How it works**: Loads `index.html` in a hidden `<iframe>`, accesses its `contentWindow` for all functions, state, and DOM. Tests run against the real app with real localStorage and real initialization.
 
-**Coverage** (196 tests across 15 suites):
+**Coverage** (206 tests across 16 suites):
 - **Pure utilities**: `slugify`, `extractAcceptanceCriteria`, `isUrlOnly`, `getEffectivePrompt`, `getModelLabel`
 - **State management**: `addNode`, `addConnection`, `deleteNode`, `buildAgentSlugMap`, `topologicalSort`
 - **Persistence**: serialize/deserialize roundtrips, prefs save/restore, workflow save/load
@@ -457,7 +457,8 @@ JavaScript:
 - **MCP Integrations**: Atlassian/Sourcebot/custom MCP hint generation, toggle gating, export injection, persistence, clear-all reset
 - **Implementation Plan**: Plan field persistence, serialization, export injection across formats, clear-all reset
 - **Requirements Refinement**: Refine prompt generation with requirements inclusion, Atlassian/Sourcebot MCP awareness, workflow name slugification, spec file path generation, user redirect instructions
-- **Plan Prompt Generation**: Plan prompt generation with requirements context, Sourcebot codebase exploration guidance, Atlassian hints, plan file path generation, user redirect instructions
+- **Plan Prompt Generation**: Plan prompt generation with requirements context, Sourcebot codebase exploration guidance, Atlassian hints, Jira URL-only handling, plan file path generation, user redirect instructions
+- **Cross-Feature Edge Cases**: Sourcebot tool name accuracy, plan injection across all export formats, self-validation in exports, 1M model aliases, whitespace-only plan handling, MCP hint toggle behavior
 
 **Running tests in a browser**: Open `tests.html` in a browser. Results render immediately — green/red badges per suite, expandable failure details with expected vs actual values.
 
@@ -468,7 +469,7 @@ JavaScript:
 ## Development Guidelines
 
 - **Keep it single-file**: Resist the urge to add a build step unless complexity demands it
-- **Run tests after changes**: Run `./run-tests.sh` from CLI or open `tests.html` in a browser. All 196 tests should pass
+- **Run tests after changes**: Run `./run-tests.sh` from CLI or open `tests.html` in a browser. All 206 tests should pass
 - **Render on demand**: Call `render()` and `updatePrompt()` after any state mutation (`render()` triggers auto-save automatically)
 - **Export completeness**: Every export format must include the full user story as context. Never assume the recipient has seen it
 - **Prompt quality first**: The quality of exported prompts is the product's core value proposition. `getEffectivePrompt()` and the `PROMPTS` library are the most important code in the file

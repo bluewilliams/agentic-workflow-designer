@@ -951,10 +951,12 @@ function toggleMemory() {
 
 function toggleMcpAtlassian() {
   state.mcpAtlassian = $('mcpAtlassianToggle').checked;
+  updatePrompt();
   savePrefs();
 }
 function toggleMcpSourcebot() {
   state.mcpSourcebot = $('mcpSourcebotToggle').checked;
+  updatePrompt();
   savePrefs();
 }
 
@@ -1030,7 +1032,7 @@ function restorePrefs() {
       const cb = $('mcpSourcebotToggle');
       if (cb) cb.checked = state.mcpSourcebot;
     }
-    if (p.mcpCustom) {
+    if (p.mcpCustom !== undefined) {
       state.mcpCustom = p.mcpCustom;
       if ($('mcpCustomNotes')) $('mcpCustomNotes').value = p.mcpCustom;
     }
@@ -2525,7 +2527,7 @@ function generateRefinePrompt() {
 
   // Sourcebot hint — mention cross-repo search for context gathering
   if (state.mcpSourcebot) {
-    lines.push('> **Sourcebot MCP** is available for cross-repo code search. Use `search_code`, `find_class`, `read_file`, etc. to explore the existing codebase and inform your questions about integration points, existing patterns, and architectural constraints.');
+    lines.push('> **Sourcebot MCP** is available for cross-repo code search. Use `search_code`, `ask_codebase`, `read_file`, `list_tree`, etc. to explore the existing codebase and inform your questions about integration points, existing patterns, and architectural constraints.');
     lines.push('');
   }
 
@@ -2548,7 +2550,8 @@ function generateRefinePrompt() {
   lines.push('');
   lines.push(`Write the refined specification to \`.claude/specs/${slug}.md\` with:`);
   lines.push('');
-  const sourceLabel = (state.mcpAtlassian && atlUrls.length > 0) ? 'the Source Requirements above AND the fetched Jira ticket content' : 'the Source Requirements above';
+  const urlOnly = (state.mcpAtlassian && atlUrls.length > 0) ? isUrlOnly(story) : false;
+  const sourceLabel = (state.mcpAtlassian && atlUrls.length > 0) ? (urlOnly ? 'the fetched Jira ticket content' : 'the Source Requirements above AND the fetched Jira ticket content') : 'the Source Requirements above';
   lines.push(`**CRITICAL**: The refined spec must be a superset of the original. Every scenario, promise, acceptance criterion, given/when/then, user story, and concrete detail from ${sourceLabel} MUST appear in the output — preserved verbatim or enhanced with additional detail from the interview. Do not summarize away specifics. If the original has 5 scenarios, the output must have at least 5 (likely more, with new ones discovered during the interview).`);
   lines.push('');
   lines.push('Structure:');
@@ -2599,11 +2602,16 @@ function generatePlanPrompt() {
 
   // Atlassian hint
   if (state.mcpAtlassian && atlUrls.length > 0) {
+    const urlOnly = isUrlOnly(story);
     lines.push('## Atlassian Context');
     lines.push('');
-    lines.push('If an Atlassian MCP tool is available, fetch the following URL(s) for full ticket details:');
+    lines.push('If an Atlassian MCP tool is available, fetch the following URL(s) for full ticket details BEFORE analyzing the codebase:');
     atlUrls.forEach(u => lines.push(`- ${u}`));
     lines.push('');
+    if (urlOnly) {
+      lines.push('**IMPORTANT**: The Jira ticket IS the requirements. After fetching, treat the full ticket content as the requirements to plan against.');
+      lines.push('');
+    }
   }
 
   // Sourcebot hint — critical for plan generation since it needs to explore the codebase
@@ -4579,7 +4587,7 @@ function topologicalSort() {
 // ═══════════════════════════════════════════════════════════
 function copyPrompt() {
   const text = $('promptOutput').textContent;
-  navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!'));
+  navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!')).catch(() => showToast('Could not copy - check clipboard permissions'));
 }
 
 // ═══════════════════════════════════════════════════════════
