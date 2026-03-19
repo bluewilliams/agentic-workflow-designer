@@ -54,6 +54,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 .section-heading h3{margin-bottom:0}
 .btn.danger-subtle{color:var(--text3);border-color:transparent;background:transparent;font-size:10px;padding:2px 8px}
 .btn.danger-subtle:hover{color:#ef4444;background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3)}
+.input-hint{font-size:10px;color:#f59e0b;margin-top:4px;line-height:1.4;display:none}
 .btn.danger{border-color:#ef4444;color:#ef4444}
 .btn.danger:hover{background:#ef4444;color:#fff}
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -285,7 +286,8 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-section">
     <h3>Requirements</h3>
-    <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Generate to auto-build a workflow from keywords." oninput="autoSaveWorkflow()"></textarea>
+    <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Generate to auto-build a workflow from keywords." oninput="validateStoryInput()"></textarea>
+    <div id="storyHint" class="input-hint"></div>
     <div class="btn-row mt">
       <button class="btn primary" onclick="generateFromStory()">Generate</button>
       <button class="btn sm" onclick="generateRefinePrompt()">Refine Prompt</button>
@@ -2513,6 +2515,25 @@ function isUrlOnly(text) {
   // If removing all URLs leaves nothing (or just punctuation/whitespace), it's URL-only
   return stripped.length < 10 && /https?:\/\//i.test(text);
 }
+function isJiraKeyOnly(text) {
+  // Detect input that is just Jira ticket key(s) with no meaningful prose (e.g. "PROJ-123" or "PROJ-123 PROJ-456")
+  const stripped = text.replace(/\b[A-Z][A-Z0-9]+-\d+\b/g, '').trim();
+  return stripped.length < 10 && /\b[A-Z][A-Z0-9]+-\d+\b/.test(text);
+}
+function validateStoryInput() {
+  autoSaveWorkflow();
+  const hint = $('storyHint');
+  if (!hint) return;
+  const text = ($('storyInput') ? $('storyInput').value : '').trim();
+  if (!text) { hint.style.display = 'none'; return; }
+  if (isJiraKeyOnly(text)) {
+    const key = text.match(/\b[A-Z][A-Z0-9]+-\d+\b/)[0];
+    hint.textContent = 'This looks like a Jira ticket key. Paste the full URL (e.g. https://team.atlassian.net/browse/' + key + ') so agents can fetch ticket details at runtime.';
+    hint.style.display = '';
+    return;
+  }
+  hint.style.display = 'none';
+}
 function pickUrlPreset(preset) {
   $('urlPresetPicker').style.display = 'none';
   loadPreset(preset);
@@ -2733,6 +2754,13 @@ function generateFromStory() {
   // Detect URL-only input (e.g. just a Jira link) — show preset picker instead of blind generation
   if (isUrlOnly(story)) {
     $('urlPresetPicker').style.display = '';
+    return;
+  }
+
+  // Detect bare Jira ticket keys (e.g. "PROJ-123") — can't generate a workflow from a key alone
+  if (isJiraKeyOnly(story)) {
+    const key = story.match(/\b[A-Z][A-Z0-9]+-\d+\b/)[0];
+    showToast('Paste the full Jira URL (e.g. https://team.atlassian.net/browse/' + key + ') so agents can fetch ticket details', 6000);
     return;
   }
 

@@ -392,6 +392,27 @@ describe('Pure Utilities', () => {
     });
   });
 
+  describe('isJiraKeyOnly', () => {
+    it('should detect a single Jira key', () => {
+      expect(win.isJiraKeyOnly('ACME-42')).toBe(true);
+    });
+    it('should detect multiple Jira keys', () => {
+      expect(win.isJiraKeyOnly('ACME-42 PROJ-456')).toBe(true);
+    });
+    it('should reject plain text', () => {
+      expect(win.isJiraKeyOnly('Fix the login bug')).toBe(false);
+    });
+    it('should reject a Jira key with meaningful prose', () => {
+      expect(win.isJiraKeyOnly('ACME-42: fix the login bug in auth module')).toBe(false);
+    });
+    it('should reject lowercase key-like strings', () => {
+      expect(win.isJiraKeyOnly('kti-123')).toBe(false);
+    });
+    it('should reject URLs', () => {
+      expect(win.isJiraKeyOnly('https://team.atlassian.net/browse/ACME-42')).toBe(false);
+    });
+  });
+
   describe('getEffectivePrompt', () => {
     it('should prefer user prompt over template', () => {
       const node = { label:'Test', config:{ prompt:'My custom prompt', agentType:'coder', notes:'' }};
@@ -1112,6 +1133,12 @@ describe('Workflow Generation', () => {
     });
     it('should show picker without generating for URL-only input', () => {
       win.document.getElementById('storyInput').value = 'https://jira.example.com/browse/PROJ-123';
+      const before = win.state.nodes.length;
+      win.generateFromStory();
+      expect(win.state.nodes.length).toBe(before);
+    });
+    it('should show toast without generating for bare Jira key input', () => {
+      win.document.getElementById('storyInput').value = 'ACME-42';
       const before = win.state.nodes.length;
       win.generateFromStory();
       expect(win.state.nodes.length).toBe(before);
