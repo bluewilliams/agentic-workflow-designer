@@ -1689,6 +1689,33 @@ describe('Refine Prompt Generation', () => {
     expect(copied).toContain('paste them into the **Requirements** field');
   });
 
+  describe('input validation', () => {
+    it('should block URL-only input when Atlassian MCP is off', () => {
+      win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-99';
+      win.state.mcpAtlassian = false;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generateRefinePrompt();
+      expect(copied).toBe('');
+    });
+    it('should allow URL-only input when Atlassian MCP is on', () => {
+      win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-99';
+      win.document.getElementById('workflowName').value = 'jira-test';
+      win.state.mcpAtlassian = true;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generateRefinePrompt();
+      expect(copied).toContain('Requirements Refinement Interview');
+    });
+    it('should block bare Jira key input', () => {
+      win.document.getElementById('storyInput').value = 'PROJ-42';
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generateRefinePrompt();
+      expect(copied).toBe('');
+    });
+  });
+
   describe('Atlassian integration', () => {
     it('should include hint when Jira URL present and MCP enabled', () => {
       win.document.getElementById('storyInput').value = 'See https://myco.atlassian.net/browse/PROJ-123 for details';
@@ -1835,6 +1862,33 @@ describe('Plan Prompt Generation', () => {
     const nameField = win.document.getElementById('workflowName').value;
     expect(nameField.length > 0).toBe(true);
     expect(copied).toContain('.claude/plans/');
+  });
+
+  describe('input validation', () => {
+    it('should block URL-only input when Atlassian MCP is off', () => {
+      win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-99';
+      win.state.mcpAtlassian = false;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generatePlanPrompt();
+      expect(copied).toBe('');
+    });
+    it('should allow URL-only input when Atlassian MCP is on', () => {
+      win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-99';
+      win.document.getElementById('workflowName').value = 'jira-plan';
+      win.state.mcpAtlassian = true;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generatePlanPrompt();
+      expect(copied).toContain('Implementation Planning');
+    });
+    it('should block bare Jira key input', () => {
+      win.document.getElementById('storyInput').value = 'PROJ-42';
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generatePlanPrompt();
+      expect(copied).toBe('');
+    });
   });
 });
 

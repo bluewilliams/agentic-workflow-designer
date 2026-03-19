@@ -2579,6 +2579,15 @@ function generateRefinePrompt() {
     showToast('Paste requirements first');
     return;
   }
+  if (isUrlOnly(story) && !state.mcpAtlassian) {
+    showToast('Enable Atlassian MCP so agents can fetch ticket details from this URL', 5000);
+    return;
+  }
+  if (isJiraKeyOnly(story)) {
+    const key = story.match(/\b[A-Z][A-Z0-9]+-\d+\b/)[0];
+    showToast('Paste the full Jira URL (e.g. https://team.atlassian.net/browse/' + key + ') so agents can fetch ticket details', 6000);
+    return;
+  }
   ensureWorkflowName();
   const name = getName();
   const slug = slugify(name);
@@ -2669,6 +2678,15 @@ function generatePlanPrompt() {
   const story = $('storyInput').value.trim();
   if (!story) {
     showToast('Paste requirements first');
+    return;
+  }
+  if (isUrlOnly(story) && !state.mcpAtlassian) {
+    showToast('Enable Atlassian MCP so agents can fetch ticket details from this URL', 5000);
+    return;
+  }
+  if (isJiraKeyOnly(story)) {
+    const key = story.match(/\b[A-Z][A-Z0-9]+-\d+\b/)[0];
+    showToast('Paste the full Jira URL (e.g. https://team.atlassian.net/browse/' + key + ') so agents can fetch ticket details', 6000);
     return;
   }
   ensureWorkflowName();
