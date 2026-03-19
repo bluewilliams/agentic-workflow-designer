@@ -2269,12 +2269,44 @@ describe('Usability & Help', () => {
       const implBreakdown = win.PROMPT_LIBRARY[6].prompts[0];
       expect(implBreakdown.prompt).toContain('Atlassian');
     });
-    it('should copy prompt text on copyLibPrompt', () => {
+    it('should copy prompt text directly for prompts without input', () => {
+      // Error Handling Audit (index 1 in Code Review category) has no input requirement
       let copied = '';
       win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-      win.copyLibPrompt(0, 0);
+      win.copyLibPrompt(1, 0);
       expect(copied.length > 100).toBe(true);
-      expect(copied).toContain('bugs');
+      expect(copied).toContain('error handling');
+    });
+    it('should show input popup for prompts that need input', () => {
+      const overlay = win.document.getElementById('plibInputOverlay');
+      expect(overlay.classList.contains('show')).toBe(false);
+      win.copyLibPrompt(0, 0); // Bug Hunter has input requirement
+      expect(overlay.classList.contains('show')).toBe(true);
+      // Title and description should be populated
+      expect(win.document.getElementById('plibInputTitle').textContent).toContain('Bug Hunter');
+      expect(win.document.getElementById('plibInputDesc').textContent.length > 10).toBe(true);
+      win.closePlibInput();
+      expect(overlay.classList.contains('show')).toBe(false);
+    });
+    it('should substitute user input into prompt on confirm', () => {
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.copyLibPrompt(0, 0); // Bug Hunter
+      win.document.getElementById('plibInputText').value = 'src/auth/session.ts';
+      win.confirmPlibInput();
+      expect(copied).toContain('src/auth/session.ts');
+      // Should not contain the placeholder or the Your Input instruction
+      expect(copied.includes('[these files / this module')).toBe(false);
+      expect(copied.includes('**Your input**')).toBe(false);
+    });
+    it('should not copy if input is empty on confirm', () => {
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.copyLibPrompt(0, 0); // Bug Hunter
+      win.document.getElementById('plibInputText').value = '';
+      win.confirmPlibInput();
+      expect(copied).toBe('');
+      win.closePlibInput();
     });
     it('should have unique titles within each category', () => {
       win.PROMPT_LIBRARY.forEach(cat => {
@@ -2313,7 +2345,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.validateStoryInput = validateStoryInput;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
