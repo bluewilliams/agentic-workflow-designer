@@ -55,6 +55,27 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 .btn.danger-subtle{color:var(--text3);border-color:transparent;background:transparent;font-size:10px;padding:2px 8px}
 .btn.danger-subtle:hover{color:#ef4444;background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3)}
 .input-hint{font-size:10px;color:#f59e0b;margin-top:4px;line-height:1.4;display:none}
+.help-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;display:none;align-items:center;justify-content:center}
+.help-overlay.show{display:flex}
+.help-modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  width:min(640px,90vw);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,.4)}
+.help-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;
+  border-bottom:1px solid var(--border);flex-shrink:0}
+.help-header h2{font-size:16px;margin:0}
+.help-close{background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;
+  padding:4px 8px;border-radius:4px;transition:all .15s}
+.help-close:hover{color:var(--text);background:var(--surface2)}
+.help-body{overflow-y:auto;padding:20px;font-size:12px;line-height:1.7;color:var(--text2)}
+.help-body h3{color:var(--text);font-size:13px;margin:20px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+.help-body h3:first-child{margin-top:0}
+.help-body p{margin:6px 0}
+.help-body ol,.help-body ul{margin:6px 0 6px 20px;padding:0}
+.help-body li{margin:4px 0}
+.help-body code{background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:11px;font-family:var(--mono)}
+.help-body kbd{background:var(--surface2);padding:2px 6px;border-radius:3px;font-size:10px;
+  font-family:var(--mono);border:1px solid var(--border)}
+.help-body .flow-diagram{background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  padding:10px 14px;margin:8px 0;font-family:var(--mono);font-size:11px;color:var(--text3);white-space:pre;overflow-x:auto}
 .btn.danger{border-color:#ef4444;color:#ef4444}
 .btn.danger:hover{background:#ef4444;color:#fff}
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -526,6 +547,8 @@ svg.canvas{width:100%;height:100%;display:block}
     <div class="sep"></div>
     <span class="info" id="zoomInfo">100%</span>
     <span class="info" id="statusInfo"></span>
+    <div class="sep"></div>
+    <button class="btn sm" onclick="toggleHelp()" title="Help (?)">?</button>
   </div>
   <div class="canvas-wrap" id="canvasWrap">
     <svg class="canvas" id="canvas">
@@ -557,7 +580,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </svg>
     <div class="empty-state" id="emptyState">
       <div class="icon">&#x1F3D7;</div>
-      <p>Paste a user story and click <strong>Generate Workflow</strong>, choose a preset, or add nodes manually.</p>
+      <p>Paste requirements and click <strong>Generate</strong>, <a href="#" onclick="event.preventDefault();document.querySelector('.preset-list').scrollIntoView({behavior:'smooth',block:'center'})" style="color:var(--accent);pointer-events:auto;text-decoration:underline">choose a preset</a>, or add nodes manually.</p>
       <p style="margin-top:12px;font-size:11px;opacity:.7">
         <kbd>1</kbd> Select &nbsp; <kbd>2</kbd> Connect &nbsp; <kbd>3</kbd> Delete &nbsp; <kbd>Alt+Drag</kbd> Pan &nbsp; <kbd>Scroll</kbd> Zoom
       </p>
@@ -593,6 +616,82 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <!-- Toast -->
 <div class="copied-toast" id="toast">Copied to clipboard!</div>
+
+<!-- Help Modal -->
+<div class="help-overlay" id="helpOverlay" onclick="if(event.target===this)toggleHelp()">
+  <div class="help-modal">
+    <div class="help-header">
+      <h2>Workflow Designer Help</h2>
+      <button class="help-close" onclick="toggleHelp()">&times;</button>
+    </div>
+    <div class="help-body">
+
+<h3>Quick Start</h3>
+<ol>
+  <li>Paste requirements into the <strong>Requirements</strong> field (or a Jira ticket URL)</li>
+  <li>Click <strong>Generate</strong> to auto-build a workflow from keywords, or pick a <strong>Preset</strong> below</li>
+  <li>Customize nodes by clicking them — change agent types, models, prompts, and tools</li>
+  <li>Pick an export format tab at the bottom, then <strong>Copy</strong> the prompt into Claude Code</li>
+</ol>
+
+<h3>Refine Prompt Flow</h3>
+<p>Use this when your requirements are rough or incomplete and you want Claude to interview you before building.</p>
+<div class="flow-diagram">Paste requirements → click <strong>Refine Prompt</strong> → copy into Claude Code
+→ Claude asks clarifying questions via interview
+→ writes refined spec to .claude/specs/
+→ paste refined spec back into Requirements → Generate or pick preset</div>
+
+<h3>Plan Prompt Flow</h3>
+<p>Use this after you have solid requirements and want Claude to analyze your codebase before implementing.</p>
+<div class="flow-diagram">Requirements ready → click <strong>Plan Prompt</strong> → copy into Claude Code
+→ Claude explores your codebase (files, patterns, architecture)
+→ writes implementation plan to .claude/plans/
+→ paste plan into <strong>Implementation Plan</strong> field
+→ plan context is included in all exported prompts</div>
+
+<h3>Full Flow (Power Users)</h3>
+<p>For maximum quality, chain all three steps:</p>
+<div class="flow-diagram">1. Paste rough requirements → <strong>Refine Prompt</strong> → interview → refined spec
+2. Paste refined spec → <strong>Plan Prompt</strong> → codebase analysis → implementation plan
+3. Paste plan → build workflow → <strong>Copy</strong> prompt → execute in Claude Code</div>
+
+<h3>Jira Integration</h3>
+<p>Paste a full Jira URL (not just the ticket key) and enable <strong>Atlassian MCP</strong> in the sidebar. The exported prompts will instruct agents to fetch ticket details at runtime. For URL-only input, you'll be asked to pick a workflow preset since there aren't enough keywords to auto-generate.</p>
+
+<h3>Export Formats</h3>
+<ul>
+  <li><strong>Workflow</strong> — Single orchestration prompt for Claude Code. Best for most use cases.</li>
+  <li><strong>Sub-Agents</strong> — Delegation prompt using Claude Code's <code>/spawn</code> sub-agent pattern.</li>
+  <li><strong>Agent Teams</strong> — Multi-agent team coordination prompt. <em>Preview.</em></li>
+  <li><strong>Agent SDK</strong> — Python code using the Anthropic Agent SDK. Wire into your own pipeline.</li>
+  <li><strong>Claude.ai</strong> — Simplified prompt for use in Claude.ai (no CLI tools).</li>
+</ul>
+
+<h3>Canvas Tips</h3>
+<ul>
+  <li><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> — Switch between Select, Connect, and Delete modes</li>
+  <li><kbd>Delete</kbd> / <kbd>Backspace</kbd> — Delete selected node or connection</li>
+  <li><kbd>Alt+Drag</kbd> — Pan the canvas</li>
+  <li><kbd>Scroll</kbd> — Zoom in/out</li>
+  <li><strong>Right-click</strong> a node for context menu (duplicate, disconnect, delete)</li>
+  <li><strong>Auto Layout</strong> re-arranges nodes using the Sugiyama layered algorithm</li>
+  <li><strong>Fit</strong> zooms to show all nodes</li>
+</ul>
+
+<h3>Power User Tips</h3>
+<ul>
+  <li>Enable <strong>Shared Memory</strong> for complex workflows — agents write to a shared file so later agents see earlier findings</li>
+  <li>Add <strong>Repository</strong> paths to scope agents to specific codebases</li>
+  <li>Use <strong>Decision</strong> nodes with revision loops to add quality gates (review → revise cycles)</li>
+  <li><strong>Parallel</strong> groups run agents concurrently — use for independent tasks like "backend + frontend"</li>
+  <li>Each agent's <strong>Custom Notes</strong> field lets you add context that's included in that agent's prompt section</li>
+  <li>Workflows auto-save to localStorage. Use <strong>Save</strong> / <strong>Load</strong> for named snapshots, or <strong>Export JSON</strong> to share with teammates</li>
+  <li>Enable <strong>Sourcebot MCP</strong> if you have cross-repo search — prompts will include search tool guidance</li>
+</ul>
+
+    </div>
+  </div>
+</div>
 
 <script>
 // ═══════════════════════════════════════════════════════════
@@ -1010,7 +1109,7 @@ function savePrefs() {
       mcpSourcebot: state.mcpSourcebot,
       mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : ''
     }));
-  } catch(e) { /* localStorage unavailable or full */ }
+  } catch(e) { showToast('Auto-save failed — storage may be full'); }
 }
 let _prefTimer = null;
 function savePrefsDebounced() {
@@ -1180,7 +1279,7 @@ function autoSaveWorkflow() {
         return;
       }
       localStorage.setItem('awd_autosave', JSON.stringify(serializeWorkflow()));
-    } catch(e) { /* silently fail */ }
+    } catch(e) { showToast('Auto-save failed — storage may be full'); }
   }, 1000);
 }
 function restoreAutoSave() {
@@ -1200,7 +1299,7 @@ function getWorkflowIndex() {
   } catch(e) { return []; }
 }
 function setWorkflowIndex(index) {
-  try { localStorage.setItem('awd_workflows', JSON.stringify(index)); } catch(e) {}
+  try { localStorage.setItem('awd_workflows', JSON.stringify(index)); } catch(e) { showToast('Save failed — storage may be full'); }
 }
 
 // -- Save/Load/Delete --
@@ -2031,7 +2130,7 @@ function updateConfig() {
       'Instructions for this agent...');
     fields.innerHTML += configTextarea('Custom Notes', 'notes', node.config.notes,
       'Add context, constraints, or implementation details that will be included in the generated prompt...');
-    fields.innerHTML += configInput('Max Turns', 'maxTurns', node.config.maxTurns, 'number');
+    fields.innerHTML += configInput('Max Turns', 'maxTurns', node.config.maxTurns, 'number', '', 'min="1" max="50"');
     fields.innerHTML += `<div class="config-field"><label>Tools</label><div class="tools-grid" id="toolsGrid"></div></div>`;
   } else if (node.type === 'task') {
     fields.innerHTML += configTextarea('Description', 'description', node.config.description, 'What this task does...');
@@ -2040,7 +2139,7 @@ function updateConfig() {
     fields.innerHTML += configTextarea('Condition', 'condition', node.config.condition, 'Criteria to evaluate (e.g. acceptance criteria)');
     fields.innerHTML += configInput('Yes Label', 'yesLabel', node.config.yesLabel);
     fields.innerHTML += configInput('No Label', 'noLabel', node.config.noLabel);
-    fields.innerHTML += configInput('Max Revisions', 'maxRevisions', node.config.maxRevisions || 3, 'number');
+    fields.innerHTML += configInput('Max Revisions', 'maxRevisions', node.config.maxRevisions || 3, 'number', '', 'min="1" max="20"');
   } else if (node.type === 'parallel') {
     fields.innerHTML += configSelect('Strategy', 'strategy', node.config.strategy,
       [{ value:'all', label:'Wait for All' },{ value:'any', label:'First Complete' },{ value:'race', label:'Race' }]);
@@ -2161,9 +2260,9 @@ function updateConfig() {
   }
 }
 
-function configInput(label, key, value, type, placeholder) {
+function configInput(label, key, value, type, placeholder, attrs) {
   return `<div class="config-field"><label>${label}</label>
-    <input type="${type||'text'}" data-key="${key}" value="${escHtml(String(value||''))}"${placeholder ? ` placeholder="${escHtml(placeholder)}"` : ''} /></div>`;
+    <input type="${type||'text'}" data-key="${key}" value="${escHtml(String(value||''))}"${placeholder ? ` placeholder="${escHtml(placeholder)}"` : ''}${attrs ? ' ' + attrs : ''} /></div>`;
 }
 function configSelect(label, key, value, options) {
   const selected = options.find(o => o.value === value) || options[0];
@@ -2338,12 +2437,14 @@ document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
   if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); e.preventDefault(); }
   if (e.key === 'Escape') {
+    if ($('helpOverlay').classList.contains('show')) { toggleHelp(); return; }
     state.connectFrom = null;
     tempLayer().innerHTML = '';
     $('statusInfo').textContent = '';
     document.querySelector('.connecting-hint')?.classList.remove('connecting-hint');
     setMode('select');
   }
+  if (e.key === '?') { toggleHelp(); e.preventDefault(); }
   if (e.key === '1') setMode('select');
   if (e.key === '2') setMode('connect');
   if (e.key === '3') setMode('delete');
@@ -2360,6 +2461,7 @@ function showContextMenu(x, y) {
   menu.classList.add('show');
 }
 function hideContextMenu() { $('contextMenu').classList.remove('show'); }
+function toggleHelp() { $('helpOverlay').classList.toggle('show'); }
 document.addEventListener('click', e => {
   if (!e.target.closest('.context-menu')) hideContextMenu();
   // Close config-panel custom selects when clicking outside
@@ -3221,6 +3323,8 @@ function generateFromStory() {
 
   autoLayout();
   setMode('select');
+  const agentCount = state.nodes.filter(n => n.type === 'agent').length;
+  showToast('Generated workflow with ' + agentCount + ' agent' + (agentCount !== 1 ? 's' : ''), 3000);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4698,7 +4802,14 @@ function topologicalSort() {
 // ═══════════════════════════════════════════════════════════
 function copyPrompt() {
   const text = $('promptOutput').textContent;
-  navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!')).catch(() => showToast('Could not copy - check clipboard permissions'));
+  const emptyAgents = state.nodes.filter(n => n.type === 'agent' && (!n.config.prompt || !n.config.prompt.trim()));
+  navigator.clipboard.writeText(text).then(() => {
+    if (emptyAgents.length > 0) {
+      showToast(emptyAgents.length + ' agent' + (emptyAgents.length !== 1 ? 's have' : ' has') + ' no prompt — agents won\'t know what to do', 5000);
+    } else {
+      showToast('Copied to clipboard!');
+    }
+  }).catch(() => showToast('Could not copy - check clipboard permissions'));
 }
 
 // ═══════════════════════════════════════════════════════════

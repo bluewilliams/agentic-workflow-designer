@@ -2110,6 +2110,65 @@ describe('Auto Layout', () => {
   });
 });
 
+// ─── Suite 18: Usability & Help ────────────────────────────
+describe('Usability & Help', () => {
+  beforeEach(() => { clearStorage(); resetState(); });
+
+  describe('help modal', () => {
+    it('should toggle help overlay', () => {
+      const overlay = win.document.getElementById('helpOverlay');
+      expect(overlay.classList.contains('show')).toBe(false);
+      win.toggleHelp();
+      expect(overlay.classList.contains('show')).toBe(true);
+      win.toggleHelp();
+      expect(overlay.classList.contains('show')).toBe(false);
+    });
+  });
+
+  describe('generate feedback', () => {
+    it('should show agent count toast after generating workflow', () => {
+      win.document.getElementById('storyInput').value = 'Build a REST API with authentication and database integration';
+      let toastMsg = '';
+      const origToast = win.showToast;
+      win.showToast = (msg) => { toastMsg = msg; };
+      win.generateFromStory();
+      win.showToast = origToast;
+      expect(toastMsg).toContain('Generated workflow with');
+      expect(toastMsg).toContain('agent');
+    });
+  });
+
+  describe('copy prompt validation', () => {
+    it('should warn about agents with empty prompts on copy', () => {
+      win.addNode('agent', 0, 0, 'Empty Agent', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: '', maxTurns: 5 });
+      let toastMsg = '';
+      const origToast = win.showToast;
+      win.showToast = (msg) => { toastMsg = msg; };
+      win.navigator.clipboard.writeText = () => { return Promise.resolve(); };
+      win.copyPrompt();
+      // Allow microtask to resolve
+      return new Promise(resolve => setTimeout(() => {
+        win.showToast = origToast;
+        expect(toastMsg).toContain('no prompt');
+        resolve();
+      }, 10));
+    });
+  });
+
+  describe('configInput attrs parameter', () => {
+    it('should include extra attributes when provided', () => {
+      const html = win.configInput('Test', 'test', '5', 'number', '', 'min="1" max="50"');
+      expect(html).toContain('min="1"');
+      expect(html).toContain('max="50"');
+    });
+    it('should work without extra attributes', () => {
+      const html = win.configInput('Test', 'test', 'hello', 'text');
+      expect(html).toContain('value="hello"');
+      expect(html.includes('undefined')).toBe(false);
+    });
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
@@ -2119,7 +2178,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
