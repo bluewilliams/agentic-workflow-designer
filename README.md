@@ -14,12 +14,14 @@ All data stays in your browser (localStorage). Nothing is sent to a server. Expo
 
 ## What It Does
 
-1. **Paste your requirements** - a Jira URL, user story, task description, or any freeform text. Jira links are detected automatically and resolved via the Atlassian MCP server
-2. **Build a workflow** - auto-generate from your input, choose from 14 curated presets, or build one manually from the node palette
-3. **Configure each agent** - model, tools, prompt, max turns
-4. **Export** in 5 formats optimized for different execution environments
-5. **Save & load workflows** by name, export/import as `.json` files for sharing
-6. **Enable Memory Protocol** (optional) for compaction-resilient workflows with TOON notation
+1. **Paste your requirements** - a Jira URL, user story, task description, or any freeform text. Jira links are detected automatically and resolved via the Atlassian MCP server. Input validation catches bare ticket keys and guides you to paste the full URL
+2. **Refine & plan** (optional) - click **Refine Prompt** to have Claude interview you and sharpen vague requirements, then **Plan Prompt** to generate a codebase-aware implementation blueprint
+3. **Build a workflow** - auto-generate from your input, choose from 14 curated presets, or build one manually from the node palette
+4. **Configure each agent** - model, tools, prompt, max turns
+5. **Export** in 5 formats optimized for different execution environments
+6. **Save & load workflows** by name, export/import as `.json` files for sharing
+7. **Enable Memory Protocol** (optional) for compaction-resilient workflows with TOON notation
+8. **Browse the Prompt Library** - 30 high-impact prompts for code review, security audits, debugging, planning, and more. Copy and paste into Claude Code
 
 ## Export Formats
 
@@ -119,10 +121,13 @@ Some presets reveal additional sidebar sections:
 - **Pull Request creation** - opt-in PR output format with git provider auto-detection (GitHub, Bitbucket, GitLab), configurable feature branch and target branch, and safety-first prompt injection. All presets default to Code Changes; PR creation requires explicit opt-in
 - **Custom workflows** - add your own nodes and connections; export generators add smart scaffolding automatically
 - **Model selection** - Sonnet 4.5/4.6, Opus 4.5/4.6, Haiku 4.5 per node, plus 1M context variants for Opus 4.6 and Sonnet 4.6. Full model IDs (e.g. `claude-opus-4-6`, `claude-sonnet-4-5-20251001`) or Claude Code aliases (e.g. `opus[1m]`) are passed directly in all exports
-- **Implementation Plan** - optional field with a **Generate Plan** button. Click it to create a planning prompt that Claude Code runs against your codebase — it explores the code via Sourcebot, identifies files and patterns, and produces an implementation blueprint. Paste the result here so agents know HOW to implement, not just WHAT to build
+- **Implementation Plan** - optional field with a **Plan Prompt** button. Click it to create a planning prompt that Claude Code runs against your codebase, exploring code via Sourcebot, identifying files and patterns, and producing an implementation blueprint. Paste the result here so agents know HOW to implement, not just WHAT to build
 - **MCP Integrations** - global toggles for Atlassian (on by default) and Sourcebot (on by default, cross-repo code search) MCPs, plus a freeform field for custom MCPs. When enabled, prompt hints are injected into all exports so agents prefer these tools over built-in alternatives
-- **Requirements Refinement** - click **Refine** to generate a discovery interview prompt. Run it in Claude Code and it interviews you about edge cases, UX decisions, tradeoffs, and technical constraints using `AskUserQuestion`, then writes a refined spec to `.claude/specs/{workflow-name}.md`. Paste the result back into Requirements for sharper prompts
-- **Guided handoffs** - both Refine and Generate Plan prompts instruct Claude to tell the user exactly what to do next (which field to paste into, what step comes next), closing the loop between Claude Code and the Workflow Designer
+- **Requirements Refinement** - click **Refine Prompt** to generate a discovery interview prompt. Run it in Claude Code and it interviews you about edge cases, UX decisions, tradeoffs, and technical constraints using `AskUserQuestion`, then writes a refined spec to `.claude/specs/{workflow-name}.md`. Paste the result back into Requirements for sharper prompts
+- **Guided handoffs** - both Refine Prompt and Plan Prompt instruct Claude to tell the user exactly what to do next (which field to paste into, what step comes next), closing the loop between Claude Code and the Workflow Designer
+- **Input validation** - bare Jira ticket keys (e.g. `PROJ-123`) are detected with an inline hint guiding users to paste the full URL. URL-only input without Atlassian MCP enabled is blocked with a helpful toast. Generate warns when there aren't enough keywords to build a workflow
+- **Prompt Library** - 30 high-impact, ready-to-use prompts across 10 categories (code review, security, architecture, debugging, testing, documentation, planning, DevOps, data migrations, release operations). Click the **Prompts** button in the toolbar, expand a category, and copy any prompt to clipboard. Prompts encode expert methodology and include guidance for using Sourcebot, LSP, and Atlassian MCP tools when available
+- **Help system** - **?** button in the toolbar opens a comprehensive help modal covering quick start, Refine/Plan flows, export formats, canvas shortcuts, and power user tips
 
 ## Save & Load
 
@@ -139,7 +144,7 @@ Your default model, memory toggle, export format tab, app source path/branch, an
 
 ## Testing
 
-Open `tests.html` in any browser to run the full test suite (221 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, workflow auto-naming, and requirements refinement. Green/red results render instantly with expandable failure details.
+Open `tests.html` in any browser to run the full test suite (256 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, workflow auto-naming, requirements refinement, input validation, the prompt library, and the help system. Green/red results render instantly with expandable failure details.
 
 **CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3 (no npm). Use `--verbose` for failure details. Exit code 0 = all pass.
 
