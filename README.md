@@ -72,7 +72,7 @@ Click any node on the canvas to open its configuration panel. Each node type has
 ### Agent
 The core building block. Every agent can be individually configured:
 - **Agent Type** - Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, Writer, or General. Each type has a built-in prompt template that activates when you leave the prompt blank. Writer agents have a **Writing Style** selector (Technical, User Guide, Business, API Reference, Runbook) that auto-configures tools and prompt for each discipline
-- **Model** - Opus 4.6, Sonnet 4.6, Haiku 4.5, Sonnet 4.5, Opus 4.5 — plus 1M context variants for Opus 4.6 and Sonnet 4.6. Set a default model in the sidebar; override per-node as needed
+- **Model** - Opus 4.6, Sonnet 4.6, Haiku 4.5, Sonnet 4.5, Opus 4.5, plus 1M context variants for Opus 4.6 and Sonnet 4.6. Set a default model in the sidebar; override per-node as needed
 - **Tools** - Toggle individual tools on/off: Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP. Presets assign sensible defaults (e.g. Reviewers get read-only tools, Coders get everything)
 - **Agent Prompt** - Custom instructions. Leave blank to use the agent type's built-in template, or write your own
 - **Custom Notes** - Additional context injected into the generated prompt (constraints, implementation details)
@@ -127,6 +127,7 @@ Some presets reveal additional sidebar sections:
 - **Guided handoffs** - both Refine Prompt and Plan Prompt instruct Claude to tell the user exactly what to do next (which field to paste into, what step comes next), closing the loop between Claude Code and the Workflow Designer
 - **Input validation** - bare Jira ticket keys (e.g. `PROJ-123`) are detected with an inline hint guiding users to paste the full URL. URL-only input without Atlassian MCP enabled is blocked with a helpful toast. Generate warns when there aren't enough keywords to build a workflow
 - **Prompt Library** - curated collection of high-impact, ready-to-use prompts across categories including code review, security, architecture, debugging, testing, documentation, planning, DevOps, data migrations, and release operations. Click the **Prompts** button in the toolbar, expand a category, and copy any prompt to clipboard. Star your favorites for quick access. Prompts encode expert methodology and include guidance for using Sourcebot, LSP, and Atlassian MCP tools when available
+- **Secret scanner** - before copying prompts to clipboard, scans all user inputs for API keys, AWS credentials, connection strings, private keys, and other credential patterns. Shows a warning if potential secrets are detected
 - **Help system** - **?** button in the toolbar opens a comprehensive help modal covering quick start, Refine/Plan flows, export formats, canvas shortcuts, and power user tips
 
 ## Save & Load
