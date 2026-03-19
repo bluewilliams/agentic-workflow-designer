@@ -2252,6 +2252,19 @@ describe('Usability & Help', () => {
       const rootCause = win.PROMPT_LIBRARY[2].prompts[0];
       expect(rootCause.prompt).toContain('LSP');
     });
+    it('should have Your input block on prompts with placeholders', () => {
+      const promptsNeedingInput = [
+        win.PROMPT_LIBRARY[0].prompts[0], // Bug Hunter
+        win.PROMPT_LIBRARY[2].prompts[0], // Root Cause
+        win.PROMPT_LIBRARY[3].prompts[1], // Edge Case
+        win.PROMPT_LIBRARY[6].prompts[0], // Implementation Breakdown
+        win.PROMPT_LIBRARY[8].prompts[0], // Zero-Downtime Migration
+      ];
+      promptsNeedingInput.forEach(p => {
+        expect(p.prompt).toContain('**Your input**');
+        expect(p.prompt).toContain('Example:');
+      });
+    });
     it('should include Atlassian guidance in planning prompts', () => {
       const implBreakdown = win.PROMPT_LIBRARY[6].prompts[0];
       expect(implBreakdown.prompt).toContain('Atlassian');
