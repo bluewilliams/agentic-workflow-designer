@@ -2368,11 +2368,43 @@ describe('Usability & Help', () => {
       const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Git & Code Review');
       expect(cat.prompts.length >= 2).toBe(true);
     });
+    it('should have Strategy & Analysis category', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Strategy & Analysis');
+      expect(cat.prompts.length >= 3).toBe(true);
+    });
     it('should have Full-Spectrum Security Audit prompt', () => {
       const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Security');
       const audit = cat.prompts.find(p => p.title === 'Full-Spectrum Security Audit');
       expect(audit.prompt.length > 500).toBe(true);
       expect(audit.prompt).toContain('Attack Surface');
+    });
+  });
+
+  describe('favorites', () => {
+    it('should add and remove favorites', () => {
+      win.state.plibFavs = [];
+      win.toggleFavorite(0, 0);
+      expect(win.state.plibFavs).toContain('0:0');
+      win.toggleFavorite(0, 0);
+      expect(win.state.plibFavs.includes('0:0')).toBe(false);
+    });
+    it('should render favorites section when favorites exist', () => {
+      win.state.plibFavs = ['0:0'];
+      const overlay = win.document.getElementById('promptLibOverlay');
+      overlay.dataset.rendered = '';
+      win.renderPromptLib();
+      const favCards = win.document.querySelectorAll('.plib-cat-items.show .plib-card');
+      expect(favCards.length >= 1).toBe(true);
+    });
+    it('should show filled star for favorited prompts', () => {
+      win.state.plibFavs = ['0:0'];
+      const card = win.buildPromptCard(win.PROMPT_LIBRARY[0].prompts[0], 0, 0);
+      expect(card.querySelector('.plib-fav.on')).toBe(card.querySelector('.plib-fav'));
+    });
+    it('should show empty star for non-favorited prompts', () => {
+      win.state.plibFavs = [];
+      const card = win.buildPromptCard(win.PROMPT_LIBRARY[0].prompts[0], 0, 0);
+      expect(card.querySelector('.plib-fav.on')).toBe(null);
     });
   });
 
@@ -2399,7 +2431,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
