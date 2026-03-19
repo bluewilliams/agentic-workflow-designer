@@ -2247,26 +2247,30 @@ describe('Usability & Help', () => {
       expect(win.state.plibOpen).toContain('1');
     });
     it('should include tool guidance in code analysis prompts', () => {
-      const bugHunter = win.PROMPT_LIBRARY[0].prompts[0];
-      expect(bugHunter.prompt).toContain('Sourcebot');
-      const rootCause = win.PROMPT_LIBRARY[2].prompts[0];
-      expect(rootCause.prompt).toContain('LSP');
+      const findCat = name => win.PROMPT_LIBRARY.find(c => c.category === name);
+      const findPrompt = (catName, title) => findCat(catName).prompts.find(p => p.title === title);
+      expect(findPrompt('Code Review & Quality', 'Bug Hunter Review').prompt).toContain('Sourcebot');
+      expect(findPrompt('Debugging & Performance', 'Root Cause Analysis').prompt).toContain('LSP');
     });
-    it('should have Your input block on prompts with placeholders', () => {
+    it('should have input config on prompts with placeholders', () => {
+      const findCat = name => win.PROMPT_LIBRARY.find(c => c.category === name);
+      const findPrompt = (catName, title) => findCat(catName).prompts.find(p => p.title === title);
       const promptsNeedingInput = [
-        win.PROMPT_LIBRARY[0].prompts[0], // Bug Hunter
-        win.PROMPT_LIBRARY[2].prompts[0], // Root Cause
-        win.PROMPT_LIBRARY[3].prompts[1], // Edge Case
-        win.PROMPT_LIBRARY[6].prompts[0], // Implementation Breakdown
-        win.PROMPT_LIBRARY[8].prompts[0], // Zero-Downtime Migration
+        findPrompt('Code Review & Quality', 'Bug Hunter Review'),
+        findPrompt('Debugging & Performance', 'Root Cause Analysis'),
+        findPrompt('Testing', 'Edge Case Test Generator'),
+        findPrompt('Planning & Estimation', 'Implementation Breakdown'),
+        findPrompt('Data & Migrations', 'Zero-Downtime Migration Planner'),
       ];
       promptsNeedingInput.forEach(p => {
-        expect(p.prompt).toContain('**Your input**');
-        expect(p.prompt).toContain('Example:');
+        expect(p.input.label.length > 10).toBe(true);
+        expect(p.input.find.length > 5).toBe(true);
+        expect(p.input.placeholder.length > 10).toBe(true);
       });
     });
     it('should include Atlassian guidance in planning prompts', () => {
-      const implBreakdown = win.PROMPT_LIBRARY[6].prompts[0];
+      const planCat = win.PROMPT_LIBRARY.find(c => c.category === 'Planning & Estimation');
+      const implBreakdown = planCat.prompts.find(p => p.title === 'Implementation Breakdown');
       expect(implBreakdown.prompt).toContain('Atlassian');
     });
     it('should copy prompt text directly for prompts without input', () => {
@@ -2322,6 +2326,56 @@ describe('Usability & Help', () => {
     });
   });
 
+  describe('secret scanner', () => {
+    it('should detect API keys', () => {
+      const found = win.scanForSecrets('Use key sk-proj-abc123def456ghi789jkl0123456');
+      expect(found.length > 0).toBe(true);
+      expect(found[0]).toContain('API key');
+    });
+    it('should detect AWS keys', () => {
+      const found = win.scanForSecrets('aws key: AKIAIOSFODNN7EXAMPLE');
+      expect(found.length > 0).toBe(true);
+      expect(found[0]).toContain('AWS');
+    });
+    it('should detect connection strings', () => {
+      const found = win.scanForSecrets('mongodb://user:pass@host:27017/db');
+      expect(found.length > 0).toBe(true);
+    });
+    it('should detect password assignments', () => {
+      const found = win.scanForSecrets('password="supersecret123"');
+      expect(found.length > 0).toBe(true);
+    });
+    it('should not flag normal text', () => {
+      const found = win.scanForSecrets('Build a REST API with user authentication and OAuth2 login');
+      expect(found.length).toBe(0);
+    });
+    it('should detect GitHub tokens', () => {
+      const found = win.scanForSecrets('ghp_ABCDEFghijklmnopqrstuvwxyz0123456789');
+      expect(found.length > 0).toBe(true);
+    });
+    it('should detect private keys', () => {
+      const found = win.scanForSecrets('-----BEGIN RSA PRIVATE KEY-----');
+      expect(found.length > 0).toBe(true);
+    });
+  });
+
+  describe('new prompt categories', () => {
+    it('should have Code Generation category', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Code Generation');
+      expect(cat.prompts.length >= 2).toBe(true);
+    });
+    it('should have Git & Code Review category', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Git & Code Review');
+      expect(cat.prompts.length >= 2).toBe(true);
+    });
+    it('should have Full-Spectrum Security Audit prompt', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Security');
+      const audit = cat.prompts.find(p => p.title === 'Full-Spectrum Security Audit');
+      expect(audit.prompt.length > 500).toBe(true);
+      expect(audit.prompt).toContain('Attack Surface');
+    });
+  });
+
   describe('configInput attrs parameter', () => {
     it('should include extra attributes when provided', () => {
       const html = win.configInput('Test', 'test', '5', 'number', '', 'min="1" max="50"');
@@ -2345,7 +2399,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
