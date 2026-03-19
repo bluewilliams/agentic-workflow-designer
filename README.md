@@ -21,7 +21,7 @@ All data stays in your browser (localStorage). Nothing is sent to a server. Expo
 5. **Export** in 5 formats optimized for different execution environments
 6. **Save & load workflows** by name, export/import as `.json` files for sharing
 7. **Enable Memory Protocol** (optional) for compaction-resilient workflows with TOON notation
-8. **Browse the Prompt Library** - 30 high-impact prompts for code review, security audits, debugging, planning, and more. Copy and paste into Claude Code
+8. **Browse the Prompt Library** - high-impact prompts for code review, security audits, debugging, planning, and more. Copy and paste into Claude Code
 
 ## Export Formats
 
@@ -126,7 +126,7 @@ Some presets reveal additional sidebar sections:
 - **Requirements Refinement** - click **Refine Prompt** to generate a discovery interview prompt. Run it in Claude Code and it interviews you about edge cases, UX decisions, tradeoffs, and technical constraints using `AskUserQuestion`, then writes a refined spec to `.claude/specs/{workflow-name}.md`. Paste the result back into Requirements for sharper prompts
 - **Guided handoffs** - both Refine Prompt and Plan Prompt instruct Claude to tell the user exactly what to do next (which field to paste into, what step comes next), closing the loop between Claude Code and the Workflow Designer
 - **Input validation** - bare Jira ticket keys (e.g. `PROJ-123`) are detected with an inline hint guiding users to paste the full URL. URL-only input without Atlassian MCP enabled is blocked with a helpful toast. Generate warns when there aren't enough keywords to build a workflow
-- **Prompt Library** - 30 high-impact, ready-to-use prompts across 10 categories (code review, security, architecture, debugging, testing, documentation, planning, DevOps, data migrations, release operations). Click the **Prompts** button in the toolbar, expand a category, and copy any prompt to clipboard. Prompts encode expert methodology and include guidance for using Sourcebot, LSP, and Atlassian MCP tools when available
+- **Prompt Library** - curated collection of high-impact, ready-to-use prompts across categories including code review, security, architecture, debugging, testing, documentation, planning, DevOps, data migrations, and release operations. Click the **Prompts** button in the toolbar, expand a category, and copy any prompt to clipboard. Star your favorites for quick access. Prompts encode expert methodology and include guidance for using Sourcebot, LSP, and Atlassian MCP tools when available
 - **Help system** - **?** button in the toolbar opens a comprehensive help modal covering quick start, Refine/Plan flows, export formats, canvas shortcuts, and power user tips
 
 ## Save & Load
@@ -144,7 +144,7 @@ Your default model, memory toggle, export format tab, app source path/branch, an
 
 ## Testing
 
-Open `tests.html` in any browser to run the full test suite (256 tests, zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, workflow auto-naming, requirements refinement, input validation, the prompt library, and the help system. Green/red results render instantly with expandable failure details.
+Open `tests.html` in any browser to run the full test suite (zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, workflow auto-naming, requirements refinement, input validation, the prompt library, and the help system. Green/red results render instantly with expandable failure details.
 
 **CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3 (no npm). Use `--verbose` for failure details. Exit code 0 = all pass.
 
