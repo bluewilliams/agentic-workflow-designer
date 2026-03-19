@@ -630,7 +630,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <ol>
   <li>Paste requirements into the <strong>Requirements</strong> field (or a Jira ticket URL)</li>
   <li>Click <strong>Generate</strong> to auto-build a workflow from keywords, or pick a <strong>Preset</strong> below</li>
-  <li>Customize nodes by clicking them — change agent types, models, prompts, and tools</li>
+  <li>Customize nodes by clicking them: change agent types, models, prompts, and tools</li>
   <li>Pick an export format tab at the bottom, then <strong>Copy</strong> the prompt into Claude Code</li>
 </ol>
 
@@ -660,19 +660,19 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h3>Export Formats</h3>
 <ul>
-  <li><strong>Workflow</strong> — Single orchestration prompt for Claude Code. Best for most use cases.</li>
-  <li><strong>Sub-Agents</strong> — Delegation prompt using Claude Code's <code>/spawn</code> sub-agent pattern.</li>
-  <li><strong>Agent Teams</strong> — Multi-agent team coordination prompt. <em>Preview.</em></li>
-  <li><strong>Agent SDK</strong> — Python code using the Anthropic Agent SDK. Wire into your own pipeline.</li>
-  <li><strong>Claude.ai</strong> — Simplified prompt for use in Claude.ai (no CLI tools).</li>
+  <li><strong>Workflow</strong>: Single orchestration prompt for Claude Code. Best for most use cases.</li>
+  <li><strong>Sub-Agents</strong>: Delegation prompt using Claude Code's <code>/spawn</code> sub-agent pattern.</li>
+  <li><strong>Agent Teams</strong>: Multi-agent team coordination prompt. <em>Preview.</em></li>
+  <li><strong>Agent SDK</strong>: Python code using the Anthropic Agent SDK. Wire into your own pipeline.</li>
+  <li><strong>Claude.ai</strong>: Simplified prompt for use in Claude.ai (no CLI tools).</li>
 </ul>
 
 <h3>Canvas Tips</h3>
 <ul>
-  <li><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> — Switch between Select, Connect, and Delete modes</li>
-  <li><kbd>Delete</kbd> / <kbd>Backspace</kbd> — Delete selected node or connection</li>
-  <li><kbd>Alt+Drag</kbd> — Pan the canvas</li>
-  <li><kbd>Scroll</kbd> — Zoom in/out</li>
+  <li><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>: Switch between Select, Connect, and Delete modes</li>
+  <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>: Delete selected node or connection</li>
+  <li><kbd>Alt+Drag</kbd>: Pan the canvas</li>
+  <li><kbd>Scroll</kbd>: Zoom in/out</li>
   <li><strong>Right-click</strong> a node for context menu (duplicate, disconnect, delete)</li>
   <li><strong>Auto Layout</strong> re-arranges nodes using the Sugiyama layered algorithm</li>
   <li><strong>Fit</strong> zooms to show all nodes</li>
@@ -680,13 +680,13 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h3>Power User Tips</h3>
 <ul>
-  <li>Enable <strong>Shared Memory</strong> for complex workflows — agents write to a shared file so later agents see earlier findings</li>
+  <li>Enable <strong>Shared Memory</strong> for complex workflows so agents write to a shared file and later agents can see earlier findings</li>
   <li>Add <strong>Repository</strong> paths to scope agents to specific codebases</li>
   <li>Use <strong>Decision</strong> nodes with revision loops to add quality gates (review → revise cycles)</li>
-  <li><strong>Parallel</strong> groups run agents concurrently — use for independent tasks like "backend + frontend"</li>
+  <li><strong>Parallel</strong> groups run agents concurrently, great for independent tasks like "backend + frontend"</li>
   <li>Each agent's <strong>Custom Notes</strong> field lets you add context that's included in that agent's prompt section</li>
   <li>Workflows auto-save to localStorage. Use <strong>Save</strong> / <strong>Load</strong> for named snapshots, or <strong>Export JSON</strong> to share with teammates</li>
-  <li>Enable <strong>Sourcebot MCP</strong> if you have cross-repo search — prompts will include search tool guidance</li>
+  <li>Enable <strong>Sourcebot MCP</strong> if you have cross-repo search. Prompts will include search tool guidance automatically.</li>
 </ul>
 
     </div>
@@ -1109,7 +1109,7 @@ function savePrefs() {
       mcpSourcebot: state.mcpSourcebot,
       mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : ''
     }));
-  } catch(e) { showToast('Auto-save failed — storage may be full'); }
+  } catch(e) { showToast('Auto-save failed, storage may be full'); }
 }
 let _prefTimer = null;
 function savePrefsDebounced() {
@@ -1279,7 +1279,7 @@ function autoSaveWorkflow() {
         return;
       }
       localStorage.setItem('awd_autosave', JSON.stringify(serializeWorkflow()));
-    } catch(e) { showToast('Auto-save failed — storage may be full'); }
+    } catch(e) { showToast('Auto-save failed, storage may be full'); }
   }, 1000);
 }
 function restoreAutoSave() {
@@ -1299,7 +1299,7 @@ function getWorkflowIndex() {
   } catch(e) { return []; }
 }
 function setWorkflowIndex(index) {
-  try { localStorage.setItem('awd_workflows', JSON.stringify(index)); } catch(e) { showToast('Save failed — storage may be full'); }
+  try { localStorage.setItem('awd_workflows', JSON.stringify(index)); } catch(e) { showToast('Save failed, storage may be full'); }
 }
 
 // -- Save/Load/Delete --
@@ -4805,7 +4805,7 @@ function copyPrompt() {
   const emptyAgents = state.nodes.filter(n => n.type === 'agent' && (!n.config.prompt || !n.config.prompt.trim()));
   navigator.clipboard.writeText(text).then(() => {
     if (emptyAgents.length > 0) {
-      showToast(emptyAgents.length + ' agent' + (emptyAgents.length !== 1 ? 's have' : ' has') + ' no prompt — agents won\'t know what to do', 5000);
+      showToast(emptyAgents.length + ' agent' + (emptyAgents.length !== 1 ? 's have' : ' has') + ' no prompt. Agents won\'t know what to do', 5000);
     } else {
       showToast('Copied to clipboard!');
     }
