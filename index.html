@@ -95,6 +95,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 .plib-copy{flex-shrink:0;padding:4px 10px;font-size:10px;background:var(--surface2);border:1px solid var(--border);
   border-radius:4px;cursor:pointer;color:var(--text2);font-family:var(--font);font-weight:500;transition:all .15s}
 .plib-copy:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.plib-fav{flex-shrink:0;padding:4px 6px;font-size:12px;background:none;border:none;cursor:pointer;
+  color:var(--text3);transition:all .15s;line-height:1}
+.plib-fav:hover,.plib-fav.on{color:#f59e0b}
+.plib-fav.on{text-shadow:0 0 4px rgba(245,158,11,.3)}
 .plib-input-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400;display:none;align-items:center;justify-content:center}
 .plib-input-overlay.show{display:flex}
 .plib-input-modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
@@ -1170,7 +1174,8 @@ function savePrefs() {
       mcpAtlassian: state.mcpAtlassian,
       mcpSourcebot: state.mcpSourcebot,
       mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : '',
-      plibOpen: state.plibOpen || null
+      plibOpen: state.plibOpen || null,
+      plibFavs: state.plibFavs || null
     }));
   } catch(e) { showToast('Auto-save failed, storage may be full'); }
 }
@@ -1210,6 +1215,7 @@ function restorePrefs() {
       if ($('mcpCustomNotes')) $('mcpCustomNotes').value = p.mcpCustom;
     }
     if (Array.isArray(p.plibOpen)) state.plibOpen = p.plibOpen;
+    if (Array.isArray(p.plibFavs)) state.plibFavs = p.plibFavs;
   } catch(e) { /* ignore */ }
 }
 
@@ -2572,9 +2578,52 @@ function confirmPlibInput() {
     .catch(() => showToast('Could not copy'));
   closePlibInput();
 }
+function toggleFavorite(catIdx, promptIdx) {
+  const key = catIdx + ':' + promptIdx;
+  if (!state.plibFavs) state.plibFavs = [];
+  const idx = state.plibFavs.indexOf(key);
+  if (idx >= 0) state.plibFavs.splice(idx, 1);
+  else state.plibFavs.push(key);
+  savePrefsDebounced();
+  // Re-render to update favorites section
+  const overlay = $('promptLibOverlay');
+  overlay.dataset.rendered = '';
+  renderPromptLib();
+}
+function buildPromptCard(p, pi, ci) {
+  const isFav = (state.plibFavs || []).includes(ci + ':' + pi);
+  const card = document.createElement('div');
+  card.className = 'plib-card';
+  card.innerHTML = '<button class="plib-fav' + (isFav ? ' on' : '') + '" onclick="toggleFavorite(' + ci + ',' + pi + ')" title="' + (isFav ? 'Remove from favorites' : 'Add to favorites') + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
+    + '<div class="plib-card-body"><div class="plib-card-title">' + p.title + '</div><div class="plib-card-desc">' + p.desc + '</div></div>'
+    + '<button class="plib-copy" onclick="copyLibPrompt(' + pi + ',' + ci + ')">Copy</button>';
+  return card;
+}
 function renderPromptLib() {
   const body = $('promptLibBody');
-  body.innerHTML = '<p style="margin-bottom:12px;color:var(--text3)">High-impact prompts for common tasks. Click Copy and paste into Claude Code. Prompts that need context will ask for your input first so the copied prompt is ready to go.</p>';
+  body.innerHTML = '<p style="margin-bottom:12px;color:var(--text3)">High-impact prompts for common tasks. Click Copy and paste into Claude Code. Prompts that need context will ask for your input first so the copied prompt is ready to go. Star prompts to add them to your favorites.</p>';
+  // Render favorites section if any
+  const favs = state.plibFavs || [];
+  if (favs.length > 0) {
+    const favDiv = document.createElement('div');
+    favDiv.className = 'plib-category';
+    const favBtn = document.createElement('button');
+    favBtn.className = 'plib-cat-btn open';
+    favBtn.innerHTML = '\u2605 Favorites <span class="plib-count" style="font-size:10px;color:var(--text3);font-weight:400;margin-left:auto;margin-right:8px">' + favs.length + '</span><span class="plib-arrow">&#9654;</span>';
+    const favItems = document.createElement('div');
+    favItems.className = 'plib-cat-items show';
+    favBtn.onclick = () => { favBtn.classList.toggle('open'); favItems.classList.toggle('show'); };
+    favs.forEach(key => {
+      const [ci, pi] = key.split(':').map(Number);
+      if (PROMPT_LIBRARY[ci] && PROMPT_LIBRARY[ci].prompts[pi]) {
+        favItems.appendChild(buildPromptCard(PROMPT_LIBRARY[ci].prompts[pi], pi, ci));
+      }
+    });
+    favDiv.appendChild(favBtn);
+    favDiv.appendChild(favItems);
+    body.appendChild(favDiv);
+  }
+  // Render categories
   PROMPT_LIBRARY.forEach((cat, ci) => {
     const catDiv = document.createElement('div');
     catDiv.className = 'plib-category';
@@ -2585,17 +2634,13 @@ function renderPromptLib() {
     items.className = 'plib-cat-items';
     btn.onclick = () => {
       btn.classList.toggle('open'); items.classList.toggle('show');
-      // Persist expanded state
-      const open = [...body.querySelectorAll('.plib-cat-btn.open')].map(b => b.dataset.cat);
+      const open = [...body.querySelectorAll('.plib-cat-btn.open')].map(b => b.dataset.cat).filter(Boolean);
       state.plibOpen = open;
       savePrefsDebounced();
     };
     btn.dataset.cat = String(ci);
     cat.prompts.forEach((p, pi) => {
-      const card = document.createElement('div');
-      card.className = 'plib-card';
-      card.innerHTML = '<div class="plib-card-body"><div class="plib-card-title">' + p.title + '</div><div class="plib-card-desc">' + p.desc + '</div></div><button class="plib-copy" onclick="copyLibPrompt(' + pi + ',' + ci + ')">Copy</button>';
-      items.appendChild(card);
+      items.appendChild(buildPromptCard(p, pi, ci));
     });
     catDiv.appendChild(btn);
     catDiv.appendChild(items);
@@ -2603,7 +2648,7 @@ function renderPromptLib() {
   });
   // Restore saved expanded state, or open first category by default
   const openCats = state.plibOpen || ['0'];
-  body.querySelectorAll('.plib-cat-btn').forEach(b => {
+  body.querySelectorAll('.plib-cat-btn[data-cat]').forEach(b => {
     if (openCats.includes(b.dataset.cat)) b.click();
   });
 }
@@ -2733,6 +2778,19 @@ const PROMPT_LIBRARY = [
     { title: 'Data Quality Audit',
       desc: 'Review data models for missing constraints, potential inconsistencies, orphaned records, and index gaps.',
       prompt: 'Audit the data layer of this codebase for quality issues:\n\n1. **Schema integrity**: Read all migration files and model definitions. Check for:\n   - Missing foreign key constraints (application code assumes relationships that aren\'t enforced at DB level)\n   - Missing NOT NULL on fields that should never be null\n   - Missing unique constraints on fields that should be unique (email, slug, etc.)\n   - Missing check constraints on fields with valid ranges (status enums, positive amounts)\n   - Text fields without length limits that could store unbounded data\n\n2. **Index analysis**: For every query in the codebase:\n   - What columns are filtered/sorted on?\n   - Is there an index that covers this query?\n   - Any composite indexes needed for multi-column WHERE clauses?\n   - Any indexes that are never used (created but no query benefits from them)?\n\n3. **Orphan potential**: Where can records become orphaned?\n   - Deleting a parent without CASCADE\n   - Soft deletes that leave related records pointing to "deleted" records\n   - Many-to-many join tables that aren\'t cleaned up\n\n4. **Race conditions**: Where can concurrent requests create inconsistent data?\n   - Read-then-write without locking (checking balance then deducting)\n   - Unique violations from parallel inserts\n   - Counter updates without atomic operations\n\nFor each finding:\n- Location (migration file, model, query)\n- What can go wrong (specific scenario)\n- Fix (SQL migration or code change)\n- Priority (data corruption risk vs minor inconsistency)' }
+  ]},
+  { category: 'Strategy & Analysis', prompts: [
+    { title: 'Architecture Alternatives Matrix',
+      input: { label: 'What feature or system are you evaluating approaches for?', placeholder: 'e.g. Real-time notifications system, or migration from monolith to microservices', find: '[describe the feature or system to evaluate]' },
+      desc: 'Generate 3+ implementation approaches with tradeoffs matrix, effort estimates, and a recommendation.',
+      prompt: '> **Your input**: Replace the placeholder below with the feature or system to evaluate.\n> Example: Real-time notifications system supporting email, push, and in-app channels\n\nGenerate at least 3 distinct architectural approaches for: [describe the feature or system to evaluate]\n\nFirst, explore the existing codebase to understand current patterns, tech stack, and constraints.\n\nFor each approach:\n\n### Approach [N]: [Name]\n**Summary**: One-paragraph description of the approach.\n**How it works**: Technical details of the architecture, data flow, and key components.\n**Fits well when**: Under what conditions this approach shines.\n**Struggles when**: Under what conditions this approach breaks down.\n\n| Criteria | Rating (1-5) | Notes |\n|----------|-------------|-------|\n| Implementation effort | | hours/days/weeks |\n| Performance at scale | | requests/sec, latency |\n| Operational complexity | | monitoring, debugging, deployment |\n| Team familiarity | | based on current codebase patterns |\n| Flexibility for future changes | | how easy to extend or pivot |\n| Cost (infra + maintenance) | | relative to other approaches |\n\n**Key risks**: What could go wrong and how to mitigate.\n**Proof of concept**: Minimal code/config to validate this approach (2-4 hours of work).\n\n## Recommendation\nWhich approach to choose and why, considering the current codebase, team, and constraints. Include a decision matrix summary table comparing all approaches side by side.' },
+    { title: 'Codebase Health Report',
+      desc: 'Generate a comprehensive report card for a codebase covering quality, security, performance, testing, and maintainability.',
+      prompt: 'Generate a comprehensive health report for this codebase. Analyze every aspect and produce a report suitable for sharing with engineering leadership.\n\n## Executive Summary\nOne paragraph: overall health assessment, biggest strengths, most urgent concerns.\n\n## Code Quality: [A/B/C/D/F]\n- Consistency of patterns and conventions\n- Cyclomatic complexity of key modules\n- Duplication rate (copy-paste code)\n- Dead code and unused dependencies\n- TODO/FIXME/HACK density and severity\n\n## Test Coverage: [A/B/C/D/F]\n- Estimated coverage of critical paths\n- Test quality (behavior vs implementation testing)\n- Missing edge case coverage\n- Integration test gaps\n\n## Security: [A/B/C/D/F]\n- Input validation coverage\n- Authentication/authorization robustness\n- Dependency vulnerability status\n- Secrets management\n- OWASP Top 10 exposure\n\n## Performance: [A/B/C/D/F]\n- Database query efficiency (N+1s, missing indexes)\n- Resource leak potential\n- Scaling bottlenecks\n- Bundle size / load time (if frontend)\n\n## Maintainability: [A/B/C/D/F]\n- Onboarding difficulty (how long for a new dev to be productive?)\n- Documentation completeness\n- Dependency health and currency\n- Architecture clarity\n\n## Technical Debt Inventory\n| Item | Severity | Effort | Category |\nTop 10 items ranked by impact-to-effort ratio.\n\n## Recommendations\nPrioritized action items:\n1. **This week**: Quick wins with highest impact\n2. **This month**: Medium-effort improvements\n3. **This quarter**: Strategic improvements\n\nBase every rating and finding on evidence from the actual code. Include file paths and specific examples. No generic advice.' },
+    { title: 'Before/After Impact Assessment',
+      input: { label: 'What change or feature are you evaluating the impact of?', placeholder: 'e.g. Migrating from REST to GraphQL, or adding caching layer, or switching from PostgreSQL to DynamoDB', find: '[describe the proposed change]' },
+      desc: 'Evaluate the full impact of a proposed change across performance, cost, team, users, and risk.',
+      prompt: '> **Your input**: Replace the placeholder below with the change you are evaluating.\n> Example: Migrating the API from REST to GraphQL\n\nConduct a thorough before/after impact assessment for: [describe the proposed change]\n\nAnalyze the current codebase first, then evaluate:\n\n## Current State (Before)\n- How things work today (architecture, performance characteristics, developer workflow)\n- Current pain points this change would address\n- What works well that we need to preserve\n\n## Proposed State (After)\n- How things would work after the change\n- What specific improvements we expect\n\n## Impact Analysis\n\n| Dimension | Before | After | Delta |\n|-----------|--------|-------|-------|\n| Performance (latency, throughput) | | | |\n| Developer experience (build time, debugging) | | | |\n| Operational complexity (deploy, monitor) | | | |\n| User experience (speed, reliability) | | | |\n| Infrastructure cost | | | |\n| Team learning curve | | | |\n| Security posture | | | |\n| Testing complexity | | | |\n\n## Migration Path\n- Can this be done incrementally or is it all-or-nothing?\n- Estimated timeline and milestones\n- What can run in parallel with existing work?\n\n## Risks and Mitigations\n| Risk | Probability | Impact | Mitigation |\n\n## Recommendation\nGo / No-go / Go with conditions. Include the specific conditions and success criteria.' },
   ]},
   { category: 'Release & Operations', prompts: [
     { title: 'Release Readiness Checklist',
