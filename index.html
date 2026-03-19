@@ -1141,7 +1141,8 @@ function savePrefs() {
       repositories: state.repositories,
       mcpAtlassian: state.mcpAtlassian,
       mcpSourcebot: state.mcpSourcebot,
-      mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : ''
+      mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : '',
+      plibOpen: state.plibOpen || null
     }));
   } catch(e) { showToast('Auto-save failed, storage may be full'); }
 }
@@ -1180,6 +1181,7 @@ function restorePrefs() {
       state.mcpCustom = p.mcpCustom;
       if ($('mcpCustomNotes')) $('mcpCustomNotes').value = p.mcpCustom;
     }
+    if (Array.isArray(p.plibOpen)) state.plibOpen = p.plibOpen;
   } catch(e) { /* ignore */ }
 }
 
@@ -2520,7 +2522,14 @@ function renderPromptLib() {
     btn.innerHTML = cat.category + ' <span class="plib-count" style="font-size:10px;color:var(--text3);font-weight:400;margin-left:auto;margin-right:8px">' + cat.prompts.length + '</span><span class="plib-arrow">&#9654;</span>';
     const items = document.createElement('div');
     items.className = 'plib-cat-items';
-    btn.onclick = () => { btn.classList.toggle('open'); items.classList.toggle('show'); };
+    btn.onclick = () => {
+      btn.classList.toggle('open'); items.classList.toggle('show');
+      // Persist expanded state
+      const open = [...body.querySelectorAll('.plib-cat-btn.open')].map(b => b.dataset.cat);
+      state.plibOpen = open;
+      savePrefsDebounced();
+    };
+    btn.dataset.cat = String(ci);
     cat.prompts.forEach((p, pi) => {
       const card = document.createElement('div');
       card.className = 'plib-card';
@@ -2531,8 +2540,11 @@ function renderPromptLib() {
     catDiv.appendChild(items);
     body.appendChild(catDiv);
   });
-  // Auto-open first category
-  body.querySelector('.plib-cat-btn').click();
+  // Restore saved expanded state, or open first category by default
+  const openCats = state.plibOpen || ['0'];
+  body.querySelectorAll('.plib-cat-btn').forEach(b => {
+    if (openCats.includes(b.dataset.cat)) b.click();
+  });
 }
 const PROMPT_LIBRARY = [
   { category: 'Code Review & Quality', prompts: [
