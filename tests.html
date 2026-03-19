@@ -2123,6 +2123,39 @@ describe('Usability & Help', () => {
       win.toggleHelp();
       expect(overlay.classList.contains('show')).toBe(false);
     });
+    it('should contain key help sections', () => {
+      const body = win.document.querySelector('#helpOverlay .help-body');
+      expect(body.innerHTML).toContain('Quick Start');
+      expect(body.innerHTML).toContain('Refine Prompt Flow');
+      expect(body.innerHTML).toContain('Plan Prompt Flow');
+      expect(body.innerHTML).toContain('Power User Tips');
+      expect(body.innerHTML).toContain('Export Formats');
+    });
+  });
+
+  describe('story input validation hint', () => {
+    it('should show hint for bare Jira key', () => {
+      const si = win.document.getElementById('storyInput');
+      const hint = win.document.getElementById('storyHint');
+      si.value = 'PROJ-42';
+      win.validateStoryInput();
+      expect(hint.style.display).toBe('');
+      expect(hint.textContent).toContain('full URL');
+    });
+    it('should hide hint for normal text', () => {
+      const si = win.document.getElementById('storyInput');
+      const hint = win.document.getElementById('storyHint');
+      si.value = 'Build a REST API with authentication and user management';
+      win.validateStoryInput();
+      expect(hint.style.display).toBe('none');
+    });
+    it('should hide hint when input is empty', () => {
+      const si = win.document.getElementById('storyInput');
+      const hint = win.document.getElementById('storyHint');
+      si.value = '';
+      win.validateStoryInput();
+      expect(hint.style.display).toBe('none');
+    });
   });
 
   describe('generate feedback', () => {
@@ -2173,6 +2206,13 @@ describe('Usability & Help', () => {
         });
       });
     });
+    it('should have at least 10 categories', () => {
+      expect(win.PROMPT_LIBRARY.length >= 10).toBe(true);
+    });
+    it('should have at least 25 total prompts', () => {
+      const total = win.PROMPT_LIBRARY.reduce((sum, cat) => sum + cat.prompts.length, 0);
+      expect(total >= 25).toBe(true);
+    });
     it('should render categories on first open', () => {
       const overlay = win.document.getElementById('promptLibOverlay');
       overlay.dataset.rendered = '';
@@ -2180,6 +2220,60 @@ describe('Usability & Help', () => {
       const cards = win.document.querySelectorAll('.plib-card');
       expect(cards.length > 20).toBe(true);
       win.togglePromptLib();
+    });
+    it('should render a copy button for each prompt card', () => {
+      const copyBtns = win.document.querySelectorAll('.plib-copy');
+      const total = win.PROMPT_LIBRARY.reduce((sum, cat) => sum + cat.prompts.length, 0);
+      expect(copyBtns.length).toBe(total);
+    });
+    it('should expand and collapse categories', () => {
+      const btns = win.document.querySelectorAll('.plib-cat-btn');
+      const first = btns[0];
+      const items = first.nextElementSibling;
+      // First category was auto-opened, close it
+      first.click();
+      expect(first.classList.contains('open')).toBe(false);
+      expect(items.classList.contains('show')).toBe(false);
+      // Re-open
+      first.click();
+      expect(first.classList.contains('open')).toBe(true);
+      expect(items.classList.contains('show')).toBe(true);
+    });
+    it('should persist expanded state to prefs', () => {
+      // Close all, then open second category
+      win.document.querySelectorAll('.plib-cat-btn.open').forEach(b => b.click());
+      const btns = win.document.querySelectorAll('.plib-cat-btn');
+      btns[1].click();
+      expect(win.state.plibOpen).toContain('1');
+    });
+    it('should include tool guidance in code analysis prompts', () => {
+      const bugHunter = win.PROMPT_LIBRARY[0].prompts[0];
+      expect(bugHunter.prompt).toContain('Sourcebot');
+      const rootCause = win.PROMPT_LIBRARY[2].prompts[0];
+      expect(rootCause.prompt).toContain('LSP');
+    });
+    it('should include Atlassian guidance in planning prompts', () => {
+      const implBreakdown = win.PROMPT_LIBRARY[6].prompts[0];
+      expect(implBreakdown.prompt).toContain('Atlassian');
+    });
+    it('should copy prompt text on copyLibPrompt', () => {
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.copyLibPrompt(0, 0);
+      expect(copied.length > 100).toBe(true);
+      expect(copied).toContain('bugs');
+    });
+    it('should have unique titles within each category', () => {
+      win.PROMPT_LIBRARY.forEach(cat => {
+        const titles = cat.prompts.map(p => p.title);
+        const unique = [...new Set(titles)];
+        expect(titles.length).toBe(unique.length);
+      });
+    });
+    it('should have unique category names', () => {
+      const names = win.PROMPT_LIBRARY.map(c => c.category);
+      const unique = [...new Set(names)];
+      expect(names.length).toBe(unique.length);
     });
   });
 
@@ -2206,7 +2300,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.validateStoryInput = validateStoryInput;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
