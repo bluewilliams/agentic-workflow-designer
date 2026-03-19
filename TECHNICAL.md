@@ -13,14 +13,16 @@ Engineers working with AI-powered development (Claude Code, Anthropic Agent SDK,
 The Agentic Workflow Designer is a **visual, browser-based playground** that bridges the gap between a requirements document and a production-ready agentic workflow prompt. Users drag, drop, and connect nodes on a canvas to design their multi-agent pipeline, then copy a fully-formed prompt into Claude Code, Claude.ai, or the Anthropic Agent SDK.
 
 ### Core User Journey
-1. Paste a Jira ticket or user story into the sidebar
-2. Click **Generate Workflow** (or pick a preset, or build manually)
-3. The canvas populates with agent nodes connected in the right order
-4. Optionally reconfigure each node (agent type, model, tools, custom prompt)
-5. Toggle **Memory Protocol** on/off as needed
-6. Select an export format tab and click **Copy**
-7. Paste the output into Claude Code or the Agent SDK and run it
-8. Optionally **Save** the workflow by name, or **Export .json** to share with colleagues
+1. Paste a Jira ticket URL, user story, or requirements into the sidebar
+2. (Optional) Click **Refine Prompt** to interview with Claude and sharpen requirements
+3. Click **Generate** (or pick a preset, or build manually)
+4. The canvas populates with agent nodes connected in the right order
+5. (Optional) Click **Plan Prompt** to generate a codebase-aware implementation blueprint
+6. Optionally reconfigure each node (agent type, model, tools, custom prompt)
+7. Toggle **Memory Protocol** on/off as needed
+8. Select an export format tab and click **Copy**
+9. Paste the output into Claude Code or the Agent SDK and run it
+10. Optionally **Save** the workflow by name, or **Export .json** to share with colleagues
 
 ---
 
@@ -54,7 +56,11 @@ state = {
   exportFormat: 'prompt',
   memoryEnabled: false, // Memory Protocol toggle
   defaultModel: 'opus-4.6', // Global default for new nodes
-  repositories: [] // Array of { path, branch } for multi-repo workflows
+  repositories: [], // Array of { path, branch } for multi-repo workflows
+  mcpAtlassian: true,  // Atlassian MCP toggle
+  mcpSourcebot: true,  // Sourcebot MCP toggle
+  plibOpen: [],        // Expanded prompt library categories
+  plibFavs: []         // Favorited prompt library entries
 }
 ```
 No frameworks, no reactive libraries. Each user action calls `render()` which does a full DOM diff-free re-render of the SVG canvas and triggers `updatePrompt()`.
@@ -64,14 +70,14 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 
 | Key | Shape | Purpose |
 |-----|-------|---------|
-| `awd_prefs` | `{ defaultModel, memoryEnabled, appSourcePath, appSourceBranch, exportFormat, repositories }` | User preferences, auto-saved on change and auto-restored on load |
+| `awd_prefs` | `{ defaultModel, memoryEnabled, appSourcePath, appSourceBranch, exportFormat, repositories, mcpAtlassian, mcpSourcebot, mcpCustom, plibOpen, plibFavs }` | User preferences, auto-saved on change and auto-restored on load |
 | `awd_workflows` | `[ { slug, name, savedAt, nodeCount, agentCount }, ... ]` | Index of saved workflows (metadata only) |
 | `awd_wf_{slug}` | `{ version, slug, name, story, savedAt, repositories, canvas: { nodes, connections, nextId, pan, zoom } }` | Full saved workflow data |
 | `awd_autosave` | Same shape as `awd_wf_{slug}` | Single-slot auto-save, debounced 1s on `render()` |
 
 **Serialization boundary**: Nodes (full config), connections, nextId, pan, zoom, workflowName, storyInput, repositories, and memoryEnabled are persisted. Transient UI state (selectedId, mode, connectFrom, dragging, isPanning, mousePos) is excluded.
 
-**Error handling**: All localStorage operations are wrapped in try/catch. Auto-save fails silently; explicit save/export shows a toast on failure.
+**Error handling**: All localStorage operations are wrapped in try/catch with toast notifications on failure. A secret scanner checks for API keys, credentials, and connection strings before copying prompts to clipboard.
 
 ---
 
@@ -259,7 +265,7 @@ Downstream agents read `shared.md` to get upstream handoffs. Agents address each
 ### Navigation
 - **Pan**: Alt+drag or middle-mouse drag
 - **Zoom**: Scroll wheel (0.2×–3×)
-- **Auto Layout**: BFS-based topological layout, left-to-right, vertical centering per layer
+- **Auto Layout**: Sugiyama longest-path layering algorithm, left-to-right, vertical centering per layer
 - **Zoom Fit**: Scales viewport to show all nodes with 80px padding
 
 ### Context Menu
@@ -300,6 +306,48 @@ After generation, memory is auto-enabled if the workflow has parallel forks or 5
 | **Performance** | Input → Planner → Profiler → Optimizer → Reviewer → Decision → Tester → Optimized (report) |
 | **Testing** | Input → Planner → Code Analyzer → Test Suite Writer → Reviewer → Decision → Tester → Test Suite (code) |
 | **Data Migration** | Input → Planner → Researcher → Migration Engineer → Reviewer → Decision → Tester → Migration Complete (code) |
+
+---
+
+## Input Validation
+
+The app validates user input at multiple points:
+- **Bare Jira keys** (e.g. `PROJ-123`): detected by `isJiraKeyOnly()` and shown an inline hint guiding users to paste the full URL. All three action buttons (Generate, Refine Prompt, Plan Prompt) block with a toast.
+- **URL-only input without Atlassian MCP**: Refine Prompt and Plan Prompt block with a toast since the prompt would contain a URL that agents cannot fetch.
+- **URL-only input for Generate**: redirects to the preset picker since there are not enough keywords to auto-generate a workflow.
+- **Secret scanning**: `scanForSecrets()` checks all user inputs (requirements, plan, node prompts, notes) for API keys, AWS keys, GitHub/GitLab/Slack tokens, private keys, connection strings, and credential patterns before copying to clipboard. Shows a confirm dialog listing detected secret types.
+
+---
+
+## Prompt Library
+
+A curated collection of high-impact prompts accessible via the **Prompts** toolbar button. Each prompt encodes expert methodology that produces better results than asking from scratch.
+
+### Architecture
+- **Data**: `PROMPT_LIBRARY` is a JS array of category objects, each containing an array of prompt entries with `title`, `desc`, `prompt`, and optional `input` config
+- **Input popup**: Prompts with an `input` field show a modal collecting user context before copying. Supports `optional: true` with `fallback` text for prompts that work with or without a target
+- **Favorites**: Stored as `plibFavs` array in state/prefs (format: `"catIdx:promptIdx"`). Favorited prompts render in a persistent "Favorites" section at the top
+- **Category expansion**: Open/closed state persists via `plibOpen` in prefs
+- **Tool guidance**: Several prompts include context-aware hints for Sourcebot, LSP, and Atlassian MCP tools (embedded in prompt text, not tied to app toggles)
+
+### Categories
+Code Generation, Code Review & Quality, Architecture & Design, Debugging & Performance, Testing, Security, Documentation, Planning & Estimation, Git & Code Review, DevOps & Infrastructure, Data & Migrations, Strategy & Analysis, Release & Operations
+
+---
+
+## Help System
+
+The **?** toolbar button opens a help modal covering:
+- Quick Start guide
+- Refine Prompt and Plan Prompt flows with visual diagrams
+- Full flow for power users (refine, plan, build, export)
+- Jira integration guidance
+- Export format descriptions
+- Canvas keyboard shortcuts
+- Prompt Library overview
+- Power user tips
+
+The help modal also opens via the `?` keyboard shortcut and closes with `Escape`.
 
 ---
 
@@ -361,8 +409,8 @@ After generation, memory is auto-enabled if the workflow has parallel forks or 5
 
 ```
 agentic-workflow-designer/
-├── index.html       # The entire application (~4,300 lines)
-├── tests.html       # iframe-based test suite (~1,210 lines, 206 tests)
+├── index.html       # The entire application (single file, ~5,200 lines)
+├── tests.html       # iframe-based test suite (zero dependencies)
 ├── run-tests.sh     # Headless CLI test runner (Chrome + Python 3, zero npm deps)
 ├── TECHNICAL.md     # This document
 ├── README.md        # User-facing overview
@@ -372,12 +420,16 @@ agentic-workflow-designer/
 
 The `index.html` is internally organized into clearly delimited sections:
 ```
-CSS styles (lines 7–258)
-HTML structure (lines 259–559)
-  ├── Sidebar: Workflow Name, Story Input (+ Refine), Implementation Plan, Default Model, Repositories,
+CSS styles
+HTML structure
+  ├── Sidebar: Workflow Name (+ New Workflow), Story Input (+ Refine Prompt, validation hint),
+  │            Implementation Plan (+ Plan Prompt), Default Model, Repositories,
   │            Add Nodes, Presets, App Under Test (conditional), Saved Workflows, Tip, MCP Integrations, Memory, Node Config
-  ├── Canvas: Toolbar, SVG canvas, Empty state
-  └── Prompt Output: 5 format tabs, Copy button
+  ├── Canvas: Toolbar (Select, Connect, Delete, Auto Layout, Fit, Zoom, Prompts, Help), SVG canvas, Empty state
+  ├── Prompt Output: 5 format tabs, Copy button
+  ├── Help Modal: Quick start, flows, export formats, shortcuts, power user tips
+  ├── Prompt Library Modal: Categorized prompts with favorites, input popup, copy
+  └── Prompt Input Popup: Collects user context before copying prompts that need it
 JavaScript:
   ├── STATE & CONSTANTS
   │     ├── NODE_DEFAULTS, AGENT_TYPES (11 types), ALL_TOOLS, MODELS
@@ -418,6 +470,20 @@ JavaScript:
   │     ├── loadPreset()                 # loads preset + updates story placeholder
   │     ├── STORY_PLACEHOLDERS           # per-preset requirements templates
   │     └── updateStoryPlaceholder()     # dynamic placeholder on story textarea
+  ├── INPUT VALIDATION
+  │     ├── isJiraKeyOnly()              # detect bare Jira ticket keys
+  │     ├── validateStoryInput()         # inline hint for story textarea
+  │     └── scanForSecrets()             # secret pattern detection before copy
+  ├── PROMPT LIBRARY
+  │     ├── PROMPT_LIBRARY               # categorized prompt data
+  │     ├── togglePromptLib()            # modal toggle
+  │     ├── renderPromptLib()            # dynamic rendering with favorites
+  │     ├── buildPromptCard()            # card component with star + copy
+  │     ├── toggleFavorite()             # add/remove favorites
+  │     ├── copyLibPrompt()             # copy with optional input popup
+  │     └── confirmPlibInput()           # substitute user input into prompt
+  ├── HELP SYSTEM
+  │     └── toggleHelp()                 # help modal toggle
   ├── EXPORT FORMAT SYSTEM
   │     ├── getFormatRecommendation()    # workflow shape analysis
   │     ├── updateFormatRec()            # recommendation banner rendering
@@ -438,29 +504,31 @@ JavaScript:
 
 ## Test Suite
 
-`tests.html` is a zero-dependency, iframe-based test harness. Open it in any browser to run all tests — no build step, no server required.
+`tests.html` is a zero-dependency, iframe-based test harness. Open it in any browser to run all tests. No build step, no server required.
 
 **How it works**: Loads `index.html` in a hidden `<iframe>`, accesses its `contentWindow` for all functions, state, and DOM. Tests run against the real app with real localStorage and real initialization.
 
-**Coverage** (206 tests across 16 suites):
-- **Pure utilities**: `slugify`, `extractAcceptanceCriteria`, `isUrlOnly`, `getEffectivePrompt`, `getModelLabel`
+**Coverage** (270+ tests across 18 suites):
+- **Pure utilities**: `slugify`, `extractAcceptanceCriteria`, `isUrlOnly`, `isJiraKeyOnly`, `getEffectivePrompt`, `getModelLabel`
 - **State management**: `addNode`, `addConnection`, `deleteNode`, `buildAgentSlugMap`, `topologicalSort`
 - **Persistence**: serialize/deserialize roundtrips, prefs save/restore, workflow save/load
 - **Memory protocol**: path generation, TOON notation, slug collisions, auto-enable logic
 - **Export generators**: all 5 formats (Workflow, Sub-Agents, Agent Teams, Agent SDK, Claude.ai) with memory on/off
-- **Workflow generation**: keyword scoring, structural properties, AC extraction
+- **Workflow generation**: keyword scoring, structural properties, AC extraction, agent count feedback
 - **Preset loading**: agent count verification for all 14 presets, memory auto-enable behavior
 - **Format recommendations**: agent count and parallel fork heuristics
 - **Workflow auto-naming**: name generation format, variety, empty-field population, user name preservation
 - **Writer Agent Type**: config panel interactions, writing style switching, prompt/tool updates, export output
-- **Model Version Handling**: Full model IDs (e.g. `claude-opus-4-6`, `claude-sonnet-4-5-20251001`) and Claude Code aliases (e.g. `opus[1m]`) passed directly in Task tool `model` parameter and all export formats, including 1M context window variants
-- **MCP Integrations**: Atlassian/Sourcebot/custom MCP hint generation, toggle gating, export injection, persistence, clear-all reset
-- **Implementation Plan**: Plan field persistence, serialization, export injection across formats, clear-all reset
-- **Requirements Refinement**: Refine prompt generation with requirements inclusion, Atlassian/Sourcebot MCP awareness, workflow name slugification, spec file path generation, user redirect instructions
-- **Plan Prompt Generation**: Plan prompt generation with requirements context, Sourcebot codebase exploration guidance, Atlassian hints, Jira URL-only handling, plan file path generation, user redirect instructions
-- **Cross-Feature Edge Cases**: Sourcebot tool name accuracy, plan injection across all export formats, self-validation in exports, 1M model aliases, whitespace-only plan handling, MCP hint toggle behavior
+- **Model Version Handling**: full model IDs and Claude Code aliases in all export formats
+- **MCP Integrations**: Atlassian/Sourcebot/custom MCP hint generation, toggle gating, export injection, persistence, New Workflow reset
+- **Implementation Plan**: Plan field persistence, serialization, export injection across formats
+- **Requirements Refinement**: Refine prompt generation, Atlassian/Sourcebot MCP awareness, URL-only and Jira key blocking
+- **Plan Prompt Generation**: Plan prompt generation, Sourcebot guidance, Atlassian hints, URL-only blocking
+- **Cross-Feature Edge Cases**: Sourcebot tool name accuracy, plan injection, self-validation, 1M model aliases
+- **Input Validation**: Jira key detection, inline hint show/hide, URL-only blocking across all action buttons
+- **Usability & Help**: help modal content, prompt library (toggle, categories, favorites, input popup, copy, optional inputs, secret scanner), generate feedback toast, copy prompt validation, configInput attrs
 
-**Running tests in a browser**: Open `tests.html` in a browser. Results render immediately — green/red badges per suite, expandable failure details with expected vs actual values.
+**Running tests in a browser**: Open `tests.html` in a browser. Results render immediately with green/red badges per suite, expandable failure details with expected vs actual values.
 
 **Running tests from CLI**: `./run-tests.sh` runs the full suite headlessly via Chrome and Python 3 (no npm). Use `--verbose` to print individual failure details. Exit code 0 = all pass, 1 = failures.
 
@@ -469,7 +537,7 @@ JavaScript:
 ## Development Guidelines
 
 - **Keep it single-file**: Resist the urge to add a build step unless complexity demands it
-- **Run tests after changes**: Run `./run-tests.sh` from CLI or open `tests.html` in a browser. All 206 tests should pass
+- **Run tests after changes**: Run `./run-tests.sh` from CLI or open `tests.html` in a browser. All tests should pass
 - **Render on demand**: Call `render()` and `updatePrompt()` after any state mutation (`render()` triggers auto-save automatically)
 - **Export completeness**: Every export format must include the full user story as context. Never assume the recipient has seen it
 - **Prompt quality first**: The quality of exported prompts is the product's core value proposition. `getEffectivePrompt()` and the `PROMPTS` library are the most important code in the file
@@ -479,4 +547,4 @@ JavaScript:
 
 ---
 
-*Last updated: 2026-03-01*
+*Last updated: 2026-03-19*
