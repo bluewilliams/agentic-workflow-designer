@@ -2566,13 +2566,14 @@ function confirmPlibInput() {
   if (!_plibPending) return;
   const p = PROMPT_LIBRARY[_plibPending.catIdx].prompts[_plibPending.idx];
   const userInput = $('plibInputText').value.trim();
-  if (!userInput) {
+  if (!userInput && !p.input.optional) {
     showToast('Enter your input before copying');
     $('plibInputText').focus();
     return;
   }
-  // Replace placeholder with user's input and strip the "Your input" instruction block
-  let text = p.prompt.replace(p.input.find, userInput);
+  // Replace placeholder with user's input (or fallback for optional inputs)
+  const replacement = userInput || (p.input.fallback || '');
+  let text = p.prompt.replace(p.input.find, replacement);
   text = text.replace(/^> \*\*Your input\*\*.*?\n> Example:.*?\n\n/s, '');
   navigator.clipboard.writeText(text).then(() => showToast('Prompt copied with your input', 2500))
     .catch(() => showToast('Could not copy'));
@@ -2655,7 +2656,7 @@ function renderPromptLib() {
 const PROMPT_LIBRARY = [
   { category: 'Code Review & Quality', prompts: [
     { title: 'Bug Hunter Review',
-      input: { label: 'What files or module should be analyzed for bugs?', placeholder: 'e.g. src/auth/ directory, src/api/payments.ts, or the recent changes in this PR', find: '[these files / this module / the recent changes]' },
+      input: { label: 'What files or module should be analyzed? Leave empty to scan the entire codebase.', placeholder: 'e.g. src/auth/ directory, src/api/payments.ts, or leave empty for full scan', find: '[these files / this module / the recent changes]', optional: true, fallback: 'the entire codebase' },
       desc: 'Systematic search for real bugs, not style issues. Traces data flow, checks edge cases, race conditions, and resource leaks.',
       prompt: '> **Your input**: Replace the target below with the files or module to analyze.\n> Example: src/auth/ directory, or src/api/payments.ts, or the recent changes in this PR\n\nYou are a senior engineer whose only job is finding bugs. Ignore style, naming, and formatting entirely. Focus exclusively on correctness.\n\nAnalyze [these files / this module / the recent changes] and hunt for:\n\n1. **Data flow bugs**: trace inputs through every transformation. Where can data be null, undefined, empty, or the wrong type? Where are assumptions made about shape or content that aren\'t validated?\n2. **Edge cases**: empty collections, zero/negative values, unicode strings, concurrent access, MAX_INT boundaries, off-by-one in loops and slices\n3. **Race conditions**: shared mutable state, async operations that assume ordering, missing locks or atomicity, time-of-check-to-time-of-use gaps\n4. **Resource leaks**: unclosed connections, unremoved event listeners, unsubscribed observables, growing caches without eviction, file handles\n5. **Error handling gaps**: catch blocks that swallow errors, missing try/catch around I/O, error messages that leak internals, partial failure in batch operations leaving inconsistent state\n6. **Security**: unsanitized user input, SQL/command injection vectors, missing auth checks, secrets in logs, SSRF potential\n\nFor each bug found:\n- File and line number\n- What goes wrong and under what conditions\n- Severity: critical (data loss/security) / high (wrong behavior) / medium (edge case failure)\n- Minimal fix\n\nDo NOT report style issues, missing comments, or suggestions for improvement. Only report things that are actually broken or will break.\n\nIf cross-repo search tools (e.g. Sourcebot) or LSP are available, use them to trace data flow and find references across repository boundaries.' },
     { title: 'Error Handling Audit',

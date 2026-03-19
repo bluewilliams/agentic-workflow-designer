@@ -2303,14 +2303,25 @@ describe('Usability & Help', () => {
       expect(copied.includes('[these files / this module')).toBe(false);
       expect(copied.includes('**Your input**')).toBe(false);
     });
-    it('should not copy if input is empty on confirm', () => {
+    it('should not copy if required input is empty on confirm', () => {
+      // Use Edge Case Test Generator (Testing category) which has required input
+      const testCat = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Testing');
+      const edgeCaseIdx = win.PROMPT_LIBRARY[testCat].prompts.findIndex(p => p.title === 'Edge Case Test Generator');
       let copied = '';
       win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-      win.copyLibPrompt(0, 0); // Bug Hunter
+      win.copyLibPrompt(edgeCaseIdx, testCat);
       win.document.getElementById('plibInputText').value = '';
       win.confirmPlibInput();
       expect(copied).toBe('');
       win.closePlibInput();
+    });
+    it('should allow empty input for optional prompts and use fallback', () => {
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.copyLibPrompt(0, 0); // Bug Hunter (optional input)
+      win.document.getElementById('plibInputText').value = '';
+      win.confirmPlibInput();
+      expect(copied).toContain('entire codebase');
     });
     it('should have unique titles within each category', () => {
       win.PROMPT_LIBRARY.forEach(cat => {
