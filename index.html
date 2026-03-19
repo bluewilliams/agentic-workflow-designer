@@ -95,6 +95,17 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 .plib-copy{flex-shrink:0;padding:4px 10px;font-size:10px;background:var(--surface2);border:1px solid var(--border);
   border-radius:4px;cursor:pointer;color:var(--text2);font-family:var(--font);font-weight:500;transition:all .15s}
 .plib-copy:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.plib-input-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400;display:none;align-items:center;justify-content:center}
+.plib-input-overlay.show{display:flex}
+.plib-input-modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  width:min(500px,88vw);box-shadow:0 16px 48px rgba(0,0,0,.4);padding:20px}
+.plib-input-modal h3{font-size:14px;margin:0 0 4px}
+.plib-input-modal .plib-input-desc{font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.4}
+.plib-input-modal textarea{width:100%;min-height:80px;background:var(--bg);color:var(--text);
+  border:1px solid var(--border);border-radius:6px;padding:10px;font-family:var(--font);
+  font-size:12px;resize:vertical;line-height:1.5;box-sizing:border-box}
+.plib-input-modal textarea:focus{outline:none;border-color:var(--accent)}
+.plib-input-modal .plib-input-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
 .btn.danger{border-color:#ef4444;color:#ef4444}
 .btn.danger:hover{background:#ef4444;color:#fff}
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -716,6 +727,19 @@ svg.canvas{width:100%;height:100%;display:block}
   <li>Enable <strong>Sourcebot MCP</strong> if you have cross-repo search. Prompts will include search tool guidance automatically.</li>
 </ul>
 
+    </div>
+  </div>
+</div>
+
+<!-- Prompt Input Popup -->
+<div class="plib-input-overlay" id="plibInputOverlay" onclick="if(event.target===this)closePlibInput()">
+  <div class="plib-input-modal">
+    <h3 id="plibInputTitle"></h3>
+    <div class="plib-input-desc" id="plibInputDesc"></div>
+    <textarea id="plibInputText"></textarea>
+    <div class="plib-input-actions">
+      <button class="btn sm" onclick="closePlibInput()">Cancel</button>
+      <button class="btn sm primary" onclick="confirmPlibInput()">Copy Prompt</button>
     </div>
   </div>
 </div>
@@ -2510,14 +2534,47 @@ function togglePromptLib() {
     overlay.dataset.rendered = '1';
   }
 }
+let _plibPending = null;
 function copyLibPrompt(idx, catIdx) {
-  const prompt = PROMPT_LIBRARY[catIdx].prompts[idx].prompt;
-  navigator.clipboard.writeText(prompt).then(() => showToast('Prompt copied to clipboard', 2500))
+  const p = PROMPT_LIBRARY[catIdx].prompts[idx];
+  if (p.input) {
+    // Show input popup to collect user's context before copying
+    _plibPending = { idx, catIdx };
+    $('plibInputTitle').textContent = p.title;
+    $('plibInputDesc').textContent = p.input.label;
+    const ta = $('plibInputText');
+    ta.value = '';
+    ta.placeholder = p.input.placeholder;
+    $('plibInputOverlay').classList.add('show');
+    setTimeout(() => ta.focus(), 50);
+    return;
+  }
+  navigator.clipboard.writeText(p.prompt).then(() => showToast('Prompt copied to clipboard', 2500))
     .catch(() => showToast('Could not copy'));
+}
+function closePlibInput() {
+  $('plibInputOverlay').classList.remove('show');
+  _plibPending = null;
+}
+function confirmPlibInput() {
+  if (!_plibPending) return;
+  const p = PROMPT_LIBRARY[_plibPending.catIdx].prompts[_plibPending.idx];
+  const userInput = $('plibInputText').value.trim();
+  if (!userInput) {
+    showToast('Enter your input before copying');
+    $('plibInputText').focus();
+    return;
+  }
+  // Replace placeholder with user's input and strip the "Your input" instruction block
+  let text = p.prompt.replace(p.input.find, userInput);
+  text = text.replace(/^> \*\*Your input\*\*.*?\n> Example:.*?\n\n/s, '');
+  navigator.clipboard.writeText(text).then(() => showToast('Prompt copied with your input', 2500))
+    .catch(() => showToast('Could not copy'));
+  closePlibInput();
 }
 function renderPromptLib() {
   const body = $('promptLibBody');
-  body.innerHTML = '<p style="margin-bottom:12px;color:var(--text3)">High-impact prompts for common tasks. Click Copy, paste into Claude Code, and replace any bracketed placeholders. Prompts that need your input start with a "Your input" block showing what to provide and an example.</p>';
+  body.innerHTML = '<p style="margin-bottom:12px;color:var(--text3)">High-impact prompts for common tasks. Click Copy and paste into Claude Code. Prompts that need context will ask for your input first so the copied prompt is ready to go.</p>';
   PROMPT_LIBRARY.forEach((cat, ci) => {
     const catDiv = document.createElement('div');
     catDiv.className = 'plib-category';
@@ -2553,6 +2610,7 @@ function renderPromptLib() {
 const PROMPT_LIBRARY = [
   { category: 'Code Review & Quality', prompts: [
     { title: 'Bug Hunter Review',
+      input: { label: 'What files or module should be analyzed for bugs?', placeholder: 'e.g. src/auth/ directory, src/api/payments.ts, or the recent changes in this PR', find: '[these files / this module / the recent changes]' },
       desc: 'Systematic search for real bugs, not style issues. Traces data flow, checks edge cases, race conditions, and resource leaks.',
       prompt: '> **Your input**: Replace the target below with the files or module to analyze.\n> Example: src/auth/ directory, or src/api/payments.ts, or the recent changes in this PR\n\nYou are a senior engineer whose only job is finding bugs. Ignore style, naming, and formatting entirely. Focus exclusively on correctness.\n\nAnalyze [these files / this module / the recent changes] and hunt for:\n\n1. **Data flow bugs**: trace inputs through every transformation. Where can data be null, undefined, empty, or the wrong type? Where are assumptions made about shape or content that aren\'t validated?\n2. **Edge cases**: empty collections, zero/negative values, unicode strings, concurrent access, MAX_INT boundaries, off-by-one in loops and slices\n3. **Race conditions**: shared mutable state, async operations that assume ordering, missing locks or atomicity, time-of-check-to-time-of-use gaps\n4. **Resource leaks**: unclosed connections, unremoved event listeners, unsubscribed observables, growing caches without eviction, file handles\n5. **Error handling gaps**: catch blocks that swallow errors, missing try/catch around I/O, error messages that leak internals, partial failure in batch operations leaving inconsistent state\n6. **Security**: unsanitized user input, SQL/command injection vectors, missing auth checks, secrets in logs, SSRF potential\n\nFor each bug found:\n- File and line number\n- What goes wrong and under what conditions\n- Severity: critical (data loss/security) / high (wrong behavior) / medium (edge case failure)\n- Minimal fix\n\nDo NOT report style issues, missing comments, or suggestions for improvement. Only report things that are actually broken or will break.\n\nIf cross-repo search tools (e.g. Sourcebot) or LSP are available, use them to trace data flow and find references across repository boundaries.' },
     { title: 'Error Handling Audit',
@@ -2578,6 +2636,7 @@ const PROMPT_LIBRARY = [
   ]},
   { category: 'Debugging & Performance', prompts: [
     { title: 'Root Cause Analysis',
+      input: { label: 'Describe the bug: what happens, when, how to reproduce, and any error messages.', placeholder: 'e.g. Users get a 500 error when submitting the checkout form with an expired coupon code. Stack trace shows NullPointerException in CouponService.validate()', find: '[Describe the symptom: what happens, when, how to reproduce, error messages]' },
       desc: 'Systematic bug investigation that traces from symptom to root cause, not just the immediate fix.',
       prompt: '> **Your input**: Replace the placeholder below with the bug symptoms, error messages, and reproduction steps.\n> Example: Users get a 500 error when submitting the checkout form with an expired coupon code\n\nI\'m investigating a bug. Here\'s what I know:\n\n[Describe the symptom: what happens, when, how to reproduce, error messages]\n\nConduct a systematic root cause analysis:\n\n1. **Reproduce understanding**: Based on the symptom, what are the possible failure points? List at least 3 hypotheses.\n2. **Trace the code path**: Starting from the entry point (API route, event handler, UI action), read through every function in the execution path. For each step, note what could go wrong.\n3. **Narrow down**: For each hypothesis, identify what evidence would confirm or eliminate it. Search for that evidence in the code, logs, or by reasoning about state.\n4. **Find the root cause**: Not just "this line throws" but WHY does it throw? What upstream condition causes the bad state? When was the root cause introduced?\n5. **Assess blast radius**: What else is affected by this root cause? Are there other code paths that hit the same underlying issue?\n6. **Propose the fix**: The minimal change that addresses the root cause (not just the symptom). Include:\n   - The fix itself\n   - A test that would have caught this\n   - Whether this is a pattern that might exist elsewhere in the codebase\n\nDo NOT jump to a fix before understanding the root cause. The goal is understanding first, fixing second.\n\nIf LSP tools or cross-repo search (e.g. Sourcebot) are available, use go-to-definition and find-references to trace the execution path and identify where the root cause originates.' },
     { title: 'Performance Bottleneck Finder',
@@ -2592,6 +2651,7 @@ const PROMPT_LIBRARY = [
       desc: 'Identify the riskiest untested code paths and produce a prioritized list of missing tests.',
       prompt: 'Analyze this codebase to find the most dangerous gaps in test coverage:\n\n1. **Map the critical paths**: What are the most important user-facing features and backend operations? List them.\n2. **Check what\'s tested**: For each critical path, search for corresponding test files. Are there unit tests? Integration tests? E2E tests?\n3. **Identify gaps**: For each untested or under-tested critical path, assess:\n   - What could go wrong if this breaks in production?\n   - How likely is a regression (how often does this code change)?\n   - How hard would it be to debug without tests?\n4. **Check edge cases**: Even for tested code, are edge cases covered? Empty inputs, error paths, concurrent access, boundary values?\n5. **Assess test quality**: Are existing tests actually testing behavior, or just testing implementation details? Are there tests that would pass even if the code was completely broken?\n\nOutput a prioritized list:\n| Priority | Module/Feature | What\'s Missing | Risk if Untested | Effort to Add |\n\nThen write the top 3 highest-priority tests. Make them real, runnable tests, not pseudocode. Focus on testing behavior and edge cases that would actually catch bugs.\n\nIf cross-repo search tools are available, check related repositories for test patterns and shared test utilities that should be reused.' },
     { title: 'Edge Case Test Generator',
+      input: { label: 'What function, module, or endpoint should edge case tests be generated for?', placeholder: 'e.g. src/billing/payments.ts:processPayment, or the /api/users POST endpoint', find: '[this function/module/API endpoint]' },
       desc: 'Generate thorough edge case tests for a function or module covering boundaries, types, and failure modes.',
       prompt: '> **Your input**: Replace the target below with the function, module, or endpoint to test.\n> Example: src/billing/payments.ts:processPayment, or the /api/users endpoint\n\nGenerate comprehensive edge case tests for [this function/module/API endpoint].\n\nFirst, read the implementation to understand:\n- What inputs does it accept?\n- What does it return?\n- What side effects does it have?\n- What can go wrong?\n\nThen generate tests for EVERY category:\n\n**Boundary values**: min, max, zero, one, MAX_SAFE_INTEGER, -1, empty string, single character, max length\n**Type coercion traps**: null, undefined, NaN, Infinity, "0", "false", [], {}, 0 vs "0"\n**Empty/missing**: empty string, empty array, empty object, missing keys, undefined properties, null nested access\n**Unicode & encoding**: emoji, RTL text, zero-width characters, multi-byte characters, HTML entities in strings\n**Concurrency**: simultaneous calls, rapid successive calls, calls during initialization, calls after cleanup\n**Error paths**: network failure, timeout, malformed input, permission denied, disk full, invalid JSON\n**State transitions**: calling in wrong order, calling twice, calling after error, calling after dispose/cleanup\n\nWrite real, runnable tests using the project\'s existing test framework and conventions. Each test should have a descriptive name that explains what edge case it covers and why it matters.' },
     { title: 'Integration Test Plan',
@@ -2622,6 +2682,7 @@ const PROMPT_LIBRARY = [
   ]},
   { category: 'Planning & Estimation', prompts: [
     { title: 'Implementation Breakdown',
+      input: { label: 'Describe the feature to break down, or paste in your requirements.', placeholder: 'e.g. Add OAuth2 login with Google and GitHub providers, including account linking for existing users', find: '[Describe the feature or paste requirements]' },
       desc: 'Break a feature into sequenced tasks with dependencies, files to touch, risks, and unknowns.',
       prompt: '> **Your input**: Replace the placeholder below with your feature description or paste in requirements.\n> Example: Add OAuth2 login with Google and GitHub providers, including account linking for existing users\n\nBreak down the following feature into implementation tasks:\n\n[Describe the feature or paste requirements]\n\nFirst, explore the codebase to understand:\n- What exists today that this feature touches?\n- What patterns does the codebase use for similar features?\n- What infrastructure (DB schemas, API patterns, UI patterns) can be reused?\n\nThen produce a task breakdown:\n\n| # | Task | Depends On | Files | Complexity | Risk |\n\nFor each task:\n- **What**: specific, implementable unit of work (not vague like "build frontend")\n- **Depends on**: which tasks must finish first\n- **Files**: actual file paths that will be created or modified\n- **Complexity**: S (< 1hr) / M (1-4hr) / L (4-8hr) / XL (needs further breakdown)\n- **Risk**: what could go wrong or what\'s uncertain\n\nThen provide:\n- **Suggested order**: which tasks to do first for fastest feedback loops\n- **Parallelization**: which tasks can be done simultaneously by different developers\n- **Unknowns**: questions that need answers before implementation (technical spikes needed)\n- **Cut line**: if we had to ship a minimal version, which tasks are essential vs nice-to-have?\n\nIf Atlassian MCP tools are available, pull in context from related Jira tickets or Confluence specs to inform the breakdown. If cross-repo search tools are available, use them to identify files and patterns across related repositories.' },
     { title: 'Technical Spec Writer',
@@ -2644,6 +2705,7 @@ const PROMPT_LIBRARY = [
   ]},
   { category: 'Data & Migrations', prompts: [
     { title: 'Zero-Downtime Migration Planner',
+      input: { label: 'Describe the schema change you need to make.', placeholder: 'e.g. Rename users.name to users.display_name and split into first_name + last_name columns', find: '[Describe the schema change: add/remove/rename columns, change types, split/merge tables, etc.]' },
       desc: 'Design a database migration that can be deployed without taking the application offline.',
       prompt: '> **Your input**: Replace the placeholder below with the schema change you need to make.\n> Example: Rename users.name to users.display_name and split into first_name + last_name columns\n\nDesign a zero-downtime database migration for the following change:\n\n[Describe the schema change: add/remove/rename columns, change types, split/merge tables, etc.]\n\nAnalyze the current codebase to understand:\n- Current schema and how it\'s used in queries\n- Which application code reads/writes the affected tables\n- What ORM/query builder is used\n- Current deployment process\n\nProduce a multi-phase migration plan:\n\n## Phase 1: Expand\n- Add new columns/tables (nullable or with defaults)\n- Deploy application code that writes to BOTH old and new columns\n- No reads from new columns yet\n- Migration SQL + rollback SQL\n\n## Phase 2: Migrate\n- Backfill existing data from old to new columns\n- Run in batches to avoid locking (specify batch size and sleep interval)\n- Verification query to confirm all data migrated correctly\n- Handle records created during migration (the dual-write from Phase 1 covers this)\n\n## Phase 3: Contract\n- Switch reads to new columns\n- Deploy application code that only uses new schema\n- Verify everything works\n- Drop old columns (keep for 1 release as safety net)\n\n## Rollback Plan\nAt each phase, how to roll back safely. What data would be lost? How to detect if rollback is needed?\n\n## Validation Queries\nSQL to verify data integrity at each phase. Row counts, null checks, constraint validation.\n\n## Risk Assessment\nWhat could go wrong? Lock contention, data inconsistency, application errors during transition.' },
     { title: 'Data Quality Audit',
