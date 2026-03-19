@@ -1568,7 +1568,7 @@ describe('MCP Integrations', () => {
     });
   });
 
-  it('should reset MCP state on Clear All (Atlassian on, Sourcebot on)', () => {
+  it('should reset MCP state on New Workflow (Atlassian on, Sourcebot on)', () => {
     win.state.mcpAtlassian = false;
     win.state.mcpSourcebot = false;
     win.state.mcpCustom = 'something';
@@ -1631,7 +1631,7 @@ describe('Implementation Plan', () => {
       const data = win.serializeWorkflow();
       expect(data.plan).toBe('My test plan content');
     });
-    it('should clear plan on Clear All', () => {
+    it('should clear plan on New Workflow', () => {
       const pi = win.document.getElementById('planInput');
       if (pi) pi.value = 'Some plan';
       win.clearCanvas();
