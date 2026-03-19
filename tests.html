@@ -2155,6 +2155,34 @@ describe('Usability & Help', () => {
     });
   });
 
+  describe('prompt library', () => {
+    it('should toggle prompt library overlay', () => {
+      const overlay = win.document.getElementById('promptLibOverlay');
+      expect(overlay.classList.contains('show')).toBe(false);
+      win.togglePromptLib();
+      expect(overlay.classList.contains('show')).toBe(true);
+      win.togglePromptLib();
+      expect(overlay.classList.contains('show')).toBe(false);
+    });
+    it('should have prompts in every category', () => {
+      win.PROMPT_LIBRARY.forEach(cat => {
+        expect(cat.prompts.length > 0).toBe(true);
+        cat.prompts.forEach(p => {
+          expect(p.title.length > 0).toBe(true);
+          expect(p.prompt.length > 50).toBe(true);
+        });
+      });
+    });
+    it('should render categories on first open', () => {
+      const overlay = win.document.getElementById('promptLibOverlay');
+      overlay.dataset.rendered = '';
+      win.togglePromptLib();
+      const cards = win.document.querySelectorAll('.plib-card');
+      expect(cards.length > 20).toBe(true);
+      win.togglePromptLib();
+    });
+  });
+
   describe('configInput attrs parameter', () => {
     it('should include extra attributes when provided', () => {
       const html = win.configInput('Test', 'test', '5', 'number', '', 'min="1" max="50"');
@@ -2178,7 +2206,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
