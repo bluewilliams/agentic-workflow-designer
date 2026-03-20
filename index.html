@@ -574,6 +574,13 @@ svg.canvas{width:100%;height:100%;display:block}
       Delete
     </button>
     <div class="sep"></div>
+    <button class="btn sm" onclick="undo()" title="Undo (Ctrl+Z)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 105.64-10.36L1 10"/></svg>
+    </button>
+    <button class="btn sm" onclick="redo()" title="Redo (Ctrl+Shift+Z)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 10-5.64-10.36L23 10"/></svg>
+    </button>
+    <div class="sep"></div>
     <button class="btn sm" onclick="autoLayout()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       Auto Layout
@@ -714,6 +721,8 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h3>Canvas Tips</h3>
 <ul>
+  <li><kbd>Ctrl+Z</kbd> / <kbd>Cmd+Z</kbd>: Undo (also available as toolbar buttons)</li>
+  <li><kbd>Ctrl+Shift+Z</kbd> / <kbd>Cmd+Shift+Z</kbd>: Redo</li>
   <li><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>: Switch between Select, Connect, and Delete modes</li>
   <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>: Delete selected node or connection</li>
   <li><kbd>Alt+Drag</kbd>: Pan the canvas</li>
@@ -723,15 +732,23 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Fit</strong> zooms to show all nodes</li>
 </ul>
 
+<h3>Toolbar Features</h3>
+<ul>
+  <li><strong>Undo / Redo</strong> buttons (or keyboard shortcuts) let you reverse adding, deleting, connecting, disconnecting, and dragging nodes. 50-step history.</li>
+  <li><strong>Validation indicator</strong> shows a green check or amber warning count. Click it to see issues like disconnected nodes, empty prompts, or incomplete decision gates.</li>
+  <li><strong>Token estimate</strong> appears next to the Copy button showing the approximate size of the generated prompt.</li>
+  <li><strong>Clone</strong> button in Saved Workflows duplicates the current workflow under a new name for creating variants.</li>
+</ul>
+
 <h3>Prompt Library</h3>
-<p>Click the <strong>Prompts</strong> button in the toolbar to open a library of ready-to-use prompts for common tasks: code review, security audits, debugging, testing, architecture decisions, release readiness, and more. Each prompt encodes a structured methodology that produces better results than asking from scratch. Just click Copy, paste into Claude Code, and adapt the bracketed placeholders.</p>
+<p>Click the <strong>Prompts</strong> button in the toolbar for a library of ready-to-use prompts. Use the search box to filter by title or description. Star your favorites and they float to the top. Prompts that need your input (like a file path or bug description) show a popup before copying so the prompt is ready to paste.</p>
 <p>Prompts that benefit from cross-repo search or Jira/Confluence context include guidance for using those tools when available.</p>
 
 <h3>Power User Tips</h3>
 <ul>
   <li>Enable <strong>Shared Memory</strong> for complex workflows so agents write to a shared file and later agents can see earlier findings</li>
   <li>Add <strong>Repository</strong> paths to scope agents to specific codebases</li>
-  <li>Use <strong>Decision</strong> nodes with revision loops to add quality gates (review → revise cycles)</li>
+  <li>Use <strong>Decision</strong> nodes with revision loops to add quality gates (review / revise cycles)</li>
   <li><strong>Parallel</strong> groups run agents concurrently, great for independent tasks like "backend + frontend"</li>
   <li>Each agent's <strong>Custom Notes</strong> field lets you add context that's included in that agent's prompt section</li>
   <li>Workflows auto-save to localStorage. Use <strong>Save</strong> / <strong>Load</strong> for named snapshots, or <strong>Export JSON</strong> to share with teammates</li>
