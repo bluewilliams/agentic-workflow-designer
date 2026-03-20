@@ -2023,8 +2023,7 @@ function _snapshotState() {
   return {
     nodes: JSON.parse(JSON.stringify(state.nodes)),
     connections: JSON.parse(JSON.stringify(state.connections)),
-    nextId: state.nextId,
-    selectedId: state.selectedId
+    nextId: state.nextId
   };
 }
 let _undoBatch = false;
@@ -2046,7 +2045,10 @@ function undo() {
   state.nodes = snap.nodes;
   state.connections = snap.connections;
   state.nextId = snap.nextId;
-  state.selectedId = snap.selectedId;
+  // Clear selection if the selected node no longer exists after undo
+  if (state.selectedId && !state.nodes.find(n => n.id === state.selectedId) && !state.connections.find(c => c.id === state.selectedId)) {
+    state.selectedId = null;
+  }
   render();
   updateConfig();
 }
@@ -2057,7 +2059,9 @@ function redo() {
   state.nodes = snap.nodes;
   state.connections = snap.connections;
   state.nextId = snap.nextId;
-  state.selectedId = snap.selectedId;
+  if (state.selectedId && !state.nodes.find(n => n.id === state.selectedId) && !state.connections.find(c => c.id === state.selectedId)) {
+    state.selectedId = null;
+  }
   render();
   updateConfig();
 }
