@@ -1,16 +1,16 @@
 # Agentic Workflow Designer
 
-Turn any Jira ticket, user story, or task description into a production-quality agentic workflow in seconds. Built on context engineering best practices, the generated prompts handle the details you'd forget to include - tool selection (like telling agents to use LSP), upstream dependencies, success criteria, output format - so every agent gets exactly the right instructions without you having to think of everything.
+Turn any Jira ticket, user story, or task description into a production-quality agentic workflow in seconds. The generated prompts handle the details you'd forget to include: tool selection, upstream dependencies, success criteria, output format, decision gates with revision loops. Every agent gets exactly the right instructions without you having to think of everything.
 
 Design multi-agent pipelines visually, configure each agent's role, model, and tools, then export optimized prompts ready to paste into Claude Code, Claude.ai, or the Anthropic Agent SDK.
 
-**[Try it live](https://bluewilliams.github.io/agentic-workflow-designer/)** - No install required, runs entirely in-browser.
+**[Try it live](https://bluewilliams.github.io/agentic-workflow-designer/)** - zero install, runs entirely in-browser.
 
 ## Design Philosophy
 
-Single HTML file. No frameworks, no build step, no server, no dependencies. Open it in a browser and it works. Deploy it to GitHub Pages and it works. Send it to a colleague and it works.
+Single HTML file. No frameworks, no build step, no server, no dependencies, no drama. Open it in a browser and it works. Deploy it to GitHub Pages and it works. Send it to a colleague and it works.
 
-All data stays in your browser (localStorage). Nothing is sent to a server. Export workflows as `.json` files to share with your team, or save them by name and pick up where you left off.
+All data stays in your browser (localStorage). Nothing is sent anywhere. Your requirements, prompts, and workflows never leave your machine unless you copy them yourself.
 
 ## What It Does
 
@@ -46,7 +46,7 @@ Toggle **Enable workflow memory** in the sidebar to inject a compaction-resilien
 
 Memory auto-enables for complex workflows (parallel forks, decision gate loops, or 5+ agents) when loading presets or generating from a story. Workflows created without a name get an auto-generated two-part name (e.g. `swift-falcon`) so every workflow has a unique memory path. You can always overwrite the name or toggle memory off manually.
 
-No install required. The memory protocol is embedded directly in the generated prompts.
+No infra required. The memory protocol is embedded directly in the generated prompts. It just works.
 
 ## Built-in Presets
 
@@ -145,15 +145,15 @@ Your default model, memory toggle, export format tab, app source path/branch, an
 
 ## Testing
 
-Open `tests.html` in any browser to run the full test suite (zero dependencies). Tests load `index.html` in a hidden iframe and exercise utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, workflow auto-naming, requirements refinement, input validation, the prompt library, and the help system. Green/red results render instantly with expandable failure details.
+Open `tests.html` in any browser. That's it. Zero dependencies, zero build step. Tests load `index.html` in a hidden iframe and exercise everything: utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, input validation, the prompt library, and more. Green/red results render instantly.
 
-**CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3 (no npm). Use `--verbose` for failure details. Exit code 0 = all pass.
+**CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3. No npm, no Jest, no Webpack. Use `--verbose` for failure details. Exit code 0 = all pass.
 
 ## Getting Started
 
-Open `index.html` in any modern browser (Chrome, Firefox, Safari, Edge). Or deploy via GitHub Pages - it works automatically.
+Open `index.html` in any modern browser. Or deploy to GitHub Pages. There is no step three.
 
-The CLI test runner (`run-tests.sh`) requires Chrome/Chromium + Python 3.
+CLI test runner (`run-tests.sh`) needs Chrome/Chromium + Python 3. That's the entire dependency list.
 
 ## How the Prompts Work
 
@@ -169,7 +169,7 @@ Each export format generates workflow-aware prompts that include:
 - **Memory write** (when enabled) - persist progress, hand off via shared.md, write breadcrumb
 - **Full requirements** - the complete story/ticket, never truncated
 
-This means agents know their place in the pipeline and produce output that the next agent can act on immediately.
+Agents know their place in the pipeline and produce output the next agent can act on immediately. No manual glue code, no copy-pasting between steps.
 
 ## License
 
