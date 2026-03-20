@@ -136,6 +136,7 @@ Some presets reveal additional sidebar sections:
 
 ## Things You Might Not Notice
 
+- **New Workflow**: The small "New Workflow" link next to the Workflow Name heading clears everything and starts fresh. Save or export your current workflow first if you want to keep it.
 - **Auto-naming**: Leave the workflow name blank and it generates a memorable two-part name (e.g. `swift-falcon`). Every workflow gets a unique identity for memory paths and file exports.
 - **Generate feedback**: After auto-generating a workflow, a toast tells you how many agents were created so you know it worked.
 - **Right-click context menu**: Right-click any node for quick access to Duplicate, Disconnect All, and Delete.
