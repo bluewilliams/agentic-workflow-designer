@@ -148,7 +148,12 @@ Global toggles for **Atlassian** (Jira/Confluence) and **Sourcebot** (cross-repo
 - **Generate feedback**: After auto-generating a workflow, a toast tells you how many agents were created so you know it worked.
 - **Right-click context menu**: Right-click any node for quick access to Duplicate, Disconnect All, and Delete.
 - **Empty prompt detection**: When you copy a prompt, the app warns if any agents have empty prompts (they won't know what to do).
-- **Keyboard shortcuts**: `1` `2` `3` for Select/Connect/Delete modes, `?` for help, `Delete` to remove selected, `Alt+Drag` to pan.
+- **Undo/Redo**: `Ctrl+Z` / `Cmd+Z` to undo, `Ctrl+Shift+Z` / `Cmd+Shift+Z` to redo. Covers adding, deleting, connecting, disconnecting, and dragging nodes. 50-step history.
+- **Workflow validation**: A health indicator in the toolbar shows a green check or amber warning count. Click it to see issues like disconnected nodes, empty prompts, or incomplete decision gates. Catches problems before you copy the prompt.
+- **Token estimate**: The approximate token count of the generated prompt appears next to the Copy button so you can gauge cost and context usage.
+- **Clone workflow**: Click **Clone** in the Saved Workflows section to duplicate the current workflow under a new name. Useful for creating variants without losing the original.
+- **Prompt Library search**: Type in the search box to filter prompts by title or description across all categories.
+- **Keyboard shortcuts**: `1` `2` `3` for Select/Connect/Delete modes, `?` for help, `Delete` to remove selected, `Alt+Drag` to pan, `Ctrl+Z` to undo.
 - **Zoom to fit**: Click **Fit** in the toolbar to auto-zoom so all nodes are visible.
 - **Preset-specific placeholders**: When you pick a preset, the Requirements textarea updates with a template tailored to that workflow type (steps to reproduce for bugs, acceptance criteria for features, etc.).
 - **Jira URL detection**: Paste a Jira URL instead of requirements and the app detects it, then asks you to pick a workflow type (Feature, Bug Fix, UI Design, Full Stack, Test Automation) since there aren't enough keywords to auto-generate.

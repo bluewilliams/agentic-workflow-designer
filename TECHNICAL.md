@@ -381,13 +381,17 @@ The help modal also opens via the `?` keyboard shortcut and closes with `Escape`
 | Separate prefs vs. workflow storage | Preferences (model, memory, format) persist globally; workflows persist individually by slug |
 | App Under Test after Presets | Contextual placement. Appears directly below the preset that triggers it (Test Automation) |
 | Repositories between Default Model and Add Nodes | Always visible. Persists across sessions (prefs) and saved workflows. Injected into all 5 export formats |
+| Undo via state snapshots (not command pattern) | Simpler implementation, easier to reason about. Each pushUndo stores a JSON deep copy of nodes + connections. 50-step limit keeps memory bounded (~250KB worst case) |
+| Undo is structural only | Text field edits use the browser's native Ctrl+Z. Canvas undo covers add/delete/connect/disconnect/drag. Separating these avoids interfering with normal text editing |
+| Token estimate uses 4 chars/token | Industry-standard approximation for English text and code. Good enough for cost awareness without needing a real tokenizer |
+| Validation runs on every render | Cheap operation (iterates nodes/connections arrays). Catches issues in real time rather than only at copy time |
 
 ---
 
 ## Known Limitations & Future Opportunities
 
 ### Current Limitations
-- **No undo/redo**: Changes are irreversible without clearing the canvas
+- **Undo/redo is structural only**: Covers add/delete/connect/disconnect/drag. Does not capture text field edits (agent prompts, notes, config fields). Use Ctrl+Z in the text field itself for those
 - **No multi-select**: Can only select one node or edge at a time
 - **Agent SDK export is pseudocode**: The Python output requires manual adaptation to real SDK patterns
 - **Decision routing in exports is informational**: Most exports describe decision gates as prompt instructions. The Sub-Agents format includes explicit routing, but the Agent SDK still requires manual conditional logic
@@ -395,7 +399,7 @@ The help modal also opens via the `?` keyboard shortcut and closes with `Escape`
 - **localStorage only**: Persistence is browser-local; clearing browser data deletes saved workflows
 
 ### High-Value Future Features
-1. **Undo/Redo**: Command pattern or immutable state snapshots
+1. **Undo/Redo for config fields**: Extend undo to cover text edits in agent prompts and config fields (currently structural only)
 2. **Multi-select + bulk operations**: Drag-select multiple nodes, bulk delete, bulk move
 3. **Real Agent SDK code generation**: Generate working Python that actually runs the workflow via the Anthropic SDK
 4. **Workflow validation**: Warn on disconnected nodes, cycles, missing agent prompts, etc.
@@ -472,6 +476,14 @@ JavaScript:
   │     ├── loadPreset()                 # loads preset + updates story placeholder
   │     ├── STORY_PLACEHOLDERS           # per-preset requirements templates
   │     └── updateStoryPlaceholder()     # dynamic placeholder on story textarea
+  ├── UNDO/REDO
+  │     ├── pushUndo()                   # snapshot state before mutations
+  │     ├── undo(), redo()               # restore from history stacks
+  │     └── 50-step limit, Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y keybindings
+  ├── WORKFLOW VALIDATION
+  │     ├── validateWorkflow()           # checks for disconnected nodes, empty prompts, incomplete decisions
+  │     ├── updateValidation()           # toolbar indicator (green check / amber warning count)
+  │     └── showValidation()             # alert with issue details
   ├── INPUT VALIDATION
   │     ├── isJiraKeyOnly()              # detect bare Jira ticket keys
   │     ├── validateStoryInput()         # inline hint for story textarea
@@ -483,9 +495,13 @@ JavaScript:
   │     ├── buildPromptCard()            # card component with star + copy
   │     ├── toggleFavorite()             # add/remove favorites
   │     ├── copyLibPrompt()             # copy with optional input popup
-  │     └── confirmPlibInput()           # substitute user input into prompt
+  │     ├── confirmPlibInput()           # substitute user input into prompt
+  │     └── filterPromptLib()            # search/filter by title and description
   ├── HELP SYSTEM
   │     └── toggleHelp()                 # help modal toggle
+  ├── TOKEN ESTIMATION
+  │     ├── estimateTokens()             # ~4 chars per token approximation
+  │     └── updateTokenEstimate()        # displays next to Copy button
   ├── EXPORT FORMAT SYSTEM
   │     ├── getFormatRecommendation()    # workflow shape analysis
   │     ├── updateFormatRec()            # recommendation banner rendering
