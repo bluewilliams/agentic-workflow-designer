@@ -873,7 +873,7 @@ function atlassianHint(urls) {
 }
 function sourcebotHint() {
   if (!state.mcpSourcebot) return null;
-  return '> **Sourcebot MCP** (cross-repo code search): A Sourcebot server is available with these tools:\n> - `search_code` — fast indexed search across all repos. Supports regex, language filters, repo filters. Use for pattern matching, finding implementations, and locating files (<1s).\n> - `ask_codebase` — AI-powered natural language Q&A. Ask complex questions about the codebase and get synthesized answers with references. Use for understanding architecture, tracing flows across repos, or answering "how does X work?" questions (30-60s).\n> - `read_file` — read file contents by repo name and path. Use after search_code finds a match you need to read in full.\n> - `list_tree` — browse directory structure of any repo. Use for discovery and understanding project layout.\n> - `list_repos` — discover available repositories with optional name filter.\n> - `list_commits` — view commit history with date/author filtering.\n>\n> **Recommended workflow**: `list_repos` (discover) → `list_tree` (explore structure) → `search_code` (find specific code) → `read_file` (read in full). Use `ask_codebase` for complex multi-repo questions where manual search would take multiple steps.';
+  return '> **Sourcebot MCP** (cross-repo code search): A Sourcebot server is available with these tools:\n> - `search_code` — fast indexed search across all repos. Supports regex, language filters, repo filters. Use this as your primary search tool for finding implementations, patterns, and files (<1s).\n> - `read_file` — read file contents by repo name and path. Use after search_code finds a match you need to read in full.\n> - `list_tree` — browse directory structure of any repo. Use for discovery and understanding project layout.\n> - `list_repos` — discover available repositories with optional name filter.\n> - `list_commits` — view commit history with date/author filtering.\n> - `ask_codebase` — AI-powered natural language Q&A (requires model configuration, may not be available on all setups). If available, use for complex multi-repo questions where manual search would take multiple steps.\n>\n> **Recommended workflow**: `list_repos` (discover) → `list_tree` (explore structure) → `search_code` (find specific code) → `read_file` (read in full).';
 }
 function customMcpHint() {
   const notes = ($('mcpCustomNotes') ? $('mcpCustomNotes').value : state.mcpCustom || '').trim();
@@ -3304,11 +3304,11 @@ function generatePlanPrompt() {
     lines.push('## Codebase Exploration');
     lines.push('');
     lines.push('A **Sourcebot MCP** server is available for cross-repo code search. Use it extensively:');
-    lines.push('- `search_code` — find existing implementations, patterns, and related code');
-    lines.push('- `ask_codebase` — understand architecture and trace flows across repos');
+    lines.push('- `search_code` — find existing implementations, patterns, and related code (primary tool, fast)');
     lines.push('- `read_file` — read specific files to understand current structure');
     lines.push('- `list_tree` — explore directory structure and project layout');
     lines.push('- `list_repos` — discover available repositories');
+    lines.push('- `ask_codebase` — AI-powered Q&A across repos (if available, may require model configuration)');
     lines.push('');
     lines.push('Explore the codebase thoroughly before writing the plan. The plan should reference real file paths, real patterns, and real architectural decisions from the codebase.');
     lines.push('');
@@ -4989,10 +4989,10 @@ function genAgentSDK() {
   }
   if (state.mcpSourcebot) {
     p.push('# ── Sourcebot MCP (cross-repo code search) ───────────────────────────────');
-    p.push('# Tools: search_code (fast indexed search), ask_codebase (AI Q&A, 30-60s),');
-    p.push('# read_file (by repo/path), list_tree (directory structure), list_repos,');
-    p.push('# list_commits. Workflow: list_repos → list_tree → search_code → read_file.');
-    p.push('# Use ask_codebase for complex multi-repo understanding questions.');
+    p.push('# Tools: search_code (fast indexed search, primary tool), read_file (by repo/path),');
+    p.push('# list_tree (directory structure), list_repos, list_commits.');
+    p.push('# Workflow: list_repos → list_tree → search_code → read_file.');
+    p.push('# ask_codebase (AI Q&A) may be available if models are configured.');
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
