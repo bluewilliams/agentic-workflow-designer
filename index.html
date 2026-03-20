@@ -3203,7 +3203,7 @@ function generateRefinePrompt() {
 
   // Sourcebot hint — mention cross-repo search for context gathering
   if (state.mcpSourcebot) {
-    lines.push('> **Sourcebot MCP** is available for cross-repo code search. Use `search_code`, `ask_codebase`, `read_file`, `list_tree`, etc. to explore the existing codebase and inform your questions about integration points, existing patterns, and architectural constraints.');
+    lines.push('> **Sourcebot MCP** is available for cross-repo code search. Use `search_code` (primary), `read_file`, `list_tree`, and `list_repos` to explore the existing codebase and inform your questions about integration points, existing patterns, and architectural constraints. `ask_codebase` may also be available if models are configured.');
     lines.push('');
   }
 
