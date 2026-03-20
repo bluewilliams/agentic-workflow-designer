@@ -148,7 +148,7 @@ Global toggles for **Atlassian** (Jira/Confluence) and **Sourcebot** (cross-repo
 - **Generate feedback**: After auto-generating a workflow, a toast tells you how many agents were created so you know it worked.
 - **Right-click context menu**: Right-click any node for quick access to Duplicate, Disconnect All, and Delete.
 - **Empty prompt detection**: When you copy a prompt, the app warns if any agents have empty prompts (they won't know what to do).
-- **Undo/Redo**: `Ctrl+Z` / `Cmd+Z` to undo, `Ctrl+Shift+Z` / `Cmd+Shift+Z` to redo. Covers adding, deleting, connecting, disconnecting, and dragging nodes. 50-step history.
+- **Undo/Redo**: Toolbar buttons or `Ctrl+Z` / `Cmd+Z` to undo, `Ctrl+Shift+Z` / `Cmd+Shift+Z` to redo. Covers adding, deleting, connecting, disconnecting, and dragging nodes. 50-step history.
 - **Workflow validation**: A health indicator in the toolbar shows a green check or amber warning count. Click it to see issues like disconnected nodes, empty prompts, or incomplete decision gates. Catches problems before you copy the prompt.
 - **Token estimate**: The approximate token count of the generated prompt appears next to the Copy button so you can gauge cost and context usage.
 - **Clone workflow**: Click **Clone** in the Saved Workflows section to duplicate the current workflow under a new name. Useful for creating variants without losing the original.
