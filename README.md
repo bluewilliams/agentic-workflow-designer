@@ -48,7 +48,7 @@ Toggle **Enable workflow memory** in the sidebar to inject a compaction-resilien
 - Memory files: `shared.md` (append-only), `@{agent}.md` (per-agent)
 - Duplicate agent labels are handled automatically with unique slug suffixes
 
-Memory auto-enables for complex workflows (parallel forks, decision gate loops, or 5+ agents) when loading presets or generating from a story. Workflows created without a name get an auto-generated two-part name (e.g. `swift-falcon`) so every workflow has a unique memory path. You can always overwrite the name or toggle memory off manually.
+Memory auto-enables for complex workflows (parallel forks, decision gate loops, or 5+ agents) when loading presets or generating from a story. You can always toggle it on or off manually.
 
 No infra required. The memory protocol is embedded directly in the generated prompts. It just works.
 
@@ -109,30 +109,37 @@ Some presets reveal additional sidebar sections:
 - **Test Automation** shows an **App Under Test** field - specify the local path to the app being tested so agents can explore its source for DOM selectors, screen structure, and locator patterns (Selenium, Playwright, etc.)
 - **UI Design & Development** shows a **UI Context** field for styling preferences and design system notes (e.g. "Use vanilla-extract + clsx, avoid SCSS")
 
-## Key Features
+## Refine & Plan
 
-- **SVG canvas** with pan, zoom, and drag-and-drop
-- **Smart story detection** - auto-generates appropriate workflow from story keywords
-- **Decision gate integration** - downstream decisions are embedded as success criteria in agent prompts, with explicit reasoning requirements and configurable revision limits
-- **Format recommendations** - not sure which output format to use? A banner above the tabs recommends the best one based on your workflow shape and switches tabs when clicked
-- **Requirements scaffolding** - preset-specific placeholder templates guide you to provide the right information (steps to reproduce for bugs, acceptance criteria for features, etc.)
-- **Acceptance criteria extraction** - when generating from requirements, bullet/numbered acceptance criteria are automatically extracted and used as decision gate conditions
-- **Workflow-aware prompts** - agents know their upstream dependencies and downstream consumers
-- **Save/Load workflows** - save by name, auto-restore work-in-progress on refresh, export/import `.json` for sharing
-- **Persistent preferences** - default model, memory toggle, MCP integrations, export format, app source path, and repositories auto-save across sessions
-- **Multi-repository support** - specify multiple repos with branches; agents check out the right branch and pull latest before starting
-- **Memory Protocol** - optional compaction-resilient memory with TOON v1 notation, auto-enabled for complex workflows
-- **Pull Request creation** - opt-in PR output format with git provider auto-detection (GitHub, Bitbucket, GitLab), configurable feature branch and target branch, and safety-first prompt injection. All presets default to Code Changes; PR creation requires explicit opt-in
-- **Custom workflows** - add your own nodes and connections; export generators add smart scaffolding automatically
-- **Model selection** - Sonnet 4.5/4.6, Opus 4.5/4.6, Haiku 4.5 per node, plus 1M context variants for Opus 4.6 and Sonnet 4.6. Full model IDs (e.g. `claude-opus-4-6`, `claude-sonnet-4-5-20251001`) or Claude Code aliases (e.g. `opus[1m]`) are passed directly in all exports
-- **Implementation Plan** - optional field with a **Plan Prompt** button. Click it to create a planning prompt that Claude Code runs against your codebase, exploring code via Sourcebot, identifying files and patterns, and producing an implementation blueprint. Paste the result here so agents know HOW to implement, not just WHAT to build
-- **MCP Integrations** - global toggles for Atlassian (on by default) and Sourcebot (on by default, cross-repo code search) MCPs, plus a freeform field for custom MCPs. When enabled, prompt hints are injected into all exports so agents prefer these tools over built-in alternatives
-- **Requirements Refinement** - click **Refine Prompt** to generate a discovery interview prompt. Run it in Claude Code and it interviews you about edge cases, UX decisions, tradeoffs, and technical constraints using `AskUserQuestion`, then writes a refined spec to `.claude/specs/{workflow-name}.md`. Paste the result back into Requirements for sharper prompts
-- **Guided handoffs** - both Refine Prompt and Plan Prompt instruct Claude to tell the user exactly what to do next (which field to paste into, what step comes next), closing the loop between Claude Code and the Workflow Designer
-- **Input validation** - bare Jira ticket keys (e.g. `PROJ-123`) are detected with an inline hint guiding users to paste the full URL. URL-only input without Atlassian MCP enabled is blocked with a helpful toast. Generate warns when there aren't enough keywords to build a workflow
-- **Prompt Library** - curated collection of high-impact, ready-to-use prompts across categories including code review, security, architecture, debugging, testing, documentation, planning, DevOps, data migrations, and release operations. Click the **Prompts** button in the toolbar, expand a category, and copy any prompt to clipboard. Star your favorites for quick access. Prompts encode expert methodology and include guidance for using Sourcebot, LSP, and Atlassian MCP tools when available
-- **Secret scanner** - before copying prompts to clipboard, scans all user inputs for API keys, AWS credentials, connection strings, private keys, and other credential patterns. Shows a warning if potential secrets are detected
-- **Help system** - **?** button in the toolbar opens a comprehensive help modal covering quick start, Refine/Plan flows, export formats, canvas shortcuts, and power user tips
+Two optional steps that dramatically improve output quality for complex tasks:
+
+**Refine Prompt** generates a discovery interview. Paste it into Claude Code and it asks you about edge cases, UX decisions, tradeoffs, and constraints using `AskUserQuestion`, then writes a refined spec to `.claude/specs/{workflow-name}.md`. Paste the result back into Requirements.
+
+**Plan Prompt** generates a codebase analysis prompt. Claude explores your code (via Sourcebot if available), identifies relevant files and patterns, and produces an implementation blueprint in `.claude/plans/{workflow-name}.md`. Paste the result into the Implementation Plan field so agents know HOW to build, not just WHAT to build.
+
+Both prompts tell Claude exactly what to do next, closing the loop back to the Workflow Designer.
+
+## Prompt Library
+
+Click the **Prompts** button in the toolbar for a curated collection of high-impact prompts across code review, security, architecture, debugging, testing, documentation, planning, DevOps, data migrations, and more. These aren't one-liners. Each prompt encodes expert methodology: structured review checklists, multi-phase audit frameworks, systematic debugging approaches. They produce better results than asking from scratch.
+
+Prompts that need context (like "what file to analyze") show an input popup before copying so the prompt is ready to paste with no editing. Star your favorites and they float to the top.
+
+## MCP Integrations
+
+Global toggles for **Atlassian** (Jira/Confluence) and **Sourcebot** (cross-repo code search), plus a freeform field for custom MCP tools. When enabled, prompt hints are injected into all exports so agents use these tools instead of slower alternatives. The Prompt Library also includes tool guidance for prompts that benefit from cross-repo search or Jira context.
+
+## More Under the Hood
+
+- **Smart story detection** auto-generates an appropriate workflow shape from your requirements keywords
+- **Acceptance criteria extraction** parses bullet/numbered criteria from requirements and uses them as decision gate conditions
+- **Decision gates** are embedded as success criteria in upstream agent prompts, with explicit reasoning requirements and configurable revision limits
+- **Multi-repository support** lets you specify multiple repos with branches; agents check out the right branch before starting
+- **Pull Request creation** is an opt-in output format with git provider auto-detection (GitHub, Bitbucket, GitLab) and safety-first defaults
+- **Secret scanner** checks all user inputs for API keys, credentials, and connection strings before copying to clipboard
+- **Input validation** catches bare Jira ticket keys, URL-only input without Atlassian MCP, and insufficient keywords for generation
+- **Workflow-aware prompts** include upstream dependencies, downstream consumers, and the full requirements in every agent's instructions
+- **Persistent preferences** for default model, memory toggle, MCP settings, export format, repositories, and prompt library favorites carry across sessions automatically
 
 ## Things You Might Not Notice
 
@@ -144,6 +151,9 @@ Some presets reveal additional sidebar sections:
 - **Keyboard shortcuts**: `1` `2` `3` for Select/Connect/Delete modes, `?` for help, `Delete` to remove selected, `Alt+Drag` to pan.
 - **Zoom to fit**: Click **Fit** in the toolbar to auto-zoom so all nodes are visible.
 - **Preset-specific placeholders**: When you pick a preset, the Requirements textarea updates with a template tailored to that workflow type (steps to reproduce for bugs, acceptance criteria for features, etc.).
+- **Jira URL detection**: Paste a Jira URL instead of requirements and the app detects it, then asks you to pick a workflow type (Feature, Bug Fix, UI Design, Full Stack, Test Automation) since there aren't enough keywords to auto-generate.
+- **Quick patterns**: The palette includes Fork (2/3/4) and Fan-Out shortcuts that scaffold parallel agent groups in one click.
+- **Custom workflows**: Not limited to presets. Add any combination of nodes from the palette and wire them up however you want. The export generators handle the scaffolding.
 
 ## Save & Load
 
