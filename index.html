@@ -2027,10 +2027,17 @@ function _snapshotState() {
     selectedId: state.selectedId
   };
 }
+let _undoBatch = false;
 function pushUndo() {
+  if (_undoBatch) return; // Suppress during bulk operations (preset load, generate)
   _undoStack.push(_snapshotState());
   if (_undoStack.length > UNDO_LIMIT) _undoStack.shift();
   _redoStack.length = 0; // Clear redo on new action
+}
+function batchUndo(fn) {
+  pushUndo(); // Single snapshot before the batch
+  _undoBatch = true;
+  try { fn(); } finally { _undoBatch = false; }
 }
 function undo() {
   if (_undoStack.length === 0) return;
@@ -2147,6 +2154,7 @@ function deleteSelected() {
 // PARALLEL GROUP OPERATIONS
 // ═══════════════════════════════════════════════════════════
 function addParallelGroup(branchCount) {
+  pushUndo(); _undoBatch = true;
   const canvasRect = svg().getBoundingClientRect();
   const centerX = (canvasRect.width / 2 - state.pan.x) / state.zoom;
   const centerY = (canvasRect.height / 2 - state.pan.y) / state.zoom;
@@ -2172,12 +2180,14 @@ function addParallelGroup(branchCount) {
   const join = addNode('parallel', centerX + 280, centerY - 18, 'Join', { strategy: 'all', description: 'Collect results from parallel branches' });
   agents.forEach(a => addConnection(a.id, join.id));
 
+  _undoBatch = false;
   selectNode(fork.id, true);
   render();
   setTimeout(zoomFit, 80);
 }
 
 function addFanOut() {
+  pushUndo(); _undoBatch = true;
   const canvasRect = svg().getBoundingClientRect();
   const centerX = (canvasRect.width / 2 - state.pan.x) / state.zoom;
   const centerY = (canvasRect.height / 2 - state.pan.y) / state.zoom;
@@ -2204,6 +2214,7 @@ function addFanOut() {
     addConnection(a.id, out.id);
   });
 
+  _undoBatch = false;
   render();
   setTimeout(zoomFit, 80);
 }
@@ -3353,6 +3364,8 @@ function generateFromStory() {
   }
 
   if (state.nodes.length > 0 && !confirm('This will replace your current workflow with a generated one. Continue?')) return;
+  pushUndo(); // Single undo point for the entire generation
+  _undoBatch = true;
   // Only clear nodes and connections, preserve all user inputs (name, story, repos, app source)
   state.nodes = [];
   state.connections = [];
@@ -3792,6 +3805,7 @@ function generateFromStory() {
   autoLayout();
   setMode('select');
   const agentCount = state.nodes.filter(n => n.type === 'agent').length;
+  _undoBatch = false;
   showToast('Generated workflow with ' + agentCount + ' agent' + (agentCount !== 1 ? 's' : ''), 3000);
 }
 
@@ -3813,6 +3827,8 @@ function loadPreset(preset) {
     $('presetToggle').textContent = 'Fewer presets';
   }
   if (state.nodes.length > 0 && !confirm('This will replace your current workflow with the selected preset. Continue?')) return;
+  pushUndo(); // Single undo point for the entire preset load
+  _undoBatch = true;
   // Only clear nodes and connections, preserve all user inputs (name, story, repos, app source)
   state.nodes = [];
   state.connections = [];
@@ -4028,6 +4044,7 @@ function loadPreset(preset) {
     const manyAgents = state.nodes.filter(n => n.type === 'agent').length >= 5;
     if (hasParallel || hasDecision || manyAgents) setMemoryEnabled(true);
     ensureWorkflowName();
+    _undoBatch = false;
   }
 }
 
@@ -4062,6 +4079,7 @@ function updateStoryPlaceholder(preset) {
 
 function clearCanvas(skipConfirm) {
   if (!skipConfirm && state.nodes.length > 0 && !confirm('Start a new workflow? This clears all nodes, connections, and inputs.')) return;
+  if (state.nodes.length > 0) pushUndo();
   state.nodes = [];
   state.connections = [];
   state.selectedId = null;
