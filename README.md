@@ -23,15 +23,19 @@ All data stays in your browser (localStorage). Nothing is sent anywhere. Your re
 7. **Enable Memory Protocol** (optional) for compaction-resilient workflows with TOON notation
 8. **Browse the Prompt Library** - high-impact prompts for code review, security audits, debugging, planning, and more. Copy and paste into Claude Code
 
-## Export Formats
+## Prompt Output
 
-| Format | Use Case | Output |
-|--------|----------|--------|
-| **Workflow** | Planning & documentation | Structured markdown overview |
-| **Sub-Agents** | Claude Code (Task tool) | Ready-to-paste Task tool calls with comprehensive prompts |
-| **Agent Teams** | Claude Code Teams | Team lead brief with TeamCreate/TaskCreate delegation plan |
+The bottom panel generates a ready-to-copy prompt tailored to your execution environment. Pick the tab that matches where you'll run the workflow:
+
+| Format | Best For | What You Get |
+|--------|----------|--------------|
+| **Workflow** | Planning, documentation, sharing | Structured markdown overview of the full pipeline |
+| **Sub-Agents** | Claude Code (most common) | Ready-to-paste Task tool calls with self-contained agent prompts |
+| **Agent Teams** | Claude Code Teams (experimental) | Team lead brief with TeamCreate/TaskCreate delegation |
 | **Agent SDK** | Anthropic Agent SDK | Python skeleton with agent configs and async orchestration |
-| **Claude.ai** | Claude.ai / API | Step-by-step role-based prompt for single-agent execution |
+| **Claude.ai** | Claude.ai / API (no CLI tools) | Step-by-step role-based prompt for single-agent execution |
+
+Not sure which to pick? The app tells you. A recommendation banner above the tabs analyzes your workflow shape and suggests the best fit. Simple 1-2 agent workflows get pointed to Claude.ai, parallel pipelines to Sub-Agents, and larger teams to Agent Teams. Click the suggestion to switch.
 
 ## Memory Protocol
 
@@ -110,7 +114,7 @@ Some presets reveal additional sidebar sections:
 - **SVG canvas** with pan, zoom, and drag-and-drop
 - **Smart story detection** - auto-generates appropriate workflow from story keywords
 - **Decision gate integration** - downstream decisions are embedded as success criteria in agent prompts, with explicit reasoning requirements and configurable revision limits
-- **Format recommendations** - a smart banner above the export tabs suggests the best format based on your workflow shape (agent count, parallel forks)
+- **Format recommendations** - not sure which output format to use? A banner above the tabs recommends the best one based on your workflow shape and switches tabs when clicked
 - **Requirements scaffolding** - preset-specific placeholder templates guide you to provide the right information (steps to reproduce for bugs, acceptance criteria for features, etc.)
 - **Acceptance criteria extraction** - when generating from requirements, bullet/numbered acceptance criteria are automatically extracted and used as decision gate conditions
 - **Workflow-aware prompts** - agents know their upstream dependencies and downstream consumers
@@ -129,6 +133,16 @@ Some presets reveal additional sidebar sections:
 - **Prompt Library** - curated collection of high-impact, ready-to-use prompts across categories including code review, security, architecture, debugging, testing, documentation, planning, DevOps, data migrations, and release operations. Click the **Prompts** button in the toolbar, expand a category, and copy any prompt to clipboard. Star your favorites for quick access. Prompts encode expert methodology and include guidance for using Sourcebot, LSP, and Atlassian MCP tools when available
 - **Secret scanner** - before copying prompts to clipboard, scans all user inputs for API keys, AWS credentials, connection strings, private keys, and other credential patterns. Shows a warning if potential secrets are detected
 - **Help system** - **?** button in the toolbar opens a comprehensive help modal covering quick start, Refine/Plan flows, export formats, canvas shortcuts, and power user tips
+
+## Things You Might Not Notice
+
+- **Auto-naming**: Leave the workflow name blank and it generates a memorable two-part name (e.g. `swift-falcon`). Every workflow gets a unique identity for memory paths and file exports.
+- **Generate feedback**: After auto-generating a workflow, a toast tells you how many agents were created so you know it worked.
+- **Right-click context menu**: Right-click any node for quick access to Duplicate, Disconnect All, and Delete.
+- **Empty prompt detection**: When you copy a prompt, the app warns if any agents have empty prompts (they won't know what to do).
+- **Keyboard shortcuts**: `1` `2` `3` for Select/Connect/Delete modes, `?` for help, `Delete` to remove selected, `Alt+Drag` to pan.
+- **Zoom to fit**: Click **Fit** in the toolbar to auto-zoom so all nodes are visible.
+- **Preset-specific placeholders**: When you pick a preset, the Requirements textarea updates with a template tailored to that workflow type (steps to reproduce for bugs, acceptance criteria for features, etc.).
 
 ## Save & Load
 
