@@ -113,7 +113,7 @@ Some presets reveal additional sidebar sections:
 
 Two optional steps that dramatically improve output quality for complex tasks:
 
-**Refine Prompt** generates a discovery interview. Paste it into Claude Code and it asks you about edge cases, UX decisions, tradeoffs, and constraints using `AskUserQuestion`, then writes a refined spec to `.claude/specs/{workflow-name}.md`. Paste the result back into Requirements.
+**Refine Prompt** generates a discovery interview. Paste it into Claude Code and it asks you about edge cases, UX decisions, tradeoffs, and constraints using the `AskUserQuestion` tool, then writes a refined spec to `.claude/specs/{workflow-name}.md`. Paste the result back into Requirements.
 
 **Plan Prompt** generates a codebase analysis prompt. Claude explores your code (via Sourcebot if available), identifies relevant files and patterns, and produces an implementation blueprint in `.claude/plans/{workflow-name}.md`. Paste the result into the Implementation Plan field so agents know HOW to build, not just WHAT to build.
 
