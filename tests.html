@@ -2715,6 +2715,19 @@ describe('Coverage Gaps', () => {
     });
   });
 
+  describe('presets should have no validation warnings', () => {
+    const presetNames = ['feature', 'bugfix', 'fullstack', 'review', 'parallel_research', 'swarm',
+      'test_automation', 'ui_component', 'refactoring', 'documentation', 'devops', 'performance', 'testing', 'data_migration'];
+    presetNames.forEach(preset => {
+      it('should have zero warnings for ' + preset, () => {
+        resetState();
+        win.loadPreset(preset);
+        const warnings = win.validateWorkflow();
+        expect(warnings.length).toBe(0);
+      });
+    });
+  });
+
   describe('token estimation edge cases', () => {
     it('should return 0 for empty string', () => {
       expect(win.estimateTokens('')).toBe(0);

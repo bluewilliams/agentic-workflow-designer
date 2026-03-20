@@ -3853,7 +3853,8 @@ function loadPreset(preset) {
       const d = addNode('decision', 1180, 242, 'Fix Verified?', { condition:'Tests pass and bug is fixed', yesLabel:'Verified', noLabel:'Failed' });
       const o = addNode('output', 1460, 250, 'Fix Complete', { deliverable:'Bug fix with regression test', format:'code' });
       addConnection(i.id, inv.id); addConnection(inv.id, f.id); addConnection(f.id, t.id);
-      addConnection(t.id, d.id); addConnection(d.id, o.id, 'Verified');
+      addConnection(t.id, d.id); addConnection(d.id, f.id, 'Failed');
+      addConnection(d.id, o.id, 'Verified');
     },
     fullstack: () => {
       const i = addNode('input', 80, 280, 'Feature Spec');
@@ -3931,7 +3932,8 @@ function loadPreset(preset) {
       addConnection(planJoin.id, authFork.id);
       addConnection(authFork.id, feat.id); addConnection(authFork.id, scrn.id); addConnection(authFork.id, step.id);
       addConnection(feat.id, authJoin.id); addConnection(scrn.id, authJoin.id); addConnection(step.id, authJoin.id);
-      addConnection(authJoin.id, rev.id); addConnection(rev.id, d.id); addConnection(d.id, o.id, 'Approved');
+      addConnection(authJoin.id, rev.id); addConnection(rev.id, d.id); addConnection(d.id, authFork.id, 'Revise');
+      addConnection(d.id, o.id, 'Approved');
     },
     ui_component: () => {
       const i = addNode('input', 80, 280, 'Component Spec');
@@ -4184,21 +4186,27 @@ function validateWorkflow() {
     const outConns = state.connections.filter(c => c.from === n.id);
     if (outConns.length < 2) warnings.push({ type: 'warn', msg: 'Decision "' + n.label + '" needs both a pass and fail connection' });
   });
-  // Parallel forks without a join
-  state.nodes.filter(n => n.type === 'parallel' && n.label !== 'Join').forEach(n => {
-    const downstream = state.connections.filter(c => c.from === n.id).map(c => c.to);
-    const hasJoinDownstream = downstream.some(id => {
-      const target = state.nodes.find(t => t.id === id);
-      return target && target.type === 'parallel' && target.label === 'Join';
+  // Parallel forks where branches don't reconverge
+  state.nodes.filter(n => n.type === 'parallel').forEach(n => {
+    const outConns = state.connections.filter(c => c.from === n.id);
+    if (outConns.length < 2) return; // Not a fork
+    // Check if branches reconverge: find all reachable nodes from each branch
+    const branchTargets = outConns.map(c => {
+      const reachable = new Set();
+      const queue = [c.to];
+      while (queue.length > 0) {
+        const id = queue.shift();
+        if (reachable.has(id) || id === n.id) continue;
+        reachable.add(id);
+        state.connections.filter(conn => conn.from === id).forEach(conn => queue.push(conn.to));
+      }
+      return reachable;
     });
-    if (!hasJoinDownstream) {
-      // Check grandchildren too
-      const grandchildren = downstream.flatMap(id => state.connections.filter(c => c.from === id).map(c => c.to));
-      const hasJoinGrandchild = grandchildren.some(id => {
-        const target = state.nodes.find(t => t.id === id);
-        return target && target.type === 'parallel' && target.label === 'Join';
-      });
-      if (!hasJoinGrandchild) warnings.push({ type: 'info', msg: 'Fork "' + n.label + '" has no Join node downstream' });
+    // Branches reconverge if any node is reachable from all branches
+    if (branchTargets.length >= 2) {
+      const first = branchTargets[0];
+      const converges = [...first].some(id => branchTargets.every(set => set.has(id)));
+      if (!converges) warnings.push({ type: 'info', msg: 'Fork "' + n.label + '" branches don\'t reconverge downstream' });
     }
   });
   return warnings;
