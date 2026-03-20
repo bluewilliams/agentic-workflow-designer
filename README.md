@@ -18,7 +18,7 @@ All data stays in your browser (localStorage). Nothing is sent anywhere. Your re
 2. **Refine & plan** (optional) - click **Refine Prompt** to have Claude interview you and sharpen vague requirements, then **Plan Prompt** to generate a codebase-aware implementation blueprint
 3. **Build a workflow** - auto-generate from your input, choose from 14 curated presets, or build one manually from the node palette
 4. **Configure each agent** - model, tools, prompt, max turns
-5. **Export** in 5 formats optimized for different execution environments
+5. **Copy the prompt** from 5 output formats optimized for different execution environments
 6. **Save & load workflows** by name, export/import as `.json` files for sharing
 7. **Enable Memory Protocol** (optional) for compaction-resilient workflows with TOON notation
 8. **Browse the Prompt Library** - high-impact prompts for code review, security audits, debugging, planning, and more. Copy and paste into Claude Code
