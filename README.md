@@ -17,7 +17,7 @@ All data stays in your browser (localStorage). Nothing is sent anywhere. Your re
 1. **Paste your requirements** - a Jira URL, user story, task description, or any freeform text. Jira links are detected automatically and resolved via the Atlassian MCP server. Input validation catches bare ticket keys and guides you to paste the full URL
 2. **Refine & plan** (optional) - click **Refine Prompt** to have Claude interview you and sharpen vague requirements, then **Plan Prompt** to generate a codebase-aware implementation blueprint
 3. **Build a workflow** - auto-generate from your input, choose from 14 curated presets, or build one manually from the node palette
-4. **Configure each agent** - model, tools, prompt, max turns
+4. **Configure each agent** - pick a model (Opus, Sonnet, Haiku), toggle specific tools, write custom prompts or use built-in templates, set max turns. Every node is fully customizable
 5. **Copy the prompt** from 5 output formats optimized for different execution environments
 6. **Save & load workflows** by name, export/import as `.json` files for sharing
 7. **Enable Memory Protocol** (optional) for compaction-resilient workflows with TOON notation
