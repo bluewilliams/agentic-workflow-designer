@@ -2419,6 +2419,97 @@ describe('Usability & Help', () => {
     });
   });
 
+  describe('prompt library search', () => {
+    it('should filter prompts by search query', () => {
+      const overlay = win.document.getElementById('promptLibOverlay');
+      overlay.dataset.rendered = '';
+      win.togglePromptLib();
+      win.filterPromptLib('security');
+      const visible = [...win.document.querySelectorAll('.plib-card')].filter(c => c.style.display !== 'none');
+      expect(visible.length > 0).toBe(true);
+      expect(visible.length < win.PROMPT_LIBRARY.reduce((s, c) => s + c.prompts.length, 0)).toBe(true);
+      win.filterPromptLib('');
+      win.togglePromptLib();
+    });
+    it('should hide categories with no matching prompts', () => {
+      win.filterPromptLib('xyznonexistent');
+      const visibleCats = [...win.document.querySelectorAll('.plib-category')].filter(c => c.style.display !== 'none');
+      expect(visibleCats.length).toBe(0);
+      win.filterPromptLib('');
+    });
+  });
+
+  describe('undo/redo', () => {
+    it('should undo adding a node', () => {
+      resetState();
+      const before = win.state.nodes.length;
+      win.addNode('agent', 100, 100, 'Test', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      expect(win.state.nodes.length).toBe(before + 1);
+      win.undo();
+      expect(win.state.nodes.length).toBe(before);
+    });
+    it('should redo after undo', () => {
+      resetState();
+      win.addNode('agent', 100, 100, 'Test', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const afterAdd = win.state.nodes.length;
+      win.undo();
+      win.redo();
+      expect(win.state.nodes.length).toBe(afterAdd);
+    });
+    it('should undo deleting a node', () => {
+      resetState();
+      const n = win.addNode('agent', 100, 100, 'Deleteme', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const countAfterAdd = win.state.nodes.length;
+      win.deleteNode(n.id);
+      expect(win.state.nodes.length).toBe(countAfterAdd - 1);
+      win.undo();
+      expect(win.state.nodes.length).toBe(countAfterAdd);
+    });
+    it('should clear redo stack on new action', () => {
+      resetState();
+      win.addNode('agent', 100, 100, 'A', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      win.undo();
+      win.addNode('agent', 200, 200, 'B', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'y', maxTurns: 5 });
+      win.redo(); // Should do nothing since redo was cleared
+      expect(win.state.nodes.filter(n => n.label === 'A').length).toBe(0);
+    });
+  });
+
+  describe('workflow validation', () => {
+    it('should report disconnected nodes', () => {
+      resetState();
+      win.addNode('agent', 100, 100, 'Lonely', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const warnings = win.validateWorkflow();
+      expect(warnings.length > 0).toBe(true);
+      expect(warnings[0].msg).toContain('Lonely');
+    });
+    it('should report no issues for a valid workflow', () => {
+      resetState();
+      win.loadPreset('feature');
+      const warnings = win.validateWorkflow();
+      expect(warnings.length).toBe(0);
+    });
+  });
+
+  describe('token estimate', () => {
+    it('should estimate roughly 4 chars per token', () => {
+      expect(win.estimateTokens('abcd')).toBe(1);
+      expect(win.estimateTokens('a'.repeat(400))).toBe(100);
+    });
+  });
+
+  describe('duplicate workflow', () => {
+    it('should clone the current workflow with a new name', () => {
+      resetState();
+      win.loadPreset('feature');
+      win.document.getElementById('workflowName').value = 'Original';
+      const nodeCount = win.state.nodes.length;
+      win.duplicateWorkflow();
+      expect(win.state.nodes.length).toBe(nodeCount);
+      expect(win.document.getElementById('workflowName').value).toBe('Original (copy)');
+    });
+  });
+
   describe('configInput attrs parameter', () => {
     it('should include extra attributes when provided', () => {
       const html = win.configInput('Test', 'test', '5', 'number', '', 'min="1" max="50"');
@@ -2442,7 +2533,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

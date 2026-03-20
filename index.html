@@ -99,6 +99,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
   color:var(--text3);transition:all .15s;line-height:1}
 .plib-fav:hover,.plib-fav.on{color:#f59e0b}
 .plib-fav.on{text-shadow:0 0 4px rgba(245,158,11,.3)}
+.plib-search{width:100%;padding:8px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;font-size:12px;font-family:var(--font);margin-bottom:10px;box-sizing:border-box}
+.plib-search:focus{outline:none;border-color:var(--accent)}
+.plib-search::placeholder{color:var(--text3)}
 .plib-input-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400;display:none;align-items:center;justify-content:center}
 .plib-input-overlay.show{display:flex}
 .plib-input-modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
@@ -502,6 +506,7 @@ svg.canvas{width:100%;height:100%;display:block}
     <h3>Saved Workflows</h3>
     <div class="btn-row">
       <button class="btn sm primary" onclick="saveWorkflow()">Save</button>
+      <button class="btn sm" onclick="duplicateWorkflow()">Clone</button>
       <button class="btn sm" onclick="exportWorkflowFile()">Export .json</button>
       <label class="btn sm" style="margin:0">Import
         <input type="file" accept=".json" style="display:none" onchange="importWorkflowFile(event)">
@@ -581,6 +586,7 @@ svg.canvas{width:100%;height:100%;display:block}
     <div class="sep"></div>
     <span class="info" id="zoomInfo">100%</span>
     <span class="info" id="statusInfo"></span>
+    <span class="info" id="validationInfo" style="cursor:pointer;color:var(--text3)" onclick="showValidation()" title="Workflow health check"></span>
     <div class="sep"></div>
     <button class="btn sm" onclick="togglePromptLib()" title="Prompt Library">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
@@ -637,6 +643,7 @@ svg.canvas{width:100%;height:100%;display:block}
       <button class="format-tab" data-format="claude" onclick="setExportFormat('claude')">Claude.ai</button>
     </div>
     <div class="prompt-actions">
+      <span class="info" id="tokenEstimate" style="font-size:10px;color:var(--text3)"></span>
       <button class="btn sm primary" onclick="copyPrompt()">Copy</button>
     </div>
   </div>
@@ -1452,6 +1459,15 @@ function renderSavedWorkflowList() {
 }
 
 // -- File export/import --
+function duplicateWorkflow() {
+  if (state.nodes.length === 0) { showToast('Nothing to clone'); return; }
+  const data = serializeWorkflow();
+  const name = getName();
+  const newName = name ? name + ' (copy)' : '';
+  deserializeWorkflow(data);
+  if ($('workflowName')) $('workflowName').value = newName;
+  showToast('Workflow cloned' + (newName ? ' as "' + newName + '"' : ''), 3000);
+}
 function exportWorkflowFile() {
   if (state.nodes.length === 0) { showToast('Add nodes before exporting'); return; }
   const data = { format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow() };
@@ -1718,6 +1734,7 @@ function render() {
   });
   const agents = state.nodes.filter(n => n.type === 'agent').length;
   $('nodeCount').textContent = `${state.nodes.length} nodes \u00B7 ${state.connections.length} connections` + (agents ? ` \u00B7 ${agents} agents` : '');
+  updateValidation();
   autoSaveWorkflow();
 }
 
@@ -1979,7 +1996,50 @@ function truncate(s, max) { return s.length > max ? s.slice(0, max-1) + '\u2026'
 // ═══════════════════════════════════════════════════════════
 // NODE OPERATIONS
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// UNDO/REDO
+// ═══════════════════════════════════════════════════════════
+const _undoStack = [];
+const _redoStack = [];
+const UNDO_LIMIT = 50;
+function _snapshotState() {
+  return {
+    nodes: JSON.parse(JSON.stringify(state.nodes)),
+    connections: JSON.parse(JSON.stringify(state.connections)),
+    nextId: state.nextId,
+    selectedId: state.selectedId
+  };
+}
+function pushUndo() {
+  _undoStack.push(_snapshotState());
+  if (_undoStack.length > UNDO_LIMIT) _undoStack.shift();
+  _redoStack.length = 0; // Clear redo on new action
+}
+function undo() {
+  if (_undoStack.length === 0) return;
+  _redoStack.push(_snapshotState());
+  const snap = _undoStack.pop();
+  state.nodes = snap.nodes;
+  state.connections = snap.connections;
+  state.nextId = snap.nextId;
+  state.selectedId = snap.selectedId;
+  render();
+  updateConfig();
+}
+function redo() {
+  if (_redoStack.length === 0) return;
+  _undoStack.push(_snapshotState());
+  const snap = _redoStack.pop();
+  state.nodes = snap.nodes;
+  state.connections = snap.connections;
+  state.nextId = snap.nextId;
+  state.selectedId = snap.selectedId;
+  render();
+  updateConfig();
+}
+
 function addNode(type, x, y, label, config) {
+  pushUndo();
   const d = NODE_DEFAULTS[type];
   const canvasRect = svg().getBoundingClientRect();
   const node = {
@@ -2005,6 +2065,7 @@ function addConnection(fromId, toId, label, fromPort) {
   if (fromId === toId) return;
   const exists = state.connections.find(c => c.from === fromId && c.to === toId);
   if (exists) return;
+  pushUndo();
   const conn = {
     id: 'c' + state.nextId++,
     from: fromId,
@@ -2018,6 +2079,7 @@ function addConnection(fromId, toId, label, fromPort) {
 }
 
 function deleteNode(id) {
+  pushUndo();
   state.nodes = state.nodes.filter(n => n.id !== id);
   state.connections = state.connections.filter(c => c.from !== id && c.to !== id);
   if (state.selectedId === id) state.selectedId = null;
@@ -2026,6 +2088,7 @@ function deleteNode(id) {
 }
 
 function deleteConnection(id) {
+  pushUndo();
   state.connections = state.connections.filter(c => c.id !== id);
   if (state.selectedId === id) state.selectedId = null;
   render();
@@ -2048,6 +2111,7 @@ function duplicateNode() {
 
 function disconnectNode() {
   if (!state.selectedId) return;
+  pushUndo();
   state.connections = state.connections.filter(c => c.from !== state.selectedId && c.to !== state.selectedId);
   render();
   hideContextMenu();
@@ -2414,6 +2478,7 @@ wrap.addEventListener('mousedown', e => {
     const node = state.nodes.find(n => n.id === nodeId);
     if (node) {
       // Set up drag BEFORE selectNode re-renders (which destroys target element)
+      pushUndo();
       state.dragging = node;
       state.dragMouseStart = { x: e.clientX, y: e.clientY };
       state.dragNodeStart = { x: node.x, y: node.y };
@@ -2505,6 +2570,10 @@ wrap.addEventListener('contextmenu', e => e.preventDefault());
 // Keyboard
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  // Undo/redo for canvas operations (not active when typing in fields)
+  if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) { e.preventDefault(); redo(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'y') { e.preventDefault(); redo(); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); e.preventDefault(); }
   if (e.key === 'Escape') {
     if ($('helpOverlay').classList.contains('show')) { toggleHelp(); return; }
@@ -2586,10 +2655,36 @@ function toggleFavorite(catIdx, promptIdx) {
   if (idx >= 0) state.plibFavs.splice(idx, 1);
   else state.plibFavs.push(key);
   savePrefsDebounced();
-  // Re-render to update favorites section
+  // Re-render to update favorites section (preserve search query)
   const overlay = $('promptLibOverlay');
+  const searchEl = $('plibSearch');
+  const searchQuery = searchEl ? searchEl.value : '';
   overlay.dataset.rendered = '';
   renderPromptLib();
+  const newSearch = $('plibSearch');
+  if (newSearch && searchQuery) { newSearch.value = searchQuery; filterPromptLib(searchQuery); }
+}
+function filterPromptLib(query) {
+  const q = query.toLowerCase();
+  const body = $('promptLibBody');
+  body.querySelectorAll('.plib-card').forEach(card => {
+    const title = card.querySelector('.plib-card-title');
+    const desc = card.querySelector('.plib-card-desc');
+    const text = ((title ? title.textContent : '') + ' ' + (desc ? desc.textContent : '')).toLowerCase();
+    card.style.display = (!q || text.includes(q)) ? '' : 'none';
+  });
+  // Hide empty categories
+  body.querySelectorAll('.plib-category').forEach(cat => {
+    const visibleCards = cat.querySelectorAll('.plib-card[style=""], .plib-card:not([style])');
+    const hasVisible = [...cat.querySelectorAll('.plib-card')].some(c => c.style.display !== 'none');
+    cat.style.display = (!q || hasVisible) ? '' : 'none';
+    // Auto-expand categories with matches when searching
+    if (q && hasVisible) {
+      const btn = cat.querySelector('.plib-cat-btn');
+      const items = cat.querySelector('.plib-cat-items');
+      if (btn && !btn.classList.contains('open')) { btn.classList.add('open'); items.classList.add('show'); }
+    }
+  });
 }
 function buildPromptCard(p, pi, ci) {
   const isFav = (state.plibFavs || []).includes(ci + ':' + pi);
@@ -2602,7 +2697,8 @@ function buildPromptCard(p, pi, ci) {
 }
 function renderPromptLib() {
   const body = $('promptLibBody');
-  body.innerHTML = '<p style="margin-bottom:12px;color:var(--text3)">High-impact prompts for common tasks. Click Copy and paste into Claude Code. Prompts that need context will ask for your input first so the copied prompt is ready to go. Star prompts to add them to your favorites.</p>';
+  body.innerHTML = '<input type="text" class="plib-search" id="plibSearch" placeholder="Search prompts..." oninput="filterPromptLib(this.value)">'
+    + '<p style="margin-bottom:12px;color:var(--text3)">High-impact prompts for common tasks. Click Copy and paste into Claude Code. Prompts that need context will ask for your input first. Star prompts to add them to your favorites.</p>';
   // Render favorites section if any
   const favs = state.plibFavs || [];
   if (favs.length > 0) {
@@ -4031,6 +4127,81 @@ function updateFormatRec() {
   }
 }
 
+function validateWorkflow() {
+  const warnings = [];
+  if (state.nodes.length === 0) return warnings;
+  // Disconnected nodes (no connections in or out)
+  state.nodes.forEach(n => {
+    const hasIn = state.connections.some(c => c.to === n.id);
+    const hasOut = state.connections.some(c => c.from === n.id);
+    if (!hasIn && !hasOut) warnings.push({ type: 'warn', msg: '"' + n.label + '" is not connected to anything' });
+  });
+  // Agents with empty prompts and no built-in template
+  state.nodes.filter(n => n.type === 'agent').forEach(n => {
+    if (!n.config.prompt || !n.config.prompt.trim()) {
+      if (!n.config.agentType || n.config.agentType === 'general') {
+        warnings.push({ type: 'warn', msg: '"' + n.label + '" has no prompt and uses the General agent type (no built-in template)' });
+      }
+    }
+  });
+  // Decision nodes without both yes and no connections
+  state.nodes.filter(n => n.type === 'decision').forEach(n => {
+    const outConns = state.connections.filter(c => c.from === n.id);
+    if (outConns.length < 2) warnings.push({ type: 'warn', msg: 'Decision "' + n.label + '" needs both a pass and fail connection' });
+  });
+  // Parallel forks without a join
+  state.nodes.filter(n => n.type === 'parallel' && n.label !== 'Join').forEach(n => {
+    const downstream = state.connections.filter(c => c.from === n.id).map(c => c.to);
+    const hasJoinDownstream = downstream.some(id => {
+      const target = state.nodes.find(t => t.id === id);
+      return target && target.type === 'parallel' && target.label === 'Join';
+    });
+    if (!hasJoinDownstream) {
+      // Check grandchildren too
+      const grandchildren = downstream.flatMap(id => state.connections.filter(c => c.from === id).map(c => c.to));
+      const hasJoinGrandchild = grandchildren.some(id => {
+        const target = state.nodes.find(t => t.id === id);
+        return target && target.type === 'parallel' && target.label === 'Join';
+      });
+      if (!hasJoinGrandchild) warnings.push({ type: 'info', msg: 'Fork "' + n.label + '" has no Join node downstream' });
+    }
+  });
+  return warnings;
+}
+function updateValidation() {
+  const el = $('validationInfo');
+  if (!el) return;
+  if (state.nodes.length === 0) { el.textContent = ''; el.title = ''; return; }
+  const warnings = validateWorkflow();
+  if (warnings.length === 0) {
+    el.textContent = '\u2713';
+    el.style.color = '#10b981';
+    el.title = 'No issues found';
+  } else {
+    el.textContent = '\u26A0 ' + warnings.length;
+    el.style.color = '#f59e0b';
+    el.title = warnings.length + ' issue' + (warnings.length !== 1 ? 's' : '') + ' found (click for details)';
+  }
+}
+function showValidation() {
+  const warnings = validateWorkflow();
+  if (warnings.length === 0) { showToast('No workflow issues found', 2000); return; }
+  const msg = warnings.map((w, i) => (i + 1) + '. ' + w.msg).join('\n');
+  alert('Workflow Issues:\n\n' + msg);
+}
+function estimateTokens(text) {
+  // Rough estimate: ~4 characters per token for English text/code
+  return Math.ceil(text.length / 4);
+}
+function updateTokenEstimate() {
+  const el = $('tokenEstimate');
+  if (!el) return;
+  const text = $('promptOutput').textContent;
+  if (!text || state.nodes.length === 0) { el.textContent = ''; return; }
+  const tokens = estimateTokens(text);
+  if (tokens < 1000) el.textContent = '~' + tokens + ' tokens';
+  else el.textContent = '~' + (tokens / 1000).toFixed(1) + 'K tokens';
+}
 function updatePrompt() {
   const out = $('promptOutput');
   updateFormatRec();
@@ -4043,10 +4214,12 @@ function updatePrompt() {
       claude: 'Add nodes to see a Claude conversational prompt...'
     };
     out.textContent = hints[state.exportFormat] || hints.prompt;
+    updateTokenEstimate();
     return;
   }
   const generators = { prompt: genWorkflow, subagent: genSubAgents, teams: genAgentTeams, sdk: genAgentSDK, claude: genClaudePrompt };
   out.textContent = (generators[state.exportFormat] || genWorkflow)();
+  updateTokenEstimate();
 }
 
 // ── Helpers ──
