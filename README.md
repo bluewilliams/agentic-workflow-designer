@@ -182,7 +182,7 @@ CLI test runner (`run-tests.sh`) needs Chrome/Chromium + Python 3. That's the en
 
 ## How the Prompts Work
 
-Each export format generates workflow-aware prompts that include:
+Each output format generates workflow-aware prompts that include:
 
 - **Role context** - what the agent is responsible for
 - **Tool awareness** - which tools are available
