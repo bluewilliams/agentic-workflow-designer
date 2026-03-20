@@ -2524,6 +2524,207 @@ describe('Usability & Help', () => {
   });
 });
 
+// ─── Suite 19: Coverage Gaps ────────────────────────────────
+describe('Coverage Gaps', () => {
+  beforeEach(() => { clearStorage(); resetState(); });
+
+  describe('node operations', () => {
+    it('should deep-copy tools array when duplicating a node', () => {
+      const n = win.addNode('agent', 100, 100, 'Original', { agentType: 'coder', model: 'opus-4.6', tools: ['Read', 'Write'], prompt: 'test', maxTurns: 5 });
+      win.state.selectedId = n.id;
+      win.duplicateNode();
+      const copy = win.state.nodes.find(x => x.label === 'Original (copy)');
+      expect(copy).toBe(copy); // exists
+      copy.config.tools.push('Bash');
+      expect(n.config.tools.includes('Bash')).toBe(false); // original not mutated
+    });
+    it('should disconnect all connections from a node', () => {
+      const a = win.addNode('agent', 0, 0, 'A', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const b = win.addNode('agent', 100, 0, 'B', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const c = win.addNode('agent', 200, 0, 'C', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      win.addConnection(a.id, b.id);
+      win.addConnection(b.id, c.id);
+      win.state.selectedId = b.id;
+      win.disconnectNode();
+      expect(win.state.connections.length).toBe(0);
+    });
+    it('should deleteSelected for a connection', () => {
+      const a = win.addNode('agent', 0, 0, 'A', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const b = win.addNode('agent', 100, 0, 'B', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const conn = win.addConnection(a.id, b.id);
+      win.state.selectedId = conn.id;
+      win.deleteSelected();
+      expect(win.state.connections.length).toBe(0);
+      expect(win.state.nodes.length).toBe(2); // nodes preserved
+    });
+  });
+
+  describe('undo/redo batch operations', () => {
+    it('should undo an entire preset load in one step', () => {
+      win.addNode('agent', 0, 0, 'Keeper', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'keep me', maxTurns: 5 });
+      const beforeCount = win.state.nodes.length;
+      win.loadPreset('feature');
+      expect(win.state.nodes.length > beforeCount).toBe(true);
+      win.undo();
+      expect(win.state.nodes.length).toBe(beforeCount);
+      expect(win.state.nodes[0].label).toBe('Keeper');
+    });
+    it('should undo generateFromStory in one step', () => {
+      win.addNode('agent', 0, 0, 'Existing', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'here', maxTurns: 5 });
+      const beforeCount = win.state.nodes.length;
+      win.document.getElementById('storyInput').value = 'Build a REST API with authentication and database integration';
+      win.generateFromStory();
+      expect(win.state.nodes.length > beforeCount).toBe(true);
+      win.undo();
+      expect(win.state.nodes.length).toBe(beforeCount);
+      expect(win.state.nodes[0].label).toBe('Existing');
+    });
+    it('should undo clearCanvas in one step', () => {
+      win.loadPreset('feature');
+      const beforeCount = win.state.nodes.length;
+      win.clearCanvas(true);
+      expect(win.state.nodes.length).toBe(0);
+      win.undo();
+      expect(win.state.nodes.length).toBe(beforeCount);
+    });
+    it('should handle undo when stack is empty', () => {
+      resetState();
+      win.undo(); // should not throw
+      expect(win.state.nodes.length).toBe(0);
+    });
+    it('should handle redo when stack is empty', () => {
+      resetState();
+      win.redo(); // should not throw
+      expect(win.state.nodes.length).toBe(0);
+    });
+  });
+
+  describe('serialization edge cases', () => {
+    it('should roundtrip empty workflow', () => {
+      const data = win.serializeWorkflow();
+      expect(data.canvas.nodes.length).toBe(0);
+      expect(data.canvas.connections.length).toBe(0);
+    });
+    it('should roundtrip node labels with special characters', () => {
+      win.addNode('agent', 0, 0, 'Agent "quoted" & <tagged>', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'test', maxTurns: 5 });
+      const data = win.serializeWorkflow();
+      resetState();
+      win.deserializeWorkflow(data);
+      expect(win.state.nodes[0].label).toBe('Agent "quoted" & <tagged>');
+    });
+    it('should roundtrip single disconnected node', () => {
+      win.addNode('output', 0, 0, 'Solo Output', { deliverable: 'test', format: 'code' });
+      const data = win.serializeWorkflow();
+      resetState();
+      win.deserializeWorkflow(data);
+      expect(win.state.nodes.length).toBe(1);
+      expect(win.state.nodes[0].label).toBe('Solo Output');
+    });
+  });
+
+  describe('export edge cases', () => {
+    it('should handle single-agent workflow in all formats', () => {
+      win.addNode('agent', 0, 0, 'Solo', { agentType: 'coder', model: 'opus-4.6', tools: ['Read', 'Write'], prompt: 'Do something', maxTurns: 5 });
+      const wf = win.genWorkflow();
+      const sa = win.genSubAgents();
+      const at = win.genAgentTeams();
+      const sdk = win.genAgentSDK();
+      const cp = win.genClaudePrompt();
+      [wf, sa, at, sdk, cp].forEach(output => {
+        expect(output).toContain('Solo');
+        expect(output.length > 50).toBe(true);
+      });
+    });
+    it('should include decision condition even without revision connection', () => {
+      const a = win.addNode('agent', 0, 0, 'Worker', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'work', maxTurns: 5 });
+      const d = win.addNode('decision', 100, 0, 'Review', { condition: 'All tests pass', yesLabel: 'Pass', noLabel: 'Fail' });
+      win.addConnection(a.id, d.id);
+      const output = win.genSubAgents();
+      expect(output).toContain('All tests pass');
+    });
+    it('should use default decision labels when not specified', () => {
+      const a = win.addNode('agent', 0, 0, 'Worker', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'work', maxTurns: 5 });
+      const d = win.addNode('decision', 100, 0, 'Check', { condition: 'Quality OK', yesLabel: '', noLabel: '' });
+      win.addConnection(a.id, d.id);
+      const output = win.genWorkflow();
+      expect(output).toContain('Quality OK');
+    });
+  });
+
+  describe('clearCanvas completeness', () => {
+    it('should clear all state including selectedId', () => {
+      win.loadPreset('feature');
+      win.state.selectedId = win.state.nodes[0].id;
+      win.clearCanvas(true);
+      expect(win.state.nodes.length).toBe(0);
+      expect(win.state.connections.length).toBe(0);
+      expect(win.state.selectedId).toBe(null);
+    });
+    it('should clear form inputs', () => {
+      win.document.getElementById('workflowName').value = 'Test Workflow';
+      win.document.getElementById('storyInput').value = 'Some requirements';
+      win.clearCanvas(true);
+      expect(win.document.getElementById('workflowName').value).toBe('');
+      expect(win.document.getElementById('storyInput').value).toBe('');
+    });
+  });
+
+  describe('secret scanner edge cases', () => {
+    it('should not flag the word password in normal text', () => {
+      const found = win.scanForSecrets('Set up a password manager for the team');
+      expect(found.length).toBe(0);
+    });
+    it('should flag password assignment with value', () => {
+      const found = win.scanForSecrets('password="hunter2abc"');
+      expect(found.length > 0).toBe(true);
+    });
+    it('should not flag short sk- strings', () => {
+      const found = win.scanForSecrets('Use sk-tool for deployment');
+      expect(found.length).toBe(0);
+    });
+    it('should handle empty input', () => {
+      const found = win.scanForSecrets('');
+      expect(found.length).toBe(0);
+    });
+  });
+
+  describe('validation edge cases', () => {
+    it('should warn about decision nodes with less than 2 outputs', () => {
+      const d = win.addNode('decision', 0, 0, 'Check', { condition: 'test' });
+      const a = win.addNode('agent', 100, 0, 'Worker', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      win.addConnection(d.id, a.id); // only 1 output
+      const warnings = win.validateWorkflow();
+      const decisionWarning = warnings.find(w => w.msg.includes('pass and fail'));
+      expect(decisionWarning.msg).toContain('Check');
+    });
+    it('should warn about General agents with empty prompts', () => {
+      win.addNode('agent', 0, 0, 'Empty General', { agentType: 'general', model: 'opus-4.6', tools: ['Read'], prompt: '', maxTurns: 5 });
+      const a2 = win.addNode('agent', 100, 0, 'Has Prompt', { agentType: 'general', model: 'opus-4.6', tools: ['Read'], prompt: 'do stuff', maxTurns: 5 });
+      win.addConnection(win.state.nodes[0].id, a2.id);
+      const warnings = win.validateWorkflow();
+      const promptWarning = warnings.find(w => w.msg.includes('no prompt'));
+      expect(promptWarning.msg).toContain('Empty General');
+    });
+    it('should not warn about typed agents with empty prompts', () => {
+      const a = win.addNode('agent', 0, 0, 'Coder', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: '', maxTurns: 5 });
+      const b = win.addNode('agent', 100, 0, 'Next', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      win.addConnection(a.id, b.id);
+      const warnings = win.validateWorkflow();
+      const promptWarning = warnings.find(w => w.msg.includes('no prompt'));
+      expect(promptWarning).toBe(undefined);
+    });
+  });
+
+  describe('token estimation edge cases', () => {
+    it('should return 0 for empty string', () => {
+      expect(win.estimateTokens('')).toBe(0);
+    });
+    it('should return 1 for short strings', () => {
+      expect(win.estimateTokens('hi')).toBe(1);
+    });
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
@@ -2533,7 +2734,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
