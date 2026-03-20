@@ -139,7 +139,7 @@ Global toggles for **Atlassian** (Jira/Confluence) and **Sourcebot** (cross-repo
 - **Secret scanner** checks all user inputs for API keys, credentials, and connection strings before copying to clipboard
 - **Input validation** catches bare Jira ticket keys, URL-only input without Atlassian MCP, and insufficient keywords for generation
 - **Workflow-aware prompts** include upstream dependencies, downstream consumers, and the full requirements in every agent's instructions
-- **Persistent preferences** for default model, memory toggle, MCP settings, export format, repositories, and prompt library favorites carry across sessions automatically
+- **Persistent preferences** for default model, memory toggle, MCP settings, output format, repositories, and prompt library favorites carry across sessions automatically
 
 ## Things You Might Not Notice
 
@@ -153,7 +153,7 @@ Global toggles for **Atlassian** (Jira/Confluence) and **Sourcebot** (cross-repo
 - **Preset-specific placeholders**: When you pick a preset, the Requirements textarea updates with a template tailored to that workflow type (steps to reproduce for bugs, acceptance criteria for features, etc.).
 - **Jira URL detection**: Paste a Jira URL instead of requirements and the app detects it, then asks you to pick a workflow type (Feature, Bug Fix, UI Design, Full Stack, Test Automation) since there aren't enough keywords to auto-generate.
 - **Quick patterns**: The palette includes Fork (2/3/4) and Fan-Out shortcuts that scaffold parallel agent groups in one click.
-- **Custom workflows**: Not limited to presets. Add any combination of nodes from the palette and wire them up however you want. The export generators handle the scaffolding.
+- **Custom workflows**: Not limited to presets. Add any combination of nodes from the palette and wire them up however you want. The prompt generators handle the scaffolding.
 
 ## Save & Load
 
@@ -166,11 +166,11 @@ Click **Save** in the sidebar to save the current workflow by name. Saved workfl
 Click **Export .json** to download the workflow as a portable file. Click **Import** to load a `.json` file from a colleague or another browser. All data stays local (localStorage). Nothing is sent to a server.
 
 ### Preferences
-Your default model, memory toggle, export format tab, app source path/branch, and repositories are remembered automatically. No explicit save needed. Just change a setting and it persists across sessions.
+Your default model, memory toggle, output format tab, app source path/branch, and repositories are remembered automatically. No explicit save needed. Just change a setting and it persists across sessions.
 
 ## Testing
 
-Open `tests.html` in any browser. That's it. Zero dependencies, zero build step. Tests load `index.html` in a hidden iframe and exercise everything: utilities, state management, persistence, memory protocol, all 5 export generators, workflow generation, preset loading, format recommendations, input validation, the prompt library, and more. Green/red results render instantly.
+Open `tests.html` in any browser. That's it. Zero dependencies, zero build step. Tests load `index.html` in a hidden iframe and exercise everything: utilities, state management, persistence, memory protocol, all 5 prompt output generators, workflow generation, preset loading, format recommendations, input validation, the prompt library, and more. Green/red results render instantly.
 
 **CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3. No npm, no Jest, no Webpack. Use `--verbose` for failure details. Exit code 0 = all pass.
 

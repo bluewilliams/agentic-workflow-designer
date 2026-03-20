@@ -20,7 +20,7 @@ The Agentic Workflow Designer is a **visual, browser-based playground** that bri
 5. (Optional) Click **Plan Prompt** to generate a codebase-aware implementation blueprint
 6. Optionally reconfigure each node (agent type, model, tools, custom prompt)
 7. Toggle **Memory Protocol** on/off as needed
-8. Select an export format tab and click **Copy**
+8. Select an output format tab and click **Copy**
 9. Paste the output into Claude Code or the Agent SDK and run it
 10. Optionally **Save** the workflow by name, or **Export .json** to share with colleagues
 
@@ -39,7 +39,7 @@ The entire application is a **single `index.html` file** (~4,200 lines). There i
 │   (320px)    │                                  │
 │              ├──────────────────────────────────┤
 │              │      Prompt Output Panel         │
-│              │   (5 export format tabs)         │
+│              │   (5 output format tabs)          │
 └──────────────┴──────────────────────────────────┘
 ```
 
@@ -132,7 +132,9 @@ Each template is structured with numbered steps, expected outputs, handoff summa
 
 ---
 
-## Export Formats
+## Prompt Output Formats
+
+The bottom panel generates prompts in 5 formats. Internally these are called "export formats" in the code (`state.exportFormat`, `setExportFormat()`, etc.).
 
 ### 1. Workflow (Structured Markdown)
 A `##` header-structured document with numbered steps, agent roles, parallel execution notes, decision points, and expected deliverables. Best for pasting into a Claude.ai conversation as a planning prompt.
@@ -166,7 +168,7 @@ All export formats enforce structured decision evaluation:
 - **Decision Routing (Sub-Agents)**: The Sub-Agents format includes a dedicated "Decision Routing" section that tells the orchestrator exactly how to handle pass/fail results, including which agents to re-spawn on failure
 
 ### Format Recommendations
-A smart banner above the export tabs analyzes the current workflow shape and suggests the best export format:
+A smart banner above the output tabs analyzes the current workflow shape and suggests the best format:
 - 1-2 agents, no parallel fork: Claude.ai
 - 3+ agents or parallel fork: Sub-Agents
 - 4+ agents with parallel fork: Agent Teams
@@ -427,7 +429,7 @@ HTML structure
   │            Add Nodes, Presets, App Under Test (conditional), Saved Workflows, Tip, MCP Integrations, Memory, Node Config
   ├── Canvas: Toolbar (Select, Connect, Delete, Auto Layout, Fit, Zoom, Prompts, Help), SVG canvas, Empty state
   ├── Prompt Output: 5 format tabs, Copy button
-  ├── Help Modal: Quick start, flows, export formats, shortcuts, power user tips
+  ├── Help Modal: Quick start, flows, output formats, shortcuts, power user tips
   ├── Prompt Library Modal: Categorized prompts with favorites, input popup, copy
   └── Prompt Input Popup: Collects user context before copying prompts that need it
 JavaScript:
