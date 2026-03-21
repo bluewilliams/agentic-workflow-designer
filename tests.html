@@ -406,7 +406,7 @@ describe('Pure Utilities', () => {
       expect(win.isJiraKeyOnly('ACME-42: fix the login bug in auth module')).toBe(false);
     });
     it('should reject lowercase key-like strings', () => {
-      expect(win.isJiraKeyOnly('kti-123')).toBe(false);
+      expect(win.isJiraKeyOnly('abc-123')).toBe(false);
     });
     it('should reject URLs', () => {
       expect(win.isJiraKeyOnly('https://team.atlassian.net/browse/ACME-42')).toBe(false);
