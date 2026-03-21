@@ -744,6 +744,15 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>Click the <strong>Prompts</strong> button in the toolbar for a library of ready-to-use prompts. Use the search box to filter by title or description. Star your favorites and they float to the top. Prompts that need your input (like a file path or bug description) show a popup before copying so the prompt is ready to paste.</p>
 <p>Prompts that benefit from cross-repo search or Jira/Confluence context include guidance for using those tools when available.</p>
 
+<h3>Recommended Integrations</h3>
+<p>These optional MCP servers and tools unlock better results from both workflows and prompt library prompts:</p>
+<ul>
+  <li><strong>Atlassian MCP</strong>: built into Claude Code. Lets agents fetch Jira tickets and Confluence pages at runtime. Toggle on/off in the sidebar.</li>
+  <li><strong>Sourcebot MCP</strong>: self-hosted cross-repo code search (<a href="https://sourcebot.dev" target="_blank" style="color:var(--accent);pointer-events:auto">sourcebot.dev</a>). Enables <code>search_code</code>, <code>ask_codebase</code>, <code>read_file</code>, <code>list_tree</code> across all your repos.</li>
+  <li><strong>Datadog MCP</strong>: install with <code>curl -sSL https://coterm.datadoghq.com/mcp-cli/install.sh | bash</code>, then <code>datadog_mcp_cli login</code>, then <code>claude mcp add -s user datadog</code>. Enables the Observability prompts in the Prompt Library.</li>
+  <li><strong>LSP</strong>: install a language server for your stack (e.g. <code>typescript-language-server</code>, <code>pyright</code>, <code>gopls</code>). Gives agents go-to-definition and find-references for deeper code analysis.</li>
+</ul>
+
 <h3>Power User Tips</h3>
 <ul>
   <li>Enable <strong>Shared Memory</strong> for complex workflows so agents write to a shared file and later agents can see earlier findings</li>
@@ -752,8 +761,6 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Parallel</strong> groups run agents concurrently, great for independent tasks like "backend + frontend"</li>
   <li>Each agent's <strong>Custom Notes</strong> field lets you add context that's included in that agent's prompt section</li>
   <li>Workflows auto-save to localStorage. Use <strong>Save</strong> / <strong>Load</strong> for named snapshots, or <strong>Export JSON</strong> to share with teammates</li>
-  <li>Enable <strong>Sourcebot MCP</strong> if you have cross-repo search. Prompts will include search tool guidance automatically.</li>
-  <li>Install the <strong>Datadog MCP</strong> (<code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">claude mcp add datadog</code>) for observability prompts that query logs, metrics, and traces directly.</li>
 </ul>
 
     </div>

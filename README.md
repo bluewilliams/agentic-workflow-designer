@@ -125,9 +125,33 @@ Click the **Prompts** button in the toolbar for a curated collection of high-imp
 
 Prompts that need context (like "what file to analyze") show an input popup before copying so the prompt is ready to paste with no editing. Star your favorites and they float to the top.
 
-## MCP Integrations
+## Recommended Setup
 
-Global toggles for **Atlassian** (Jira/Confluence) and **Sourcebot** (cross-repo code search), plus a freeform field for custom MCP tools. When enabled, prompt hints are injected into all exports so agents use these tools instead of slower alternatives. The Prompt Library also includes tool guidance for prompts that benefit from cross-repo search or Jira context.
+The Workflow Designer works standalone out of the box, but these optional integrations unlock significantly better results:
+
+### MCP Servers
+
+| MCP Server | What it enables | Install |
+|------------|----------------|---------|
+| **Atlassian** | Agents fetch Jira ticket and Confluence page details at runtime instead of needing content pasted in | Built into Claude Code. Enable in Settings or via `claude mcp add` |
+| **Sourcebot** | Cross-repo code search. Agents use `search_code`, `ask_codebase`, `read_file`, `list_tree` to explore your codebase | [sourcebot.dev](https://sourcebot.dev) - self-hosted, free tier available. Add via `claude mcp add -s user --transport http sourcebot http://localhost:4242/api/mcp` |
+| **Datadog** | Observability prompts query logs, metrics, traces, and monitors directly | Install CLI: `curl -sSL https://coterm.datadoghq.com/mcp-cli/install.sh \| bash` then `datadog_mcp_cli login` then `claude mcp add -s user datadog -- ~/.local/bin/datadog_mcp_cli --endpoint-path "/api/unstable/mcp-server/mcp?toolsets=core,alerting,apm"` |
+
+Toggle Atlassian and Sourcebot on/off in the sidebar. When enabled, prompt hints are injected into all exports so agents prefer these tools. The Prompt Library includes dedicated categories for Sourcebot (cross-repo analysis) and Datadog (observability) prompts, with Chrome browser fallback when MCPs aren't installed.
+
+### LSP (Language Server Protocol)
+
+The **LSP** tool toggle on agent nodes gives agents access to go-to-definition, find-references, and type information. This produces significantly better results for code analysis, refactoring, and debugging prompts. LSP works automatically in Claude Code when your project has the appropriate language server installed:
+
+| Language | LSP Server | Install |
+|----------|-----------|---------|
+| TypeScript/JavaScript | `typescript-language-server` | `npm i -g typescript-language-server typescript` |
+| Python | `pylsp` or `pyright` | `pip install python-lsp-server` or `npm i -g pyright` |
+| Go | `gopls` | `go install golang.org/x/tools/gopls@latest` |
+| Rust | `rust-analyzer` | Install via rustup or your IDE |
+| Java | `jdtls` | Typically bundled with IDE extensions |
+
+LSP is enabled by default on most agent presets. Code-analysis prompts in the Prompt Library include guidance to use LSP tools when available.
 
 ## More Under the Hood
 
