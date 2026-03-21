@@ -127,16 +127,16 @@ Prompts that need context (like "what file to analyze") show an input popup befo
 
 ### Live Monitors
 
-The Prompt Library includes a dedicated **Live Monitors** category — prompts that watch things for you over time, leveraging state across iterations to do things a single run can't:
+The Prompt Library includes a dedicated **Live Monitors** category with prompts that watch things for you over time, leveraging state across iterations to do things a single run can't:
 
-- **PR Build Babysitter** — watch CI checks, summarize failures, stop when green
-- **PR Review Watcher** — get notified of new comments, approvals, or merge without context-switching
-- **Post-Deploy Canary Monitor** — continuously compare error rates and latency against pre-deploy baseline, escalate on regression
-- **Test Flake Detector** — run your test suite repeatedly and statistically identify flaky tests by tracking pass/fail oscillation
-- **Sprint Stale Work Alert** — monitor Jira for stories stuck in progress, unassigned blockers, and scope creep
-- **Long-Running Task Companion** — start a migration, build, or data import and walk away; get alerted on errors, progress milestones, or completion
-- **Code Review Soak Test** — continuously review your git diff as you code, flagging bugs and security issues in real-time while filtering out noise
-- **Service Recovery Watcher** — during an incident, track recovery trend and confirm when the service is stable
+- **PR Build Babysitter** - watch CI checks, summarize failures, stop when green
+- **PR Review Watcher** - get notified of new comments, approvals, or merge without context-switching
+- **Post-Deploy Canary Monitor** - continuously compare error rates and latency against pre-deploy baseline, escalate on regression
+- **Test Flake Detector** - run your test suite repeatedly and statistically identify flaky tests by tracking pass/fail oscillation
+- **Sprint Stale Work Alert** - monitor Jira for stories stuck in progress, unassigned blockers, and scope creep
+- **Long-Running Task Companion** - start a migration, build, or data import and walk away; get alerted on errors, progress milestones, or completion
+- **Code Review Soak Test** - continuously review your git diff as you code, flagging bugs and security issues in real-time while filtering out noise
+- **Service Recovery Watcher** - during an incident, track recovery trend and confirm when the service is stable
 
 Each prompt includes an **Exit** condition so the loop self-terminates when its job is done (build goes green, PR merges, service recovers, etc.) rather than running indefinitely.
 

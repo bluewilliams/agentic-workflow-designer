@@ -336,7 +336,7 @@ A curated collection of high-impact prompts accessible via the **Prompts** toolb
 Code Generation, Code Review & Quality, Architecture & Design, Debugging & Performance, Testing, Security, Documentation, Planning & Estimation, Git & Code Review, DevOps & Infrastructure, Data & Migrations, Strategy & Analysis, Release & Operations, Cross-Repo (requires Sourcebot), Observability (requires Datadog), Live Monitors
 
 ### Live Monitors Category
-Prompts that watch things for you over time — they run on a recurring interval, compare state across iterations, and self-terminate when their exit condition is met. Each prompt includes a `> **Exit**:` line documenting when the loop should stop. Prompts: PR Build Babysitter, PR Review Watcher, Post-Deploy Canary Monitor, Test Flake Detector, Sprint Stale Work Alert, Long-Running Task Companion, Code Review Soak Test, Service Recovery Watcher.
+Prompts that watch things for you over time. They run on a recurring interval, compare state across iterations, and self-terminate when their exit condition is met. Each prompt includes a `> **Exit**:` line documenting when the loop should stop. Prompts: PR Build Babysitter, PR Review Watcher, Post-Deploy Canary Monitor, Test Flake Detector, Sprint Stale Work Alert, Long-Running Task Companion, Code Review Soak Test, Service Recovery Watcher.
 
 ---
 
