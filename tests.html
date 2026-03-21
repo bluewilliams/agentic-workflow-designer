@@ -2383,11 +2383,10 @@ describe('Usability & Help', () => {
       const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Strategy & Analysis');
       expect(cat.prompts.length >= 3).toBe(true);
     });
-    it('should have Full-Spectrum Security Audit prompt', () => {
+    it('should have OWASP and Secrets prompts in Security', () => {
       const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Security');
-      const audit = cat.prompts.find(p => p.title === 'Full-Spectrum Security Audit');
-      expect(audit.prompt.length > 500).toBe(true);
-      expect(audit.prompt).toContain('Attack Surface');
+      expect(cat.prompts.find(p => p.title === 'OWASP Top 10 Audit').prompt.length > 200).toBe(true);
+      expect(cat.prompts.find(p => p.title === 'Secrets & Credentials Scan').prompt.length > 200).toBe(true);
     });
   });
 
