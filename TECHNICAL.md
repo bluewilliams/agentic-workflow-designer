@@ -333,10 +333,10 @@ A curated collection of high-impact prompts accessible via the **Prompts** toolb
 - **Tool guidance**: Several prompts include context-aware hints for Sourcebot, LSP, and Atlassian MCP tools (embedded in prompt text, not tied to app toggles)
 
 ### Categories
-Code Generation, Code Review & Quality, Architecture & Design, Debugging & Performance, Testing, Security, Documentation, Planning & Estimation, Git & Code Review, DevOps & Infrastructure, Data & Migrations, Strategy & Analysis, Release & Operations, Cross-Repo (requires Sourcebot), Observability (requires Datadog), Loop Workflows (use with /loop)
+Code Generation, Code Review & Quality, Architecture & Design, Debugging & Performance, Testing, Security, Documentation, Planning & Estimation, Git & Code Review, DevOps & Infrastructure, Data & Migrations, Strategy & Analysis, Release & Operations, Cross-Repo (requires Sourcebot), Observability (requires Datadog), Live Monitors
 
-### Loop Workflows Category
-Prompts designed for Claude Code's `/loop` command — they run on a recurring interval, compare state across iterations, and self-terminate when their exit condition is met. Each prompt includes a `> **Exit**:` line documenting when the loop should stop. Prompts: PR Build Babysitter, PR Review Watcher, Post-Deploy Canary Monitor, Test Flake Detector, Sprint Stale Work Alert, Long-Running Task Companion, Code Review Soak Test, Service Recovery Watcher.
+### Live Monitors Category
+Prompts that watch things for you over time — they run on a recurring interval, compare state across iterations, and self-terminate when their exit condition is met. Each prompt includes a `> **Exit**:` line documenting when the loop should stop. Prompts: PR Build Babysitter, PR Review Watcher, Post-Deploy Canary Monitor, Test Flake Detector, Sprint Stale Work Alert, Long-Running Task Companion, Code Review Soak Test, Service Recovery Watcher.
 
 ---
 
