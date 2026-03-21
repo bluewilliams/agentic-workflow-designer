@@ -125,9 +125,9 @@ Click the **Prompts** button in the toolbar for a curated collection of high-imp
 
 Prompts that need context (like "what file to analyze") show an input popup before copying so the prompt is ready to paste with no editing. Star your favorites and they float to the top.
 
-### Loop Workflows
+### Live Monitors
 
-The Prompt Library includes a dedicated **Loop Workflows** category — prompts designed for use with Claude Code's `/loop` command. These run on a recurring interval and leverage state across iterations to do things a single run can't:
+The Prompt Library includes a dedicated **Live Monitors** category — prompts that watch things for you over time, leveraging state across iterations to do things a single run can't:
 
 - **PR Build Babysitter** — watch CI checks, summarize failures, stop when green
 - **PR Review Watcher** — get notified of new comments, approvals, or merge without context-switching
