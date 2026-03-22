@@ -2438,6 +2438,21 @@ describe('Usability & Help', () => {
       win.filterPromptLib('');
       win.togglePromptLib();
     });
+    it('should restore expand state when search is cleared', () => {
+      // Close all categories first
+      win.document.querySelectorAll('.plib-cat-btn.open').forEach(b => b.click());
+      // Verify all closed
+      const allClosed = [...win.document.querySelectorAll('.plib-cat-btn[data-cat]')].every(b => b.classList.contains('open') === false);
+      expect(allClosed).toBe(true);
+      // Search expands matching categories
+      win.filterPromptLib('security');
+      const expandedDuringSearch = [...win.document.querySelectorAll('.plib-cat-btn.open')].length;
+      expect(expandedDuringSearch > 0).toBe(true);
+      // Clear search should restore to all-closed
+      win.filterPromptLib('');
+      const afterClear = [...win.document.querySelectorAll('.plib-cat-btn[data-cat].open')].length;
+      expect(afterClear).toBe(0);
+    });
     it('should hide categories with no matching prompts', () => {
       win.filterPromptLib('xyznonexistent');
       const visibleCats = [...win.document.querySelectorAll('.plib-category')].filter(c => c.style.display !== 'none');
