@@ -2710,9 +2710,12 @@ function toggleFavorite(catIdx, promptIdx) {
   const newSearch = $('plibSearch');
   if (newSearch && searchQuery) { newSearch.value = searchQuery; filterPromptLib(searchQuery); }
 }
+let _plibSearchActive = false;
 function filterPromptLib(query) {
   const q = query.toLowerCase();
   const body = $('promptLibBody');
+  const wasSearching = _plibSearchActive;
+  _plibSearchActive = !!q;
   body.querySelectorAll('.plib-card').forEach(card => {
     const title = card.querySelector('.plib-card-title');
     const desc = card.querySelector('.plib-card-desc');
@@ -2728,8 +2731,8 @@ function filterPromptLib(query) {
       if (btn && !btn.classList.contains('open')) { btn.classList.add('open'); items.classList.add('show'); }
     }
   });
-  // When search is cleared, re-render to restore saved expand state from localStorage
-  if (!q) {
+  // Only re-render to restore state when transitioning from searching to not-searching
+  if (!q && wasSearching) {
     const overlay = $('promptLibOverlay');
     overlay.dataset.rendered = '';
     renderPromptLib();
