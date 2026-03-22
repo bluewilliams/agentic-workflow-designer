@@ -2710,16 +2710,9 @@ function toggleFavorite(catIdx, promptIdx) {
   const newSearch = $('plibSearch');
   if (newSearch && searchQuery) { newSearch.value = searchQuery; filterPromptLib(searchQuery); }
 }
-let _plibPreSearchState = null;
 function filterPromptLib(query) {
   const q = query.toLowerCase();
   const body = $('promptLibBody');
-  // Save expand state before first search
-  if (q && !_plibPreSearchState) {
-    _plibPreSearchState = [...body.querySelectorAll('.plib-cat-btn[data-cat]')].map(b => ({
-      cat: b.dataset.cat, open: b.classList.contains('open')
-    }));
-  }
   body.querySelectorAll('.plib-card').forEach(card => {
     const title = card.querySelector('.plib-card-title');
     const desc = card.querySelector('.plib-card-desc');
@@ -2735,17 +2728,11 @@ function filterPromptLib(query) {
       if (btn && !btn.classList.contains('open')) { btn.classList.add('open'); items.classList.add('show'); }
     }
   });
-  // Restore expand state when search is cleared
-  if (!q && _plibPreSearchState) {
-    body.querySelectorAll('.plib-cat-btn[data-cat]').forEach(btn => {
-      const saved = _plibPreSearchState.find(s => s.cat === btn.dataset.cat);
-      const items = btn.nextElementSibling;
-      if (saved && !saved.open && btn.classList.contains('open')) {
-        btn.classList.remove('open');
-        items.classList.remove('show');
-      }
-    });
-    _plibPreSearchState = null;
+  // When search is cleared, re-render to restore saved expand state from localStorage
+  if (!q) {
+    const overlay = $('promptLibOverlay');
+    overlay.dataset.rendered = '';
+    renderPromptLib();
   }
 }
 function buildPromptCard(p, pi, ci) {
@@ -2800,9 +2787,13 @@ function renderPromptLib() {
     items.className = 'plib-cat-items';
     btn.onclick = () => {
       btn.classList.toggle('open'); items.classList.toggle('show');
-      const open = [...body.querySelectorAll('.plib-cat-btn.open')].map(b => b.dataset.cat).filter(Boolean);
-      state.plibOpen = open;
-      savePrefsDebounced();
+      // Don't persist expand state while searching (search auto-expands temporarily)
+      const searchEl = $('plibSearch');
+      if (!searchEl || !searchEl.value.trim()) {
+        const open = [...body.querySelectorAll('.plib-cat-btn.open')].map(b => b.dataset.cat).filter(Boolean);
+        state.plibOpen = open;
+        savePrefsDebounced();
+      }
     };
     btn.dataset.cat = cat.category.replace(/<[^>]+>/g, '').trim();
     cat.prompts.forEach((p, pi) => {
