@@ -2239,12 +2239,13 @@ describe('Usability & Help', () => {
       expect(first.classList.contains('open')).toBe(true);
       expect(items.classList.contains('show')).toBe(true);
     });
-    it('should persist expanded state to prefs', () => {
+    it('should persist expanded state to prefs by category name', () => {
       // Close all, then open second category
       win.document.querySelectorAll('.plib-cat-btn.open').forEach(b => b.click());
-      const btns = win.document.querySelectorAll('.plib-cat-btn');
+      const btns = win.document.querySelectorAll('.plib-cat-btn[data-cat]');
       btns[1].click();
-      expect(win.state.plibOpen).toContain('1');
+      const catName = btns[1].dataset.cat;
+      expect(win.state.plibOpen).toContain(catName);
     });
     it('should include tool guidance in code analysis prompts', () => {
       const findCat = name => win.PROMPT_LIBRARY.find(c => c.category === name);
@@ -2391,15 +2392,20 @@ describe('Usability & Help', () => {
   });
 
   describe('favorites', () => {
-    it('should add and remove favorites', () => {
+    it('should add and remove favorites by name', () => {
       win.state.plibFavs = [];
       win.toggleFavorite(0, 0);
-      expect(win.state.plibFavs).toContain('0:0');
+      const firstCat = win.PROMPT_LIBRARY[0].category.replace(/<[^>]+>/g, '').trim();
+      const firstTitle = win.PROMPT_LIBRARY[0].prompts[0].title;
+      const key = firstCat + ':' + firstTitle;
+      expect(win.state.plibFavs).toContain(key);
       win.toggleFavorite(0, 0);
-      expect(win.state.plibFavs.includes('0:0')).toBe(false);
+      expect(win.state.plibFavs.includes(key)).toBe(false);
     });
     it('should render favorites section when favorites exist', () => {
-      win.state.plibFavs = ['0:0'];
+      const firstCat = win.PROMPT_LIBRARY[0].category.replace(/<[^>]+>/g, '').trim();
+      const firstTitle = win.PROMPT_LIBRARY[0].prompts[0].title;
+      win.state.plibFavs = [firstCat + ':' + firstTitle];
       const overlay = win.document.getElementById('promptLibOverlay');
       overlay.dataset.rendered = '';
       win.renderPromptLib();
@@ -2407,7 +2413,9 @@ describe('Usability & Help', () => {
       expect(favCards.length >= 1).toBe(true);
     });
     it('should show filled star for favorited prompts', () => {
-      win.state.plibFavs = ['0:0'];
+      const firstCat = win.PROMPT_LIBRARY[0].category.replace(/<[^>]+>/g, '').trim();
+      const firstTitle = win.PROMPT_LIBRARY[0].prompts[0].title;
+      win.state.plibFavs = [firstCat + ':' + firstTitle];
       const card = win.buildPromptCard(win.PROMPT_LIBRARY[0].prompts[0], 0, 0);
       expect(card.querySelector('.plib-fav.on')).toBe(card.querySelector('.plib-fav'));
     });

@@ -2694,7 +2694,8 @@ function confirmPlibInput() {
   closePlibInput();
 }
 function toggleFavorite(catIdx, promptIdx) {
-  const key = catIdx + ':' + promptIdx;
+  const cat = PROMPT_LIBRARY[catIdx];
+  const key = cat.category.replace(/<[^>]+>/g, '').trim() + ':' + cat.prompts[promptIdx].title;
   if (!state.plibFavs) state.plibFavs = [];
   const idx = state.plibFavs.indexOf(key);
   if (idx >= 0) state.plibFavs.splice(idx, 1);
@@ -2732,7 +2733,8 @@ function filterPromptLib(query) {
   });
 }
 function buildPromptCard(p, pi, ci) {
-  const isFav = (state.plibFavs || []).includes(ci + ':' + pi);
+  const catName = PROMPT_LIBRARY[ci].category.replace(/<[^>]+>/g, '').trim();
+  const isFav = (state.plibFavs || []).includes(catName + ':' + p.title);
   const card = document.createElement('div');
   card.className = 'plib-card';
   card.innerHTML = '<button class="plib-fav' + (isFav ? ' on' : '') + '" onclick="toggleFavorite(' + ci + ',' + pi + ')" title="' + (isFav ? 'Remove from favorites' : 'Add to favorites') + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
@@ -2756,10 +2758,16 @@ function renderPromptLib() {
     favItems.className = 'plib-cat-items show';
     favBtn.onclick = () => { favBtn.classList.toggle('open'); favItems.classList.toggle('show'); };
     favs.forEach(key => {
-      const [ci, pi] = key.split(':').map(Number);
-      if (PROMPT_LIBRARY[ci] && PROMPT_LIBRARY[ci].prompts[pi]) {
-        favItems.appendChild(buildPromptCard(PROMPT_LIBRARY[ci].prompts[pi], pi, ci));
-      }
+      // Look up by category name + prompt title (stable across reorders)
+      const sepIdx = key.indexOf(':');
+      if (sepIdx === -1) return;
+      const catName = key.slice(0, sepIdx);
+      const promptTitle = key.slice(sepIdx + 1);
+      const ci = PROMPT_LIBRARY.findIndex(c => c.category.replace(/<[^>]+>/g, '').trim() === catName);
+      if (ci === -1) return;
+      const pi = PROMPT_LIBRARY[ci].prompts.findIndex(p => p.title === promptTitle);
+      if (pi === -1) return;
+      favItems.appendChild(buildPromptCard(PROMPT_LIBRARY[ci].prompts[pi], pi, ci));
     });
     favDiv.appendChild(favBtn);
     favDiv.appendChild(favItems);
@@ -2780,7 +2788,7 @@ function renderPromptLib() {
       state.plibOpen = open;
       savePrefsDebounced();
     };
-    btn.dataset.cat = String(ci);
+    btn.dataset.cat = cat.category.replace(/<[^>]+>/g, '').trim();
     cat.prompts.forEach((p, pi) => {
       items.appendChild(buildPromptCard(p, pi, ci));
     });
@@ -2789,7 +2797,8 @@ function renderPromptLib() {
     body.appendChild(catDiv);
   });
   // Restore saved expanded state, or open first category by default
-  const openCats = state.plibOpen || ['0'];
+  const firstCatName = PROMPT_LIBRARY[0].category.replace(/<[^>]+>/g, '').trim();
+  const openCats = state.plibOpen || [firstCatName];
   body.querySelectorAll('.plib-cat-btn[data-cat]').forEach(b => {
     if (openCats.includes(b.dataset.cat)) b.click();
   });
