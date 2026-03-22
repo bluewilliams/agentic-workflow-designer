@@ -2737,6 +2737,104 @@ describe('Coverage Gaps', () => {
   });
 });
 
+// ─── Suite 20: Writing Style & Post-Work ─────────────────────
+describe('Writing Style & Post-Work', () => {
+  beforeEach(() => { clearStorage(); resetState(); });
+
+  describe('writing style directive', () => {
+    it('should return a non-empty style directive', () => {
+      const directive = win.getWritingStyleDirective();
+      expect(directive.length > 50).toBe(true);
+    });
+    it('should include em dash prohibition', () => {
+      const directive = win.getWritingStyleDirective();
+      expect(directive).toContain('em dash');
+    });
+    it('should include emoji guidance', () => {
+      const directive = win.getWritingStyleDirective();
+      expect(directive).toContain('emoji');
+    });
+    it('should append directive to direct copy prompts', () => {
+      // Use Error Handling Audit (no input required, direct copy)
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      const cat = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Code Review & Quality');
+      const promptIdx = win.PROMPT_LIBRARY[cat].prompts.findIndex(p => p.title === 'Error Handling Audit');
+      win.copyLibPrompt(promptIdx, cat);
+      expect(copied).toContain('em dash');
+    });
+    it('should append directive to input-popup prompts', () => {
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.copyLibPrompt(0, 0); // Bug Hunter (has input)
+      win.document.getElementById('plibInputText').value = 'src/auth/';
+      win.confirmPlibInput();
+      expect(copied).toContain('em dash');
+    });
+  });
+
+  describe('post-work prompts', () => {
+    it('should have Post-Work category with PR Description and Jira Update', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Post-Work');
+      expect(cat.prompts.length >= 2).toBe(true);
+      expect(cat.prompts.find(p => p.title === 'Generate PR Description').prompt.length > 200).toBe(true);
+      expect(cat.prompts.find(p => p.title === 'Generate Jira Update').prompt.length > 200).toBe(true);
+    });
+    it('should reference Atlassian MCP in both post-work prompts', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Post-Work');
+      cat.prompts.forEach(p => {
+        expect(p.prompt).toContain('Atlassian MCP');
+      });
+    });
+    it('should reference Chrome browser fallback in both post-work prompts', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Post-Work');
+      cat.prompts.forEach(p => {
+        expect(p.prompt).toContain('Chrome browser');
+      });
+    });
+    it('should include original ask vs solution context in PR Description', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Post-Work');
+      const pr = cat.prompts.find(p => p.title === 'Generate PR Description');
+      expect(pr.prompt).toContain('What Was Asked');
+    });
+  });
+
+  describe('live monitors category', () => {
+    it('should have Live Monitors category with 8 prompts', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Live Monitors');
+      expect(cat.prompts.length).toBe(8);
+    });
+    it('should have exit conditions in all live monitor prompts', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Live Monitors');
+      cat.prompts.forEach(p => {
+        const hasExit = p.prompt.includes('stop the loop') || p.prompt.includes('Stop') || p.prompt.includes('Exit');
+        expect(hasExit).toBe(true);
+      });
+    });
+    it('should have loop usage instructions in all live monitor prompts', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Live Monitors');
+      cat.prompts.forEach(p => {
+        expect(p.prompt).toContain('/loop');
+      });
+    });
+  });
+
+  describe('prompt library completeness', () => {
+    it('should have at least 60 total prompts', () => {
+      const total = win.PROMPT_LIBRARY.reduce((sum, cat) => sum + cat.prompts.length, 0);
+      expect(total >= 60).toBe(true);
+    });
+    it('should have at least 15 categories', () => {
+      expect(win.PROMPT_LIBRARY.length >= 15).toBe(true);
+    });
+    it('should have no empty categories', () => {
+      win.PROMPT_LIBRARY.forEach(cat => {
+        expect(cat.prompts.length > 0).toBe(true);
+      });
+    });
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
@@ -2746,7 +2844,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
