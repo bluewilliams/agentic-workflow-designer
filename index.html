@@ -2710,27 +2710,43 @@ function toggleFavorite(catIdx, promptIdx) {
   const newSearch = $('plibSearch');
   if (newSearch && searchQuery) { newSearch.value = searchQuery; filterPromptLib(searchQuery); }
 }
+let _plibPreSearchState = null;
 function filterPromptLib(query) {
   const q = query.toLowerCase();
   const body = $('promptLibBody');
+  // Save expand state before first search
+  if (q && !_plibPreSearchState) {
+    _plibPreSearchState = [...body.querySelectorAll('.plib-cat-btn[data-cat]')].map(b => ({
+      cat: b.dataset.cat, open: b.classList.contains('open')
+    }));
+  }
   body.querySelectorAll('.plib-card').forEach(card => {
     const title = card.querySelector('.plib-card-title');
     const desc = card.querySelector('.plib-card-desc');
     const text = ((title ? title.textContent : '') + ' ' + (desc ? desc.textContent : '')).toLowerCase();
     card.style.display = (!q || text.includes(q)) ? '' : 'none';
   });
-  // Hide empty categories
   body.querySelectorAll('.plib-category').forEach(cat => {
-    const visibleCards = cat.querySelectorAll('.plib-card[style=""], .plib-card:not([style])');
     const hasVisible = [...cat.querySelectorAll('.plib-card')].some(c => c.style.display !== 'none');
     cat.style.display = (!q || hasVisible) ? '' : 'none';
-    // Auto-expand categories with matches when searching
     if (q && hasVisible) {
       const btn = cat.querySelector('.plib-cat-btn');
       const items = cat.querySelector('.plib-cat-items');
       if (btn && !btn.classList.contains('open')) { btn.classList.add('open'); items.classList.add('show'); }
     }
   });
+  // Restore expand state when search is cleared
+  if (!q && _plibPreSearchState) {
+    body.querySelectorAll('.plib-cat-btn[data-cat]').forEach(btn => {
+      const saved = _plibPreSearchState.find(s => s.cat === btn.dataset.cat);
+      const items = btn.nextElementSibling;
+      if (saved && !saved.open && btn.classList.contains('open')) {
+        btn.classList.remove('open');
+        items.classList.remove('show');
+      }
+    });
+    _plibPreSearchState = null;
+  }
 }
 function buildPromptCard(p, pi, ci) {
   const catName = PROMPT_LIBRARY[ci].category.replace(/<[^>]+>/g, '').trim();
