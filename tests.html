@@ -2754,6 +2754,13 @@ describe('Writing Style & Post-Work', () => {
       const directive = win.getWritingStyleDirective();
       expect(directive).toContain('emoji');
     });
+    it('should contain all four style rules', () => {
+      const directive = win.getWritingStyleDirective();
+      expect(directive).toContain('Do not use em dashes');
+      expect(directive).toContain('natural, human tone');
+      expect(directive).toContain('emojis sparingly');
+      expect(directive).toContain('short, direct sentences');
+    });
     it('should append directive to direct copy prompts', () => {
       // Use Error Handling Audit (no input required, direct copy)
       let copied = '';
