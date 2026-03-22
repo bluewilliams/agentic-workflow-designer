@@ -2453,6 +2453,22 @@ describe('Usability & Help', () => {
       const afterClear = [...win.document.querySelectorAll('.plib-cat-btn[data-cat].open')].length;
       expect(afterClear).toBe(0);
     });
+    it('should only re-render on search-to-empty transition', () => {
+      // Search first, then clear - should re-render (restore state)
+      win.filterPromptLib('security');
+      const overlay = win.document.getElementById('promptLibOverlay');
+      overlay.dataset.rendered = '1';
+      win.filterPromptLib(''); // search→empty: should trigger re-render
+      expect(overlay.dataset.rendered).toBe('');
+    });
+    it('should not re-render on empty-to-empty', () => {
+      // When not searching, clearing again should NOT re-render
+      win._plibSearchActive = false;
+      const overlay = win.document.getElementById('promptLibOverlay');
+      overlay.dataset.rendered = '1';
+      win.filterPromptLib(''); // empty→empty: should NOT trigger re-render
+      expect(overlay.dataset.rendered).toBe('1');
+    });
     it('should hide categories with no matching prompts', () => {
       win.filterPromptLib('xyznonexistent');
       const visibleCats = [...win.document.querySelectorAll('.plib-category')].filter(c => c.style.display !== 'none');
