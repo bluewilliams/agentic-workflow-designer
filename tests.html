@@ -2250,14 +2250,14 @@ describe('Usability & Help', () => {
     it('should include tool guidance in code analysis prompts', () => {
       const findCat = name => win.PROMPT_LIBRARY.find(c => c.category === name);
       const findPrompt = (catName, title) => findCat(catName).prompts.find(p => p.title === title);
-      expect(findPrompt('Code Review & Quality', 'Bug Hunter Review').prompt).toContain('Sourcebot');
+      expect(findPrompt('Code Quality', 'Bug Hunter Review').prompt).toContain('Sourcebot');
       expect(findPrompt('Debugging & Performance', 'Root Cause Analysis').prompt).toContain('LSP');
     });
     it('should have input config on prompts with placeholders', () => {
       const findCat = name => win.PROMPT_LIBRARY.find(c => c.category === name);
       const findPrompt = (catName, title) => findCat(catName).prompts.find(p => p.title === title);
       const promptsNeedingInput = [
-        findPrompt('Code Review & Quality', 'Bug Hunter Review'),
+        findPrompt('Code Quality', 'Bug Hunter Review'),
         findPrompt('Debugging & Performance', 'Root Cause Analysis'),
         findPrompt('Testing', 'Edge Case Test Generator'),
         findPrompt('Planning & Estimation', 'Implementation Breakdown'),
@@ -2804,7 +2804,7 @@ describe('Writing Style & Post-Work', () => {
       // Use Error Handling Audit (no input required, direct copy)
       let copied = '';
       win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
-      const cat = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Code Review & Quality');
+      const cat = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Code Quality');
       const promptIdx = win.PROMPT_LIBRARY[cat].prompts.findIndex(p => p.title === 'Error Handling Audit');
       win.copyLibPrompt(promptIdx, cat);
       expect(copied).toContain('em dash');
