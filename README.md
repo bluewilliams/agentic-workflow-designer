@@ -150,7 +150,7 @@ The Workflow Designer works standalone out of the box, but these optional integr
 |------------|----------------|---------|
 | **Atlassian** | Agents fetch Jira ticket and Confluence page details at runtime instead of needing content pasted in | Built into Claude Code. Enable in Settings or via `claude mcp add` |
 | **Sourcebot** | Cross-repo code search. Agents use `search_code`, `ask_codebase`, `read_file`, `list_tree` to explore your codebase | [sourcebot.dev](https://sourcebot.dev) - self-hosted, free tier available. Add via `claude mcp add -s user --transport http sourcebot http://localhost:4242/api/mcp` |
-| **Datadog** | Observability prompts query logs, metrics, traces, and monitors directly | Install CLI: `curl -sSL https://coterm.datadoghq.com/mcp-cli/install.sh \| bash` then `datadog_mcp_cli login` then `claude mcp add -s user datadog -- ~/.local/bin/datadog_mcp_cli --endpoint-path "/api/unstable/mcp-server/mcp?toolsets=core,alerting,apm"` |
+| **Datadog** | Observability prompts query logs, metrics, traces, and monitors directly. Bug Fix workflows automatically check production error context during investigation when available | Install CLI: `curl -sSL https://coterm.datadoghq.com/mcp-cli/install.sh \| bash` then `datadog_mcp_cli login` then `claude mcp add -s user datadog -- ~/.local/bin/datadog_mcp_cli --endpoint-path "/api/unstable/mcp-server/mcp?toolsets=core,alerting,apm"` |
 
 Toggle Atlassian and Sourcebot on/off in the sidebar. When enabled, prompt hints are injected into all exports so agents prefer these tools. The Prompt Library includes dedicated categories for Sourcebot (cross-repo analysis) and Datadog (observability) prompts, with Chrome browser fallback when MCPs aren't installed.
 
