@@ -119,7 +119,7 @@ For Writer agents, the writing style (stored in `node.config.writingStyle`) is r
 30+ pre-written agent prompt templates covering:
 - **Planning/Architecture**: `planner`, `architect`
 - **Implementation**: `implementer`, `backend`, `frontend`
-- **Investigation/Fix**: `investigator`, `fixer`
+- **Investigation/Fix**: `investigator` (Datadog-aware: checks production logs/errors when MCP available), `fixer`
 - **Review**: `reviewer`, `fullstackReviewer`, `codeAnalyzer`, `codeReviewer`, `improver`
 - **Testing/Validation**: `tester`, `bugTester`, `e2eTester`, `validator`
 - **Research**: `codebaseExplorer`, `docResearcher`, `patternAnalyzer`, `synthesizer`
@@ -333,7 +333,7 @@ A curated collection of high-impact prompts accessible via the **Prompts** toolb
 - **Tool guidance**: Several prompts include context-aware hints for Sourcebot, LSP, and Atlassian MCP tools (embedded in prompt text, not tied to app toggles)
 
 ### Categories
-Code Generation, Code Review & Quality, Architecture & Design, Debugging & Performance, Testing, Security, Documentation, Planning & Estimation, Git & Code Review, DevOps & Infrastructure, Data & Migrations, Strategy & Analysis, Release & Operations, Cross-Repo (requires Sourcebot), Observability (requires Datadog), Live Monitors
+Code Quality, Code Generation, Architecture & Design, Debugging & Performance, Testing, Security, Documentation, Planning & Estimation, Git & Code Review, DevOps & Infrastructure, Data & Migrations, Strategy & Analysis, Release & Operations, Post-Work, Live Monitors, Observability (requires Datadog), Cross-Repo (requires Sourcebot)
 
 ### Live Monitors Category
 Prompts that watch things for you over time. They run on a recurring interval, compare state across iterations, and self-terminate when their exit condition is met. Each prompt includes a `> **Exit**:` line documenting when the loop should stop. Prompts: PR Build Babysitter, PR Review Watcher, Post-Deploy Canary Monitor, Test Flake Detector, Sprint Stale Work Alert, Long-Running Task Companion, Code Review Soak Test, Service Recovery Watcher.
