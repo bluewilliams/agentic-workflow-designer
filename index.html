@@ -2814,7 +2814,7 @@ function renderPromptLib() {
   });
 }
 const PROMPT_LIBRARY = [
-  { category: 'Code Review & Quality', prompts: [
+  { category: 'Code Quality', prompts: [
     { title: 'Bug Hunter Review',
       input: { label: 'What files or module should be analyzed? Leave empty to scan the entire codebase.', placeholder: 'e.g. src/auth/ directory, src/api/payments.ts, or leave empty for full scan', find: '[these files / this module / the recent changes]', optional: true, fallback: 'the entire codebase' },
       desc: 'Systematic search for real bugs, not style issues. Traces data flow, checks edge cases, race conditions, and resource leaks.',
