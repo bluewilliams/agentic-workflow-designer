@@ -4739,11 +4739,11 @@ function genSubAgents() {
   const slugMap = buildAgentSlugMap();
   const p = [];
 
-  p.push('# Claude Code Sub-Agent Workflow' + (name ? ': ' + name : ''));
-  p.push('#');
-  p.push('# Paste this into Claude Code. Each step uses the Task tool to spawn a sub-agent.');
-  p.push('# Sequential steps wait for the previous to complete before starting.');
-  p.push('# Parallel steps should be launched concurrently.');
+  p.push('## Claude Code Sub-Agent Workflow' + (name ? ': ' + name : ''));
+  p.push('');
+  p.push('> Paste this into Claude Code. Each step uses the Task tool to spawn a sub-agent.');
+  p.push('> Sequential steps wait for the previous to complete before starting.');
+  p.push('> Parallel steps should be launched concurrently.');
   p.push('');
 
   if (story) {
