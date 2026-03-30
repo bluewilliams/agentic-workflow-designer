@@ -2881,6 +2881,96 @@ describe('Writing Style & Post-Work', () => {
   });
 });
 
+// ─── Suite 21: Markdown Preview & Copy Integrity ──────────────
+describe('Markdown Preview & Copy Integrity', () => {
+  beforeEach(() => { clearStorage(); resetState(); });
+
+  describe('rendered display', () => {
+    it('should render markdown for Workflow format', () => {
+      win.loadPreset('feature');
+      win.state.exportFormat = 'prompt';
+      win.updatePrompt();
+      expect(win.document.getElementById('promptOutput').classList.contains('rendered')).toBe(true);
+    });
+    it('should render markdown for Claude.ai format', () => {
+      win.loadPreset('feature');
+      win.state.exportFormat = 'claude';
+      win.updatePrompt();
+      expect(win.document.getElementById('promptOutput').classList.contains('rendered')).toBe(true);
+    });
+    it('should show raw text for Sub-Agents format', () => {
+      win.loadPreset('feature');
+      win.state.exportFormat = 'subagent';
+      win.updatePrompt();
+      expect(win.document.getElementById('promptOutput').classList.contains('rendered')).toBe(false);
+    });
+    it('should show raw text for Agent Teams format', () => {
+      win.loadPreset('feature');
+      win.state.exportFormat = 'teams';
+      win.updatePrompt();
+      expect(win.document.getElementById('promptOutput').classList.contains('rendered')).toBe(false);
+    });
+    it('should show raw text for SDK format', () => {
+      win.loadPreset('feature');
+      win.state.exportFormat = 'sdk';
+      win.updatePrompt();
+      expect(win.document.getElementById('promptOutput').classList.contains('rendered')).toBe(false);
+    });
+    it('should show raw text for empty state', () => {
+      resetState();
+      win.updatePrompt();
+      expect(win.document.getElementById('promptOutput').classList.contains('rendered')).toBe(false);
+    });
+  });
+
+  describe('copy integrity - clipboard always gets raw markdown', () => {
+    const formats = ['prompt', 'subagent', 'teams', 'claude', 'sdk'];
+    formats.forEach(fmt => {
+      it('should copy exact generator output for ' + fmt, () => {
+        resetState();
+        win.loadPreset('feature');
+        win.state.exportFormat = fmt;
+        const generators = { prompt: win.genWorkflow, subagent: win.genSubAgents, teams: win.genAgentTeams, sdk: win.genAgentSDK, claude: win.genClaudePrompt };
+        const expected = generators[fmt]();
+        win.updatePrompt();
+        let copied = '';
+        win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+        win.copyPrompt();
+        expect(copied).toBe(expected);
+      });
+    });
+    it('should never copy HTML tags for rendered formats', () => {
+      win.loadPreset('feature');
+      win.state.exportFormat = 'prompt';
+      win.updatePrompt();
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.copyPrompt();
+      expect(copied.includes('<h2>')).toBe(false);
+      expect(copied.includes('<strong>')).toBe(false);
+      expect(copied.includes('<p>')).toBe(false);
+    });
+  });
+
+  describe('renderMarkdown', () => {
+    it('should return empty string for empty input', () => {
+      expect(win.renderMarkdown('')).toBe('');
+    });
+    it('should render headers', () => {
+      const html = win.renderMarkdown('## Test Header');
+      expect(html).toContain('<h2>');
+    });
+    it('should render bold', () => {
+      const html = win.renderMarkdown('This is **bold**');
+      expect(html).toContain('<strong>bold</strong>');
+    });
+    it('should render code blocks', () => {
+      const html = win.renderMarkdown('```\ncode here\n```');
+      expect(html).toContain('<pre>');
+    });
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
@@ -2890,7 +2980,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
