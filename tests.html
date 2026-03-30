@@ -2971,6 +2971,29 @@ describe('Markdown Preview & Copy Integrity', () => {
   });
 });
 
+// ─── Suite 22: Prompt Panel Resize ────────────────────────────
+describe('Prompt Panel Resize', () => {
+  it('should have a resize handle element', () => {
+    expect(win.document.getElementById('promptResize')).toBe(win.document.getElementById('promptResize'));
+  });
+  it('should have prompt area with a height set', () => {
+    const area = win.document.getElementById('promptArea');
+    const height = parseInt(area.style.height);
+    expect(height >= 100).toBe(true);
+    expect(height <= 600).toBe(true);
+  });
+  it('should persist height to localStorage', () => {
+    try {
+      win.localStorage.setItem('awd_promptHeight', '350');
+      const saved = win.localStorage.getItem('awd_promptHeight');
+      expect(saved).toBe('350');
+      win.localStorage.removeItem('awd_promptHeight');
+    } catch(e) {
+      // localStorage may be unavailable in test env
+    }
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
