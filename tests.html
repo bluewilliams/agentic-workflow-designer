@@ -2898,17 +2898,17 @@ describe('Markdown Preview & Copy Integrity', () => {
       win.updatePrompt();
       expect(win.document.getElementById('promptOutput').classList.contains('rendered')).toBe(true);
     });
-    it('should show raw text for Sub-Agents format', () => {
+    it('should render markdown for Sub-Agents format', () => {
       win.loadPreset('feature');
       win.state.exportFormat = 'subagent';
       win.updatePrompt();
-      expect(win.document.getElementById('promptOutput').classList.contains('rendered')).toBe(false);
+      expect(win.document.getElementById('promptOutput').classList.contains('rendered')).toBe(true);
     });
-    it('should show raw text for Agent Teams format', () => {
+    it('should render markdown for Agent Teams format', () => {
       win.loadPreset('feature');
       win.state.exportFormat = 'teams';
       win.updatePrompt();
-      expect(win.document.getElementById('promptOutput').classList.contains('rendered')).toBe(false);
+      expect(win.document.getElementById('promptOutput').classList.contains('rendered')).toBe(true);
     });
     it('should show raw text for SDK format', () => {
       win.loadPreset('feature');
