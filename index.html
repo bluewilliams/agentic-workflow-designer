@@ -4023,10 +4023,12 @@ function loadPreset(preset) {
       const p = addNode('agent', 340, 250, 'Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.planner, maxTurns:5 });
       const c = addNode('agent', 620, 250, 'Implementer', { agentType:'coder', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.implementer, maxTurns:15 });
       const r = addNode('agent', 900, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, maxTurns:5 });
-      const t = addNode('agent', 1180, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
-      const o = addNode('output', 1460, 250, 'Feature Complete', { deliverable:'Tested feature', format:'code' });
+      const d = addNode('decision', 1180, 242, 'Review Passed?', { condition:'Code review passed with no critical issues', yesLabel:'Approved', noLabel:'Revise' });
+      const t = addNode('agent', 1460, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
+      const o = addNode('output', 1740, 250, 'Feature Complete', { deliverable:'Tested feature', format:'code' });
       addConnection(i.id, p.id); addConnection(p.id, c.id); addConnection(c.id, r.id);
-      addConnection(r.id, t.id); addConnection(t.id, o.id);
+      addConnection(r.id, d.id); addConnection(d.id, c.id, 'Revise');
+      addConnection(d.id, t.id, 'Approved'); addConnection(t.id, o.id);
     },
     bugfix: () => {
       const i = addNode('input', 80, 250, 'Bug Report');
