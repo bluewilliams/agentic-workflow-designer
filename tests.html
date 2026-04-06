@@ -833,9 +833,9 @@ describe('Memory Protocol', () => {
       win.loadPreset('bugfix');
       expect(win.state.memoryEnabled).toBe(true);
     });
-    it('should not enable for feature preset', () => {
+    it('should enable for feature preset (has review decision loop)', () => {
       win.loadPreset('feature');
-      expect(win.state.memoryEnabled).toBe(false);
+      expect(win.state.memoryEnabled).toBe(true);
     });
     it('should not enable for documentation preset', () => {
       win.loadPreset('documentation');
@@ -1230,9 +1230,9 @@ describe('Preset Loading', () => {
       win.loadPreset('fullstack');
       expect(win.state.memoryEnabled).toBe(true);
     });
-    it('should not enable for feature preset', () => {
+    it('should enable for feature preset (has review decision loop)', () => {
       win.loadPreset('feature');
-      expect(win.state.memoryEnabled).toBe(false);
+      expect(win.state.memoryEnabled).toBe(true);
     });
     it('should enable for refactoring preset', () => {
       win.loadPreset('refactoring');
