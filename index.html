@@ -4484,7 +4484,8 @@ function updatePrompt() {
     return;
   }
   const generators = { prompt: genWorkflow, subagent: genSubAgents, teams: genAgentTeams, sdk: genAgentSDK, claude: genClaudePrompt };
-  _rawPrompt = genSessionPreamble() + (generators[state.exportFormat] || genWorkflow)();
+  const body = (generators[state.exportFormat] || genWorkflow)();
+  _rawPrompt = (state.exportFormat === 'sdk' ? '' : genSessionPreamble()) + body;
   if (state.exportFormat === 'sdk') {
     out.textContent = _rawPrompt;
     out.classList.remove('rendered');
