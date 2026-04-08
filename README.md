@@ -37,6 +37,14 @@ The bottom panel generates a ready-to-copy prompt tailored to your execution env
 
 Not sure which to pick? The app tells you. A recommendation banner above the tabs analyzes your workflow shape and suggests the best fit. Simple 1-2 agent workflows get pointed to Claude.ai, parallel pipelines to Sub-Agents, and larger teams to Agent Teams. Click the suggestion to switch.
 
+### Session Preamble
+
+Every generated prompt (except Agent SDK) starts with a session preamble: setup commands that Claude should run once before starting the workflow. Currently this includes:
+
+- **`/rename`** - When the workflow has a name, the preamble tells Claude to run `/rename {workflow-name}` to label the session. This makes it easy to find and restore sessions later instead of scrolling through generic "Claude helped me with..." titles.
+
+The preamble is extensible. Future directives (model selection, configuration, etc.) drop into the same block and are formatted as a single instruction with all commands listed.
+
 ## Memory Protocol
 
 Toggle **Enable workflow memory** in the sidebar to inject a compaction-resilient memory system into exported prompts. When enabled:
@@ -54,7 +62,7 @@ No infra required. The memory protocol is embedded directly in the generated pro
 
 ## Built-in Presets
 
-- **Feature Build** - Planner > Implementer > Reviewer > Tester
+- **Feature Build** - Planner > Implementer > Reviewer > Decision gate > Tester
 - **Bug Fix** - Investigator > Fixer > Tester > Verification gate
 - **Full Stack** - Architect > parallel Backend + Frontend > Review > E2E Test
 - **Code Review** - Analyzer > Reviewer > Improver > Validator
@@ -197,6 +205,7 @@ LSP is enabled by default on most agent presets. Code-analysis prompts in the Pr
 - **Preset-specific placeholders**: When you pick a preset, the Requirements textarea updates with a template tailored to that workflow type (steps to reproduce for bugs, acceptance criteria for features, etc.).
 - **Jira URL detection**: Paste a Jira URL instead of requirements and the app detects it, then asks you to pick a workflow type (Feature, Bug Fix, UI Design, Full Stack, Test Automation) since there aren't enough keywords to auto-generate.
 - **Quick patterns**: The palette includes Fork (2/3/4) and Fan-Out shortcuts that scaffold parallel agent groups in one click.
+- **Session naming**: Name your workflow and the generated prompt starts with `/rename {name}` so Claude labels the session for easy recall. No more hunting through generic session titles.
 - **Custom workflows**: Not limited to presets. Add any combination of nodes from the palette and wire them up however you want. The prompt generators handle the scaffolding.
 
 ## Save & Load
