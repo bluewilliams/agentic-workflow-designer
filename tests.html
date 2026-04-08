@@ -2926,13 +2926,12 @@ describe('Markdown Preview & Copy Integrity', () => {
   describe('copy integrity - clipboard always gets raw markdown', () => {
     const formats = ['prompt', 'subagent', 'teams', 'claude', 'sdk'];
     formats.forEach(fmt => {
-      it('should copy exact generator output for ' + fmt, () => {
+      it('should copy exact raw prompt for ' + fmt, () => {
         resetState();
         win.loadPreset('feature');
         win.state.exportFormat = fmt;
-        const generators = { prompt: win.genWorkflow, subagent: win.genSubAgents, teams: win.genAgentTeams, sdk: win.genAgentSDK, claude: win.genClaudePrompt };
-        const expected = generators[fmt]();
         win.updatePrompt();
+        const expected = win.getRawPrompt();
         let copied = '';
         win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
         win.copyPrompt();
@@ -2949,6 +2948,22 @@ describe('Markdown Preview & Copy Integrity', () => {
       expect(copied.includes('<h2>')).toBe(false);
       expect(copied.includes('<strong>')).toBe(false);
       expect(copied.includes('<p>')).toBe(false);
+    });
+    it('should include /rename directive when workflow has a name', () => {
+      resetState();
+      win.loadPreset('feature');
+      win.document.getElementById('workflowName').value = 'My Test Workflow';
+      win.updatePrompt();
+      const raw = win.getRawPrompt();
+      expect(raw.startsWith('> **First**: Run `/rename My Test Workflow`')).toBe(true);
+    });
+    it('should not include /rename directive when workflow has no name', () => {
+      resetState();
+      win.loadPreset('feature');
+      win.document.getElementById('workflowName').value = '';
+      win.updatePrompt();
+      const raw = win.getRawPrompt();
+      expect(raw.startsWith('> **First**')).toBe(false);
     });
   });
 
