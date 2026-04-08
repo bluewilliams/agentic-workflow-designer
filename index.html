@@ -4484,7 +4484,7 @@ function updatePrompt() {
     return;
   }
   const generators = { prompt: genWorkflow, subagent: genSubAgents, teams: genAgentTeams, sdk: genAgentSDK, claude: genClaudePrompt };
-  _rawPrompt = getSessionRenameDirective() + (generators[state.exportFormat] || genWorkflow)();
+  _rawPrompt = genSessionPreamble() + (generators[state.exportFormat] || genWorkflow)();
   if (state.exportFormat === 'sdk') {
     out.textContent = _rawPrompt;
     out.classList.remove('rendered');
@@ -4592,10 +4592,15 @@ function getDownstreamDecisions(nodeId) {
   return getDownstreamNodes(nodeId).filter(n => n.type === 'decision');
 }
 
-function getSessionRenameDirective() {
+// Pre-prompt directives: session setup commands that run once before the workflow
+function genSessionPreamble() {
+  const directives = [];
   const name = getName();
-  if (!name) return '';
-  return '> **First**: Run `/rename ' + name + '` to name this session for easy recall.\n\n';
+  if (name) directives.push('/rename ' + name);
+  // Future pre-prompt commands go here (e.g. /model, /config, etc.)
+  if (directives.length === 0) return '';
+  return '> **Before starting, run ' + (directives.length === 1 ? 'this command' : 'these commands') + ':**\n' +
+    directives.map(d => '> `' + d + '`').join('\n') + '\n\n';
 }
 
 // ═══════════════════════════════════════════════════════════
