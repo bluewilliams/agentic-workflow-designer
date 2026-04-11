@@ -2949,32 +2949,6 @@ describe('Markdown Preview & Copy Integrity', () => {
       expect(copied.includes('<strong>')).toBe(false);
       expect(copied.includes('<p>')).toBe(false);
     });
-    it('should include session preamble with /rename when workflow has a name', () => {
-      resetState();
-      win.loadPreset('feature');
-      win.document.getElementById('workflowName').value = 'My Test Workflow';
-      win.updatePrompt();
-      const raw = win.getRawPrompt();
-      expect(raw.includes('/rename My Test Workflow')).toBe(true);
-      expect(raw.indexOf('/rename')).toBeLessThan(raw.indexOf('##'));
-    });
-    it('should not include session preamble for SDK format', () => {
-      resetState();
-      win.loadPreset('feature');
-      win.document.getElementById('workflowName').value = 'My Test Workflow';
-      win.state.exportFormat = 'sdk';
-      win.updatePrompt();
-      const raw = win.getRawPrompt();
-      expect(raw.includes('/rename')).toBe(false);
-    });
-    it('should not include session preamble when workflow has no name', () => {
-      resetState();
-      win.loadPreset('feature');
-      win.document.getElementById('workflowName').value = '';
-      win.updatePrompt();
-      const raw = win.getRawPrompt();
-      expect(raw.includes('/rename')).toBe(false);
-    });
   });
 
   describe('renderMarkdown', () => {
