@@ -55,7 +55,7 @@ state = {
   zoom: 1,            // Canvas zoom level (0.2–3)
   exportFormat: 'prompt',
   memoryEnabled: false, // Memory Protocol toggle
-  defaultModel: 'opus-4.6', // Global default for new nodes
+  defaultModel: 'opus-4.7', // Global default for new nodes
   repositories: [], // Array of { path, branch } for multi-repo workflows
   mcpAtlassian: true,  // Atlassian MCP toggle
   mcpSourcebot: true,  // Sourcebot MCP toggle
@@ -96,7 +96,7 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 Each Agent node has:
 - **Agent Type**: Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, Writer, General
 - **Writing Style** (Writer only): Technical, User Guide, Business, API Reference, Runbook. Auto-configures tools and prompt template per style
-- **Model**: Opus 4.6 (default), Sonnet 4.6, Sonnet 4.5, Opus 4.5, Haiku 4.5
+- **Model**: Opus 4.7 (default), Opus 4.6, Sonnet 4.6, Sonnet 4.5, Opus 4.5, Haiku 4.5
 - **Tools**: Checkboxes for Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP
 - **Agent Prompt**: Freeform textarea. If left blank, falls back to `getEffectivePrompt()`
 - **Custom Notes**: Additional context injected into all export formats

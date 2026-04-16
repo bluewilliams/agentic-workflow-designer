@@ -76,7 +76,7 @@ Click any node on the canvas to open its configuration panel. Each node type has
 ### Agent
 The core building block. Every agent can be individually configured:
 - **Agent Type** - Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, Writer, or General. Each type has a built-in prompt template that activates when you leave the prompt blank. Writer agents have a **Writing Style** selector (Technical, User Guide, Business, API Reference, Runbook) that auto-configures tools and prompt for each discipline
-- **Model** - Opus 4.6, Sonnet 4.6, Haiku 4.5, Sonnet 4.5, Opus 4.5, plus 1M context variants for Opus 4.6 and Sonnet 4.6. Set a default model in the sidebar; override per-node as needed. Max plan users get 1M context by default. API and Pro users can select 1M variants for research-heavy or long-running agents where the extra context window makes a difference
+- **Model** - Opus 4.7, Opus 4.6, Sonnet 4.6, Haiku 4.5, Sonnet 4.5, Opus 4.5, plus 1M context variants for Opus 4.7, Opus 4.6, and Sonnet 4.6. Set a default model in the sidebar; override per-node as needed. Max plan users get 1M context by default. API and Pro users can select 1M variants for research-heavy or long-running agents where the extra context window makes a difference
 - **Tools** - Toggle individual tools on/off: Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP. Presets assign sensible defaults (e.g. Reviewers get read-only tools, Coders get everything)
 - **Agent Prompt** - Custom instructions. Leave blank to use the agent type's built-in template, or write your own
 - **Custom Notes** - Additional context injected into the generated prompt (constraints, implementation details)

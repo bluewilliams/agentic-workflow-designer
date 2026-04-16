@@ -396,7 +396,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <div class="sidebar-section">
     <h3>Default Model</h3>
     <div class="custom-select" id="defaultModelSelect">
-      <div class="custom-select-trigger" id="defaultModelTrigger">Opus 4.6</div>
+      <div class="custom-select-trigger" id="defaultModelTrigger">Opus 4.7</div>
       <div class="custom-select-options" id="defaultModelOptions"></div>
     </div>
     <div style="font-size:10px;color:var(--text3);margin-top:6px">New nodes, presets, and generated workflows will use this model.</div>
@@ -820,7 +820,7 @@ svg.canvas{width:100%;height:100%;display:block}
 // ═══════════════════════════════════════════════════════════
 const NODE_DEFAULTS = {
   agent: { w: 200, h: 64, color: '#3b82f6', icon: '\u{1F916}', label: 'Agent',
-    config: { agentType: 'general', model: 'opus-4.6', tools: ['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt: '', notes: '', maxTurns: 10 }},
+    config: { agentType: 'general', model: 'opus-4.7', tools: ['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt: '', notes: '', maxTurns: 10 }},
   task: { w: 180, h: 52, color: '#10b981', icon: '\u2713', label: 'Task',
     config: { description: '', acceptance: '' }},
   decision: { w: 140, h: 80, color: '#f59e0b', icon: '?', label: 'Decision',
@@ -865,6 +865,8 @@ const WRITER_TOOL_DEFAULTS = {
 
 const ALL_TOOLS = ['Read','Write','Edit','Bash','Grep','Glob','WebSearch','WebFetch','Task','LSP'];
 const MODELS = [
+  { value: 'opus-4.7',      label: 'Opus 4.7',      family: 'opus-4.7',   id: 'claude-opus-4-7' },
+  { value: 'opus-4.7-1m',   label: 'Opus 4.7 [1M]', family: 'opus-4.7',   id: 'claude-opus-4-7' },
   { value: 'opus-4.6',      label: 'Opus 4.6',      family: 'opus-4.6',   id: 'claude-opus-4-6' },
   { value: 'opus-4.6-1m',   label: 'Opus 4.6 [1M]', family: 'opus-4.6',   id: 'claude-opus-4-6' },
   { value: 'sonnet-4.6',    label: 'Sonnet 4.6',    family: 'sonnet-4.6', id: 'claude-sonnet-4-6' },
@@ -876,9 +878,9 @@ const MODELS = [
 function getModelLabel(val) { const m = MODELS.find(m => m.value === val); return m ? m.label : val; }
 function getModelFamily(val) { const m = MODELS.find(m => m.value === val); return m ? m.family : val; }
 function getModelId(val) { const m = MODELS.find(m => m.value === val); return m ? m.id : val; }
-// Latest (4.6) models use shorthand aliases; 4.5 models use full IDs for precise version pinning
+// Latest models (Opus 4.7, Sonnet 4.6) use shorthand aliases; older models use full IDs for precise version pinning
 // [1M] variants append the Claude Code context window suffix for 1M token sessions
-const taskModelMap = { 'sonnet-4.6': 'sonnet', 'opus-4.6': 'opus', 'sonnet-4.6-1m': 'sonnet[1m]', 'opus-4.6-1m': 'opus[1m]', 'haiku': 'haiku' };
+const taskModelMap = { 'opus-4.7': 'opus', 'opus-4.7-1m': 'opus[1m]', 'sonnet-4.6': 'sonnet', 'sonnet-4.6-1m': 'sonnet[1m]', 'haiku': 'haiku' };
 function getTaskModelParam(val) { return taskModelMap[val] || getModelId(val); }
 
 // ── Atlassian URL detection ──────────────────────────────────────────────────
@@ -1062,7 +1064,7 @@ let state = {
   mousePos: { x: 0, y: 0 },
   exportFormat: 'prompt',
   memoryEnabled: false,
-  defaultModel: 'opus-4.6',
+  defaultModel: 'opus-4.7',
   repositories: [],
   activePreset: null,
   mcpAtlassian: true,
