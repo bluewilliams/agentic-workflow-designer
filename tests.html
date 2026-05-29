@@ -1475,12 +1475,19 @@ describe('Model Version Handling', () => {
       const output = win.genSubAgents();
       expect(output).toContain('model="sonnet"');
     });
-    it('should use shorthand for Opus 4.7 (latest)', () => {
+    it('should use shorthand for Opus 4.8 (latest)', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'opus-4.8';
+      const output = win.genSubAgents();
+      expect(output).toContain('model="opus"');
+    });
+    it('should use full ID for Opus 4.7 (now older)', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
       impl.config.model = 'opus-4.7';
       const output = win.genSubAgents();
-      expect(output).toContain('model="opus"');
+      expect(output).toContain('model="claude-opus-4-7"');
     });
     it('should use full ID for Opus 4.6 (now older)', () => {
       buildTestWorkflow('linear');
@@ -1503,10 +1510,10 @@ describe('Model Version Handling', () => {
       const output = win.genSubAgents();
       expect(output).toNotContain('/model claude-sonnet');
     });
-    it('should use opus[1m] shorthand for Opus 4.7 [1M]', () => {
+    it('should use opus[1m] shorthand for Opus 4.8 [1M]', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
-      impl.config.model = 'opus-4.7-1m';
+      impl.config.model = 'opus-4.8-1m';
       const output = win.genSubAgents();
       expect(output).toContain('model="opus[1m]"');
     });
@@ -1520,10 +1527,10 @@ describe('Model Version Handling', () => {
   });
 
   describe('workflow export', () => {
-    it('should use shorthand model for latest (4.7)', () => {
+    it('should use shorthand model for latest (4.8)', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
-      impl.config.model = 'opus-4.7';
+      impl.config.model = 'opus-4.8';
       const output = win.genWorkflow();
       expect(output).toContain('`opus`');
     });
@@ -1537,7 +1544,7 @@ describe('Model Version Handling', () => {
     it('should use [1M] label for 1M variants', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
-      impl.config.model = 'opus-4.7-1m';
+      impl.config.model = 'opus-4.8-1m';
       const output = win.genWorkflow();
       expect(output).toContain('opus[1m]');
     });
