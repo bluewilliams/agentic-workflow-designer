@@ -1075,6 +1075,303 @@ let state = {
 };
 
 // ═══════════════════════════════════════════════════════════
+// RESEARCH / ADVISORY MODE  (spike + evaluation workflows)
+// A spike produces a recommendation, not a build plan. These helpers keep
+// research/advisory framing separate from implementation framing and gate the
+// LSP-heavy structural tracing to modes that actually target our own code.
+// ═══════════════════════════════════════════════════════════
+const RESEARCH_MODES = [
+  { value: 'codebase-internal',  label: 'Codebase-internal (our own code)' },
+  { value: 'landscape-advisory', label: 'Landscape / advisory (external options)' },
+  { value: 'hybrid',             label: 'Hybrid (our code + external options)' }
+];
+
+// Default scoring rubric for evaluation/advisory spikes. Every option is scored
+// on the same axes so the recommendation is defensible, not vibes.
+const RESEARCH_RUBRIC = [
+  'Effort to adopt (build + rollout cost)',
+  'Maintenance burden (ongoing cost to keep it working)',
+  'Complexity added (moving parts, cognitive load, new concepts)',
+  'Value delivered (how much of the actual need it meets)',
+  'Reversibility / lock-in (how hard to back out or switch later)',
+  'Adoption friction (team learning curve, process change, buy-in)'
+];
+
+// Default evaluation bias. User-overridable per workflow. Recommending the
+// minimal or do-nothing option must be a valid conclusion.
+const RESEARCH_DEFAULT_BIAS = 'less-is-more: a lighter option that captures most of the value beats a heavier one that captures slightly more. Recommending the minimal option, or do-nothing / status-quo, is a valid and often preferred conclusion. Name the complexity cutoff explicitly: the point past which extra capability is not worth the complexity it adds.';
+
+// Normalize the options slot (stored as an array, edited in the UI as text).
+function parseResearchOptions(opts) {
+  if (Array.isArray(opts)) return opts.map(s => String(s).trim()).filter(Boolean);
+  if (typeof opts === 'string') return opts.split('\n').map(s => s.trim()).filter(Boolean);
+  return [];
+}
+
+// Infer the research mode from the spike text. Defaults to hybrid when ambiguous.
+function inferResearchMode(text) {
+  const t = (text || '').toLowerCase();
+  if (!t.trim()) return 'hybrid';
+  const external = /\b(vs\.?|versus|evaluate|evaluation|options?|alternatives?|vendor|third[- ]party|librar(y|ies)|framework|tool(ing|s)?|build vs buy|landscape|market|adopt|recommendation|which (one|approach)|should we (use|adopt|buy))\b/;
+  const internal = /\b(our (code|codebase|app|system)|this (repo|codebase|project)|refactor|where (does|is)|trace|call (path|hierarchy)|integrate|how (does|is) .* (implemented|wired|built))\b/;
+  const ext = external.test(t), int = internal.test(t);
+  if (ext && int) return 'hybrid';
+  if (ext) return 'landscape-advisory';
+  if (int) return 'codebase-internal';
+  return 'hybrid';
+}
+
+// Detect a 2-option "X vs Y" framing in the title so we can pre-fill the options
+// slot AND warn agents not to anchor on just those two.
+function detectNamedOptions(text) {
+  const title = (text || '').trim().split('\n')[0];
+  if (!title) return [];
+  const m = title.match(/(.+?)\s+(?:vs\.?|versus)\s+(.+)/i);
+  if (!m) return [];
+  let a = m[1].replace(/^.*?\b(?:evaluate|compare|assess|spike|investigate|research|decide(?: between)?|choose(?: between)?)\b[:\s]*/i, '').trim();
+  let b = m[2].replace(/\s+(options?|approaches?|alternatives?)\b.*$/i, '').trim();
+  a = a.replace(/^["'(\[]+|["')\]]+$/g, '').trim();
+  b = b.replace(/[.?):,]+$/, '').replace(/^["'(\[]+|["')\]]+$/g, '').trim();
+  if (!a || !b) return [];
+  return [a, b];
+}
+
+// Anti-anchoring guard: force the full option space + the shared rubric.
+function buildOptionSpaceGuard(options) {
+  const named = parseResearchOptions(options);
+  const lines = [];
+  lines.push('## Option Space (do not anchor on the named options)');
+  if (named.length) {
+    lines.push('The spike names these options: ' + named.map(o => '"' + o + '"').join(' and ') + '. Treat them as a starting point, NOT the full set.');
+  }
+  lines.push('Enumerate and evaluate the FULL option space before concluding. At minimum include:');
+  lines.push('- Status quo / do-nothing (what happens if we change nothing)');
+  lines.push('- The lightest-weight option that still captures most of the value');
+  named.forEach(o => lines.push('- ' + o));
+  lines.push('- Any hybrid or partial-adoption path that splits the difference');
+  lines.push('Score every option on the same rubric:');
+  RESEARCH_RUBRIC.forEach(r => lines.push('  - ' + r));
+  return lines.join('\n');
+}
+
+// Codebase/inventory agent. LSP stays available in ALL modes (read-only, cheap),
+// but the LSP-heavy structural tracing + integration framing is gated to
+// codebase-internal and hybrid. Advisory mode does a current-state inventory.
+function researchExplorerPrompt(mode) {
+  if (mode === 'landscape-advisory') {
+    return [
+      'Inventory the current state of our codebase relevant to this evaluation.',
+      '',
+      'This is a CURRENT-STATE INVENTORY for an advisory recommendation, not an implementation plan. Map what exists today and where the relevant artifacts land. Do NOT trace a feature being built, and do NOT identify where new code should integrate: no extension points, no call-hierarchy tracing.',
+      '',
+      '1. Use `Glob "**/*"` and `Grep` to map where the relevant artifacts and concerns already live (config, storage paths, generated output, conventions).',
+      '2. Use `Bash` (read-only: ls, cat, find, git log) to see what is actually on disk and how it is produced today.',
+      '3. If a cross-repo search tool (Sourcebot) is available, use it to find similar handling across other repositories.',
+      '4. `LSP` is available for a quick symbol or definition lookup if you need one, but do not run deep call-hierarchy tracing: that is not what this inventory needs.',
+      '5. Record where things land today: directories, naming, formats, who writes them, who reads them.',
+      '6. Note current pain points and constraints that any option would have to live with.',
+      '',
+      'Output: a current-state inventory of what exists, where it lives, how it is produced and consumed, and the constraints any option must respect.',
+      '',
+      '## Handoff Summary',
+      'End your response with:',
+      '- **Current State**: What exists today and where it lives',
+      '- **How Artifacts Land**: Where relevant output/config is produced and consumed',
+      '- **Constraints**: Real limits any option must respect',
+      '- **Prior Art**: Similar handling already in our repos (cross-repo if available)',
+      '- **Open Gaps**: Unknowns the option research must resolve'
+    ].join('\n');
+  }
+  // codebase-internal + hybrid: LSP-heavy structural tracing is appropriate here.
+  return [
+    'Explore the codebase to map the current implementation relevant to this spike.',
+    '',
+    'If an Atlassian MCP tool is available, search Confluence for architecture diagrams, system design docs, and ADRs that describe the area under evaluation.',
+    '',
+    '1. Use `Glob "**/*"` to map file structure, then `LSP workspaceSymbol` for a symbol-level inventory of the relevant domain.',
+    '2. Use `LSP documentSymbol` on each key file to understand its exported API and internal structure.',
+    '3. Use `LSP outgoingCalls` on entry-point functions to trace the execution path down to leaf dependencies.',
+    '4. Use `LSP incomingCalls` on core utilities to understand what depends on them.',
+    '5. Use `LSP goToImplementation` on key interfaces to find all concrete implementations.',
+    '6. Use `LSP findReferences` on shared types to map where they are consumed.',
+    '7. Use `LSP hover` for quick type signatures.',
+    '8. Document current architecture, patterns, and abstractions.',
+    '9. Identify the integration points and extension points an option would have to touch.',
+    '10. Note technical debt or constraints that affect feasibility.',
+    '',
+    'Output: structured findings with file references, a call-hierarchy map, an interface-to-implementation inventory, and the integration points each option would touch.',
+    '',
+    '## Handoff Summary',
+    'End your response with:',
+    '- **Architecture Map**: Key modules and their relationships',
+    '- **Call Hierarchy**: Critical execution paths traced via LSP',
+    '- **Integration Points**: Where an option would have to plug in',
+    '- **Reusable Code**: Existing utilities and patterns to leverage',
+    '- **Constraints**: Technical debt or limits affecting feasibility'
+  ].join('\n');
+}
+
+// Web/options researcher. In advisory + hybrid it enumerates the full external
+// option space (anti-anchoring). In codebase-internal it is documentation-only.
+function researchDocPrompt(mode, options) {
+  const lines = [];
+  lines.push('Research external options, documentation, and prior art relevant to this spike.');
+  lines.push('');
+  if (mode !== 'codebase-internal') {
+    lines.push(buildOptionSpaceGuard(options));
+    lines.push('');
+  }
+  lines.push('1. Use `WebSearch` to find candidate options, tools, libraries, and approaches, including ones not named in the spike.');
+  lines.push('2. Use `WebFetch` to read the primary sources (official docs, repos, specs) for each serious candidate.');
+  lines.push('3. For each option capture: what it does, maturity, license, maintenance status, and what adopting it actually costs.');
+  lines.push('4. Look specifically for lighter-weight or do-nothing alternatives that the named options might be overkill against.');
+  lines.push('5. Note pitfalls, anti-patterns, and version or lock-in concerns for each.');
+  lines.push('');
+  lines.push('Output: a candidate option catalog with sources, costs, and pitfalls, framed as evaluation input, not a build plan.');
+  lines.push('');
+  lines.push('## Handoff Summary');
+  lines.push('End your response with:');
+  lines.push('- **Option Catalog**: Each candidate with a one-line description and source URL');
+  lines.push('- **Cost to Adopt**: What each option actually costs to take on');
+  lines.push('- **Lighter Alternatives**: Cheaper or do-nothing paths worth considering');
+  lines.push('- **Pitfalls**: Known issues, lock-in, or maintenance concerns per option');
+  lines.push('- **Maturity Notes**: License, activity, and stability signals');
+  return lines.join('\n');
+}
+
+// Pattern / fit analyzer. Advisory mode scores options against the rubric and
+// our constraints. Internal/hybrid mode keeps convention analysis (no
+// "feature being built" framing: this is an evaluation, not a build).
+function researchPatternPrompt(mode, options) {
+  if (mode === 'landscape-advisory') {
+    return [
+      'Analyze how each candidate option would fit our existing conventions and constraints, and score the trade-offs. This produces evaluation input for an advisory recommendation, not an implementation plan.',
+      '',
+      buildOptionSpaceGuard(options),
+      '',
+      '1. For each option, assess fit against our current conventions and constraints (use Glob/Grep/Read to ground this in what actually exists).',
+      '2. For each option, fill the scoring rubric above with a short justification per dimension.',
+      '3. Call out adoption friction and lock-in honestly: these are usually underweighted.',
+      '4. Identify the lightest option that still captures most of the value.',
+      '',
+      'Output: a scored comparison across the full option space, with the rubric applied to each.',
+      '',
+      '## Handoff Summary',
+      'End your response with:',
+      '- **Scored Options**: Each option rated on the rubric with a one-line justification',
+      '- **Lightest Viable**: The minimal option that still delivers most of the value',
+      '- **Lock-in / Friction**: Where each option costs us later',
+      '- **Fit Concerns**: Where an option fights our existing conventions',
+      '- **Recommendation Input**: Which options the advisor should take seriously'
+    ].join('\n');
+  }
+  return [
+    'Analyze existing patterns and conventions relevant to the area under evaluation.',
+    '',
+    '1. Use `LSP workspaceSymbol` to find the closest existing analogues to the area under evaluation.',
+    '2. Use `LSP documentSymbol` on the best analogue files to understand their structure and naming conventions.',
+    '3. Use `LSP findReferences` on shared utilities and base classes to tell convention from one-off.',
+    '4. Use `LSP goToImplementation` on common interfaces to compare how features implement the same contract.',
+    '5. Note naming conventions, file organization, and import styles.',
+    '6. Note deviations from established patterns.',
+    '7. Assess which patterns a recommended approach should follow vs improve.',
+    '',
+    'Output: a pattern inventory with code examples (file:line), a convention guide, and which conventions any recommended approach should respect.',
+    '',
+    '## Handoff Summary',
+    'End your response with:',
+    '- **Closest Analogue**: The nearest existing pattern with file:line',
+    '- **Conventions**: Naming, organization, and import styles to match',
+    '- **Shared Code**: Reusable utilities with LSP-verified reference counts',
+    '- **Deviations**: Existing inconsistencies to be aware of',
+    '- **Recommendation Input**: Which conventions should shape the recommendation'
+  ].join('\n');
+}
+
+// Advisor / synthesizer. Advisory + hybrid write ADVISORY.md and apply the
+// evaluation bias explicitly. Codebase-internal produces a recommendation memo.
+function researchSynthesizerPrompt(mode, options, bias) {
+  const biasText = (bias && bias.trim()) ? bias.trim() : RESEARCH_DEFAULT_BIAS;
+  const advisory = (mode !== 'codebase-internal');
+  const lines = [];
+  lines.push('You are the advisor. Synthesize all research into a single recommendation. This is a spike: you produce a RECOMMENDATION, not a build plan.');
+  lines.push('');
+  lines.push('## Evaluate the full option space');
+  lines.push(buildOptionSpaceGuard(options));
+  lines.push('');
+  lines.push('## Apply the evaluation bias explicitly');
+  lines.push('Decision principle for this spike: ' + biasText);
+  lines.push('State how this principle shaped your pick, and name the complexity cutoff: the point past which extra capability was not worth the complexity it adds. Recommending the minimal or do-nothing option is a valid conclusion. Do not pad the recommendation to look thorough.');
+  lines.push('');
+  if (advisory) {
+    lines.push('## Produce ADVISORY.md');
+    lines.push('Use `Write` to create `ADVISORY.md` with these sections, in order:');
+    lines.push('1. **Recommendation (CTO-ready)**: the pick in 3 sentences max - what to do, why, and the one trade-off accepted.');
+    lines.push('2. **Principle applied**: the evaluation bias above and the named complexity cutoff.');
+    lines.push('3. **Scored options matrix**: a table of every option (including status-quo and the lightest alternative) scored on the rubric:');
+    RESEARCH_RUBRIC.forEach(r => lines.push('   - ' + r));
+    lines.push('4. **Why not the others**: one line per rejected option.');
+    lines.push('5. **Follow-up tickets**: concrete, small, independently shippable next steps (title + one-line scope each).');
+    lines.push('6. **Open questions**: what is still unknown and who can answer it.');
+    lines.push('');
+    lines.push('Constraints on ADVISORY.md: principle-level not prescriptive, no em dashes, no invented data. If a number is an estimate, say so.');
+  } else {
+    lines.push('## Produce a recommendation memo');
+    lines.push('Use `Write` to create `ADVISORY.md` with: the CTO-ready recommendation in 3 sentences, the principle applied and complexity cutoff, the scored options matrix, why-not for each rejected option, concrete follow-up tickets, and open questions. Principle-level, no em dashes, no invented data.');
+  }
+  lines.push('');
+  lines.push('## Handoff Summary');
+  lines.push('End your response with:');
+  lines.push('- **Recommendation**: The 3-sentence CTO-ready pick');
+  lines.push('- **Complexity Cutoff**: Where you drew the line and why');
+  lines.push('- **Scored Matrix**: The option-by-rubric scores (summarized)');
+  lines.push('- **Follow-up Tickets**: The proposed next steps');
+  lines.push('- **Open Questions**: What still needs a human decision');
+  return lines.join('\n');
+}
+
+// Locate the agents/synth/output around a research fork so a mode change can
+// re-bake their prompts in place.
+function findResearchParts(forkNode) {
+  const childIds = state.connections.filter(c => c.from === forkNode.id).map(c => c.to);
+  const children = childIds.map(id => state.nodes.find(n => n.id === id)).filter(n => n && n.type === 'agent');
+  let join = null, synth = null, output = null;
+  if (children.length) {
+    const t = state.connections.filter(c => c.from === children[0].id).map(c => c.to);
+    join = t.map(id => state.nodes.find(n => n.id === id)).find(n => n && n.type === 'parallel') || null;
+  }
+  if (join) {
+    const after = state.connections.filter(c => c.from === join.id).map(c => c.to);
+    synth = after.map(id => state.nodes.find(n => n.id === id)).find(n => n && n.type === 'agent') || null;
+  }
+  if (synth) {
+    const out = state.connections.filter(c => c.from === synth.id).map(c => c.to);
+    output = out.map(id => state.nodes.find(n => n.id === id)).find(n => n && n.type === 'output') || null;
+  }
+  return { children, join, synth, output };
+}
+
+// Re-bake a research workflow's agents for the chosen mode + options + bias.
+function applyResearchMode(forkNode, mode) {
+  forkNode.config.researchMode = mode;
+  const options = parseResearchOptions(forkNode.config.options);
+  const bias = forkNode.config.evaluationBias || '';
+  const advisory = (mode !== 'codebase-internal');
+  const explorerTools = mode === 'landscape-advisory' ? ['Read', 'Grep', 'Glob', 'LSP', 'Bash'] : ['Read', 'Grep', 'Glob', 'LSP'];
+  const { children, synth, output } = findResearchParts(forkNode);
+  if (children[0]) { children[0].label = advisory ? 'Current-State Inventory' : 'Codebase Explorer'; children[0].config.prompt = researchExplorerPrompt(mode); children[0].config.tools = explorerTools; }
+  if (children[1]) { children[1].label = advisory ? 'Options Researcher' : 'Doc Researcher'; children[1].config.prompt = researchDocPrompt(mode, options); }
+  if (children[2]) { children[2].label = advisory ? 'Fit & Tradeoff Analyzer' : 'Pattern Analyzer'; children[2].config.prompt = researchPatternPrompt(mode, options); }
+  if (synth) { synth.label = advisory ? 'Advisor' : 'Synthesizer'; synth.config.prompt = researchSynthesizerPrompt(mode, options, bias); }
+  if (output) {
+    output.label = advisory ? 'Advisory (ADVISORY.md)' : 'Research Report';
+    output.config.deliverable = advisory
+      ? 'ADVISORY.md: principle-level recommendation, scored options matrix, CTO-ready summary, follow-up tickets, open questions'
+      : 'Comprehensive research report with recommendations';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // TOON v1 (Token-Optimized Orchestration Notation) + MEMORY HELPERS
 // ═══════════════════════════════════════════════════════════
 const TOON_KEY = [
@@ -2344,6 +2641,16 @@ function updateConfig() {
     fields.innerHTML += configSelect('Strategy', 'strategy', node.config.strategy,
       [{ value:'all', label:'Wait for All' },{ value:'any', label:'First Complete' },{ value:'race', label:'Race' }]);
     fields.innerHTML += configTextarea('Description', 'description', node.config.description, 'Parallel execution context...');
+    // Research fork: mode + anti-anchoring option slot + evaluation bias.
+    if (node.config.researchMode) {
+      fields.innerHTML += configSelect('Research Mode', 'researchMode', node.config.researchMode,
+        RESEARCH_MODES.map(m => ({ value: m.value, label: m.label })));
+      fields.innerHTML += configTextarea('Options to Evaluate (one per line)', 'options',
+        parseResearchOptions(node.config.options).join('\n'),
+        'Leave blank to let agents enumerate. e.g.\nfull artifact manager\nlightweight manifest\ndo nothing');
+      fields.innerHTML += configTextarea('Evaluation Bias / Principle', 'evaluationBias',
+        node.config.evaluationBias || '', 'Leave blank for the default less-is-more principle');
+    }
   } else if (node.type === 'input') {
     fields.innerHTML += configSelect('Source', 'source', node.config.source,
       [{ value:'jira', label:'Jira Ticket' },{ value:'story', label:'User Story' },{ value:'prd', label:'PRD' },{ value:'custom', label:'Custom' }]);
@@ -2365,6 +2672,10 @@ function updateConfig() {
       const val = el.type === 'number' ? parseInt(el.value) || 0 : el.value;
       if (key === 'label') node.label = val;
       else node.config[key] = val;
+      // Re-bake research agent prompts when the option slot or bias changes.
+      if ((key === 'options' || key === 'evaluationBias') && node.type === 'parallel' && node.config.researchMode) {
+        applyResearchMode(node, node.config.researchMode);
+      }
       render();
     };
     el.addEventListener('input', handler);
@@ -2394,6 +2705,12 @@ function updateConfig() {
 
       // Re-render config panel when output format changes (show/hide PR fields)
       if (key === 'format' && node.type === 'output') {
+        updateConfig();
+      }
+
+      // Re-bake research agents (prompts, tools, labels, output) on mode change.
+      if (key === 'researchMode' && node.type === 'parallel') {
+        applyResearchMode(node, val);
         updateConfig();
       }
 
@@ -4084,18 +4401,27 @@ function loadPreset(preset) {
       addConnection(im.id, v.id); addConnection(v.id, o.id);
     },
     parallel_research: () => {
+      // Mode-aware: infer from the spike text (our own code vs external options),
+      // pre-fill the option slot from any "X vs Y" title, then bake the right
+      // framing. LSP stays available to the explorer in all modes; the LSP-heavy
+      // tracing + integration framing is gated to codebase-internal and hybrid.
+      const story = getStory();
+      const mode = inferResearchMode(story);
+      const options = detectNamedOptions(story);
+      const advisory = (mode !== 'codebase-internal');
+      const explorerTools = mode === 'landscape-advisory' ? ['Read','Grep','Glob','LSP','Bash'] : ['Read','Grep','Glob','LSP'];
       const i = addNode('input', 80, 280, 'Research Topic');
-      const fork = addNode('parallel', 340, 276, 'Parallel Research', { strategy:'all' });
+      const fork = addNode('parallel', 340, 276, 'Parallel Research', { strategy:'all', researchMode:mode, options:options, evaluationBias:'' });
       addConnection(i.id, fork.id);
-      const r1 = addNode('agent', 640, 140, 'Codebase Explorer', { agentType:'researcher', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.codebaseExplorer, notes:'', maxTurns:15 });
-      const r2 = addNode('agent', 640, 280, 'Doc Researcher', { agentType:'researcher', model:state.defaultModel, tools:['Read','WebSearch','WebFetch'], prompt:PROMPTS.docResearcher, notes:'', maxTurns:10 });
-      const r3 = addNode('agent', 640, 420, 'Pattern Analyzer', { agentType:'researcher', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.patternAnalyzer, notes:'', maxTurns:10 });
+      const r1 = addNode('agent', 640, 140, advisory ? 'Current-State Inventory' : 'Codebase Explorer', { agentType:'researcher', model:state.defaultModel, tools:explorerTools, prompt:researchExplorerPrompt(mode), notes:'', maxTurns:15 });
+      const r2 = addNode('agent', 640, 280, advisory ? 'Options Researcher' : 'Doc Researcher', { agentType:'researcher', model:state.defaultModel, tools:['Read','WebSearch','WebFetch'], prompt:researchDocPrompt(mode, options), notes:'', maxTurns:10 });
+      const r3 = addNode('agent', 640, 420, advisory ? 'Fit & Tradeoff Analyzer' : 'Pattern Analyzer', { agentType:'researcher', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:researchPatternPrompt(mode, options), notes:'', maxTurns:10 });
       addConnection(fork.id, r1.id); addConnection(fork.id, r2.id); addConnection(fork.id, r3.id);
       const join = addNode('parallel', 940, 276, 'Collect', { strategy:'all' });
       addConnection(r1.id, join.id); addConnection(r2.id, join.id); addConnection(r3.id, join.id);
-      const synth = addNode('agent', 1220, 280, 'Synthesizer', { agentType:'planner', model:state.defaultModel, tools:['Read','Write'], prompt:PROMPTS.synthesizer, notes:'', maxTurns:5 });
+      const synth = addNode('agent', 1220, 280, advisory ? 'Advisor' : 'Synthesizer', { agentType:'planner', model:state.defaultModel, tools:['Read','Write'], prompt:researchSynthesizerPrompt(mode, options, ''), notes:'', maxTurns:5 });
       addConnection(join.id, synth.id);
-      const o = addNode('output', 1500, 280, 'Research Report', { deliverable:'Comprehensive research report with recommendations', format:'report' });
+      const o = addNode('output', 1500, 280, advisory ? 'Advisory (ADVISORY.md)' : 'Research Report', { deliverable: advisory ? 'ADVISORY.md: principle-level recommendation, scored options matrix, CTO-ready summary, follow-up tickets, open questions' : 'Comprehensive research report with recommendations', format:'report' });
       addConnection(synth.id, o.id);
     },
     swarm: () => {
@@ -4412,6 +4738,16 @@ function validateWorkflow() {
       if (!converges) warnings.push({ type: 'info', msg: 'Fork "' + n.label + '" branches don\'t reconverge downstream' });
     }
   });
+  // Dangling step references: every "Depends on" / "consumed by" label an agent
+  // emits must resolve to a defined step (agent) or deliverable (output). Resolved
+  // getDeps/getDownstream make this hold by construction; this pass flags any
+  // future wiring that reintroduces a reference to an undefined step.
+  const definedLabels = new Set(state.nodes.filter(n => n.type === 'agent' || n.type === 'output').map(n => n.label));
+  state.nodes.filter(n => n.type === 'agent').forEach(n => {
+    [...getDeps(n.id), ...getDownstream(n.id)].forEach(ref => {
+      if (!definedLabels.has(ref)) warnings.push({ type: 'warn', msg: 'Step "' + n.label + '" references "' + ref + '" which is not a defined step' });
+    });
+  });
   return warnings;
 }
 function updateValidation() {
@@ -4590,16 +4926,40 @@ function prBlock(heading) {
 }
 function getAgentTypeName(id) { const a = AGENT_TYPES.find(t => t.id === id); return a ? a.name : 'General'; }
 function getDeps(nodeId) {
-  return state.connections.filter(c => c.to === nodeId).map(c => {
-    const from = state.nodes.find(n => n.id === c.from);
-    return from ? from.label : null;
-  }).filter(Boolean);
+  // Upstream AGENT labels, resolved through parallel (fork/join) and decision
+  // nodes. Input nodes are the ticket, not a dependency, so the first agents in a
+  // parallel fan-out report no upstream instead of a bogus "Depends on: <fork>".
+  const out = [];
+  const seen = new Set([nodeId]);
+  (function walk(id) {
+    state.connections.filter(c => c.to === id).forEach(c => {
+      if (seen.has(c.from)) return;
+      seen.add(c.from);
+      const from = state.nodes.find(n => n.id === c.from);
+      if (!from) return;
+      if (from.type === 'agent') out.push(from.label);
+      else if (from.type === 'parallel' || from.type === 'decision') walk(from.id);
+      // input / output nodes are not dependencies
+    });
+  })(nodeId);
+  return [...new Set(out)];
 }
 function getDownstream(nodeId) {
-  return state.connections.filter(c => c.from === nodeId).map(c => {
-    const to = state.nodes.find(n => n.id === c.to);
-    return to ? to.label : null;
-  }).filter(Boolean);
+  // Downstream AGENT/OUTPUT labels, resolved through parallel and decision nodes
+  // so "consumed by" never points at an undefined join (e.g. "Collect").
+  const out = [];
+  const seen = new Set([nodeId]);
+  (function walk(id) {
+    state.connections.filter(c => c.from === id).forEach(c => {
+      if (seen.has(c.to)) return;
+      seen.add(c.to);
+      const to = state.nodes.find(n => n.id === c.to);
+      if (!to) return;
+      if (to.type === 'agent' || to.type === 'output') out.push(to.label);
+      else if (to.type === 'parallel' || to.type === 'decision') walk(to.id);
+    });
+  })(nodeId);
+  return [...new Set(out)];
 }
 function getDownstreamNodes(nodeId) {
   return state.connections.filter(c => c.from === nodeId).map(c =>

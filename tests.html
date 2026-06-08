@@ -1209,6 +1209,150 @@ describe('Preset Loading', () => {
     });
   });
 
+  describe('research / advisory mode', () => {
+    const setStory = s => { win.document.getElementById('storyInput').value = s; };
+
+    it('infers landscape-advisory from an X vs Y evaluation title', () => {
+      expect(win.inferResearchMode('Evaluate REST vs GraphQL options')).toBe('landscape-advisory');
+    });
+    it('infers codebase-internal from our-codebase tracing language', () => {
+      expect(win.inferResearchMode('Trace how our codebase wires the cache layer')).toBe('codebase-internal');
+    });
+    it('defaults to hybrid when ambiguous or empty', () => {
+      expect(win.inferResearchMode('')).toBe('hybrid');
+    });
+    it('detects the two named options from the title', () => {
+      const opts = win.detectNamedOptions('Evaluate REST vs GraphQL options');
+      expect(opts).toContain('REST');
+      expect(opts).toContain('GraphQL');
+    });
+
+    it('gates LSP-heavy tracing out of landscape-advisory but keeps LSP available', () => {
+      setStory('Evaluate REST vs GraphQL options');
+      win.loadPreset('parallel_research');
+      const fork = win.state.nodes.find(n => n.type === 'parallel' && n.config.researchMode);
+      expect(fork.config.researchMode).toBe('landscape-advisory');
+      expect(fork.config.options).toContain('REST');
+      const inv = win.state.nodes.find(n => n.label === 'Current-State Inventory');
+      expect(inv.config.tools).toContain('LSP');        // available in all modes
+      expect(inv.config.tools).toContain('Bash');       // inventory needs on-disk view
+      expect(inv.config.prompt).toContain('CURRENT-STATE INVENTORY');
+      expect(inv.config.prompt).toNotContain('LSP incomingCalls');
+      expect(inv.config.prompt).toNotContain('LSP goToImplementation');
+    });
+    it('keeps LSP-heavy tracing in codebase-internal mode', () => {
+      setStory('Map how our codebase wires the cache layer and where to integrate a new tier');
+      win.loadPreset('parallel_research');
+      const fork = win.state.nodes.find(n => n.type === 'parallel' && n.config.researchMode);
+      expect(fork.config.researchMode).toBe('codebase-internal');
+      const exp = win.state.nodes.find(n => n.label === 'Codebase Explorer');
+      expect(exp.config.prompt).toContain('LSP incomingCalls');
+      expect(exp.config.prompt).toContain('LSP goToImplementation');
+    });
+
+    it('broadens the option space with anti-anchoring guidance', () => {
+      setStory('Evaluate REST vs GraphQL options');
+      win.loadPreset('parallel_research');
+      const advisor = win.state.nodes.find(n => n.label === 'Advisor');
+      expect(advisor.config.prompt).toContain('do not anchor on the named options');
+      expect(advisor.config.prompt).toContain('Status quo / do-nothing');
+      expect(advisor.config.prompt).toContain('less-is-more');   // default evaluation bias
+    });
+    it('advisory output convention writes ADVISORY.md', () => {
+      setStory('Evaluate REST vs GraphQL options');
+      win.loadPreset('parallel_research');
+      const advisor = win.state.nodes.find(n => n.label === 'Advisor');
+      expect(advisor.config.prompt).toContain('ADVISORY.md');
+      expect(advisor.config.prompt).toContain('RECOMMENDATION, not a build plan');
+    });
+    it('does not inherit implementation framing in advisory mode', () => {
+      setStory('Evaluate REST vs GraphQL options');
+      win.loadPreset('parallel_research');
+      const out = win.genWorkflow();
+      expect(out).toNotContain('the feature being built');
+    });
+
+    it('switching mode re-bakes agents in place', () => {
+      setStory('Evaluate REST vs GraphQL options');
+      win.loadPreset('parallel_research');
+      const fork = win.state.nodes.find(n => n.type === 'parallel' && n.config.researchMode);
+      const inv = win.state.nodes.find(n => n.label === 'Current-State Inventory');
+      win.applyResearchMode(fork, 'codebase-internal');
+      expect(fork.config.researchMode).toBe('codebase-internal');
+      expect(inv.label).toBe('Codebase Explorer');
+      expect(inv.config.prompt).toContain('LSP incomingCalls');
+    });
+
+    it('honors a custom evaluation bias', () => {
+      setStory('Evaluate REST vs GraphQL options');
+      win.loadPreset('parallel_research');
+      const fork = win.state.nodes.find(n => n.type === 'parallel' && n.config.researchMode);
+      fork.config.evaluationBias = 'prefer the option the team can maintain with zero new infra';
+      win.applyResearchMode(fork, fork.config.researchMode);
+      const advisor = win.state.nodes.find(n => n.label === 'Advisor');
+      expect(advisor.config.prompt).toContain('zero new infra');
+    });
+  });
+
+  describe('dependency wiring', () => {
+    it('first parallel-fan-out agents declare no upstream dependency', () => {
+      win.document.getElementById('storyInput').value = 'Evaluate X vs Y options';
+      win.loadPreset('parallel_research');
+      const inv = win.state.nodes.find(n => n.type === 'agent' &&
+        win.state.connections.some(c => c.to === n.id &&
+          win.state.nodes.find(x => x.id === c.from && x.config.researchMode)));
+      expect(win.getDeps(inv.id).length).toBe(0);
+    });
+    it('resolves synthesizer deps through the join to the researchers, not the join', () => {
+      win.document.getElementById('storyInput').value = 'Evaluate X vs Y options';
+      win.loadPreset('parallel_research');
+      const advisor = win.state.nodes.find(n => n.label === 'Advisor' || n.label === 'Synthesizer');
+      const deps = win.getDeps(advisor.id);
+      expect(deps).toNotContain('Collect');
+      expect(deps.length).toBeGreaterThan(0);
+    });
+    it('generated orchestrator has no dangling Collect reference', () => {
+      win.document.getElementById('storyInput').value = 'Evaluate X vs Y options';
+      win.loadPreset('parallel_research');
+      const out = win.genSubAgents();
+      expect(out).toNotContain('Collect');
+    });
+    it('validation flags no dangling step references for parallel_research', () => {
+      win.loadPreset('parallel_research');
+      const dangling = win.validateWorkflow().filter(w => /is not a defined step/.test(w.msg));
+      expect(dangling.length).toBe(0);
+    });
+  });
+
+  describe('cross-preset regression guard', () => {
+    // Lightweight version of the full sweep: the dependency-wiring change is
+    // global, so assert every preset stays free of dangling refs, self-deps, and
+    // exporter throws. Covers the complex looping graphs (test_automation,
+    // refactoring, devops) that the change could have regressed.
+    ['refactoring','devops','test_automation','swarm','fullstack'].forEach(p => {
+      it('keeps ' + p + ' deps sane and exporters non-throwing', () => {
+        win.document.getElementById('storyInput').value = '';
+        win.loadPreset(p);
+        expect(win.validateWorkflow().filter(x => /is not a defined step/.test(x.msg)).length).toBe(0);
+        win.state.nodes.filter(n => n.type === 'agent').forEach(a => {
+          const deps = win.getDeps(a.id), down = win.getDownstream(a.id);
+          expect(deps.includes(a.label)).toBe(false);
+          expect(deps.every(Boolean) && down.every(Boolean)).toBe(true);
+        });
+        ['genWorkflow','genSubAgents','genAgentTeams','genAgentSDK','genClaudePrompt'].forEach(fn => {
+          expect(/Depends on:?\**:?\s*(undefined|null)/.test(win[fn]())).toBe(false);
+        });
+      });
+    });
+    it('round-trips research fork config through serialize', () => {
+      win.document.getElementById('storyInput').value = 'Evaluate X vs Y options';
+      win.loadPreset('parallel_research');
+      const fork = JSON.parse(JSON.stringify(win.serializeWorkflow())).canvas.nodes.find(n => n.config && n.config.researchMode);
+      expect(fork.config.researchMode).toBe('landscape-advisory');
+      expect(fork.config.options).toContain('X');
+    });
+  });
+
   describe('memory auto-enable', () => {
     it('should enable for devops preset', () => {
       win.loadPreset('devops');

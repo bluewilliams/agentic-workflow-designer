@@ -58,7 +58,7 @@ No infra required. The memory protocol is embedded directly in the generated pro
 - **Bug Fix** - Investigator > Fixer > Tester > Verification gate
 - **Full Stack** - Architect > parallel Backend + Frontend > Review > E2E Test
 - **Code Review** - Analyzer > Reviewer > Improver > Validator
-- **Parallel Research** - Codebase Explorer + Doc Researcher + Pattern Analyzer > Synthesizer
+- **Parallel Research** - mode-aware. Codebase-internal: Codebase Explorer + Doc Researcher + Pattern Analyzer > Synthesizer. Landscape/advisory: Current-State Inventory + Options Researcher + Fit & Tradeoff Analyzer > Advisor (writes ADVISORY.md)
 - **Agent Swarm** - Security + Quality + Performance + Architecture audit > Report
 - **Test Automation** - [Test Planner | App Explorer] > parallel Feature Writer + Screen Objects + Step Definitions > Test Reviewer (with app source path + branch support)
 - **UI Design & Development** - Design System Analyzer > UI Implementer > UI Reviewer
@@ -108,6 +108,7 @@ Splits the workflow into concurrent branches:
 Some presets reveal additional sidebar sections:
 - **Test Automation** shows an **App Under Test** field - specify the local path to the app being tested so agents can explore its source for DOM selectors, screen structure, and locator patterns (Selenium, Playwright, etc.)
 - **UI Design & Development** shows a **UI Context** field for styling preferences and design system notes (e.g. "Use vanilla-extract + clsx, avoid SCSS")
+- **Parallel Research** shows a **Research Mode** selector on the fork node (codebase-internal / landscape-advisory / hybrid), plus an **Options to Evaluate** slot and an **Evaluation Bias / Principle** field. Mode is inferred from your requirements (our own code vs external options) and can be changed at any time; the agents re-bake to match. Advisory mode does a current-state inventory (LSP stays available but the heavy call-hierarchy tracing is gated off), enumerates the full option space including status-quo and lighter-weight alternatives, scores every option on a shared rubric, and ends with an Advisor that writes ADVISORY.md (CTO-ready summary, scored matrix, follow-up tickets, open questions). Recommending the minimal or do-nothing option is a valid conclusion.
 
 ## Refine & Plan
 

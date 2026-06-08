@@ -161,6 +161,21 @@ When any output node has `format: pr`, the `prBlock()` helper injects PR creatio
 
 All presets default to `format: 'code'`. PR creation is strictly opt-in: users must select "Pull Request" from the Format dropdown and configure the branch fields.
 
+### Research / Advisory Mode (Parallel Research)
+The Parallel Research preset is mode-aware so research and advisory spikes do not inherit implementation framing. A spike produces a recommendation, not a build plan.
+
+- **Modes**: `codebase-internal` (our own code), `landscape-advisory` (external options), `hybrid`. Stored on the fork node as `config.researchMode`. Inferred from the requirements text via `inferResearchMode(text)`; overridable from the fork node's inspector (re-bakes the agents in place via `applyResearchMode`).
+- **LSP gating**: the codebase/explorer agent keeps `LSP` in its tool list in ALL modes (read-only, cheap). The LSP-heavy instructions (call hierarchy, incoming/outgoing calls, goToImplementation, extension points, "where new code should integrate") are gated to `codebase-internal` and `hybrid`. In `landscape-advisory` the same agent does a current-state INVENTORY (Glob/Grep/Sourcebot/Bash; LSP optional) framed as "map what exists / where artifacts land."
+- **Option space + anti-anchoring**: when the title names two options ("X vs Y"), `detectNamedOptions(text)` pre-fills `config.options` and `buildOptionSpaceGuard` injects an instruction to enumerate the FULL option space (status-quo / do-nothing and lighter-weight alternatives included), scored on a shared rubric: effort-to-adopt, maintenance burden, complexity-added, value-delivered, reversibility/lock-in, adoption-friction. The options slot is editable on the fork node.
+- **Evaluation bias**: `config.evaluationBias` (defaults to a less-is-more principle) is applied explicitly by the Advisor, which must name the complexity cutoff. Recommending the minimal or do-nothing option is a valid conclusion.
+- **Advisory output**: advisory + hybrid end with a single Advisor that writes `ADVISORY.md` (principle-level, scored options matrix, CTO-ready 3-sentence summary, follow-up tickets, open questions). No em dashes in generated artifacts.
+- **Additive**: implementation/feature presets are unchanged; all of the above is mode-gated and lives in `researchExplorerPrompt` / `researchDocPrompt` / `researchPatternPrompt` / `researchSynthesizerPrompt`.
+
+### Dependency Wiring
+`getDeps(nodeId)` and `getDownstream(nodeId)` resolve through `parallel` (fork/join) and `decision` nodes to the real upstream/downstream agent (or output) labels. Input nodes are the ticket, not a dependency, so the first agents in a parallel fan-out report no upstream instead of a bogus `Depends on: <fork>`. This removes dangling references like `Depends on: Collect` (a join node that is never emitted as a step). `validateWorkflow()` includes a pass that flags any agent referencing a label that is not a defined step or deliverable.
+
+The save-file schema stays `version: 1`: the new fork-node config fields (`researchMode`, `options`, `evaluationBias`) are optional and absent fields render as a plain parallel node, so old saved workflows load unchanged.
+
 ### Decision Gate Quality
 All export formats enforce structured decision evaluation:
 - **Reasoning requirement**: Agents must evaluate each criterion systematically and show reasoning before stating a verdict
