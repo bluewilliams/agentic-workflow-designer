@@ -58,10 +58,12 @@ Workflow memory is ephemeral agent scratch state under `~/.claude/` that keeps a
 
 When enabled, the generated prompts instruct agents to maintain one persistent, human-readable document that is:
 
-- the **resumable handoff doc** while work is in progress (goal/spec snapshot with testable scenarios, the approach and decisions, a task checklist with status and files touched, current state and next action, plus a resume note), and
-- the **committable artifact** when the work is done (an outcome summary, the decisions, and branch/PR links).
+- the **resumable handoff doc** while work is in progress (goal/spec snapshot with testable scenarios, the approach and decisions, a surface-area map of the files touched and their role, a **work-breakdown task checklist** - the concrete coding/research/test tasks a developer tracks, not the workflow's agent steps - a Verify section with the real build/test commands and results, any gotchas, plus a current-state/next-action note and a resume note), and
+- the **committable artifact** when the work is done (an outcome summary, the decisions, the completed work-breakdown checklist, a **Built-with provenance** line recording the workflow and the agent roles that produced the change, and branch/PR links).
 
-The contents are deliberately on par with what spec-driven tools commit (spec, approach/plan, tasks, decisions), plus a current-state/next-action section those tools do not have, so it doubles as a resumable handoff. A future maintainer (human or agent) reading it gets the what, the why, the how, and the surface area touched in one place.
+The contents are deliberately on par with what spec-driven tools commit (spec, approach/plan, tasks, decisions), with three things those tools tend to lack: a Verify section that records the real build/test results (so the artifact doubles as an eval substrate), a current-state/next-action section that makes it a resumable handoff, and a Built-with provenance line that records how the change was produced (which agents, what grounding) for re-drive, evals, and audit. A future maintainer (human or agent) reading it gets the what, the why, the how, the surface area touched, and how it was built in one place.
+
+Any agent in the workflow keeps the record current by action, not by role: whoever makes a decision updates the decisions, whoever changes files updates the surface area, whoever runs the build or tests updates Verify, and the last (synthesizing) agent writes the outcome and strips the in-progress scaffolding for commit. The minute-to-minute step progress (which agent is running now) lives only in that scaffolding and is removed on commit, so the committed artifact stays clean while the durable provenance stays.
 
 Set the **Artifact Path** to control where it lands. It defaults to a conventional in-repo path (`.workflow/{slug}.md`) so it versions with the code in the same PR. For work that spans multiple repositories - where no single repo owns the record - point it elsewhere or have agents attach it to the work item, with links to each repo's branch and PR.
 

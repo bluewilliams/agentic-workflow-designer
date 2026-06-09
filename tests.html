@@ -990,12 +990,58 @@ describe('Durable Record: protocol content', () => {
     expect(proto).toContain('not em dashes or en dashes');
     expect(proto).toContain('natural language a teammate');
   });
+  it('v2: has Surface area, Verify, Gotchas, omit-when-empty, and action-based ownership', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('Surface area');
+    expect(proto).toContain('Verify');
+    expect(proto).toContain('Gotchas');
+    expect(proto).toContain('omit any section that has no content');
+    expect(proto).toContain('by action not by role');
+    expect(proto).toContain('fan-out agents write findings to the ephemeral memory');
+  });
+  it('v2.1: Task checklist is the work breakdown, not the workflow/agent steps', () => {
+    const proto = win.genDurableRecordProtocol();
+    // It frames the checklist as concrete units of work...
+    expect(proto).toContain('the actual units of work needed to deliver the change');
+    expect(proto).toContain('research, coding, and testing tasks');
+    expect(proto).toContain('the work breakdown a developer would track');
+    // ...and explicitly NOT the workflow/agent step names.
+    expect(proto).toContain("NOT the workflow's agent or step names");
+  });
+  it('v2.1: has a durable Built-with provenance item (committed, not transient progress)', () => {
+    win.document.getElementById('workflowName').value = 'Demo';
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('Built with (provenance)');
+    // Carries the workflow name + agent roles + grounding as durable metadata.
+    expect(proto).toContain('the workflow name (`Demo`)');
+    expect(proto).toContain('the agent roles it ran');
+    expect(proto).toContain('what grounded them');
+    expect(proto).toContain('how this was built');
+    // Distinguished from transient step progress, which is stripped on commit.
+    expect(proto).toContain('NOT the minute-to-minute step progress');
+    expect(proto).toContain('removed on commit');
+    // Set at kickoff (known from the workflow shape up front).
+    expect(proto).toContain('the Built-with provenance line (the workflow name and its agent roles are known up front)');
+  });
+  it('v2.1: provenance examples stay provider-neutral (no real grounding-tool name)', () => {
+    const proto = win.genDurableRecordProtocol();
+    // The example grounding is generic, not a specific product.
+    expect(proto).toContain('a code-search index over the repo');
+    expect(proto).toNotContain('Sourcebot');
+  });
   it('comment variant is comment-prefixed and carries the path', () => {
     win.document.getElementById('workflowName').value = 'Demo';
     const c = win.genDurableRecordComment('# ');
     expect(c).toContain('# DURABLE RECORD');
     expect(c).toContain('.workflow/demo.md');
     expect(c).toNotContain('Jira');
+  });
+  it('v2.1: comment variant mentions work-breakdown checklist and built-with provenance', () => {
+    const c = win.genDurableRecordComment('# ');
+    expect(c).toContain('work-breakdown task checklist');
+    expect(c).toContain('not the workflow steps');
+    expect(c).toContain('built-with provenance line');
+    expect(c).toNotContain('Sourcebot');
   });
 });
 
