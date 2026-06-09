@@ -52,6 +52,32 @@ Memory auto-enables for complex workflows (parallel forks, decision gate loops, 
 
 No infra required. The memory protocol is embedded directly in the generated prompts. It just works.
 
+### Durable Record (committable artifact)
+
+Workflow memory is ephemeral agent scratch state under `~/.claude/` that keeps a run alive across compaction. When you also want a record the work can be **handed off and committed**, check **Keep a durable record** (it appears under the memory toggle, since a durable record builds on memory - it is a strict superset).
+
+When enabled, the generated prompts instruct agents to maintain one persistent, human-readable document that is:
+
+- the **resumable handoff doc** while work is in progress (goal/spec snapshot with testable scenarios, the approach and decisions, a task checklist with status and files touched, current state and next action, plus a resume note), and
+- the **committable artifact** when the work is done (an outcome summary, the decisions, and branch/PR links).
+
+The contents are deliberately on par with what spec-driven tools commit (spec, approach/plan, tasks, decisions), plus a current-state/next-action section those tools do not have, so it doubles as a resumable handoff. A future maintainer (human or agent) reading it gets the what, the why, the how, and the surface area touched in one place.
+
+Set the **Artifact Path** to control where it lands. It defaults to a conventional in-repo path (`.workflow/{slug}.md`) so it versions with the code in the same PR. For work that spans multiple repositories - where no single repo owns the record - point it elsewhere or have agents attach it to the work item, with links to each repo's branch and PR.
+
+The durable record holds the spec-and-state of the work in one place. The ephemeral memory keeps the run alive; the durable record makes it resumable by another engineer and auditable after the fact. Both are off by default and add nothing to a simple workflow.
+
+### Handoff bundle
+
+When a larger task needs to pass between engineers, click **Handoff** (next to Export .json) to download a single self-contained Markdown package, `{slug}-handoff.md`. It contains:
+
+- **How to resume** - numbered steps starting from the durable record (the live state), then how to re-run.
+- **The durable record path** - where the spec-and-state lives (committed in the repo, or attached to the work item for cross-repo work).
+- **The ready-to-run prompt** - the current generated prompt, so the receiving engineer can run immediately.
+- **The workflow definition** - the serialized workflow, so they can import it back into the designer to edit the pipeline.
+
+If a workflow was seeded only with a work-item URL, the prompt and definition are intentionally thin - the agent fetches the ticket at runtime, and the resolved context the previous engineer worked from lives in the durable record. The bundle says so, so the receiver trusts the durable record for the current spec and state. The handoff bundle pairs naturally with Durable Record; without a durable record there is no captured state to resume from, and the bundle says that too.
+
 ## Built-in Presets
 
 - **Feature Build** - Planner > Implementer > Reviewer > Decision gate > Tester

@@ -270,6 +270,35 @@ Downstream agents read `shared.md` to get upstream handoffs. Agents address each
 → @{next-agent}: {what they need to know}
 ```
 
+### Durable Record (committable artifact)
+
+The Memory Protocol has two levels, modeled as a strict superset ladder rather than two independent toggles:
+
+| Level | State | Output | Audience | Lifespan | Home |
+|-------|-------|--------|----------|----------|------|
+| Workflow Memory | `memoryEnabled` | TOON `shared.md` + `@{slug}.md` | Agents | Ephemeral, one run | `~/.claude/workflow-memory/` |
+| Durable Record | `memoryEnabled` + `durableRecord` | One human-readable doc | Humans + audit + future agents | Durable, versioned | In-repo (or work-item) |
+
+`durableRecord` is a superset of `memoryEnabled`: it cannot be on without memory (a committable record of a run requires the run to have survived). The UI enforces this - the **Keep a durable record** checkbox is nested under the memory toggle, and turning memory off via `toggleMemory()` / `setMemoryEnabled(false)` calls `clearDurableRecord()`. Deserialization and prefs restore both coerce `durableRecord` to false when `memoryEnabled` is false.
+
+**State fields:** `state.durableRecord` (bool, default false), `state.artifactPath` (string override, default `''`). Both are persisted in `savePrefs`/`restorePrefs` and `serializeWorkflow`/`deserializeWorkflow`. Save schema stays `version: 1` - the new fields are optional, so older workflows load unchanged.
+
+**Path resolution:** `getDefaultArtifactPath()` returns `.workflow/{slug}.md` (a conventional in-repo location, matching how spec-driven tools commit specs at a fixed repo path). `getArtifactPath()` returns the user override if set, else the default.
+
+**Generation:** `genDurableRecordProtocol()` emits the markdown protocol. The document's sections are deliberately on par with spec-driven tools (spec with testable scenarios, an approach-and-decisions section, a task checklist that notes files touched, an outcome summary on completion) plus a current-state/next-action section those tools lack (which is what makes it a resumable handoff), and single-repo vs cross-repo destination guidance. `genDurableRecordComment(prefix)` emits a comment-prefixed pointer for the Python SDK exporter. Both are injected at the workflow-level memory site of all five exporters, nested inside the `memoryEnabled` block (so the superset holds even if state is inconsistent). It is a workflow-level artifact, not per-agent, so it is not injected into per-agent preambles/postambles.
+
+**Provider-neutral:** the protocol references a generic "work-item URL" and "issue tracker", never a specific vendor, keeping the public tool generic. If a work-item URL is supplied with the workflow, agents snapshot its spec into the record; the tool itself never fetches anything.
+
+### Handoff bundle
+
+`exportHandoffFile()` downloads a single Markdown package (`{slug}-handoff.md`) for passing a larger task between engineers. `genHandoffBundle()` assembles it from existing pieces, so it adds no new serialization path:
+
+- `getActivePromptText()` returns the current exporter's output (reusing the same `{prompt, subagent, teams, sdk, claude}` dispatch as `updatePrompt()`, without touching the DOM preview).
+- `serializeWorkflow()` provides the importable workflow definition, embedded in a fenced `json` block. It round-trips through the normal `deserializeWorkflow()` loader, so a receiver imports it with the existing **Import** control.
+- The prompt is embedded in a fenced block whose fence length is computed by `fenceFor()` to be one backtick longer than the longest backtick run inside the prompt. A prompt that itself contains code fences (e.g. the memory protocol's TOON examples) therefore cannot break the wrapper. The workflow JSON uses a plain ` ```json ` block, since JSON contains no backticks.
+
+Content adapts to `state.durableRecord`: when on, the resume steps lead with the durable record path and warn that a URL-seeded workflow's prompt is thin (resolved context lives in the record, not the prompt); when off, it states there is no captured state to resume from and suggests enabling the durable record. The bundle is intentionally a sender-to-receiver kit: the live state itself travels with the durable record (committed in git or attached to the work item), not inside the bundle, because the generator does not hold runtime artifacts.
+
 ---
 
 ## Canvas Interaction

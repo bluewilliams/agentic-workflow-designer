@@ -331,6 +331,13 @@ svg.canvas{width:100%;height:100%;display:block}
   word-break:break-all;line-height:1.4}
 .memory-section .memory-path-label{font-size:10px;color:var(--text3);text-transform:uppercase;
   letter-spacing:.5px;margin-bottom:4px;display:block}
+.memory-section .memory-help{font-size:11px;color:var(--text3);line-height:1.45;margin:4px 0 0 22px}
+.memory-section .memory-help code{background:var(--surface2);padding:1px 4px;border-radius:3px;
+  font-family:var(--mono);font-size:10px}
+.memory-section .memory-help strong{color:var(--text2);font-weight:600}
+.memory-section .durable-block{margin-top:12px;padding-left:10px;border-left:2px solid var(--surface2)}
+.memory-section .memory-hint{font-size:11px;color:var(--accent);line-height:1.45;margin:6px 0 0 0}
+.memory-section .memory-hint strong{font-weight:700}
 /* Repo rows */
 .repo-row{display:flex;gap:4px;align-items:center;margin-bottom:4px}
 .repo-row input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);color:var(--text);
@@ -525,7 +532,8 @@ svg.canvas{width:100%;height:100%;display:block}
     <div class="btn-row">
       <button class="btn sm primary" onclick="saveWorkflow()">Save</button>
       <button class="btn sm" onclick="duplicateWorkflow()">Clone</button>
-      <button class="btn sm" onclick="exportWorkflowFile()">Export .json</button>
+      <button class="btn sm" onclick="exportWorkflowFile()" title="Download just the workflow definition (.json) to reuse or share. Re-open it with Import.">Export</button>
+      <button class="btn sm" onclick="exportHandoffFile()" title="Download a resume package (.md) to hand in-progress work to another engineer: how to resume, the durable record path, the ready-to-run prompt, and the workflow definition. The live state travels with your git branch, not this file.">Handoff</button>
       <label class="btn sm" style="margin:0">Import
         <input type="file" accept=".json" style="display:none" onchange="importWorkflowFile(event)">
       </label>
@@ -559,14 +567,27 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section memory-section">
-    <h3>Memory Protocol</h3>
+    <h3>Memory &amp; Durable Record</h3>
     <label class="memory-toggle">
       <input type="checkbox" id="memoryToggle" onchange="toggleMemory()"/>
-      <span>Enable workflow memory <span style="color:var(--text3);font-weight:400">(agents save progress to disk)</span></span>
+      <span>Enable workflow memory</span>
     </label>
+    <p class="memory-help">Agents save progress to disk so a long run survives context compaction. Ephemeral working state in <code>~/.claude</code>, nothing is committed.</p>
     <div id="memoryPathField" style="display:none;margin-top:8px">
       <span class="memory-path-label">Memory Path</span>
       <div class="memory-path" id="memoryPathDisplay">~/.claude/workflow-memory/untitled/</div>
+      <div class="durable-block" id="durableRecordField">
+        <label class="memory-toggle">
+          <input type="checkbox" id="durableRecordToggle" onchange="toggleDurableRecord()"/>
+          <span>Keep a durable record</span>
+        </label>
+        <p class="memory-help">Also writes a committable <strong>spec + state</strong> document the agents maintain: a resumable handoff while work is in progress, an auditable artifact once it is done. Lives in your repo, versioned with the code.</p>
+        <div id="artifactPathField" style="display:none;margin-top:8px">
+          <span class="memory-path-label">Artifact Path</span>
+          <input type="text" id="artifactPathInput" class="memory-path" oninput="onArtifactPathInput()" placeholder=".workflow/untitled.md" style="width:100%;box-sizing:border-box;border:1px solid var(--surface2);background:var(--surface);color:var(--text);font-family:inherit"/>
+          <p class="memory-hint">Tip: use <strong>Handoff</strong> under Saved Workflows to export a resume package for another engineer.</p>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1066,6 +1087,8 @@ let state = {
   mousePos: { x: 0, y: 0 },
   exportFormat: 'prompt',
   memoryEnabled: false,
+  durableRecord: false,
+  artifactPath: '',
   defaultModel: 'opus-4.8',
   repositories: [],
   activePreset: null,
@@ -1414,6 +1437,18 @@ function getMemoryPath() {
   return '~/.claude/workflow-memory/' + slugify(getName() || 'untitled') + '/';
 }
 
+// Default in-repo path for the durable record (committable artifact).
+function getDefaultArtifactPath() {
+  return '.workflow/' + slugify(getName() || 'untitled') + '.md';
+}
+
+// Effective durable-record path: a user override if set, else the default.
+// An empty or whitespace-only override means "use the default".
+function getArtifactPath() {
+  const custom = (state.artifactPath || '').trim();
+  return custom || getDefaultArtifactPath();
+}
+
 // Build a map of node.id → unique slug for all agents (handles duplicate labels)
 // Sorts by node ID for deterministic suffix assignment across renders
 function buildAgentSlugMap() {
@@ -1476,9 +1511,51 @@ function initDefaultModelSelect() {
 function toggleMemory() {
   state.memoryEnabled = $('memoryToggle').checked;
   $('memoryPathField').style.display = state.memoryEnabled ? 'block' : 'none';
+  // Durable Record is a superset of memory: it cannot be on without memory.
+  if (!state.memoryEnabled) clearDurableRecord();
   updateMemoryPath();
   updatePrompt();
   savePrefs();
+}
+
+// Durable Record handlers
+function toggleDurableRecord() {
+  // Superset invariant: durable cannot be on without memory. Enforce at the source.
+  if (!state.memoryEnabled) { state.durableRecord = false; return; }
+  state.durableRecord = $('durableRecordToggle').checked;
+  const af = $('artifactPathField');
+  if (af) af.style.display = state.durableRecord ? 'block' : 'none';
+  updateArtifactPath();
+  updatePrompt();
+  savePrefs();
+}
+
+function onArtifactPathInput() {
+  const el = $('artifactPathInput');
+  state.artifactPath = el ? el.value : '';
+  updatePrompt();
+  savePrefs();
+}
+
+// Turn Durable Record off and sync its UI (used when memory is disabled).
+// Callers are responsible for persisting (savePrefs) and re-rendering (updatePrompt).
+function clearDurableRecord() {
+  state.durableRecord = false;
+  const dcb = $('durableRecordToggle');
+  if (dcb) dcb.checked = false;
+  const af = $('artifactPathField');
+  if (af) af.style.display = 'none';
+}
+
+// Reflect state.durableRecord / state.artifactPath into the UI (restore/load/reset).
+function syncDurableUI() {
+  const dcb = $('durableRecordToggle');
+  if (dcb) dcb.checked = !!state.durableRecord;
+  const af = $('artifactPathField');
+  if (af) af.style.display = state.durableRecord ? 'block' : 'none';
+  const ai = $('artifactPathInput');
+  if (ai) ai.value = state.artifactPath || '';
+  updateArtifactPath();
 }
 
 function toggleMcpAtlassian() {
@@ -1497,13 +1574,23 @@ function setMemoryEnabled(enabled) {
   const cb = $('memoryToggle');
   if (cb) cb.checked = enabled;
   $('memoryPathField').style.display = enabled ? 'block' : 'none';
+  // Durable Record cannot remain on if memory is turned off.
+  if (!enabled) clearDurableRecord();
   updateMemoryPath();
+  updatePrompt();
   savePrefs();
 }
 
 function updateMemoryPath() {
   const el = $('memoryPathDisplay');
   if (el) el.textContent = getMemoryPath();
+  updateArtifactPath();
+}
+
+// Keep the artifact-path input's placeholder showing the current default.
+function updateArtifactPath() {
+  const el = $('artifactPathInput');
+  if (el) el.placeholder = getDefaultArtifactPath();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1522,6 +1609,8 @@ function savePrefs() {
     localStorage.setItem('awd_prefs', JSON.stringify({
       defaultModel: state.defaultModel,
       memoryEnabled: state.memoryEnabled,
+      durableRecord: state.durableRecord,
+      artifactPath: state.artifactPath,
       appSourcePath: $('appSourcePath') ? $('appSourcePath').value : '',
       appSourceBranch: $('appSourceBranch') ? $('appSourceBranch').value : '',
       uiContextNotes: $('uiContextNotes') ? $('uiContextNotes').value : '',
@@ -1551,6 +1640,10 @@ function restorePrefs() {
       const cb = $('memoryToggle');
       if (cb) { cb.checked = state.memoryEnabled; $('memoryPathField').style.display = state.memoryEnabled ? 'block' : 'none'; }
     }
+    // Durable Record (optional; only meaningful when memory is on)
+    state.artifactPath = typeof p.artifactPath === 'string' ? p.artifactPath : '';
+    state.durableRecord = !!p.durableRecord && state.memoryEnabled;
+    syncDurableUI();
     if (p.appSourcePath && $('appSourcePath')) $('appSourcePath').value = p.appSourcePath;
     if (p.appSourceBranch && $('appSourceBranch')) $('appSourceBranch').value = p.appSourceBranch;
     if (p.uiContextNotes && $('uiContextNotes')) $('uiContextNotes').value = p.uiContextNotes;
@@ -1647,6 +1740,8 @@ function serializeWorkflow() {
     savedAt: new Date().toISOString(),
     repositories: state.repositories,
     memoryEnabled: state.memoryEnabled,
+    durableRecord: state.durableRecord,
+    artifactPath: state.artifactPath,
     canvas: {
       nodes: JSON.parse(JSON.stringify(state.nodes)),
       connections: JSON.parse(JSON.stringify(state.connections)),
@@ -1687,6 +1782,10 @@ function deserializeWorkflow(data) {
     const cb = $('memoryToggle');
     if (cb) { cb.checked = state.memoryEnabled; $('memoryPathField').style.display = state.memoryEnabled ? 'block' : 'none'; }
   }
+  // Restore Durable Record (optional; superset of memory, so gated on it)
+  state.artifactPath = typeof data.artifactPath === 'string' ? data.artifactPath : '';
+  state.durableRecord = !!data.durableRecord && state.memoryEnabled;
+  syncDurableUI();
   renderRepoRows();
   updateTransform();
   render();
@@ -1849,6 +1948,104 @@ function importWorkflowFile(event) {
     } catch(err) { showToast('Invalid JSON file'); }
   };
   reader.readAsText(file);
+}
+
+// Generate the active export prompt without touching the DOM preview (used by the handoff bundle).
+function getActivePromptText() {
+  if (state.nodes.length === 0) return '';
+  const generators = { prompt: genWorkflow, subagent: genSubAgents, teams: genAgentTeams, sdk: genAgentSDK, claude: genClaudePrompt };
+  return (generators[state.exportFormat] || genWorkflow)();
+}
+
+// Pick a backtick fence longer than any run of backticks in the text, so embedding
+// content that itself contains code fences cannot break the outer fence.
+function fenceFor(text) {
+  let max = 0, run = 0;
+  for (const ch of String(text)) {
+    if (ch === '`') { run++; if (run > max) max = run; }
+    else run = 0;
+  }
+  return '`'.repeat(Math.max(3, max + 1));
+}
+
+// Build a single self-contained handoff document: how to resume, where the live
+// state lives, the ready-to-run prompt, and the importable workflow definition.
+function genHandoffBundle() {
+  const name = getName() || 'workflow';
+  const slug = slugify(name);
+  const apath = getArtifactPath();
+  const data = { format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow() };
+  const json = JSON.stringify(data, null, 2);
+  const prompt = getActivePromptText();
+  const dur = state.durableRecord;
+  const p = [];
+  p.push('# Handoff: ' + name);
+  p.push('');
+  p.push('A resume package for an in-progress agent workflow: how to resume, the ready-to-run prompt, and the workflow definition.');
+  p.push('');
+  p.push('This file does not contain the live state itself. If a durable record is in use, it lives in your repo (commit it) or is sent alongside this file. Share both with whoever picks up the work: this package is the pipeline and the instructions, the durable record is the state.');
+  p.push('');
+  p.push('## How to resume');
+  p.push('');
+  if (dur) {
+    p.push('1. **Read the current state.** The durable record holds the goal/spec, the task checklist with status, key decisions, and the next action. It lives at:');
+    p.push('   `' + apath + '`');
+    p.push('   - If it was committed: check out the branch and open that file.');
+    p.push('   - If it was not committed yet: get the file from the previous engineer.');
+    p.push('   Start there. It tells you exactly where things stand and the single next action.');
+  } else {
+    p.push('1. **Get the current state.** This workflow has no durable record enabled, so there is no captured spec/state file to resume from. For true handoff, enable **Keep a durable record** before running so the next engineer inherits the goal, checklist, and next action. Otherwise, ask the previous engineer where things stand.');
+  }
+  p.push('');
+  p.push('2. **Run the workflow.** Either run the prompt under "Ready-to-run prompt" directly, or import the "Workflow definition" into the Agentic Workflow Designer and regenerate.' + (dur ? ' Run it with the durable record present so agents continue from the current state instead of restarting.' : ''));
+  p.push('');
+  if (dur) {
+    p.push('> Note: if this workflow was seeded only with a work-item URL, the prompt and definition are intentionally thin. The agent fetches the ticket at runtime, and the resolved context the previous engineer worked from (acceptance criteria, decisions) is captured in the **durable record**, not in the prompt. Trust the durable record for the current spec and state.');
+    p.push('');
+    p.push('3. **Keep the record current.** As you work, agents update the durable record; when done it is the committable artifact. Commit it with your changes (single repo) or keep it linked to the work item (multiple repos).');
+    p.push('');
+  }
+  if (dur) {
+    p.push('## Durable record');
+    p.push('');
+    p.push('- Path: `' + apath + '`');
+    p.push('- This is the spec-and-state of the work in one file. Start here.');
+    p.push('');
+  }
+  p.push('## Ready-to-run prompt');
+  p.push('');
+  p.push('Run the block below directly, or regenerate it from the workflow definition.');
+  p.push('');
+  const pfence = fenceFor(prompt);
+  p.push(pfence);
+  p.push(prompt);
+  p.push(pfence);
+  p.push('');
+  p.push('## Workflow definition');
+  p.push('');
+  p.push('Save the block below as `' + slug + '.json` and use **Import** in the designer to load the pipeline.');
+  p.push('');
+  p.push('```json');
+  p.push(json);
+  p.push('```');
+  return p.join('\n');
+}
+
+// Download the handoff bundle as a single Markdown file.
+function exportHandoffFile() {
+  if (state.nodes.length === 0) { showToast('Add nodes before exporting a handoff'); return; }
+  const md = genHandoffBundle();
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (slugify(getName() || 'workflow')) + '-handoff.md';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  if (state.durableRecord) {
+    showToast('Exported ' + a.download);
+  } else {
+    showToast('Exported ' + a.download + ' - tip: enable Keep a durable record for a resumable handoff', 4500);
+  }
 }
 
 // Full memory protocol block for orchestrator-level prompts
@@ -2049,6 +2246,63 @@ const svg = () => $('canvas');
 const nodesLayer = () => $('nodesLayer');
 const connsLayer = () => $('connectionsLayer');
 const tempLayer = () => $('tempLayer');
+
+// Durable Record protocol — a workflow-level, human-readable artifact that is the
+// resumable handoff doc while work is in progress and the committable record when
+// it is done. Distinct from the ephemeral memory. Provider-neutral.
+function genDurableRecordProtocol() {
+  const apath = getArtifactPath();
+  const wfName = getName() || 'workflow';
+  const p = [];
+  p.push('---');
+  p.push('## Durable Record (committable artifact)');
+  p.push('');
+  p.push('In addition to the ephemeral memory above, maintain ONE persistent, human-readable record for this workflow. The memory files are agent scratch state (under `~/.claude/`); this record is durable: it is the handoff document while work is in progress and the committable artifact when work is done.');
+  p.push('');
+  p.push('**Record path**: `' + apath + '`');
+  p.push('');
+  p.push('### What it contains');
+  p.push('- **Goal / spec**: the objective and acceptance criteria, written as testable scenarios (Given / When / Then) where that helps. If a work-item URL was provided with this workflow, pull its details in as a point-in-time snapshot (the spec the work is built against). Otherwise capture the goal from the task.');
+  p.push('- **Approach and decisions**: the technical approach (key architecture choices, important interfaces or data shapes) and the notable decisions with the reason for each, recorded as they are made. This is what a future maintainer needs to understand why the change looks the way it does.');
+  p.push('- **Task checklist**: the decomposed steps with status (done / in progress / todo), each noting the main files or modules it touches so a maintainer can navigate the change.');
+  p.push('- **Current state / next action**: a short "if you are picking this up cold, start here" note - the last thing done and the single next action. (While in progress only; removed once the work is finalized for commit, where the Outcome takes its place.)');
+  p.push('- **Outcome** (filled on completion): a short summary of what changed and the surface area touched, for someone reading this after the fact.');
+  p.push('- **Links**: the work item, the branch, and the PR once they exist.');
+  p.push('');
+  p.push('### Resume / handoff (while in progress, so another engineer or agent can pick this up)');
+  p.push('- Name the workflow this record belongs to (`' + wfName + '`) and how to re-drive it: re-run the same workflow with this record present so agents continue from the Current state rather than restarting.');
+  p.push('- Make the record self-contained: a new reader should be able to continue from Goal/spec + Current state/next action without the original chat. Capture any setup needed (branch to check out, environment, prerequisites).');
+  p.push('- Do not copy the full original workflow prompt in here; reference the workflow by name. Re-running it (or handing this record to a fresh agent with "continue from Current state") is what resumes the work.');
+  p.push('');
+  p.push('### How to maintain it');
+  p.push('- Write it in plain, natural language a teammate would actually use: concise and concrete, no filler or marketing tone. Use hyphens, not em dashes or en dashes. It is read by both humans and agents maintaining the project later, so favor clarity over polish.');
+  p.push('- Create it at kickoff with the goal/spec snapshot and the initial checklist.');
+  p.push('- Keep it CURRENT as work progresses. Overwrite the state / next-action section each update (do not just append to it) so that at any moment it is enough for another engineer or agent to resume. Append to the decisions and checklist sections as they grow.');
+  p.push('- On completion, finalize it for commit: fill in the Outcome, mark the checklist done, capture the final decisions, and add the branch/PR links. Then remove the in-progress scaffolding (the "Current state / next action" line and the "Resume / handoff" section), which have no purpose once the work is done. The committed artifact is the spec, approach, completed checklist, decisions, and outcome.');
+  p.push('');
+  p.push('### Where it lives');
+  p.push('- **Single repository**: write it to `' + apath + '` in that repo so it versions with the code (the change to this file lands in the same PR as the implementation).');
+  p.push('- **Multiple repositories or no repository**: no single repo owns it, so attach or link it to the work item (issue tracker) instead, with links to each repository’s branch and PR.');
+  p.push('');
+  p.push('This record is the spec-and-state of the work in one place. The ephemeral memory keeps the run alive across compaction; this record makes the run resumable by a human and useful to future human and agent maintainers, who get the spec, the approach, the decisions, and the surface area touched in one document.');
+  return p.join('\n');
+}
+
+// Compact Durable Record pointer for code-skeleton exporters (comment-prefixed).
+function genDurableRecordComment(prefix) {
+  const apath = getArtifactPath();
+  const c = prefix || '# ';
+  const p = [];
+  p.push(c + 'DURABLE RECORD (committable artifact)');
+  p.push(c + 'Maintain one persistent, human-readable record at: ' + apath);
+  p.push(c + 'It holds the goal/spec snapshot (from the work-item URL if provided), the approach');
+  p.push(c + 'and decisions, a task checklist (with files touched) and status, the current/next');
+  p.push(c + 'action, an outcome summary on completion, and a resume note.');
+  p.push(c + 'Keep it current during the run (resumable handoff); finalize on completion as the');
+  p.push(c + 'committable artifact. Single repo: commit at the path above. Multiple/no repo: attach');
+  p.push(c + 'or link it to the work item with per-repo branch and PR links.');
+  return p.join('\n');
+}
 
 function svgPoint(e) {
   const rect = svg().getBoundingClientRect();
@@ -2660,7 +2914,7 @@ function updateConfig() {
       [{ value:'code', label:'Code Changes' },{ value:'pr', label:'Pull Request' },{ value:'report', label:'Report' },{ value:'docs', label:'Documentation' }]);
     fields.innerHTML += configInput('Deliverable', 'deliverable', node.config.deliverable);
     if (node.config.format === 'pr') {
-      fields.innerHTML += configInput('Branch Name', 'branchName', node.config.branchName || '', 'text', 'e.g. feature/-profile-redesign');
+      fields.innerHTML += configInput('Branch Name', 'branchName', node.config.branchName || '', 'text', 'e.g. feature/PRJ-6069-profile-redesign');
       fields.innerHTML += configInput('Target Branch', 'targetBranch', node.config.targetBranch || '', 'text', 'e.g. main, develop (default: main)');
     }
   }
@@ -3391,7 +3645,7 @@ const PROMPT_LIBRARY = [
     { title: 'Sprint Stale Work Alert',
       input: { label: 'What Jira project key and sprint should be monitored? Leave empty to auto-detect the active sprint.', placeholder: 'e.g. KA current sprint, or PAYMENTS sprint 42, or leave empty for current sprint', find: '[the Jira project and sprint]', optional: true, fallback: 'the current active sprint in the default project' },
       desc: 'Monitor Jira for stories stuck in progress, unassigned blockers, or scope creep. Surfaces issues before standup.',
-      prompt: '> **Usage**: `/loop 30m` with this prompt during work hours, or `/loop 2h` for passive monitoring.\n> **Exit**: This is an ongoing monitor — stop it manually at end of day or when the sprint ends. If the sprint is completed (all stories Done), **tell the user to stop the loop**.\n> **Your input**: Specify the Jira project/sprint, or leave empty to auto-detect.\n\nMonitor sprint health for: [the Jira project and sprint]\n\nUse **Atlassian MCP** tools (`searchJiraIssuesUsingJql`, `getJiraIssue`) to query Jira.\n\n**On each iteration, check for these conditions:**\n\n1. **Stale in-progress work**: Find stories/tasks with status "In Progress" (or equivalent) where:\n   - No status change in the last 2+ business days\n   - No comments or activity in the last 2+ business days\n   - JQL: `project = [KEY] AND sprint in openSprints() AND status = "In Progress" AND updated <= -2d`\n   - For each: report the ticket, assignee, title, and days since last activity\n\n2. **Unassigned blockers**: Issues marked as blockers or with "Blocked" status that have no assignee or no recent activity\n   - JQL: `project = [KEY] AND sprint in openSprints() AND (priority = Blocker OR status = Blocked) AND (assignee is EMPTY OR updated <= -1d)`\n\n3. **Scope creep detection**: Compare the current number of issues in the sprint to the last check.\n   - Were new stories added to the sprint since last iteration?\n   - Were any stories removed (de-scoped)?\n   - Report: "Sprint scope changed: +2 stories added, -1 removed since last check"\n\n4. **At-risk items**: Stories with approaching due dates that aren\'t in a "done" status\n   - JQL: `project = [KEY] AND sprint in openSprints() AND duedate <= 2d AND status != Done`\n\n5. **Sprint burndown signal**: Count stories by status category\n   - To Do: X stories (Y points)\n   - In Progress: X stories (Y points)\n   - Done: X stories (Y points)\n   - Compare to last iteration — is progress being made?\n\n**Output format:**\n```\n## Sprint Health — [timestamp]\n\n### Needs Attention\n- : "Fix auth timeout" — In Progress for 4 days, no updates (assigned: @dev)\n- : Blocker, unassigned since yesterday\n\n### Sprint Scope\n- Added since last check:  "New login page" (3 points)\n- Burndown: 12 To Do → 8 In Progress → 15 Done (35 total)\n\n### All Clear\n- No at-risk items approaching due dates\n```\n\nIf nothing has changed since the last check, say "No changes since [last timestamp]" — don\'t repeat the same report.' },
+      prompt: '> **Usage**: `/loop 30m` with this prompt during work hours, or `/loop 2h` for passive monitoring.\n> **Exit**: This is an ongoing monitor — stop it manually at end of day or when the sprint ends. If the sprint is completed (all stories Done), **tell the user to stop the loop**.\n> **Your input**: Specify the Jira project/sprint, or leave empty to auto-detect.\n\nMonitor sprint health for: [the Jira project and sprint]\n\nUse **Atlassian MCP** tools (`searchJiraIssuesUsingJql`, `getJiraIssue`) to query Jira.\n\n**On each iteration, check for these conditions:**\n\n1. **Stale in-progress work**: Find stories/tasks with status "In Progress" (or equivalent) where:\n   - No status change in the last 2+ business days\n   - No comments or activity in the last 2+ business days\n   - JQL: `project = [KEY] AND sprint in openSprints() AND status = "In Progress" AND updated <= -2d`\n   - For each: report the ticket, assignee, title, and days since last activity\n\n2. **Unassigned blockers**: Issues marked as blockers or with "Blocked" status that have no assignee or no recent activity\n   - JQL: `project = [KEY] AND sprint in openSprints() AND (priority = Blocker OR status = Blocked) AND (assignee is EMPTY OR updated <= -1d)`\n\n3. **Scope creep detection**: Compare the current number of issues in the sprint to the last check.\n   - Were new stories added to the sprint since last iteration?\n   - Were any stories removed (de-scoped)?\n   - Report: "Sprint scope changed: +2 stories added, -1 removed since last check"\n\n4. **At-risk items**: Stories with approaching due dates that aren\'t in a "done" status\n   - JQL: `project = [KEY] AND sprint in openSprints() AND duedate <= 2d AND status != Done`\n\n5. **Sprint burndown signal**: Count stories by status category\n   - To Do: X stories (Y points)\n   - In Progress: X stories (Y points)\n   - Done: X stories (Y points)\n   - Compare to last iteration — is progress being made?\n\n**Output format:**\n```\n## Sprint Health — [timestamp]\n\n### Needs Attention\n- PRJ-123: "Fix auth timeout" — In Progress for 4 days, no updates (assigned: @dev)\n- PRJ-456: Blocker, unassigned since yesterday\n\n### Sprint Scope\n- Added since last check: PRJ-789 "New login page" (3 points)\n- Burndown: 12 To Do → 8 In Progress → 15 Done (35 total)\n\n### All Clear\n- No at-risk items approaching due dates\n```\n\nIf nothing has changed since the last check, say "No changes since [last timestamp]" — don\'t repeat the same report.' },
     { title: 'Long-Running Task Companion',
       input: { label: 'What long-running task are you about to start?', placeholder: 'e.g. database migration on staging, npm install with native builds, terraform apply on prod, large data import', find: '[describe the long-running task]' },
       desc: 'Start a long task (migration, build, deploy, data import) and walk away. Monitors its output, alerts on errors, and summarizes when done.',
@@ -4627,6 +4881,9 @@ function clearCanvas(skipConfirm) {
   state.memoryEnabled = false;
   const _mcb = $('memoryToggle');
   if (_mcb) { _mcb.checked = false; $('memoryPathField').style.display = 'none'; }
+  state.durableRecord = false;
+  state.artifactPath = '';
+  syncDurableUI();
   if ($('planInput')) $('planInput').value = '';
   state.mcpAtlassian = true;
   state.mcpSourcebot = true;
@@ -4896,7 +5153,7 @@ function prBlock(heading) {
   if (branchNames.length > 0) {
     lines.push('**Feature branch**: `' + branchNames[0] + '`');
   } else {
-    lines.push('**Feature branch**: Derive from the ticket ID in the requirements (e.g. `` \u2192 `feature/-short-description`). If no ticket ID, generate a descriptive branch name like `feature/short-description-of-changes`.');
+    lines.push('**Feature branch**: Derive from the ticket ID in the requirements (e.g. `PRJ-6069` \u2192 `feature/PRJ-6069-short-description`). If no ticket ID, generate a descriptive branch name like `feature/short-description-of-changes`.');
   }
   lines.push('');
   const targets = outputs.map(o => o.config.targetBranch).filter(Boolean);
@@ -5107,6 +5364,10 @@ function genWorkflow() {
   if (state.memoryEnabled) {
     p.push('');
     p.push(genMemoryProtocol());
+    if (state.durableRecord) {
+      p.push('');
+      p.push(genDurableRecordProtocol());
+    }
   }
 
   return p.join('\n');
@@ -5166,6 +5427,10 @@ function genSubAgents() {
     p.push('');
     p.push('**If an agent fails to write to memory files, their progress will be permanently lost on compaction.**');
     p.push('');
+    if (state.durableRecord) {
+      p.push(genDurableRecordProtocol());
+      p.push('');
+    }
   }
 
   p.push('## Execution Plan');
@@ -5554,6 +5819,10 @@ function genAgentTeams() {
   if (state.memoryEnabled) {
     p.push('');
     p.push(genMemoryProtocol());
+    if (state.durableRecord) {
+      p.push('');
+      p.push(genDurableRecordProtocol());
+    }
   }
 
   return p.join('\n');
@@ -5766,6 +6035,10 @@ function genAgentSDK() {
     p.push('# ' + '═'.repeat(59));
     p.push('# Memory read/write instructions are embedded in each agent\'s instructions above.');
     p.push('# Memory path: ' + getMemoryPath());
+    if (state.durableRecord) {
+      p.push('#');
+      p.push(genDurableRecordComment('# '));
+    }
   }
 
   return p.join('\n');
@@ -5945,6 +6218,10 @@ function genClaudePrompt() {
   if (state.memoryEnabled) {
     p.push('');
     p.push(genSingleAgentMemoryProtocol());
+    if (state.durableRecord) {
+      p.push('');
+      p.push(genDurableRecordProtocol());
+    }
   }
 
   return p.join('\n');
