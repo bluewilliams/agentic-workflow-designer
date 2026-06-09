@@ -479,6 +479,24 @@ describe('Pure Utilities', () => {
       expect(win.getModelLabel('sonnet-4.6')).toBe('Sonnet 4.6');
       expect(win.getModelLabel('haiku')).toBe('Haiku 4.5');
     });
+    it('should return correct label and id for Fable 5 (and 1M variant)', () => {
+      expect(win.getModelLabel('fable-5')).toBe('Fable 5');
+      expect(win.getModelLabel('fable-5-1m')).toBe('Fable 5 [1M]');
+      expect(win.getModelId('fable-5')).toBe('claude-fable-5');
+      expect(win.getModelId('fable-5-1m')).toBe('claude-fable-5');
+      expect(win.getModelFamily('fable-5-1m')).toBe('fable-5');
+    });
+  });
+
+  describe('default model', () => {
+    it('ships defaulted to Opus 4.8; Fable 5 was added but is not the default', () => {
+      // Shipped default trigger (index.html) reads Opus 4.8, not Fable 5.
+      expect(win.document.getElementById('defaultModelTrigger').textContent).toContain('Opus 4.8');
+      // Opus 4.8 entry is intact - Fable was added alongside, not substituted in.
+      expect(win.getModelLabel('opus-4.8')).toBe('Opus 4.8');
+      // Fable 5 is present as a separate, non-default option.
+      expect(win.getModelLabel('fable-5')).toBe('Fable 5');
+    });
   });
 });
 
@@ -962,9 +980,10 @@ describe('Durable Record: protocol content', () => {
     expect(proto).toContain('docs/handoff/x.md');
     expect(proto).toNotContain('.workflow/untitled.md');
   });
-  it('has the key sections (spec, approach, checklist, outcome, resume, where-it-lives)', () => {
+  it('has the key sections (why/scope, requirements, approach, checklist, outcome, resume, where-it-lives)', () => {
     const proto = win.genDurableRecordProtocol();
-    expect(proto).toContain('Goal / spec');
+    expect(proto).toContain('Why and scope');
+    expect(proto).toContain('Requirements');
     expect(proto).toContain('Given / When / Then');
     expect(proto).toContain('Approach and decisions');
     expect(proto).toContain('Task checklist');
@@ -1029,6 +1048,55 @@ describe('Durable Record: protocol content', () => {
     expect(proto).toContain('a code-search index over the repo');
     expect(proto).toNotContain('Sourcebot');
   });
+  it('v2.3: Requirements section is normative, complete, and test-traced (the OpenSpec-parity upgrade)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('- **Requirements**');
+    // Normative contract language.
+    expect(proto).toContain('use MUST or SHALL');
+    // Complete coverage, not a 2-3 cap.
+    expect(proto).toContain('Cover the behavior COMPLETELY');
+    expect(proto).toContain('boundary, null or empty, negative, and failure or error cases');
+    expect(proto).toContain('not just two or three');
+    // Per-scenario verifying test = our edge over OpenSpec's spec.md.
+    expect(proto).toContain('name the test that verifies each scenario');
+    // It absorbs the acceptance criteria.
+    expect(proto).toContain('both the spec and the acceptance criteria');
+    // The old hard cap wording is gone.
+    expect(proto).toNotContain('2 to 3 key testable scenarios');
+  });
+  it('v2.3: has Why-and-scope with non-goals', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('- **Why and scope**');
+    expect(proto).toContain('the reason it matters');
+    expect(proto).toContain('Non-goals');
+  });
+  it('v2.3: decisions capture the rejected alternative', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('the alternative that was rejected and why');
+    expect(proto).toContain('chose X over Y because Z');
+  });
+  it('v2.3: has omit-when-empty Risks and Migration sections, distinct from Gotchas', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('- **Risks / trade-offs** (include only if any exist)');
+    expect(proto).toContain('a risk is something a maintainer should keep watching');
+    expect(proto).toContain('- **Migration / rollout** (include only if any exist)');
+    // Gotchas still present and still omit-when-empty.
+    expect(proto).toContain('- **Gotchas / non-obvious** (include only if any exist)');
+  });
+  it('v2.3: has a Structure and navigation block (H1 title, conditional Contents index, section order)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('### Structure and navigation');
+    expect(proto).toContain('H1 title');
+    expect(proto).toContain('Contents index');
+    expect(proto).toContain('[Requirements](#requirements)'); // anchor-link example
+    expect(proto).toContain('Scale the record to the change'); // anti-bloat
+    expect(proto).toContain('skip the index while the record is short');
+  });
+  it('v2.3: action-trigger ownership covers Requirements and Risks', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('defined or refined a behavior the system must guarantee -> Requirements');
+    expect(proto).toContain('identified a forward-looking risk or trade-off -> Risks');
+  });
   it('comment variant is comment-prefixed and carries the path', () => {
     win.document.getElementById('workflowName').value = 'Demo';
     const c = win.genDurableRecordComment('# ');
@@ -1038,10 +1106,17 @@ describe('Durable Record: protocol content', () => {
   });
   it('v2.1: comment variant mentions work-breakdown checklist and built-with provenance', () => {
     const c = win.genDurableRecordComment('# ');
-    expect(c).toContain('work-breakdown task checklist');
-    expect(c).toContain('not the workflow steps');
+    expect(c).toContain('work-breakdown');
+    expect(c).toContain('not workflow steps');
     expect(c).toContain('built-with provenance line');
     expect(c).toNotContain('Sourcebot');
+  });
+  it('v2.3: comment variant mentions the Requirements contract and Contents index', () => {
+    const c = win.genDurableRecordComment('# ');
+    expect(c).toContain('Requirements section');
+    expect(c).toContain('MUST/SHALL');
+    expect(c).toContain('verifying test named on each scenario');
+    expect(c).toContain('Contents');
   });
 });
 
@@ -2026,6 +2101,20 @@ describe('Model Version Handling', () => {
       impl.config.model = 'sonnet-4.6-1m';
       const output = win.genSubAgents();
       expect(output).toContain('model="sonnet[1m]"');
+    });
+    it('should use fable shorthand for Fable 5', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'fable-5';
+      const output = win.genSubAgents();
+      expect(output).toContain('model="fable"');
+    });
+    it('should use fable[1m] shorthand for Fable 5 [1M]', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'fable-5-1m';
+      const output = win.genSubAgents();
+      expect(output).toContain('model="fable[1m]"');
     });
   });
 

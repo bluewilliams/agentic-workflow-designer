@@ -886,6 +886,8 @@ const WRITER_TOOL_DEFAULTS = {
 
 const ALL_TOOLS = ['Read','Write','Edit','Bash','Grep','Glob','WebSearch','WebFetch','Task','LSP'];
 const MODELS = [
+  { value: 'fable-5',       label: 'Fable 5',       family: 'fable-5',    id: 'claude-fable-5' },
+  { value: 'fable-5-1m',    label: 'Fable 5 [1M]',  family: 'fable-5',    id: 'claude-fable-5' },
   { value: 'opus-4.8',      label: 'Opus 4.8',      family: 'opus-4.8',   id: 'claude-opus-4-8' },
   { value: 'opus-4.8-1m',   label: 'Opus 4.8 [1M]', family: 'opus-4.8',   id: 'claude-opus-4-8' },
   { value: 'opus-4.7',      label: 'Opus 4.7',      family: 'opus-4.7',   id: 'claude-opus-4-7' },
@@ -901,9 +903,9 @@ const MODELS = [
 function getModelLabel(val) { const m = MODELS.find(m => m.value === val); return m ? m.label : val; }
 function getModelFamily(val) { const m = MODELS.find(m => m.value === val); return m ? m.family : val; }
 function getModelId(val) { const m = MODELS.find(m => m.value === val); return m ? m.id : val; }
-// Latest models (Opus 4.8, Sonnet 4.6) use shorthand aliases; older models use full IDs for precise version pinning
+// Latest models (Fable 5, Opus 4.8, Sonnet 4.6) use shorthand aliases; older models use full IDs for precise version pinning
 // [1M] variants append the Claude Code context window suffix for 1M token sessions
-const taskModelMap = { 'opus-4.8': 'opus', 'opus-4.8-1m': 'opus[1m]', 'sonnet-4.6': 'sonnet', 'sonnet-4.6-1m': 'sonnet[1m]', 'haiku': 'haiku' };
+const taskModelMap = { 'fable-5': 'fable', 'fable-5-1m': 'fable[1m]', 'opus-4.8': 'opus', 'opus-4.8-1m': 'opus[1m]', 'sonnet-4.6': 'sonnet', 'sonnet-4.6-1m': 'sonnet[1m]', 'haiku': 'haiku' };
 function getTaskModelParam(val) { return taskModelMap[val] || getModelId(val); }
 
 // ── Atlassian URL detection ──────────────────────────────────────────────────
@@ -2261,14 +2263,19 @@ function genDurableRecordProtocol() {
   p.push('');
   p.push('**Record path**: `' + apath + '`');
   p.push('');
-  p.push('### What it contains');
-  p.push('Keep every section tight, and omit any section that has no content (no empty placeholders).');
-  p.push('- **Goal / spec**: the objective plus acceptance criteria expressed as 2 to 3 key testable scenarios (Given / When / Then) - the core behaviors, not every permutation. If a work-item URL was provided, pull its details in as a point-in-time snapshot (the spec the work is built against); otherwise capture the goal from the task.');
-  p.push('- **Approach and decisions**: the technical approach (key architecture choices, important interfaces or data shapes) and the notable decisions with the reason for each, recorded as they are made. This is what a future maintainer needs to understand why the change looks the way it does.');
-  p.push('- **Surface area (file -> role)**: a compact map of the main files or types the change touches and what each does, so an agent or person can navigate the change without rediscovering it.');
+  p.push('### Structure and navigation');
+  p.push('Give the record an H1 title that names the change, then a one-line context: the work item, the branch, and the status. Keep every section tight, and omit any section that has no content (no empty placeholders). Scale the record to the change - a small change may be just a title, Why and scope, one or two Requirements, a few decisions, the Surface area, and Verify. Once the record grows past a screenful or several sections, add a one-line Contents index near the top that links each section heading (for example `[Requirements](#requirements)`), so a human can jump to what they need; skip the index while the record is short. Use the section order below so readers always know where to look.');
+  p.push('');
+  p.push('### What it contains (in this order)');
+  p.push('- **Why and scope**: one or two sentences on the objective and the reason it matters (who needs it, what problem or duplication it removes), plus a short "Non-goals" line stating what is deliberately out of scope. If a work-item URL was provided, snapshot its intent here as the point-in-time spec the work is built against; otherwise capture the goal from the task.');
+  p.push('- **Requirements**: the contract, as a list of requirements - this is the section maintainers and agents lean on most to validate the system as they work, so make it the most complete part of the record. Each requirement is a normative statement (use MUST or SHALL) of one behavior the system must guarantee, followed by the Given / When / Then scenarios that define it. Cover the behavior COMPLETELY: the happy path AND the boundary, null or empty, negative, and failure or error cases - not just two or three. Once tests exist, name the test that verifies each scenario right on the scenario. This one section is both the spec and the acceptance criteria: a future agent or maintainer reads a requirement, sees the scenarios that define "correct", and can re-run the named test to confirm the system still holds. One requirement per distinct behavior; keep each scenario to a line.');
+  p.push('- **Approach and decisions**: the technical approach (key architecture choices, important interfaces or data shapes) and the notable decisions, each with the reason AND, when a real fork existed, the alternative that was rejected and why (chose X over Y because Z). Recording the rejected alternative is what stops a future maintainer from "fixing" the change back into the worse option.');
+  p.push('- **Surface area (file -> role)**: a compact map of the main files or types the change touches and what each does, including explicit out-of-scope notes, so an agent or person can navigate the change without rediscovering it.');
   p.push('- **Task checklist**: the actual units of work needed to deliver the change - the concrete research, coding, and testing tasks (for example "add the input validation", "implement the query filter", "write the test for the empty-result case"), each ticked off as it is finished. This is the work breakdown a developer would track, NOT the workflow\'s agent or step names. The planning step seeds it; it grows during the run as work reveals more tasks, so it is not frozen after planning.');
   p.push('- **Verify**: the actual commands to build and test the change (for example the test projects to run) and the result once they have been run (for example "all tests pass"), so any human or agent - or a CI eval - can re-confirm the feature still holds. Record real results, not intended ones.');
+  p.push('- **Risks / trade-offs** (include only if any exist): forward-looking risks or trade-offs the change carries, each with how it is mitigated or why it is acceptable to live with. Distinct from Gotchas - a gotcha is a fact already discovered, a risk is something a maintainer should keep watching. Omit the section entirely when there are none.');
   p.push('- **Gotchas / non-obvious** (include only if any exist): subtle behaviors, contract quirks, or edge decisions a future maintainer would otherwise trip on. Omit the section entirely when there are none.');
+  p.push('- **Migration / rollout** (include only if any exist): deploy steps, data or schema migration, feature-flag, or rollback notes the change needs. Omit for a change that simply ships with the code.');
   p.push('- **Current state / next action**: a short "if you are picking this up cold, start here" note - the last thing done and the single next action. (While in progress only; removed once the work is finalized for commit, where the Outcome takes its place.)');
   p.push('- **Outcome** (filled on completion): a short summary of what changed and the surface area touched, for someone reading this after the fact.');
   p.push('- **Built with (provenance)**: a short, durable note of how this change was produced - the workflow name (`' + wfName + '`), the agent roles it ran (for example Planner -> Implementer -> Tester), and what grounded them (for example a code-search index over the repo). This stays in the committed record as the "how this was built" metadata: it makes the re-drive instruction concrete, gives evals a signal about method, and serves as an audit trail. Keep it to a line or two. (This is the workflow composition, NOT the minute-to-minute step progress, which lives in the in-progress scaffolding below and is removed on commit.)');
@@ -2276,23 +2283,23 @@ function genDurableRecordProtocol() {
   p.push('');
   p.push('### Resume / handoff (while in progress, so another engineer or agent can pick this up)');
   p.push('- Name the workflow this record belongs to (`' + wfName + '`) and how to re-drive it: re-run the same workflow with this record present so agents continue from the Current state rather than restarting.');
-  p.push('- Make the record self-contained: a new reader should be able to continue from Goal/spec + Current state/next action without the original chat. Capture any setup needed (branch to check out, environment, prerequisites).');
+  p.push('- Make the record self-contained: a new reader should be able to continue from Why and scope + Requirements + Current state/next action without the original chat. Capture any setup needed (branch to check out, environment, prerequisites).');
   p.push('- Do not copy the full original workflow prompt in here; reference the workflow by name. Re-running it (or handing this record to a fresh agent with "continue from Current state") is what resumes the work.');
   p.push('');
   p.push('### How to maintain it');
   p.push('- Write it in plain, natural language a teammate would actually use: concise and concrete, no filler or marketing tone. Use hyphens, not em dashes or en dashes. It is read by both humans and agents maintaining the project later, so favor clarity over polish.');
-  p.push('- ANY agent in this workflow may amend the record - update the sections your step actually touched, by action not by role (this keeps it working for any workflow shape): made a decision -> Approach and decisions; created or changed files -> Surface area; ran a build or tests -> Verify (record the real result); hit a non-obvious edge or contract -> Gotchas; discovered new work -> add to the Task checklist; you are the last or synthesizing agent -> write the Outcome and remove the in-progress scaffolding.');
+  p.push('- ANY agent in this workflow may amend the record - update the sections your step actually touched, by action not by role (this keeps it working for any workflow shape): defined or refined a behavior the system must guarantee -> Requirements (write its Given/When/Then scenarios, and once tests exist name the verifying test on each scenario); made a decision -> Approach and decisions (record the rejected alternative and why); created or changed files -> Surface area; ran a build or tests -> Verify (record the real result); identified a forward-looking risk or trade-off -> Risks; hit a non-obvious edge or contract -> Gotchas; discovered new work -> add to the Task checklist; you are the last or synthesizing agent -> write the Outcome and remove the in-progress scaffolding.');
   p.push('- For parallel steps: fan-out agents write findings to the ephemeral memory, NOT to this record, to avoid write races on the shared document; the agent that joins or synthesizes folds the relevant findings into this record.');
-  p.push('- Create it at kickoff with the goal/spec snapshot, the initial checklist, and the Built-with provenance line (the workflow name and its agent roles are known up front).');
+  p.push('- Create it at kickoff with the H1 title, the Why and scope, the initial Requirements drawn from the work item (their scenarios filled in as the spec is understood; verifying-test names added once tests are written), the initial checklist, and the Built-with provenance line (the workflow name and its agent roles are known up front).');
   p.push('- Keep the minute-to-minute step progress (which agent/step is currently running) in the Current state / next-action scaffolding, NOT in the Built-with line or the Task checklist - it is transient and is removed on commit, whereas the Built-with provenance is durable and stays.');
   p.push('- Keep it CURRENT as work progresses. Overwrite the state / next-action section each update (do not just append to it) so that at any moment it is enough for another engineer or agent to resume. Append to the decisions and checklist sections as they grow.');
-  p.push('- On completion, finalize it for commit: fill in the Outcome, mark the checklist done, capture the final decisions, and add the branch/PR links. Then remove the in-progress scaffolding (the "Current state / next action" line and the "Resume / handoff" section), which have no purpose once the work is done. The committed artifact is the spec, approach, completed checklist, decisions, and outcome.');
+  p.push('- On completion, finalize it for commit: confirm each Requirement scenario names its verifying test, fill in the Outcome, mark the checklist done, capture the final decisions, and add the branch/PR links. Add the Contents index if the record grew long. Then remove the in-progress scaffolding (the "Current state / next action" line and the "Resume / handoff" section), which have no purpose once the work is done. The committed artifact is the requirements (with verifying tests), the approach and decisions, the completed checklist, the Verify results, and the outcome.');
   p.push('');
   p.push('### Where it lives');
   p.push('- **Single repository**: write it to `' + apath + '` in that repo so it versions with the code (the change to this file lands in the same PR as the implementation).');
   p.push('- **Multiple repositories or no repository**: no single repo owns it, so attach or link it to the work item (issue tracker) instead, with links to each repository’s branch and PR.');
   p.push('');
-  p.push('This record is the spec-and-state of the work in one place. The ephemeral memory keeps the run alive across compaction; this record makes the run resumable by a human and useful to future human and agent maintainers, who get the spec, the approach, the decisions, and the surface area touched in one document.');
+  p.push('This record is the spec-and-state of the work in one place. The ephemeral memory keeps the run alive across compaction; this record makes the run resumable by a human and useful to future human and agent maintainers, who get the requirements (with the tests that verify them), the approach and decisions, and the surface area touched in one navigable document.');
   return p.join('\n');
 }
 
@@ -2303,12 +2310,16 @@ function genDurableRecordComment(prefix) {
   const p = [];
   p.push(c + 'DURABLE RECORD (committable artifact)');
   p.push(c + 'Maintain one persistent, human-readable record at: ' + apath);
-  p.push(c + 'It holds the goal/spec snapshot (from the work-item URL if provided), the approach');
-  p.push(c + 'and decisions, a surface-area file map, a work-breakdown task checklist (the concrete');
-  p.push(c + 'coding/research/test tasks, not the workflow steps), a Verify section (build/test');
-  p.push(c + 'commands + real results), gotchas (only if any), the current/next action, an outcome');
-  p.push(c + 'on completion, a built-with provenance line (workflow name + agent roles + grounding,');
-  p.push(c + 'kept in the commit), and a resume note. Any agent amends the sections its step touched.');
+  p.push(c + 'Give it an H1 title + a one-line context (work item, branch, status). It holds: Why and');
+  p.push(c + 'scope (objective + non-goals); a Requirements section = the contract, each a normative');
+  p.push(c + 'MUST/SHALL statement + complete Given/When/Then scenarios (happy + boundary + null +');
+  p.push(c + 'negative + error cases) with the verifying test named on each scenario; approach and');
+  p.push(c + 'decisions (with the rejected alternative + why); a surface-area file map; a work-breakdown');
+  p.push(c + 'task checklist (concrete coding/research/test tasks, not workflow steps); a Verify section');
+  p.push(c + '(build/test commands + real results); optional Risks and Migration; gotchas (only if any);');
+  p.push(c + 'the current/next action; an outcome on completion; a built-with provenance line (workflow');
+  p.push(c + 'name + agent roles + grounding, kept in the commit); and a resume note. Add a Contents');
+  p.push(c + 'index near the top once it grows large. Any agent amends the sections its step touched.');
   p.push(c + 'Keep it current during the run (resumable handoff); finalize on completion as the');
   p.push(c + 'committable artifact. Single repo: commit at the path above. Multiple/no repo: attach');
   p.push(c + 'or link it to the work item with per-repo branch and PR links.');
