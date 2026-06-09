@@ -232,6 +232,8 @@ function resetState() {
   win.state.mousePos = { x: 0, y: 0 };
   win.state.exportFormat = 'prompt';
   win.state.memoryEnabled = false;
+  win.state.durableRecord = false;
+  win.state.artifactPath = '';
   win.state.defaultModel = 'opus-4.6';
   win.state.repositories = [];
   win.state.activePreset = null;
@@ -244,6 +246,12 @@ function resetState() {
   if (memToggle) memToggle.checked = false;
   const memPath = win.document.getElementById('memoryPathField');
   if (memPath) memPath.style.display = 'none';
+  const durToggle = win.document.getElementById('durableRecordToggle');
+  if (durToggle) durToggle.checked = false;
+  const artField = win.document.getElementById('artifactPathField');
+  if (artField) artField.style.display = 'none';
+  const artInput = win.document.getElementById('artifactPathInput');
+  if (artInput) artInput.value = '';
 }
 
 function clearStorage() {
@@ -866,6 +874,311 @@ describe('Memory Protocol', () => {
         expect(win.state.memoryEnabled).toBe(false);
       }
     });
+  });
+});
+
+// ─── Suite 4b: Durable Record (committable artifact) ─────
+describe('Durable Record: path helpers', () => {
+  beforeEach(() => { resetState(); });
+
+  it('default artifact path uses .workflow/ and the slug', () => {
+    win.document.getElementById('workflowName').value = 'My Workflow';
+    expect(win.getDefaultArtifactPath()).toBe('.workflow/my-workflow.md');
+  });
+  it('default artifact path falls back to untitled', () => {
+    win.document.getElementById('workflowName').value = '';
+    expect(win.getDefaultArtifactPath()).toBe('.workflow/untitled.md');
+  });
+  it('getArtifactPath returns the default when no override set', () => {
+    win.document.getElementById('workflowName').value = 'Demo';
+    win.state.artifactPath = '';
+    expect(win.getArtifactPath()).toBe('.workflow/demo.md');
+  });
+  it('getArtifactPath returns the override when set', () => {
+    win.state.artifactPath = 'docs/handoff/feature.md';
+    expect(win.getArtifactPath()).toBe('docs/handoff/feature.md');
+  });
+  it('getArtifactPath trims whitespace-only override to the default', () => {
+    win.document.getElementById('workflowName').value = 'Demo';
+    win.state.artifactPath = '   ';
+    expect(win.getArtifactPath()).toBe('.workflow/demo.md');
+  });
+});
+
+describe('Durable Record: superset semantics', () => {
+  beforeEach(() => { resetState(); });
+
+  it('setMemoryEnabled(false) clears durableRecord', () => {
+    win.state.memoryEnabled = true;
+    win.state.durableRecord = true;
+    win.setMemoryEnabled(false);
+    expect(win.state.durableRecord).toBe(false);
+  });
+  it('turning the memory checkbox off clears durableRecord', () => {
+    win.state.memoryEnabled = true;
+    win.state.durableRecord = true;
+    win.document.getElementById('memoryToggle').checked = false;
+    win.toggleMemory();
+    expect(win.state.durableRecord).toBe(false);
+  });
+  it('durableRecord survives when memory stays on', () => {
+    win.setMemoryEnabled(true);
+    win.document.getElementById('durableRecordToggle').checked = true;
+    win.toggleDurableRecord();
+    expect(win.state.durableRecord).toBe(true);
+    // memory toggled on again should not wipe durable
+    win.document.getElementById('memoryToggle').checked = true;
+    win.toggleMemory();
+    expect(win.state.durableRecord).toBe(true);
+  });
+  it('toggleDurableRecord reveals the artifact path field', () => {
+    win.setMemoryEnabled(true);
+    win.document.getElementById('durableRecordToggle').checked = true;
+    win.toggleDurableRecord();
+    expect(win.document.getElementById('artifactPathField').style.display).toBe('block');
+  });
+  it('onArtifactPathInput stores the override on state', () => {
+    win.document.getElementById('artifactPathInput').value = 'specs/state.md';
+    win.onArtifactPathInput();
+    expect(win.state.artifactPath).toBe('specs/state.md');
+  });
+});
+
+describe('Durable Record: protocol content', () => {
+  beforeEach(() => { resetState(); });
+
+  it('contains the durable record heading and committable framing', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('Durable Record (committable artifact)');
+    expect(proto).toContain('committable');
+  });
+  it('includes the default artifact path', () => {
+    win.document.getElementById('workflowName').value = 'Demo';
+    expect(win.genDurableRecordProtocol()).toContain('.workflow/demo.md');
+  });
+  it('reflects a custom artifact path override', () => {
+    win.state.artifactPath = 'docs/handoff/x.md';
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('docs/handoff/x.md');
+    expect(proto).toNotContain('.workflow/untitled.md');
+  });
+  it('has the key sections (spec, approach, checklist, outcome, resume, where-it-lives)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('Goal / spec');
+    expect(proto).toContain('Given / When / Then');
+    expect(proto).toContain('Approach and decisions');
+    expect(proto).toContain('Task checklist');
+    expect(proto).toContain('Outcome');
+    expect(proto).toContain('Resume / handoff');
+    expect(proto).toContain('Where it lives');
+  });
+  it('describes both single-repo and cross-repo destinations', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('Single repository');
+    expect(proto).toContain('Multiple repositories or no repository');
+  });
+  it('is provider-neutral (no company or tool-specific terms)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toNotContain('Jira');
+    expect(proto).toNotContain('Atlassian');
+    expect(proto).toNotContain('Sourcebot');
+  });
+  it('is em-dash free and instructs natural, hyphen-only writing', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toNotContain('—'); // em dash
+    expect(proto).toNotContain('–'); // en dash
+    expect(proto).toContain('not em dashes or en dashes');
+    expect(proto).toContain('natural language a teammate');
+  });
+  it('comment variant is comment-prefixed and carries the path', () => {
+    win.document.getElementById('workflowName').value = 'Demo';
+    const c = win.genDurableRecordComment('# ');
+    expect(c).toContain('# DURABLE RECORD');
+    expect(c).toContain('.workflow/demo.md');
+    expect(c).toNotContain('Jira');
+  });
+});
+
+describe('Durable Record: exporter injection', () => {
+  beforeEach(() => { resetState(); });
+
+  function withMemAndDurable() {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    win.state.durableRecord = true;
+  }
+
+  it('genWorkflow includes the durable record when enabled', () => {
+    withMemAndDurable();
+    expect(win.genWorkflow()).toContain('Durable Record (committable artifact)');
+  });
+  it('genWorkflow omits durable when memory on but durable off', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    win.state.durableRecord = false;
+    expect(win.genWorkflow()).toNotContain('Durable Record');
+  });
+  it('genSubAgents includes the durable record when enabled', () => {
+    withMemAndDurable();
+    expect(win.genSubAgents()).toContain('Durable Record (committable artifact)');
+  });
+  it('genAgentTeams includes the durable record when enabled', () => {
+    withMemAndDurable();
+    expect(win.genAgentTeams()).toContain('Durable Record (committable artifact)');
+  });
+  it('genAgentSDK includes the durable comment when enabled', () => {
+    withMemAndDurable();
+    expect(win.genAgentSDK()).toContain('DURABLE RECORD');
+  });
+  it('genClaudePrompt includes the durable record when enabled', () => {
+    withMemAndDurable();
+    expect(win.genClaudePrompt()).toContain('Durable Record (committable artifact)');
+  });
+  it('durable never appears without memory (superset guard at injection)', () => {
+    // Defensive: even if state is inconsistent, durable is nested under memory.
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = false;
+    win.state.durableRecord = true;
+    expect(win.genWorkflow()).toNotContain('Durable Record');
+    expect(win.genSubAgents()).toNotContain('Durable Record');
+    expect(win.genClaudePrompt()).toNotContain('Durable Record');
+  });
+});
+
+describe('Durable Record: persistence', () => {
+  beforeEach(() => { resetState(); });
+
+  it('serializeWorkflow carries durableRecord and artifactPath', () => {
+    win.state.memoryEnabled = true;
+    win.state.durableRecord = true;
+    win.state.artifactPath = 'docs/handoff/x.md';
+    const data = win.serializeWorkflow();
+    expect(data.durableRecord).toBe(true);
+    expect(data.artifactPath).toBe('docs/handoff/x.md');
+  });
+  it('deserializeWorkflow restores durableRecord and artifactPath', () => {
+    const data = { version:1, memoryEnabled:true, durableRecord:true, artifactPath:'a/b.md',
+      canvas:{ nodes:[], connections:[], nextId:1, pan:{x:0,y:0}, zoom:1 }};
+    win.deserializeWorkflow(data);
+    expect(win.state.durableRecord).toBe(true);
+    expect(win.state.artifactPath).toBe('a/b.md');
+  });
+  it('deserialize coerces durableRecord false when memory is off (superset)', () => {
+    const data = { version:1, memoryEnabled:false, durableRecord:true, artifactPath:'a/b.md',
+      canvas:{ nodes:[], connections:[], nextId:1, pan:{x:0,y:0}, zoom:1 }};
+    win.deserializeWorkflow(data);
+    expect(win.state.durableRecord).toBe(false);
+  });
+  it('deserialize of legacy data (no durable fields) is safe', () => {
+    const data = { version:1, memoryEnabled:true,
+      canvas:{ nodes:[], connections:[], nextId:1, pan:{x:0,y:0}, zoom:1 }};
+    win.deserializeWorkflow(data);
+    expect(win.state.durableRecord).toBe(false);
+    expect(win.state.artifactPath).toBe('');
+  });
+  it('prefs round-trip preserves durableRecord and artifactPath', () => {
+    clearStorage();
+    win.state.memoryEnabled = true;
+    win.state.durableRecord = true;
+    win.state.artifactPath = 'docs/r.md';
+    win.savePrefs();
+    win.state.durableRecord = false;
+    win.state.artifactPath = '';
+    win.restorePrefs();
+    expect(win.state.durableRecord).toBe(true);
+    expect(win.state.artifactPath).toBe('docs/r.md');
+    clearStorage();
+  });
+  it('prefs restore coerces durable off when memory pref is off', () => {
+    clearStorage();
+    win.state.memoryEnabled = false;
+    win.state.durableRecord = false;
+    win.savePrefs();
+    // Hand-craft a stale pref where durable is true but memory is false
+    const raw = JSON.parse(localStorage.getItem('awd_prefs'));
+    raw.memoryEnabled = false; raw.durableRecord = true;
+    localStorage.setItem('awd_prefs', JSON.stringify(raw));
+    win.restorePrefs();
+    expect(win.state.durableRecord).toBe(false);
+    clearStorage();
+  });
+});
+
+describe('Handoff bundle', () => {
+  beforeEach(() => { resetState(); });
+
+  it('getActivePromptText returns the active exporter output', () => {
+    buildTestWorkflow('linear');
+    win.state.exportFormat = 'prompt';
+    expect(win.getActivePromptText()).toContain('AI Agent Workflow');
+    win.state.exportFormat = 'subagent';
+    expect(win.getActivePromptText()).toContain('Sub-Agent Workflow');
+  });
+  it('getActivePromptText is empty with no nodes', () => {
+    resetState();
+    expect(win.getActivePromptText()).toBe('');
+  });
+  it('has the handoff header and the three sections', () => {
+    buildTestWorkflow('linear');
+    win.document.getElementById('workflowName').value = 'Big Task';
+    const md = win.genHandoffBundle();
+    expect(md).toContain('# Handoff: Big Task');
+    expect(md).toContain('## How to resume');
+    expect(md).toContain('## Ready-to-run prompt');
+    expect(md).toContain('## Workflow definition');
+  });
+  it('embeds the active prompt in a fenced block', () => {
+    buildTestWorkflow('linear');
+    win.state.exportFormat = 'prompt';
+    const md = win.genHandoffBundle();
+    expect(md).toContain('## Ready-to-run prompt');
+    expect(md).toContain('AI Agent Workflow');
+  });
+  it('fenceFor returns a fence longer than any backtick run (no fence collision)', () => {
+    expect(win.fenceFor('no backticks')).toBe('```');
+    expect(win.fenceFor('has ``` a fence')).toBe('````');
+    expect(win.fenceFor('has ```` four ticks')).toBe('`````');
+  });
+  it('embedded prompt with code fences does not break the outer fence', () => {
+    // A memory-enabled 'prompt' export embeds genMemoryProtocol, which contains ``` fences;
+    // the wrapper fence must be longer so the trailing json block stays parseable.
+    buildTestWorkflow('linear');
+    win.state.exportFormat = 'prompt';
+    win.state.memoryEnabled = true;
+    const md = win.genHandoffBundle();
+    const m = md.match(/```json\n([\s\S]*?)\n```/);
+    expect(!!m).toBe(true);
+    expect(JSON.parse(m[1]).format).toBe('agentic-workflow-designer');
+  });
+  it('embeds an importable workflow definition that round-trips', () => {
+    buildTestWorkflow('linear');
+    const md = win.genHandoffBundle();
+    const m = md.match(/```json\n([\s\S]*?)\n```/);
+    expect(!!m).toBe(true);
+    const parsed = JSON.parse(m[1]);
+    expect(parsed.format).toBe('agentic-workflow-designer');
+    expect(!!parsed.canvas).toBe(true);
+    // The embedded definition imports cleanly through the normal loader.
+    expect(win.deserializeWorkflow(parsed)).toBe(true);
+  });
+  it('with durable on: points at the record and warns about thin URL-seeded prompts', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    win.state.durableRecord = true;
+    win.state.artifactPath = 'docs/handoff/x.md';
+    const md = win.genHandoffBundle();
+    expect(md).toContain('docs/handoff/x.md');
+    expect(md).toContain('Read the current state');
+    expect(md).toContain('Trust the durable record');
+    expect(md).toContain('## Durable record');
+  });
+  it('with durable off: explains there is no captured state and omits durable sections', () => {
+    buildTestWorkflow('linear');
+    win.state.durableRecord = false;
+    const md = win.genHandoffBundle();
+    expect(md).toContain('no durable record enabled');
+    expect(md).toNotContain('Trust the durable record');
+    expect(md).toNotContain('## Durable record');
   });
 });
 
