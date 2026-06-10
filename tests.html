@@ -1097,6 +1097,31 @@ describe('Durable Record: protocol content', () => {
     expect(proto).toContain('defined or refined a behavior the system must guarantee -> Requirements');
     expect(proto).toContain('identified a forward-looking risk or trade-off -> Risks');
   });
+  it('v2.4: has Success criteria (measurable, technology-agnostic outcomes - borrowed from spec-kit)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('- **Success criteria**');
+    expect(proto).toContain('measurable, technology-agnostic outcomes');
+    // Explicitly distinct from Requirements (behaviors) and Verify (the real run).
+    expect(proto).toContain('distinct from the Requirements (the behaviors) and from Verify');
+    // Readable by a non-technical stakeholder = 's "abstract from domain SME" angle.
+    expect(proto).toContain('a reader who does not know the code can still tell whether the change succeeded');
+  });
+  it('v2.4: has a Spec quality check self-validation gate (borrowed from spec-kit)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('- **Spec quality check**');
+    expect(proto).toContain('testable and unambiguous');
+    expect(proto).toContain('scope is bounded (Non-goals stated)');
+    expect(proto).toContain('no open clarifications remain');
+    expect(proto).toContain('self-validation gate');
+    // Wired into kickoff (before implementation) and completion (re-confirm).
+    expect(proto).toContain('Run the Spec quality check before implementation begins');
+    expect(proto).toContain('re-confirm the Spec quality check passes');
+  });
+  it('v2.4: comment variant mentions Success criteria and the Spec quality check', () => {
+    const c = win.genDurableRecordComment('# ');
+    expect(c).toContain('measurable Success');
+    expect(c).toContain('Spec quality check');
+  });
   it('comment variant is comment-prefixed and carries the path', () => {
     win.document.getElementById('workflowName').value = 'Demo';
     const c = win.genDurableRecordComment('# ');
