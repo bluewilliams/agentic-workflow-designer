@@ -160,6 +160,21 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
   border-radius:12px;cursor:pointer;transition:all .12s;user-select:none}
 .tool-tag.active{background:var(--accent);border-color:var(--accent);color:#fff}
 .tool-tag:hover{border-color:var(--accent)}
+/* Agent Prompt status + read-only preview */
+.agent-prompt-status{font-size:11px;color:var(--text3);line-height:1.45;margin-top:-4px}
+.agent-prompt-preview-toggle{display:inline-flex;align-items:center;gap:5px;
+  background:none;border:none;padding:2px 0;margin-top:-2px;cursor:pointer;
+  font-size:11px;font-family:var(--font);color:var(--text3);text-align:left}
+.agent-prompt-preview-toggle:hover{color:var(--text2)}
+.agent-prompt-preview-toggle:focus-visible{outline:1px solid var(--accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.agent-prompt-preview-toggle .caret{display:inline-block;transition:transform .18s ease;font-size:9px;line-height:1}
+.agent-prompt-preview-toggle[aria-expanded="true"] .caret{transform:rotate(90deg)}
+.agent-prompt-preview{max-height:0;overflow:hidden;transition:max-height .22s ease;margin-top:0}
+.agent-prompt-preview.open{max-height:420px;margin-top:6px}
+.agent-prompt-preview pre{margin:0;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:8px 10px;max-height:380px;overflow:auto;
+  font-family:var(--mono);font-size:11px;line-height:1.45;color:var(--text2);
+  white-space:pre-wrap;word-break:break-word}
 /* Custom Select */
 .custom-select{position:relative;width:100%}
 .custom-select-trigger{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
@@ -1093,6 +1108,30 @@ function getEffectivePrompt(node) {
   return `Complete the task: ${taskDesc}.\n\n1. Read and understand any input from previous steps\n2. Use Glob and Grep to orient yourself in the codebase before making changes\n3. Use \`LSP workspaceSymbol\` to find relevant types and symbols in the task area\n4. Use \`LSP goToDefinition\` and \`LSP findReferences\` on key symbols before modifying them - understand their usage scope\n5. Use \`LSP incomingCalls\` / \`LSP outgoingCalls\` to trace call chains if the task involves tracing behavior or fixing a bug\n6. Analyze the requirements and plan your approach\n7. Execute the work using the tools available to you\n8. Verify your output is complete and correct - run linter/tests if applicable\n9. Document what was done and any issues encountered\n\n## Handoff Summary\nEnd your response with:\n- **Completed**: What was accomplished\n- **Files Changed**: Specific files created or modified (with brief reason)\n- **Key Decisions**: Important choices made and why\n- **Next Step Needs**: What the next agent must know to continue effectively`;
 }
 
+// Classifies an agent node's prompt as empty / unmodified-template / custom by
+// recomputing the would-be template exactly as getEffectivePrompt does (writer-style
+// variant, else AGENT_TYPE_PROMPT_MAP -> PROMPTS) and comparing trim() to the stored
+// prompt. Display-only: drives the node-config status line + preview, never generation.
+function classifyAgentPrompt(node) {
+  const text = getEffectivePrompt(node);
+  const role = getAgentTypeName(node.config.agentType);
+  const lines = text.split('\n').length;
+  const stored = node.config.prompt;
+  if (!stored || !stored.trim()) return { state: 'empty', role, lines, text };
+  // Recompute the template this node would fall back to (same resolution as getEffectivePrompt).
+  let template = null;
+  if (node.config.agentType === 'writer') {
+    const styleKey = 'writer' + capitalize(node.config.writingStyle || 'technical');
+    if (PROMPTS[styleKey]) template = PROMPTS[styleKey];
+  }
+  if (template === null) {
+    const mapped = AGENT_TYPE_PROMPT_MAP[node.config.agentType];
+    if (mapped && PROMPTS[mapped]) template = PROMPTS[mapped];
+  }
+  if (template !== null && stored.trim() === template.trim()) return { state: 'template', role, lines, text };
+  return { state: 'custom', role, lines, text };
+}
+
 // ═══════════════════════════════════════════════════════════
 // PROMPT TEMPLATES - Comprehensive agent instructions
 // ═══════════════════════════════════════════════════════════
@@ -1103,7 +1142,7 @@ const PROMPTS = {
   architect: 'Design the system architecture for this feature.\n\nIf an Atlassian MCP tool is available, search Confluence for existing architecture documents, ADRs (Architecture Decision Records), and system design pages relevant to this feature area.\n\n1. Analyze requirements and identify component boundaries\n2. Use `Glob "**/*"` and `Grep` to find existing patterns, then read the most relevant files\n3. Use `LSP workspaceSymbol` to inventory existing types, interfaces, and service classes in the relevant domain\n4. Use `LSP goToDefinition` on key abstractions to understand current contracts and inheritance hierarchies\n5. Use `LSP findReferences` on shared types that the new feature will extend or interact with - understand their blast radius before proposing changes\n6. Design API contract: endpoints, methods, request/response shapes, status codes\n7. Define data model changes and migrations if needed\n8. Plan frontend component hierarchy and state management\n9. Document integration points between frontend and backend\n\nOutput: API specification, data model, component hierarchy, key interaction flows, and implementation sequence.\n\n## Handoff Summary\nEnd your response with:\n- **API Contracts**: Endpoint signatures and request/response shapes\n- **Files to Create/Modify**: With purpose for each\n- **Key Types**: Core interfaces and data models defined\n- **Integration Points**: Where frontend meets backend\n- **Constraints**: Technical decisions downstream agents must follow',
 
   // --- Implementation ---
-  implementer: 'Implement the feature following the plan.\n\n**Before making changes:**\n1. If a linter/type checker is configured, run it and note the current state so you can verify you do not introduce new warnings.\n2. If a test suite exists, run it to confirm the starting state. Note any pre-existing failures.\n\n**Implement:**\n3. Read each file before modifying - use `LSP documentSymbol` to get a structural overview of larger files before reading them in full\n4. Before touching any shared function or type, use `LSP findReferences` to understand all callers and avoid regressions\n5. Use `LSP goToDefinition` to resolve any type or interface you need to implement or extend\n6. Use `LSP goToImplementation` if you encounter an interface to see how it is currently implemented elsewhere in the codebase\n7. Follow existing codebase patterns, naming conventions, and file organization\n8. Handle edge cases identified in the plan\n9. Add appropriate error handling and input validation\n\n**Verify your work using whatever approach fits best:**\n10. If a linter/type checker is configured, run it and confirm no new warnings or errors\n11. If a test suite exists, run it and confirm all previously-passing tests still pass\n12. Use your judgment to verify the implementation actually works. Depending on what you built, this might mean:\n    - Calling a LOCAL API endpoint with `Bash` (curl/wget) to confirm it responds correctly\n    - Using Chrome browser tools to load a LOCAL dev page and verify the UI renders as expected\n    - Running a script or command that exercises the new functionality LOCALLY\n    - Using `LSP findReferences` to confirm new types/interfaces are correctly consumed\n    The right verification depends on what was built. Pick the approach that gives the most confidence.\n    **SAFETY**: Verification must be non-destructive. NEVER do any of the following to verify your work:\n    - `terraform destroy`, `terraform apply`, `pulumi destroy`, or any infrastructure provisioning/teardown\n    - `DROP TABLE`, `DELETE FROM`, `TRUNCATE`, database migrations, or any destructive database operation\n    - `rm -rf`, deleting files/directories outside the current project\n    - `docker rm`, `docker-compose down`, `kubectl delete`, or removing running services\n    - `git push`, `git push --force`, deploying, or publishing packages\n    - Hitting production, staging, or any non-localhost endpoints\n    If you need to verify something that requires destructive or state-changing operations, describe the steps for the user to run manually. When in doubt, ask rather than act.\n\nProvide a summary of all files changed with a brief description of each change.\n\n## Handoff Summary\nEnd your response with:\n- **Files Changed**: Each file with what was done and why\n- **Verification**: What you did to confirm it works and the result\n- **Key Decisions**: Implementation choices and rationale\n- **Testing Notes**: What to test, edge cases to verify, any manual testing needed\n- **Unresolved**: Anything that needs reviewer attention or was deferred',
+  implementer: 'Implement the feature following the plan.\n\nMake the minimal change that satisfies the plan - implement what is asked and do not refactor or restructure unrelated code along the way.\n\n**Before making changes:**\n1. If a linter/type checker is configured, run it and note the current state so you can verify you do not introduce new warnings.\n2. If a test suite exists, run it to confirm the starting state. Note any pre-existing failures.\n\n**Implement:**\n3. Read each file before modifying - use `LSP documentSymbol` to get a structural overview of larger files before reading them in full\n4. Before touching any shared function or type, use `LSP findReferences` to understand all callers and avoid regressions\n5. Use `LSP goToDefinition` to resolve any type or interface you need to implement or extend\n6. Use `LSP goToImplementation` if you encounter an interface to see how it is currently implemented elsewhere in the codebase\n7. Follow existing codebase patterns, naming conventions, and file organization\n8. Handle edge cases identified in the plan\n9. Add appropriate error handling and input validation\n\n**Verify your work using whatever approach fits best:**\n10. If a linter/type checker is configured, run it and confirm no new warnings or errors\n11. If a test suite exists, run it and confirm all previously-passing tests still pass\n12. Use your judgment to verify the implementation actually works. Depending on what you built, this might mean:\n    - Calling a LOCAL API endpoint with `Bash` (curl/wget) to confirm it responds correctly\n    - Using Chrome browser tools to load a LOCAL dev page and verify the UI renders as expected\n    - Running a script or command that exercises the new functionality LOCALLY\n    - Using `LSP findReferences` to confirm new types/interfaces are correctly consumed\n    The right verification depends on what was built. Pick the approach that gives the most confidence.\n    **SAFETY**: Verification must be non-destructive. NEVER do any of the following to verify your work:\n    - `terraform destroy`, `terraform apply`, `pulumi destroy`, or any infrastructure provisioning/teardown\n    - `DROP TABLE`, `DELETE FROM`, `TRUNCATE`, database migrations, or any destructive database operation\n    - `rm -rf`, deleting files/directories outside the current project\n    - `docker rm`, `docker-compose down`, `kubectl delete`, or removing running services\n    - `git push`, `git push --force`, deploying, or publishing packages\n    - Hitting production, staging, or any non-localhost endpoints\n    If you need to verify something that requires destructive or state-changing operations, describe the steps for the user to run manually. When in doubt, ask rather than act.\n\nProvide a summary of all files changed with a brief description of each change.\n\nIf something is ambiguous or you are blocked, do not silently guess: proceed with the most reasonable interpretation and state the assumption explicitly in your Handoff Summary so the next agent can correct it.\n\n## Handoff Summary\nEnd your response with:\n- **Files Changed**: Each file with what was done and why\n- **Verification**: What you did to confirm it works and the result\n- **Key Decisions**: Implementation choices and rationale\n- **Testing Notes**: What to test, edge cases to verify, any manual testing needed\n- **Unresolved**: Anything that needs reviewer attention or was deferred',
 
   backend: 'Implement the backend/API changes per the design.\n\n1. Use `LSP documentSymbol` on each file you plan to modify to understand its full structure before editing\n2. Use `LSP goToDefinition` to inspect data models, DTOs, and service interfaces you will implement or extend\n3. Use `LSP findReferences` on any existing endpoint handler or service method you are modifying - confirm all callers are accounted for\n4. Use `LSP goToImplementation` on repository/service interfaces to see existing implementations before adding new ones\n5. Create/modify API endpoints following existing patterns\n6. Implement service layer logic with proper error handling\n7. Add data model changes and migrations if needed\n8. Follow existing auth/authorization patterns\n9. Add appropriate logging and validation\n10. Run linter and existing backend tests if available\n11. Verify the implementation works: call your LOCAL endpoints with `Bash` (curl) to confirm they respond correctly with expected status codes and response shapes.\n    **SAFETY**: Verification must be non-destructive and local-only. NEVER run destructive commands (DROP/DELETE/TRUNCATE, terraform destroy/apply, docker rm, rm -rf, git push, deploy commands, migration execute) to verify your work. Only use read-only operations (SELECT queries, curl GET requests, health checks) or call localhost endpoints. If verification requires destructive or state-changing operations, describe the steps for the user to run manually.\n\nProvide a summary of all API changes with endpoint signatures.\n\n## Handoff Summary\nEnd your response with:\n- **Endpoints Changed**: Method, path, request/response shapes\n- **Files Changed**: Each file with what was done\n- **Database Changes**: Migrations or schema changes (if any)\n- **Integration Notes**: What the frontend or other consumers need to know',
 
@@ -3175,7 +3214,8 @@ function updateConfig() {
     fields.innerHTML += configSelect('Model', 'model', node.config.model,
       MODELS.map(m => ({ value: m.value, label: m.label })));
     fields.innerHTML += configTextarea('Agent Prompt', 'prompt', node.config.prompt,
-      'Instructions for this agent...');
+      'Instructions for this agent...', 'rows="6"');
+    fields.innerHTML += agentPromptStatusBlock(node);
     fields.innerHTML += configTextarea('Custom Notes', 'notes', node.config.notes,
       'Add context, constraints, or implementation details that will be included in the generated prompt...');
     fields.innerHTML += configInput('Max Turns', 'maxTurns', node.config.maxTurns, 'number', '', 'min="1" max="50"');
@@ -3309,6 +3349,23 @@ function updateConfig() {
 
   // Tools grid
   if (node.type === 'agent') {
+    // Read-only "Preview full prompt" toggle. Display-only: never calls updateConfig,
+    // so the editable Agent Prompt textarea value is preserved when toggling.
+    const previewToggle = fields.querySelector('.agent-prompt-preview-toggle');
+    const previewBlock = fields.querySelector('.agent-prompt-preview');
+    if (previewToggle && previewBlock) {
+      const togglePreview = () => {
+        const open = previewBlock.classList.toggle('open');
+        previewToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      };
+      previewToggle.addEventListener('click', togglePreview);
+      previewToggle.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault();
+          togglePreview();
+        }
+      });
+    }
     const grid = $('toolsGrid');
     if (grid) {
       ALL_TOOLS.forEach(tool => {
@@ -3343,9 +3400,29 @@ function configSelect(label, key, value, options) {
       <div class="custom-select-options">${optHtml}</div>
     </div></div>`;
 }
-function configTextarea(label, key, value, placeholder) {
+function configTextarea(label, key, value, placeholder, attrs) {
   return `<div class="config-field"><label>${label}</label>
-    <textarea data-key="${key}" placeholder="${escHtml(placeholder||'')}">${escHtml(value||'')}</textarea></div>`;
+    <textarea data-key="${key}" placeholder="${escHtml(placeholder||'')}"${attrs ? ' ' + attrs : ''}>${escHtml(value||'')}</textarea></div>`;
+}
+// Display-only status line + read-only preview for an agent node's effective prompt.
+// Renders directly under the Agent Prompt textarea. Does NOT affect generation.
+function agentPromptStatusBlock(node) {
+  const info = classifyAgentPrompt(node);
+  let status;
+  if (info.state === 'empty') {
+    status = `Using the ${info.role} role template (auto-applied when the workflow is generated). Type here to override with your own.`;
+  } else if (info.state === 'template') {
+    status = `Full ${info.role} role template attached (~${info.lines} lines). It is auto-applied when the workflow is generated; edit to customize.`;
+  } else {
+    status = `Custom prompt (${info.lines} lines) - overrides the ${info.role} template.`;
+  }
+  return `<div class="config-field agent-prompt-field" style="margin-top:-6px">
+    <div class="agent-prompt-status">${escHtml(status)}</div>
+    <button type="button" class="agent-prompt-preview-toggle" aria-expanded="false">
+      <span class="caret">&#9656;</span><span>Preview full prompt</span>
+    </button>
+    <div class="agent-prompt-preview"><pre>${escHtml(info.text)}</pre></div>
+  </div>`;
 }
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 

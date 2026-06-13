@@ -2268,6 +2268,155 @@ describe('Writer Agent Type', () => {
   });
 });
 
+// ─── Suite 10b: Agent Prompt Visibility (Strengthen agent prompts) ───
+describe('Agent Prompt Visibility', () => {
+  beforeEach(() => { resetState(); });
+
+  // R1: status line classification (empty / template / custom) + classifyAgentPrompt unit
+  describe('status line', () => {
+    it('empty prompt shows the auto-applied role-template status line', () => {
+      const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'' });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const status = win.document.querySelector('.agent-prompt-status');
+      expect(!!status).toBe(true);
+      expect(status.textContent).toContain('Using the Coder role template');
+      expect(status.textContent).toContain('auto-applied when the workflow is generated');
+    });
+    it('unmodified template prompt shows the attached-template status line with line count', () => {
+      const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:win.PROMPTS.implementer });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const status = win.document.querySelector('.agent-prompt-status');
+      expect(status.textContent).toContain('Full Coder role template attached');
+      expect(status.textContent).toMatch(/~\d+ lines/);
+    });
+    it('custom prompt shows the overrides-template status line', () => {
+      const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'Do my own thing here.' });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const status = win.document.querySelector('.agent-prompt-status');
+      expect(status.textContent).toContain('Custom prompt (');
+      expect(status.textContent).toContain('overrides the Coder template');
+    });
+    it('classifyAgentPrompt matches getEffectivePrompt resolution incl writer-style variant', () => {
+      // empty -> 'empty'
+      const empty = win.addNode('agent', 0, 0, 'A', { agentType:'coder', prompt:'' });
+      expect(win.classifyAgentPrompt(empty).state).toBe('empty');
+      expect(win.classifyAgentPrompt(empty).role).toBe('Coder');
+      // unmodified coder template -> 'template'
+      const tplCoder = win.addNode('agent', 0, 0, 'B', { agentType:'coder', prompt:win.PROMPTS.implementer });
+      expect(win.classifyAgentPrompt(tplCoder).state).toBe('template');
+      // unmodified writer (business style) template -> 'template' via writer-style variant
+      const tplWriter = win.addNode('agent', 0, 0, 'C', { agentType:'writer', writingStyle:'business', prompt:win.PROMPTS.writerBusiness });
+      expect(win.classifyAgentPrompt(tplWriter).state).toBe('template');
+      // edited value -> 'custom'
+      const custom = win.addNode('agent', 0, 0, 'D', { agentType:'coder', prompt:'totally custom' });
+      expect(win.classifyAgentPrompt(custom).state).toBe('custom');
+      // line count + text match getEffectivePrompt
+      const eff = win.getEffectivePrompt(tplCoder);
+      expect(win.classifyAgentPrompt(tplCoder).text).toBe(eff);
+      expect(win.classifyAgentPrompt(tplCoder).lines).toBe(eff.split('\n').length);
+    });
+  });
+
+  // R2: read-only preview expands inline, leaves textarea untouched
+  describe('preview toggle', () => {
+    it('preview toggle expands an inline read-only block showing the effective prompt and leaves the textarea untouched', () => {
+      const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'' });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const textarea = win.document.querySelector('[data-key="prompt"]');
+      const beforeVal = textarea.value;
+      const preview = win.document.querySelector('.agent-prompt-preview');
+      const toggle = win.document.querySelector('.agent-prompt-preview-toggle');
+      expect(preview.classList.contains('open')).toBe(false);
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      toggle.click();
+      expect(preview.classList.contains('open')).toBe(true);
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+      // shows the effective prompt read-only (in a <pre>, not a textarea)
+      const pre = preview.querySelector('pre');
+      expect(!!pre).toBe(true);
+      expect(preview.querySelector('textarea')).toBeNull();
+      expect(pre.textContent).toBe(win.getEffectivePrompt(node));
+      // editable textarea value unchanged by toggling
+      expect(textarea.value).toBe(beforeVal);
+    });
+  });
+
+  // R3: textarea rows=6 + editable; shared helper NOT globally bumped; Part A no generated-output change
+  describe('textarea + display-only guarantee', () => {
+    it('Agent Prompt textarea renders with rows=6 and stays editable while other fields are unchanged', () => {
+      const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'' });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const prompt = win.document.querySelector('[data-key="prompt"]');
+      expect(prompt.rows).toBe(6);
+      expect(prompt.readOnly).toBe(false);
+      expect(prompt.disabled).toBe(false);
+      // shared configTextarea body NOT globally bumped: Custom Notes has no rows attr
+      const notes = win.document.querySelector('[data-key="notes"]');
+      expect(notes.hasAttribute('rows')).toBe(false);
+    });
+    it('rendering the config panel does not change generated output (Part A is display-only)', () => {
+      buildTestWorkflow('linear');
+      const wfBefore = win.genWorkflow();
+      const saBefore = win.genSubAgents();
+      const node = win.state.nodes.find(n => n.type === 'agent');
+      win.selectNode(node.id);
+      win.updateConfig();
+      // toggle the preview open (display-only interaction)
+      const toggle = win.document.querySelector('.agent-prompt-preview-toggle');
+      if (toggle) toggle.click();
+      const wfAfter = win.genWorkflow();
+      const saAfter = win.genSubAgents();
+      expect(wfAfter).toBe(wfBefore);
+      expect(saAfter).toBe(saBefore);
+      // generated output must not leak the new UI strings
+      expect(wfAfter).toNotContain('role template attached');
+      expect(wfAfter).toNotContain('Preview full prompt');
+      expect(saAfter).toNotContain('role template attached');
+      expect(saAfter).toNotContain('Preview full prompt');
+    });
+  });
+});
+
+// ─── Suite 10c: Implementer Template Additions (Strengthen agent prompts) ───
+describe('Implementer Template Additions', () => {
+  // R4: implementer gains both lines additively; other templates unchanged
+  it('implementer template gains the minimality and record-assumptions lines additively, preserving prior text', () => {
+    const t = win.PROMPTS.implementer;
+    expect(t).toContain('Make the minimal change that satisfies the plan');
+    expect(t).toContain('do not silently guess');
+    // prior text preserved verbatim (opener + tail)
+    expect(t).toContain('Implement the feature following the plan.');
+    expect(t).toContain('**Unresolved**: Anything that needs reviewer attention or was deferred');
+    // both additions sit before the Handoff Summary
+    const handoffIdx = t.indexOf('## Handoff Summary');
+    expect(t.indexOf('Make the minimal change that satisfies the plan') < handoffIdx).toBe(true);
+    expect(t.indexOf('do not silently guess') < handoffIdx).toBe(true);
+  });
+  it('other role templates are unchanged by the implementer edit', () => {
+    ['backend','frontend','planner','reviewer'].forEach(k => {
+      expect(win.PROMPTS[k]).toNotContain('Make the minimal change that satisfies the plan');
+      expect(win.PROMPTS[k]).toNotContain('do not silently guess');
+    });
+  });
+
+  // R5: new substrings are em/en-dash free and fence-free
+  it('implementer template additions are em/en-dash free and fence-free', () => {
+    const minimality = 'Make the minimal change that satisfies the plan - implement what is asked and do not refactor or restructure unrelated code along the way.';
+    const assumptions = 'If something is ambiguous or you are blocked, do not silently guess: proceed with the most reasonable interpretation and state the assumption explicitly in your Handoff Summary so the next agent can correct it.';
+    [minimality, assumptions].forEach(s => {
+      expect(win.PROMPTS.implementer).toContain(s);
+      expect(s).toNotContain('—'); // em dash
+      expect(s).toNotContain('–'); // en dash
+      expect(s).toNotContain('```');
+    });
+  });
+});
+
 // ─── Suite 11: Model Version Handling ────────────────────
 describe('Model Version Handling', () => {
   beforeEach(() => { resetState(); });
