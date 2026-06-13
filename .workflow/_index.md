@@ -8,3 +8,10 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - intent: generalize the single "Sourcebot" toggle into a tool-agnostic "Code search (MCP)" option (UI label, injected hint, exporters, docs)
 - files: index.html (codeSearchHint + mcpCodeSearch toggle wiring + the four exporter injection sites + two inline hint blocks + SDK comment banner), tests.html, README.md, TECHNICAL.md
 - status: current | date: 2026-06-13
+
+## durable-record-protocol
+
+- record: .workflow/compress-durable-record-at-finalize.md
+- intent: finalize step compresses Verify/Gotchas into a clean spec (no per-agent transcript); surface area marked provisional until grounded
+- files: index.html (genDurableRecordProtocol - finalize guidance + surface-area guidance), tests.html (Durable Record protocol-content tests)
+- status: current | date: 2026-06-13
