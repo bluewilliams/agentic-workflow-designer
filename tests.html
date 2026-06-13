@@ -1122,6 +1122,61 @@ describe('Durable Record: protocol content', () => {
     expect(c).toContain('measurable Success');
     expect(c).toContain('Spec quality check');
   });
+  it('v2.5: has the Durable Record Index (breadcrumb) section - scan-then-open, write-at-finalize, projection', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('### Durable Record Index (breadcrumb)');
+    expect(proto).toContain('.workflow/_index.md');
+    expect(proto).toContain('scan-then-open');
+    expect(proto).toContain('Write it at finalize, as a projection of the record');
+    expect(proto).toContain('the record stays the single source of truth and the two cannot drift');
+    expect(proto).toContain('Write the entry once at finalize, not mid-run');
+  });
+  it('v2.5: breadcrumb groups by a stable capability slug, structured and omit-when-empty', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('stable kebab-case capability heading');
+    expect(proto).toContain('batch-item-filter'); // generic example slug
+    expect(proto).toContain('omit any facet that does not apply');
+  });
+  it('v2.5: breadcrumb facets cover identity, matchers (incl. the epic correlator), scale, lineage', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('the sharpest matcher for code'); // files matcher
+    expect(proto).toContain('which groups an epic'); // epic correlator across repos/tickets
+    expect(proto).toContain('siblings'); // scale
+    expect(proto).toContain('supersedes');
+    expect(proto).toContain('superseded_by'); // lineage
+  });
+  it('v2.5: evolution rule keeps the old record and links supersession (forward mandatory, backlink best-effort)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('do NOT delete the old record');
+    expect(proto).toContain('to superseded and gains');
+    expect(proto).toContain('is always written'); // forward link mandatory
+    expect(proto).toContain('is best effort'); // backlink local-best-effort
+  });
+  it('v2.5: multi-repo writes a record + index entry per repo, never transitive', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('write a record AND an index entry in each touched repository');
+    expect(proto).toContain('every repository self-describing');
+    expect(proto).toContain('never transitively');
+  });
+  it('v2.5: the finalize step writes the breadcrumb entry (action-trigger + on-completion)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('synthesizing agent -> write the Outcome, write or update this record');
+    expect(proto).toContain('breadcrumb index (see Durable Record Index). Add the Contents index');
+  });
+  it('v2.5: breadcrumb example stays provider-neutral (PRJ keys, no real ticket keys)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('PRJ-201');
+    expect(proto).toContain('epic: PRJ-150');
+    expect(proto).toNotContain('ARC-');
+    expect(proto).toNotContain('KA-');
+  });
+  it('v2.5: comment variant mentions the breadcrumb index + per-repo records + supersession', () => {
+    const c = win.genDurableRecordComment('# ');
+    expect(c).toContain('.workflow/_index.md');
+    expect(c).toContain('stable capability slug');
+    expect(c).toContain('a record +'); // "Multiple repos: a record + index entry in EACH touched repo"
+    expect(c).toContain('keep the old record and mark it superseded');
+  });
   it('comment variant is comment-prefixed and carries the path', () => {
     win.document.getElementById('workflowName').value = 'Demo';
     const c = win.genDurableRecordComment('# ');
@@ -1188,6 +1243,70 @@ describe('Durable Record: exporter injection', () => {
     expect(win.genWorkflow()).toNotContain('Durable Record');
     expect(win.genSubAgents()).toNotContain('Durable Record');
     expect(win.genClaudePrompt()).toNotContain('Durable Record');
+  });
+  it('v2.5: breadcrumb index appears in exports when durable on, absent when off (non-users untouched)', () => {
+    withMemAndDurable();
+    expect(win.genWorkflow()).toContain('Durable Record Index (breadcrumb)');
+    win.state.durableRecord = false;
+    win.state.consumeRecords = false; // _index.md is emitted by BOTH the breadcrumb section and the consume hint; turn both off for full absence
+    expect(win.genWorkflow()).toNotContain('Durable Record Index');
+    expect(win.genWorkflow()).toNotContain('_index.md');
+  });
+});
+
+// ─── Read side: consume prior durable records (default-on grounding) ──────
+describe('Consume prior records (read side)', () => {
+  beforeEach(() => { resetState(); });
+
+  it('consumeRecordsHint is null when the toggle is off, present when on', () => {
+    win.state.consumeRecords = false;
+    expect(win.consumeRecordsHint()).toBe(null);
+    win.state.consumeRecords = true;
+    const h = win.consumeRecordsHint();
+    expect(h).toContain('Ground in prior committed records');
+  });
+  it('hint tells the planning step to scan the index first and open only matches', () => {
+    win.state.consumeRecords = true;
+    const h = win.consumeRecordsHint();
+    expect(h).toContain('The planning or orchestrating step does this once');
+    expect(h).toContain('.workflow/_index.md');
+    expect(h).toContain('prefer entries marked `status: current`');
+    expect(h).toContain('open ONLY the matched records');
+    expect(h).toContain('never follow links transitively');
+  });
+  it('hint folds in the supersede-at-finalize step (the /speckit-analyze-style consistency steal)', () => {
+    win.state.consumeRecords = true;
+    const h = win.consumeRecordsHint();
+    expect(h).toContain('will modify or replace a behavior a current record defines');
+    expect(h).toContain('plan to supersede it at finalize');
+  });
+  it('hint is a no-op note for greenfield work, em-dash-free, provider-neutral', () => {
+    win.state.consumeRecords = true;
+    const h = win.consumeRecordsHint();
+    expect(h).toContain('adds nothing to greenfield work');
+    expect(h).toNotContain('—'); // em dash
+    expect(h).toNotContain('–'); // en dash
+    expect(h).toNotContain('Jira');
+    expect(h).toNotContain('Sourcebot');
+    // must not collide with the durable-record gating string
+    expect(h).toNotContain('Durable Record');
+  });
+  it('consume hint is injected into all four exporters when on, absent when off', () => {
+    buildTestWorkflow('linear');
+    win.state.consumeRecords = true;
+    expect(win.genWorkflow()).toContain('Ground in prior committed records');
+    expect(win.genSubAgents()).toContain('Ground in prior committed records');
+    expect(win.genAgentTeams()).toContain('Ground in prior committed records');
+    expect(win.genClaudePrompt()).toContain('Ground in prior committed records');
+    win.state.consumeRecords = false;
+    expect(win.genWorkflow()).toNotContain('Ground in prior committed records');
+  });
+  it('consume read is independent of memory/durable (grounds even when those are off)', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = false;
+    win.state.durableRecord = false;
+    win.state.consumeRecords = true;
+    expect(win.genWorkflow()).toContain('Ground in prior committed records');
   });
 });
 
@@ -3637,7 +3756,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.consumeRecordsHint = consumeRecordsHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
