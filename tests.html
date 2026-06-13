@@ -725,6 +725,16 @@ describe('Persistence', () => {
       win.restorePrefs();
       expect(win.state.memoryEnabled).toBe(false);
     });
+    it('should not clobber a saved default-false toggle during restore (clarifyFirst regression)', () => {
+      // setExportFormat/setDefaultModel call savePrefs early in restorePrefs, before clarifyFirst
+      // is restored. Without the _restoring guard that early save wrote the default (false) back
+      // over the saved true, so the toggle silently failed to persist across the NEXT reload.
+      localStorage.setItem('awd_prefs', JSON.stringify({ clarifyFirst: true, exportFormat: 'sdk' }));
+      win.restorePrefs();
+      expect(win.state.clarifyFirst).toBe(true);
+      const after = JSON.parse(localStorage.getItem('awd_prefs'));
+      expect(after.clarifyFirst).toBe(true);
+    });
   });
 
   describe('workflow save/load', () => {

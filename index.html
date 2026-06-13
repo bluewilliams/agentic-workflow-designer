@@ -1657,7 +1657,9 @@ function showToast(msg, duration) {
 }
 
 // -- Preferences --
+let _restoring = false;
 function savePrefs() {
+  if (_restoring) return; // suppress saves triggered mid-restore (setDefaultModel/setExportFormat call savePrefs before all toggles are restored)
   try {
     localStorage.setItem('awd_prefs', JSON.stringify({
       defaultModel: state.defaultModel,
@@ -1685,6 +1687,7 @@ function savePrefsDebounced() {
   _prefTimer = setTimeout(savePrefs, 500);
 }
 function restorePrefs() {
+  _restoring = true;
   try {
     const raw = localStorage.getItem('awd_prefs');
     if (!raw) return;
@@ -1731,6 +1734,7 @@ function restorePrefs() {
     if (Array.isArray(p.plibOpen)) state.plibOpen = p.plibOpen;
     if (Array.isArray(p.plibFavs)) state.plibFavs = p.plibFavs;
   } catch(e) { /* ignore */ }
+  finally { _restoring = false; }
 }
 
 // -- Repository rows --
