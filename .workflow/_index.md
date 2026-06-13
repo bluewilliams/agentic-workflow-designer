@@ -25,7 +25,12 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 ## agent-prompt-config
 
+- record: .workflow/agent-prompt-edit-ux.md
+- intent: refine the Agent Prompt edit UX - compact textarea that expands on focus, "Edited from the {Role} template" wording + a two-box (Agent Prompt vs Custom Notes) hint, and an undoable Reset-to-template control
+- files: index.html (agentPromptStatusBlock + the agent-branch focus/blur and reset binders + the Agent Prompt/Custom Notes configTextarea calls + CSS), tests.html
+- status: current | supersedes: .workflow/strengthen-agent-prompts.md | date: 2026-06-13
+
 - record: .workflow/strengthen-agent-prompts.md
 - intent: node-config UI shows the attached role template (status line + inline read-only preview + ~6-row textarea) so agents stop looking thin; plus two additive lines (minimality + record-assumptions) to the coder/implementer template
 - files: index.html (classifyAgentPrompt + agentPromptStatusBlock + updateConfig agent branch + configTextarea attrs param + PROMPTS.implementer), tests.html
-- status: current | date: 2026-06-13
+- status: superseded | superseded_by: .workflow/agent-prompt-edit-ux.md | date: 2026-06-13

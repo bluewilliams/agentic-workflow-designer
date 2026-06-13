@@ -151,6 +151,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
   background:var(--bg);border:1px solid var(--border);color:var(--text);
   padding:6px 8px;border-radius:var(--radius-sm);font-size:12px;font-family:var(--font)}
 .config-field textarea{font-family:var(--mono);min-height:60px;resize:vertical;line-height:1.4}
+.config-field textarea.agent-prompt-textarea{min-height:56px;transition:min-height .2s ease}
+.config-field textarea.agent-prompt-textarea.focused{min-height:150px}
 .config-field input:focus,.config-field select:focus,.config-field textarea:focus{
   outline:none;border-color:var(--accent)}
 .config-field select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -162,6 +164,12 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 .tool-tag:hover{border-color:var(--accent)}
 /* Agent Prompt status + read-only preview */
 .agent-prompt-status{font-size:11px;color:var(--text3);line-height:1.45;margin-top:-4px}
+.agent-prompt-hint{font-size:11px;color:var(--text3);line-height:1.45;margin-top:4px}
+.agent-prompt-reset{display:inline-flex;align-items:center;background:none;border:1px dashed var(--border);
+  border-radius:var(--radius-sm);padding:3px 8px;margin-top:4px;cursor:pointer;
+  font-size:11px;font-family:var(--font);color:var(--text2);text-align:left}
+.agent-prompt-reset:hover{border-color:var(--accent);color:var(--text)}
+.agent-prompt-reset:focus-visible{outline:1px solid var(--accent);outline-offset:2px}
 .agent-prompt-preview-toggle{display:inline-flex;align-items:center;gap:5px;
   background:none;border:none;padding:2px 0;margin-top:-2px;cursor:pointer;
   font-size:11px;font-family:var(--font);color:var(--text3);text-align:left}
@@ -3214,10 +3222,10 @@ function updateConfig() {
     fields.innerHTML += configSelect('Model', 'model', node.config.model,
       MODELS.map(m => ({ value: m.value, label: m.label })));
     fields.innerHTML += configTextarea('Agent Prompt', 'prompt', node.config.prompt,
-      'Instructions for this agent...', 'rows="6"');
+      'Instructions for this agent...', 'class="agent-prompt-textarea"');
     fields.innerHTML += agentPromptStatusBlock(node);
     fields.innerHTML += configTextarea('Custom Notes', 'notes', node.config.notes,
-      'Add context, constraints, or implementation details that will be included in the generated prompt...');
+      "Extra context, constraints, or details for this step - appended to this agent's prompt (it does not replace the Agent Prompt above).");
     fields.innerHTML += configInput('Max Turns', 'maxTurns', node.config.maxTurns, 'number', '', 'min="1" max="50"');
     fields.innerHTML += `<div class="config-field"><label>Tools</label><div class="tools-grid" id="toolsGrid"></div></div>`;
   } else if (node.type === 'task') {
@@ -3366,6 +3374,32 @@ function updateConfig() {
         }
       });
     }
+    // Expand-on-focus for the Agent Prompt textarea. Toggles ONLY the .focused class
+    // (CSS min-height transition). Never calls updateConfig and never touches .value,
+    // so the editable prompt is preserved across focus/blur; blur always collapses.
+    const promptTextarea = fields.querySelector('.agent-prompt-textarea');
+    if (promptTextarea) {
+      promptTextarea.addEventListener('focus', () => promptTextarea.classList.add('focused'));
+      promptTextarea.addEventListener('blur', () => promptTextarea.classList.remove('focused'));
+    }
+    // Reset-to-template control (shown only when the prompt is edited). Instant, no dialog,
+    // undoable via the existing undo stack (pushUndo snapshots before mutating).
+    const resetBtn = fields.querySelector('.agent-prompt-reset');
+    if (resetBtn) {
+      const doReset = () => {
+        pushUndo();
+        node.config.prompt = getEffectivePrompt({ ...node, config: { ...node.config, prompt: '' } });
+        updateConfig();
+        render();
+      };
+      resetBtn.addEventListener('click', doReset);
+      resetBtn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault();
+          doReset();
+        }
+      });
+    }
     const grid = $('toolsGrid');
     if (grid) {
       ALL_TOOLS.forEach(tool => {
@@ -3414,14 +3448,20 @@ function agentPromptStatusBlock(node) {
   } else if (info.state === 'template') {
     status = `Full ${info.role} role template attached (~${info.lines} lines). It is auto-applied when the workflow is generated; edit to customize.`;
   } else {
-    status = `Custom prompt (${info.lines} lines) - overrides the ${info.role} template.`;
+    status = `Edited from the ${info.role} template (${info.lines} lines).`;
   }
+  const hint = `Two ways to steer this agent: edit the Agent Prompt above to change the template in place, or leave it as the role template and add extra context in Custom Notes below.`;
+  const resetBtn = info.state === 'custom'
+    ? `<button type="button" class="agent-prompt-reset" data-role="${escHtml(info.role)}">Reset to ${escHtml(info.role)} template</button>`
+    : '';
   return `<div class="config-field agent-prompt-field" style="margin-top:-6px">
     <div class="agent-prompt-status">${escHtml(status)}</div>
     <button type="button" class="agent-prompt-preview-toggle" aria-expanded="false">
       <span class="caret">&#9656;</span><span>Preview full prompt</span>
     </button>
     <div class="agent-prompt-preview"><pre>${escHtml(info.text)}</pre></div>
+    ${resetBtn}
+    <div class="agent-prompt-hint">${escHtml(hint)}</div>
   </div>`;
 }
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
