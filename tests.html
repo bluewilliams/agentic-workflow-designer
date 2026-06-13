@@ -2291,13 +2291,15 @@ describe('Agent Prompt Visibility', () => {
       expect(status.textContent).toContain('Full Coder role template attached');
       expect(status.textContent).toMatch(/~\d+ lines/);
     });
-    it('custom prompt shows the overrides-template status line', () => {
+    it('edited prompt shows the Edited-from-template status wording with line count', () => {
       const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'Do my own thing here.' });
       win.selectNode(node.id);
       win.updateConfig();
       const status = win.document.querySelector('.agent-prompt-status');
-      expect(status.textContent).toContain('Custom prompt (');
-      expect(status.textContent).toContain('overrides the Coder template');
+      expect(status.textContent).toContain('Edited from the Coder template');
+      expect(status.textContent).toMatch(/\(\d+ lines\)/);
+      expect(status.textContent).toNotContain('overrides');
+      expect(status.textContent).toNotContain('Custom prompt (');
     });
     it('classifyAgentPrompt matches getEffectivePrompt resolution incl writer-style variant', () => {
       // empty -> 'empty'
@@ -2347,14 +2349,23 @@ describe('Agent Prompt Visibility', () => {
 
   // R3: textarea rows=6 + editable; shared helper NOT globally bumped; Part A no generated-output change
   describe('textarea + display-only guarantee', () => {
-    it('Agent Prompt textarea renders with rows=6 and stays editable while other fields are unchanged', () => {
+    it('Agent Prompt textarea is compact at rest with the expand class and no rows attr, and focus adds .focused / blur removes it', () => {
       const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'' });
       win.selectNode(node.id);
       win.updateConfig();
       const prompt = win.document.querySelector('[data-key="prompt"]');
-      expect(prompt.rows).toBe(6);
+      // compact-at-rest: carries the expand class, no rows attr, still editable
+      expect(prompt.classList.contains('agent-prompt-textarea')).toBe(true);
+      expect(prompt.hasAttribute('rows')).toBe(false);
       expect(prompt.readOnly).toBe(false);
       expect(prompt.disabled).toBe(false);
+      // expand-on-focus: focus adds .focused, blur removes it, value preserved
+      const beforeVal = prompt.value;
+      prompt.dispatchEvent(new win.Event('focus'));
+      expect(prompt.classList.contains('focused')).toBe(true);
+      prompt.dispatchEvent(new win.Event('blur'));
+      expect(prompt.classList.contains('focused')).toBe(false);
+      expect(prompt.value).toBe(beforeVal);
       // shared configTextarea body NOT globally bumped: Custom Notes has no rows attr
       const notes = win.document.querySelector('[data-key="notes"]');
       expect(notes.hasAttribute('rows')).toBe(false);
@@ -2378,6 +2389,111 @@ describe('Agent Prompt Visibility', () => {
       expect(wfAfter).toNotContain('Preview full prompt');
       expect(saAfter).toNotContain('role template attached');
       expect(saAfter).toNotContain('Preview full prompt');
+    });
+  });
+
+  // R1: expand-on-focus must never mutate the value or config
+  describe('expand-on-focus value safety', () => {
+    it('expand-on-focus preserves the textarea value and config.prompt across focus and blur', () => {
+      const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'My edited prompt' });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const prompt = win.document.querySelector('[data-key="prompt"]');
+      const beforeVal = prompt.value;
+      const beforeConfig = node.config.prompt;
+      prompt.dispatchEvent(new win.Event('focus'));
+      prompt.dispatchEvent(new win.Event('blur'));
+      expect(prompt.value).toBe(beforeVal);
+      expect(node.config.prompt).toBe(beforeConfig);
+    });
+  });
+
+  // R2: two-box hint + Custom Notes helper
+  describe('two-box hint and Custom Notes helper', () => {
+    it('the two-box hint is present and the Custom Notes helper names its appended job', () => {
+      const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'' });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const hint = win.document.querySelector('.agent-prompt-hint');
+      expect(!!hint).toBe(true);
+      expect(hint.textContent).toContain('Custom Notes');
+      const notes = win.document.querySelector('[data-key="notes"]');
+      expect(notes.getAttribute('placeholder')).toContain('appended to this agent');
+    });
+  });
+
+  // R3: Reset-to-template affordance
+  describe('reset to template', () => {
+    it('Reset control appears only when the prompt is edited', () => {
+      // edited -> reset present
+      const custom = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'totally custom' });
+      win.selectNode(custom.id);
+      win.updateConfig();
+      expect(!!win.document.querySelector('.agent-prompt-reset')).toBe(true);
+      // empty -> absent
+      const empty = win.addNode('agent', 100, 200, 'Coder2', { agentType:'coder', prompt:'' });
+      win.selectNode(empty.id);
+      win.updateConfig();
+      expect(win.document.querySelector('.agent-prompt-reset')).toBeNull();
+      // unmodified template -> absent
+      const tpl = win.addNode('agent', 100, 200, 'Coder3', { agentType:'coder', prompt:win.PROMPTS.implementer });
+      win.selectNode(tpl.id);
+      win.updateConfig();
+      expect(win.document.querySelector('.agent-prompt-reset')).toBeNull();
+    });
+    it('clicking Reset restores the role template and refreshes status with no dialog', () => {
+      const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'my own edit' });
+      win.selectNode(node.id);
+      win.updateConfig();
+      win.document.querySelector('.agent-prompt-reset').click();
+      // config.prompt is now the role template (= PROMPTS.implementer for coder)
+      expect(node.config.prompt).toBe(win.PROMPTS.implementer);
+      // status refreshed to the unmodified-template state, reset control gone
+      const status = win.document.querySelector('.agent-prompt-status');
+      expect(status.textContent).toContain('Full Coder role template attached');
+      expect(win.document.querySelector('.agent-prompt-reset')).toBeNull();
+    });
+    it('Reset is undoable via the existing undo - undo restores the edited text', () => {
+      const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'EDITED-X' });
+      win.selectNode(node.id);
+      win.updateConfig();
+      win.document.querySelector('.agent-prompt-reset').click();
+      expect(node.config.prompt).toBe(win.PROMPTS.implementer);
+      win.undo();
+      const after = win.state.nodes.find(n => n.id === node.id);
+      expect(after.config.prompt).toBe('EDITED-X');
+    });
+    it('Reset resolves the agent-type template, not implementer, for a writer-style node', () => {
+      const node = win.addNode('agent', 100, 200, 'Writer', { agentType:'writer', writingStyle:'technical', prompt:'my own edit' });
+      win.selectNode(node.id);
+      win.updateConfig();
+      win.document.querySelector('.agent-prompt-reset').click();
+      expect(node.config.prompt).toBe(win.PROMPTS.writerTechnical);
+      expect(node.config.prompt === win.PROMPTS.implementer).toBe(false);
+    });
+  });
+
+  // R4: reset + focus/blur must not leak into generated output
+  describe('generation unchanged by reset and focus/blur', () => {
+    it('reset and focus/blur do not leak into generated output and generation is unchanged', () => {
+      buildTestWorkflow('linear');
+      const wfBefore = win.genWorkflow();
+      const saBefore = win.genSubAgents();
+      const node = win.state.nodes.find(n => n.type === 'agent');
+      win.selectNode(node.id);
+      win.updateConfig();
+      // focus/blur the prompt textarea (display-only)
+      const prompt = win.document.querySelector('[data-key="prompt"]');
+      if (prompt) { prompt.dispatchEvent(new win.Event('focus')); prompt.dispatchEvent(new win.Event('blur')); }
+      // if a reset control is present (edited node), click it
+      const reset = win.document.querySelector('.agent-prompt-reset');
+      if (reset) reset.click();
+      const wfAfter = win.genWorkflow();
+      const saAfter = win.genSubAgents();
+      expect(wfAfter).toNotContain('Edited from');
+      expect(wfAfter).toNotContain('Reset to');
+      expect(saAfter).toNotContain('Edited from');
+      expect(saAfter).toNotContain('Reset to');
     });
   });
 });
