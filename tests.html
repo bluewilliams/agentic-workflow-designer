@@ -238,6 +238,8 @@ function resetState() {
   win.state.repositories = [];
   win.state.activePreset = null;
   win.state.mcpCodeSearch = true;  // app default is ON (index.html state init)
+  win.state.rulesPaths = [];       // repo context paths default empty (or undefined in tests)
+  win.state.productDocPaths = [];
   // Reset DOM inputs
   const wfName = win.document.getElementById('workflowName');
   if (wfName) wfName.value = '';
@@ -2554,6 +2556,183 @@ describe('MCP Integrations', () => {
   });
 });
 
+// ─── Suite 12b: Repo context paths ──────────────────────────
+describe('Repo context paths', () => {
+  beforeEach(() => { resetState(); });
+
+  describe('UI', () => {
+    it('both rules and product-doc chip lists render with input, Add, and Clear-all controls', () => {
+      const doc = win.document;
+      expect(!!doc.getElementById('rulesPathInput')).toBe(true);
+      expect(!!doc.getElementById('rulesPathChips')).toBe(true);
+      expect(!!doc.getElementById('rulesPathClear')).toBe(true);
+      expect(!!doc.getElementById('productDocPathInput')).toBe(true);
+      expect(!!doc.getElementById('productDocPathChips')).toBe(true);
+      expect(!!doc.getElementById('productDocPathClear')).toBe(true);
+      // descriptive labels + helper text present
+      const html = doc.querySelector('body').innerHTML;
+      expect(html).toContain('Rules / constitution paths');
+      expect(html).toContain('(binding; CLAUDE.md already read)');
+      expect(html).toContain('Product docs (PRD / ADR)');
+      expect(html).toContain('(goals/direction to honor)');
+    });
+  });
+
+  describe('state', () => {
+    it('defaults: both rulesPaths and productDocPaths are empty after resetState', () => {
+      expect(Array.isArray(win.state.rulesPaths)).toBe(true);
+      expect(win.state.rulesPaths.length).toBe(0);
+      expect(Array.isArray(win.state.productDocPaths)).toBe(true);
+      expect(win.state.productDocPaths.length).toBe(0);
+    });
+    it('addRulesPath / removeRulesPath / clearRulesPaths mutate state.rulesPaths', () => {
+      win.addRulesPath('CONVENTIONS.md');
+      expect(win.state.rulesPaths).toContain('CONVENTIONS.md');
+      win.addRulesPath('CONVENTIONS.md'); // dedupe
+      expect(win.state.rulesPaths.length).toBe(1);
+      win.addRulesPath('.claude/rules');
+      expect(win.state.rulesPaths.length).toBe(2);
+      win.removeRulesPath('CONVENTIONS.md');
+      expect(win.state.rulesPaths).toNotContain('CONVENTIONS.md');
+      win.clearRulesPaths();
+      expect(win.state.rulesPaths.length).toBe(0);
+    });
+    it('addProductDocPath / removeProductDocPath / clearProductDocPaths mutate state.productDocPaths (twin)', () => {
+      win.addProductDocPath('docs/');
+      expect(win.state.productDocPaths).toContain('docs/');
+      win.addProductDocPath('docs/'); // dedupe
+      expect(win.state.productDocPaths.length).toBe(1);
+      win.addProductDocPath('ARCHITECTURE.md');
+      expect(win.state.productDocPaths.length).toBe(2);
+      win.removeProductDocPath('docs/');
+      expect(win.state.productDocPaths).toNotContain('docs/');
+      win.clearProductDocPaths();
+      expect(win.state.productDocPaths.length).toBe(0);
+    });
+  });
+
+  describe('quick-add', () => {
+    it('clicking a rules quick-add chip adds its path; clicking a product-doc quick-add chip adds its path', () => {
+      // simulate the one-click suggestion chips by calling the same handlers they invoke
+      win.addRulesPath('CONTRIBUTING.md');
+      expect(win.state.rulesPaths).toContain('CONTRIBUTING.md');
+      win.addProductDocPath('docs/adr/');
+      expect(win.state.productDocPaths).toContain('docs/adr/');
+    });
+  });
+
+  describe('persistence', () => {
+    it('savePrefs then restorePrefs round-trips rulesPaths and productDocPaths intact', () => {
+      win.state.rulesPaths = ['.claude/rules', 'CONVENTIONS.md'];
+      win.state.productDocPaths = ['docs/', 'ARCHITECTURE.md'];
+      win.savePrefs();
+      win.state.rulesPaths = [];
+      win.state.productDocPaths = [];
+      win.restorePrefs();
+      expect(win.state.rulesPaths).toContain('.claude/rules');
+      expect(win.state.rulesPaths).toContain('CONVENTIONS.md');
+      expect(win.state.productDocPaths).toContain('docs/');
+      expect(win.state.productDocPaths).toContain('ARCHITECTURE.md');
+    });
+    it('clearCanvas keeps rulesPaths and productDocPaths (sticky, not reset)', () => {
+      win.state.rulesPaths = ['.claude/rules'];
+      win.state.productDocPaths = ['docs/'];
+      win.clearCanvas();
+      expect(win.state.rulesPaths).toContain('.claude/rules');
+      expect(win.state.productDocPaths).toContain('docs/');
+    });
+    it('restorePrefs tolerates an older awd_prefs blob lacking rulesPaths/productDocPaths (stay empty, no throw)', () => {
+      resetState();
+      localStorage.setItem('awd_prefs', JSON.stringify({ defaultModel: 'opus-4.6', mcpCodeSearch: true }));
+      win.restorePrefs();
+      expect(win.state.rulesPaths.length).toBe(0);
+      expect(win.state.productDocPaths.length).toBe(0);
+    });
+  });
+
+  describe('injection', () => {
+    it('rules hint appears at all five exporters when rulesPaths non-empty (genWorkflow, genSubAgents, genAgentTeams, genClaudePrompt, genAgentSDK)', () => {
+      buildTestWorkflow('linear');
+      win.state.rulesPaths = ['.claude/rules'];
+      expect(win.genWorkflow()).toContain('Repo rules / constitution');
+      expect(win.genSubAgents()).toContain('Repo rules / constitution');
+      expect(win.genAgentTeams()).toContain('Repo rules / constitution');
+      expect(win.genClaudePrompt()).toContain('Repo rules / constitution');
+      expect(win.genAgentSDK()).toContain('Repo rules / constitution');
+      // the listed path is named in the output
+      expect(win.genWorkflow()).toContain('.claude/rules');
+    });
+    it('product-docs hint appears at all five exporters when productDocPaths non-empty', () => {
+      buildTestWorkflow('linear');
+      win.state.productDocPaths = ['docs/adr/'];
+      expect(win.genWorkflow()).toContain('Product / architecture docs');
+      expect(win.genSubAgents()).toContain('Product / architecture docs');
+      expect(win.genAgentTeams()).toContain('Product / architecture docs');
+      expect(win.genClaudePrompt()).toContain('Product / architecture docs');
+      expect(win.genAgentSDK()).toContain('Product / architecture docs');
+      expect(win.genWorkflow()).toContain('docs/adr/');
+    });
+    it('neither hint appears at any of the five exporters when both lists empty', () => {
+      buildTestWorkflow('linear');
+      win.state.rulesPaths = [];
+      win.state.productDocPaths = [];
+      ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt', 'genAgentSDK'].forEach(fn => {
+        const out = win[fn]();
+        expect(out).toNotContain('Repo rules / constitution');
+        expect(out).toNotContain('Product / architecture docs');
+      });
+    });
+  });
+
+  describe('hint semantics', () => {
+    it('rules hint says binding, names CLAUDE.md auto-read, has directory-vs-file discovery and read-only-what-is-listed, no Sourcebot/em-dash/en-dash', () => {
+      win.state.rulesPaths = ['.claude/rules'];
+      const hint = win.rulesPathsHint();
+      expect(hint).toContain('BINDING');
+      expect(hint).toContain('auto-loaded');
+      expect(hint).toContain('CLAUDE.md');
+      expect(hint).toContain('directory');
+      expect(hint).toContain('single file');
+      expect(hint).toContain('Read only what is listed');
+      expect(hint).toNotContain('Sourcebot');
+      expect(hint).toNotContain('—');
+      expect(hint).toNotContain('–');
+      expect(hint).toNotContain('```');
+    });
+    it('product-docs hint says serve/not-contradict, snapshot into durable record Why and scope (lowercase), directory-vs-file discovery, read-only-what-is-listed, no Sourcebot/em-dash/en-dash/literal Durable Record', () => {
+      win.state.productDocPaths = ['docs/'];
+      const hint = win.productDocsHint();
+      expect(hint).toContain('serve');
+      expect(hint).toContain('not contradict');
+      expect(hint).toContain('durable record');
+      expect(hint).toContain('Why and scope');
+      expect(hint).toContain('directory');
+      expect(hint).toContain('single file');
+      expect(hint).toContain('Read only what is listed');
+      expect(hint).toNotContain('Sourcebot');
+      expect(hint).toNotContain('Durable Record');
+      expect(hint).toNotContain('—');
+      expect(hint).toNotContain('–');
+      expect(hint).toNotContain('```');
+    });
+    it('both hints carry the per-repo scoping / no-cross-apply language (within each in-scope repository)', () => {
+      win.state.rulesPaths = ['.claude/rules'];
+      win.state.productDocPaths = ['docs/'];
+      const rules = win.rulesPathsHint();
+      const docs = win.productDocsHint();
+      // unique scoping phrase, grepped absent from tests.html before use
+      expect(rules).toContain('within each in-scope repository');
+      expect(docs).toContain('within each in-scope repository');
+      // anti-contamination wording
+      expect(rules).toContain('Never carry one repository');
+      expect(docs).toContain('Never carry one repository');
+      // a missing path is no-extra-context, not an error
+      expect(rules).toContain('no-extra-context');
+      expect(docs).toContain('no-extra-context');
+    });
+  });
+});
+
 // ─── Suite 13: Implementation Plan ──────────────────────────
 describe('Implementation Plan', () => {
   beforeEach(() => { resetState(); });
@@ -3950,7 +4129,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
