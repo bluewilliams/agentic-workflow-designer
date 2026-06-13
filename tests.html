@@ -1216,6 +1216,16 @@ describe('Durable Record: protocol content', () => {
     expect(c).toContain('verifying test named on each scenario');
     expect(c).toContain('Contents');
   });
+  it('v2.7: finalize compresses Verify and Gotchas into a clean spec (no per-agent transcript)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('compresses Verify and Gotchas');
+    // readability guard: compress the transcript, not the reasoning
+    expect(proto).toContain('not the reasoning');
+  });
+  it('v2.7: Surface area is marked provisional until grounded', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('provisional until the grounding');
+  });
 });
 
 describe('Durable Record: exporter injection', () => {
