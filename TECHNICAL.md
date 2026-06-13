@@ -208,6 +208,18 @@ All generators use `topologicalSort()` to process nodes in dependency order. Eac
 - Downstream awareness so the agent knows who reads its output
 - The full Jira/user story as a `## Requirements` section
 
+### Repo Context Paths (three-tier context model)
+Two optional path lists let the user point agents at a repo's own rules and product docs. State: `state.rulesPaths` and `state.productDocPaths` (both `[]` by default). The sidebar UI mirrors the repository chip-list pattern: a text input + Add, per-chip remove, Clear-all, and one-click quick-add suggestion chips. The designer never reads the filesystem; it captures path strings and the agents do the reading.
+
+These inputs realize a **three-tier context model** the prompts make explicit:
+1. **Constitution / rules** (`rulesPaths`) = how to build, binding. The repo CLAUDE.md is auto-loaded for free; these capture extra rule paths on top of it.
+2. **Product / architecture docs** (`productDocPaths`, PRD / ADR) = goals and direction the work must serve and not contradict; when a durable record is kept, snapshot the intent into its Why and scope.
+3. **Spec** = the task contract, already the existing requirements/seed input (no separate field).
+
+Two hint functions, `rulesPathsHint()` and `productDocsHint()`, sit next to `codeSearchHint()` / `consumeRecordsHint()` and are gated on a non-empty array (no separate toggle). They are injected at all five exporters mirroring the `_wfSb` pattern (`genWorkflow`, `genSubAgents`, `genAgentTeams`, `genClaudePrompt`, and the `genAgentSDK` comment variant). Each hint instructs: read only what is listed (no blind-hunt), directory-vs-file discovery (a directory: discover relevant files by common name; a file: read it directly), and multi-repo scoping (resolve each path within each in-scope repository; a repo's own context governs only that repo's work; never carry one repo's context into another's; a path absent in a repo is no-extra-context, not an error). Hint text is provider-neutral, hyphens only, no triple-backtick fences; the product-docs hint uses the lowercase phrase "durable record" to avoid colliding with durable-record gating.
+
+**Persistence and stickiness**: both lists persist to localStorage via `savePrefs` / `restorePrefs` (the `_restoring` guard already covers them; `restorePrefs` uses an `Array.isArray` guard so older blobs lacking these keys are tolerated). Unlike the MCP toggles, `clearCanvas` (New Workflow) deliberately does NOT reset these arrays - they are repo-level context that carries across workflows in the same repo, so only the Clear-all controls empty them. Different-paths-per-repo selection is a deliberate future extension; the flat lists apply to all in-scope repos and the hint scopes them per-repo.
+
 ---
 
 ## Memory Protocol

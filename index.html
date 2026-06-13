@@ -347,6 +347,24 @@ svg.canvas{width:100%;height:100%;display:block}
 .repo-row .repo-remove{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;
   padding:0 2px;line-height:1;transition:color .15s;flex-shrink:0}
 .repo-row .repo-remove:hover{color:#ef4444}
+.path-input-row{display:flex;gap:4px;align-items:center}
+.path-input-row input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);color:var(--text);
+  padding:5px 7px;border-radius:var(--radius-sm);font-size:11px;font-family:var(--font)}
+.path-input-row input:focus{outline:none;border-color:var(--accent)}
+.path-input-row input::placeholder{color:var(--text3)}
+.path-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.path-chip{display:inline-flex;align-items:center;gap:4px;background:var(--surface);border:1px solid var(--border);
+  color:var(--text);padding:2px 4px 2px 7px;border-radius:var(--radius-sm);font-size:11px;font-family:var(--font)}
+.path-chip .path-chip-remove{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;
+  line-height:1;padding:0 2px;transition:color .15s}
+.path-chip .path-chip-remove:hover{color:#ef4444}
+.path-suggest{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.path-suggest button{background:none;border:1px dashed var(--border);color:var(--text3);cursor:pointer;
+  padding:2px 7px;border-radius:var(--radius-sm);font-size:10px;font-family:var(--font);transition:all .15s}
+.path-suggest button:hover{border-color:var(--accent);color:var(--accent)}
+.path-clear{background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;
+  padding:0;margin-top:6px;text-decoration:underline;transition:color .15s}
+.path-clear:hover{color:#ef4444}
 </style>
 </head>
 <body>
@@ -414,6 +432,43 @@ svg.canvas{width:100%;height:100%;display:block}
     <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Repos this workflow touches. Agents will check out the branch and pull latest before starting.</div>
     <div id="repoList"></div>
     <button class="btn sm" onclick="addRepoRow()">+ Add Repository</button>
+  </div>
+
+  <div class="sidebar-section">
+    <h3>Repo Context Paths <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Paths the agents should read and honor across this repo. CLAUDE.md is already auto-loaded; these add extra context. Sticky: they carry across workflows and survive New Workflow.</div>
+
+    <div style="margin-bottom:10px">
+      <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px">Rules / constitution paths</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:5px">(binding; CLAUDE.md already read)</div>
+      <div class="path-input-row">
+        <input type="text" id="rulesPathInput" placeholder="e.g. .claude/rules or CONVENTIONS.md" onkeydown="if(event.key==='Enter'){event.preventDefault();addRulesPathFromInput();}"/>
+        <button class="btn sm" onclick="addRulesPathFromInput()">Add</button>
+      </div>
+      <div class="path-chips" id="rulesPathChips"></div>
+      <div class="path-suggest">
+        <button onclick="addRulesPath('.claude/rules')">.claude/rules</button>
+        <button onclick="addRulesPath('CONVENTIONS.md')">CONVENTIONS.md</button>
+        <button onclick="addRulesPath('CONTRIBUTING.md')">CONTRIBUTING.md</button>
+      </div>
+      <button class="path-clear" id="rulesPathClear" onclick="clearRulesPaths()" style="display:none">Clear all</button>
+    </div>
+
+    <div>
+      <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px">Product docs (PRD / ADR)</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:5px">(goals/direction to honor)</div>
+      <div class="path-input-row">
+        <input type="text" id="productDocPathInput" placeholder="e.g. docs/ or ARCHITECTURE.md" onkeydown="if(event.key==='Enter'){event.preventDefault();addProductDocPathFromInput();}"/>
+        <button class="btn sm" onclick="addProductDocPathFromInput()">Add</button>
+      </div>
+      <div class="path-chips" id="productDocPathChips"></div>
+      <div class="path-suggest">
+        <button onclick="addProductDocPath('docs/')">docs/</button>
+        <button onclick="addProductDocPath('ARCHITECTURE.md')">ARCHITECTURE.md</button>
+        <button onclick="addProductDocPath('docs/adr/')">docs/adr/</button>
+      </div>
+      <button class="path-clear" id="productDocPathClear" onclick="clearProductDocPaths()" style="display:none">Clear all</button>
+    </div>
   </div>
 
   <div class="sidebar-section">
@@ -947,6 +1002,43 @@ function customMcpHint() {
   return `> **Custom MCP Tools**: The following MCP integrations are available to agents:\n> ${notes.replace(/\n/g, '\n> ')}`;
 }
 
+// Repo rules / constitution paths: BINDING constraints the agents must honor in addition to the
+// auto-loaded CLAUDE.md. Gated on a non-empty list. Hyphens only, no fences, provider-neutral.
+function rulesPathsHint() {
+  if (!state.rulesPaths || !state.rulesPaths.length) return null;
+  const list = state.rulesPaths.map(p => `>   - \`${p}\``).join('\n');
+  const r = [];
+  r.push('> **Repo rules / constitution (BINDING).** These paths hold rules and conventions you MUST follow. They are binding constraints on HOW you build, in addition to the repository CLAUDE.md, which is already auto-loaded for free (do not re-read it just to satisfy this). Treat any conflict in favor of the more specific rule, and if a rule here contradicts the task, surface it rather than silently breaking the rule.');
+  r.push('>');
+  r.push('> Read only what is listed below - do not blind-hunt for other rule files:');
+  r.push(list);
+  r.push('>');
+  r.push('> For each entry: if it is a directory, discover the relevant rule and convention files inside it by common name and read those; if it is a single file, read it directly. A path that points at nothing is simply no-extra-context, not an error.');
+  r.push('>');
+  r.push('> Multi-repo scoping: when more than one repository is in scope, resolve each listed path within each in-scope repository, and let a repository\'s own rules govern only that repository\'s work. Never carry one repository\'s rules into another repository\'s work; when repositories differ, honor each repository\'s own rules for changes made in it. A path that is absent in a given repository is simply no-extra-context there, not an error.');
+  return r.join('\n');
+}
+
+// Product / architecture docs (PRD / ADR): goals and direction the work must SERVE and not
+// contradict. Gated on a non-empty list. Uses the lowercase phrase deliberately (the capitalized
+// two-word literal collides with gating tests). Hyphens only, no fences, provider-neutral.
+function productDocsHint() {
+  if (!state.productDocPaths || !state.productDocPaths.length) return null;
+  const list = state.productDocPaths.map(p => `>   - \`${p}\``).join('\n');
+  const r = [];
+  r.push('> **Product / architecture docs (goals to SERVE).** These paths describe the product goals, architecture, and direction your work must serve and not contradict. They are not the task contract (that is the spec/seed); they are the intent the task exists to advance. Where a doc and the task pull apart, surface the tension rather than quietly diverging from the stated direction.');
+  r.push('>');
+  r.push('> Read only what is listed below - do not blind-hunt for other docs (CLAUDE.md is already auto-loaded):');
+  r.push(list);
+  r.push('>');
+  r.push('> For each entry: if it is a directory, discover the relevant docs inside it by common name and read those; if it is a single file, read it directly. A path that points at nothing is simply no-extra-context, not an error.');
+  r.push('>');
+  r.push('> Snapshot the relevant intent: when you are maintaining a durable record, capture the goals and direction these docs imply into the durable record\'s Why and scope, so later steps inherit the product intent without re-reading.');
+  r.push('>');
+  r.push('> Multi-repo scoping: when more than one repository is in scope, resolve each listed path within each in-scope repository, and let a repository\'s own docs govern only that repository\'s work. Never carry one repository\'s product context into another repository\'s work; when repositories differ, honor each repository\'s own docs for changes made in it. A path that is absent in a given repository is simply no-extra-context there, not an error.');
+  return r.join('\n');
+}
+
 // Ground new work in prior committed records: the planning step scans the .workflow/_index.md
 // breadcrumb, opens only matched records, and folds them into the plan. Gated by consumeRecords
 // (default on); self-gating at runtime - a no-op when no index exists. Avoids the exact string
@@ -1137,7 +1229,9 @@ let state = {
   mcpCodeSearch: true,
   consumeRecords: true,
   clarifyFirst: false,
-  mcpCustom: ''
+  mcpCustom: '',
+  rulesPaths: [],
+  productDocPaths: []
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -1676,6 +1770,8 @@ function savePrefs() {
       consumeRecords: state.consumeRecords,
       clarifyFirst: state.clarifyFirst,
       mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : '',
+      rulesPaths: state.rulesPaths,
+      productDocPaths: state.productDocPaths,
       plibOpen: state.plibOpen || null,
       plibFavs: state.plibFavs || null
     }));
@@ -1731,6 +1827,9 @@ function restorePrefs() {
       state.mcpCustom = p.mcpCustom;
       if ($('mcpCustomNotes')) $('mcpCustomNotes').value = p.mcpCustom;
     }
+    // Repo context paths (sticky); tolerate older blobs lacking these keys (stay empty, no throw).
+    if (Array.isArray(p.rulesPaths)) { state.rulesPaths = p.rulesPaths; renderRulesRows(); }
+    if (Array.isArray(p.productDocPaths)) { state.productDocPaths = p.productDocPaths; renderProductDocRows(); }
     if (Array.isArray(p.plibOpen)) state.plibOpen = p.plibOpen;
     if (Array.isArray(p.plibFavs)) state.plibFavs = p.plibFavs;
   } catch(e) { /* ignore */ }
@@ -1796,6 +1895,98 @@ function renderRepoRows() {
       '<button class="repo-remove" onclick="removeRepoRow(this)" title="Remove">&times;</button>';
     list.appendChild(row);
   });
+}
+
+// -- Repo context paths (rules / constitution + product docs) --
+// Sticky repo-level context: flat path lists honored across this repo's workflows.
+// Mirrors the repository list pattern; persisted to prefs; only Clear-all empties them.
+function addRulesPath(path) {
+  const v = (path || '').trim();
+  if (!v) return;
+  if (!Array.isArray(state.rulesPaths)) state.rulesPaths = [];
+  if (state.rulesPaths.indexOf(v) === -1) state.rulesPaths.push(v);
+  renderRulesRows();
+  savePrefsDebounced();
+  updatePrompt();
+}
+function addRulesPathFromInput() {
+  const inp = $('rulesPathInput');
+  if (!inp) return;
+  addRulesPath(inp.value);
+  inp.value = '';
+  inp.focus();
+}
+function removeRulesPath(path) {
+  if (!Array.isArray(state.rulesPaths)) return;
+  state.rulesPaths = state.rulesPaths.filter(p => p !== path);
+  renderRulesRows();
+  savePrefsDebounced();
+  updatePrompt();
+}
+function clearRulesPaths() {
+  state.rulesPaths = [];
+  renderRulesRows();
+  savePrefsDebounced();
+  updatePrompt();
+}
+function renderRulesRows() {
+  const list = $('rulesPathChips');
+  if (!list) return;
+  list.innerHTML = '';
+  (state.rulesPaths || []).forEach(p => {
+    const chip = document.createElement('span');
+    chip.className = 'path-chip';
+    chip.innerHTML = '<span></span><button class="path-chip-remove" title="Remove">&times;</button>';
+    chip.querySelector('span').textContent = p;
+    chip.querySelector('button').onclick = () => removeRulesPath(p);
+    list.appendChild(chip);
+  });
+  const clr = $('rulesPathClear');
+  if (clr) clr.style.display = (state.rulesPaths && state.rulesPaths.length) ? 'inline' : 'none';
+}
+function addProductDocPath(path) {
+  const v = (path || '').trim();
+  if (!v) return;
+  if (!Array.isArray(state.productDocPaths)) state.productDocPaths = [];
+  if (state.productDocPaths.indexOf(v) === -1) state.productDocPaths.push(v);
+  renderProductDocRows();
+  savePrefsDebounced();
+  updatePrompt();
+}
+function addProductDocPathFromInput() {
+  const inp = $('productDocPathInput');
+  if (!inp) return;
+  addProductDocPath(inp.value);
+  inp.value = '';
+  inp.focus();
+}
+function removeProductDocPath(path) {
+  if (!Array.isArray(state.productDocPaths)) return;
+  state.productDocPaths = state.productDocPaths.filter(p => p !== path);
+  renderProductDocRows();
+  savePrefsDebounced();
+  updatePrompt();
+}
+function clearProductDocPaths() {
+  state.productDocPaths = [];
+  renderProductDocRows();
+  savePrefsDebounced();
+  updatePrompt();
+}
+function renderProductDocRows() {
+  const list = $('productDocPathChips');
+  if (!list) return;
+  list.innerHTML = '';
+  (state.productDocPaths || []).forEach(p => {
+    const chip = document.createElement('span');
+    chip.className = 'path-chip';
+    chip.innerHTML = '<span></span><button class="path-chip-remove" title="Remove">&times;</button>';
+    chip.querySelector('span').textContent = p;
+    chip.querySelector('button').onclick = () => removeProductDocPath(p);
+    list.appendChild(chip);
+  });
+  const clr = $('productDocPathClear');
+  if (clr) clr.style.display = (state.productDocPaths && state.productDocPaths.length) ? 'inline' : 'none';
 }
 
 // -- Workflow serialization --
@@ -5004,6 +5195,9 @@ function clearCanvas(skipConfirm) {
   const _crt = $('consumeRecordsToggle'); if (_crt) _crt.checked = true;
   const _clt = $('clarifyFirstToggle'); if (_clt) _clt.checked = false;
   const _mcn = $('mcpCustomNotes'); if (_mcn) _mcn.value = '';
+  // state.rulesPaths and state.productDocPaths are intentionally NOT reset here: they are
+  // sticky repo-level context that carries across workflows in the same repo. Only the
+  // Clear-all controls (clearRulesPaths / clearProductDocPaths) empty them.
   render();
   updateConfig();
   updateMemoryPath();
@@ -5365,6 +5559,10 @@ function genWorkflow() {
   if (_wfAtl) { p.push(_wfAtl); p.push(''); }
   const _wfSb = codeSearchHint();
   if (_wfSb) { p.push(_wfSb); p.push(''); }
+  const _wfRu = rulesPathsHint();
+  if (_wfRu) { p.push(_wfRu); p.push(''); }
+  const _wfPd = productDocsHint();
+  if (_wfPd) { p.push(_wfPd); p.push(''); }
   const _wfCr = consumeRecordsHint();
   if (_wfCr) { p.push(_wfCr); p.push(''); }
   const _wfCl = clarifyFirstHint();
@@ -5527,6 +5725,10 @@ function genSubAgents() {
   if (_saAtl) { p.push(_saAtl); p.push(''); }
   const _saSb = codeSearchHint();
   if (_saSb) { p.push(_saSb); p.push(''); }
+  const _saRu = rulesPathsHint();
+  if (_saRu) { p.push(_saRu); p.push(''); }
+  const _saPd = productDocsHint();
+  if (_saPd) { p.push(_saPd); p.push(''); }
   const _saCr = consumeRecordsHint();
   if (_saCr) { p.push(_saCr); p.push(''); }
   const _saCl = clarifyFirstHint();
@@ -5785,6 +5987,10 @@ function genAgentTeams() {
   if (_atAtl) { p.push(_atAtl); p.push(''); }
   const _atSb = codeSearchHint();
   if (_atSb) { p.push(_atSb); p.push(''); }
+  const _atRu = rulesPathsHint();
+  if (_atRu) { p.push(_atRu); p.push(''); }
+  const _atPd = productDocsHint();
+  if (_atPd) { p.push(_atPd); p.push(''); }
   const _atCr = consumeRecordsHint();
   if (_atCr) { p.push(_atCr); p.push(''); }
   const _atCl = clarifyFirstHint();
@@ -6006,6 +6212,30 @@ function genAgentSDK() {
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
+  if (state.rulesPaths && state.rulesPaths.length) {
+    p.push('# ── Repo rules / constitution (BINDING) ──────────────────────────────────────');
+    p.push('# Binding rules/conventions you MUST follow, on top of the auto-loaded CLAUDE.md.');
+    p.push('# Read only what is listed (no blind-hunt):');
+    state.rulesPaths.forEach(pth => p.push(`#   - ${pth}`));
+    p.push('# Directory: discover relevant rule files inside by common name and read those.');
+    p.push('# File: read it directly. A path pointing at nothing is no-extra-context, not an error.');
+    p.push('# Multi-repo: resolve each listed path within each in-scope repository; a repo\'s own');
+    p.push('# rules govern only that repo\'s work; never carry one repo\'s rules into another\'s.');
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
+  if (state.productDocPaths && state.productDocPaths.length) {
+    p.push('# ── Product / architecture docs (goals to SERVE) ─────────────────────────────');
+    p.push('# Goals/direction your work must serve and not contradict (CLAUDE.md already read).');
+    p.push('# Read only what is listed (no blind-hunt):');
+    state.productDocPaths.forEach(pth => p.push(`#   - ${pth}`));
+    p.push('# Directory: discover relevant docs inside by common name. File: read it directly.');
+    p.push('# When keeping a durable record, snapshot the intent into its Why and scope.');
+    p.push('# Multi-repo: resolve each listed path within each in-scope repository; a repo\'s own');
+    p.push('# docs govern only that repo\'s work; never carry one repo\'s product context into another\'s.');
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
   const _sdkCmNotes = ($('mcpCustomNotes') ? $('mcpCustomNotes').value : state.mcpCustom || '').trim();
   if (_sdkCmNotes) {
     p.push('# ── Custom MCP Tools ──────────────────────────────────────────────────────');
@@ -6213,6 +6443,10 @@ function genClaudePrompt() {
   if (_cpAtl) { p.push(_cpAtl); p.push(''); }
   const _cpSb = codeSearchHint();
   if (_cpSb) { p.push(_cpSb); p.push(''); }
+  const _cpRu = rulesPathsHint();
+  if (_cpRu) { p.push(_cpRu); p.push(''); }
+  const _cpPd = productDocsHint();
+  if (_cpPd) { p.push(_cpPd); p.push(''); }
   const _cpCr = consumeRecordsHint();
   if (_cpCr) { p.push(_cpCr); p.push(''); }
   const _cpCl = clarifyFirstHint();

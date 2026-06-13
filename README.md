@@ -86,6 +86,21 @@ When a larger task needs to pass between engineers, click **Handoff** (next to E
 
 If a workflow was seeded only with a work-item URL, the prompt and definition are intentionally thin - the agent fetches the ticket at runtime, and the resolved context the previous engineer worked from lives in the durable record. The bundle says so, so the receiver trusts the durable record for the current spec and state. The handoff bundle pairs naturally with Durable Record; without a durable record there is no captured state to resume from, and the bundle says that too.
 
+## Repo Context Paths
+
+The **Repo Context Paths** sidebar section lets you point agents at a repo's own rules and product docs, so generated workflows read and honor more than just the per-task spec. It captures path strings only (the designer never touches your filesystem); the agents do the reading. Two optional chip lists, each with a text input, an Add button, per-chip remove, Clear-all, and one-click quick-add suggestions:
+
+- **Rules / constitution paths** (binding; CLAUDE.md already read) - paths whose rules and conventions are binding constraints on HOW you build. Quick-add: `.claude/rules`, `CONVENTIONS.md`, `CONTRIBUTING.md`.
+- **Product docs (PRD / ADR)** (goals/direction to honor) - paths describing the goals and direction the work must serve and not contradict. Quick-add: `docs/`, `ARCHITECTURE.md`, `docs/adr/`.
+
+This is the **three-tier context model** the generated prompts make explicit:
+
+1. **Constitution / rules** = how to build (binding). The repo CLAUDE.md is auto-loaded for free; these inputs capture extra rule paths on top of it.
+2. **Product / architecture docs (PRD / ADR)** = goals and direction the work must serve and not contradict, and (when a durable record is kept) intent to snapshot into its Why and scope.
+3. **Spec** = this task's contract - already the existing requirements/seed input, so it is not a separate field here.
+
+When a list is non-empty, its hint is injected into all five export formats, instructing agents to read only what is listed (no blind-hunt), to use directory-vs-file discovery (a directory: discover relevant files by common name; a file: read it directly), and - in a multi-repo run - to resolve each path within each in-scope repository and never carry one repo's context into another's. The lists are **sticky**: they persist to localStorage and survive a New Workflow reset (only Clear-all empties them), because they are repo-level context that carries across workflows in the same repo. When both lists are empty, nothing is injected and output is unchanged.
+
 ## Built-in Presets
 
 - **Feature Build** - Planner > Implementer > Reviewer > Decision gate > Tester
