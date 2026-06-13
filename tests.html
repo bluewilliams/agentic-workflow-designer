@@ -1177,6 +1177,13 @@ describe('Durable Record: protocol content', () => {
     expect(c).toContain('a record +'); // "Multiple repos: a record + index entry in EACH touched repo"
     expect(c).toContain('keep the old record and mark it superseded');
   });
+  it('v2.6: names the orchestrator as the record owner - works even with no Planner node', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('The ORCHESTRATOR owns the record');
+    expect(proto).toContain('exists even when there is no named Planner step');
+    expect(proto).toContain('It creates the record at kickoff, runs any up-front gates');
+    expect(proto).toContain('Individual steps amend the sections their own work touches');
+  });
   it('comment variant is comment-prefixed and carries the path', () => {
     win.document.getElementById('workflowName').value = 'Demo';
     const c = win.genDurableRecordComment('# ');
@@ -1265,10 +1272,11 @@ describe('Consume prior records (read side)', () => {
     const h = win.consumeRecordsHint();
     expect(h).toContain('Ground in prior committed records');
   });
-  it('hint tells the planning step to scan the index first and open only matches', () => {
+  it('hint assigns the read to the orchestrator (works even with no Planner node) and scans first', () => {
     win.state.consumeRecords = true;
     const h = win.consumeRecordsHint();
-    expect(h).toContain('The planning or orchestrating step does this once');
+    expect(h).toContain('The orchestrator');
+    expect(h).toContain('even when there is no named Planner step');
     expect(h).toContain('.workflow/_index.md');
     expect(h).toContain('prefer entries marked `status: current`');
     expect(h).toContain('open ONLY the matched records');
@@ -1307,6 +1315,72 @@ describe('Consume prior records (read side)', () => {
     win.state.durableRecord = false;
     win.state.consumeRecords = true;
     expect(win.genWorkflow()).toContain('Ground in prior committed records');
+  });
+});
+
+// ─── Clarify gate (spec-kit clarify equivalent, opt-in / default off) ─────
+describe('Clarify gate', () => {
+  beforeEach(() => { resetState(); });
+
+  it('clarifyFirstHint is null when off, present when on, and owned by the orchestrator', () => {
+    win.state.clarifyFirst = false;
+    expect(win.clarifyFirstHint()).toBe(null);
+    win.state.clarifyFirst = true;
+    const h = win.clarifyFirstHint();
+    expect(h).toContain('Clarify ambiguous requirements before planning');
+    expect(h).toContain('The orchestrator');
+    expect(h).toContain('even when there is no named Planner step');
+  });
+  it('probes a structured ambiguity taxonomy (the spec-kit-clarify steal, not freeform)', () => {
+    win.state.clarifyFirst = true;
+    const h = win.clarifyFirstHint();
+    expect(h).toContain('under-specified or conflicting behavior');
+    expect(h).toContain('edge, null or empty, and error cases');
+    expect(h).toContain('data shapes and contracts');
+    expect(h).toContain('scope boundaries and non-goals');
+    expect(h).toContain('non-functional constraints');
+  });
+  it('asks focused structured questions in one round and waits (disciplined, not annoying)', () => {
+    win.state.clarifyFirst = true;
+    const h = win.clarifyFirstHint();
+    expect(h).toContain('prefer structured multiple-choice or yes/no');
+    expect(h).toContain('ask only what changes the build');
+    expect(h).toContain('keep it to ONE round');
+    expect(h).toContain('Wait for the answers');
+  });
+  it('folds resolutions into the plan + the durable record, clearing open questions', () => {
+    win.state.clarifyFirst = true;
+    const h = win.clarifyFirstHint();
+    expect(h).toContain('fold each resolution into the plan');
+    expect(h).toContain('record it as a resolved decision');
+    expect(h).toContain('no open clarifications remain');
+  });
+  it('degrades gracefully when non-interactive (does not block; records assumptions/risks)', () => {
+    win.state.clarifyFirst = true;
+    const h = win.clarifyFirstHint();
+    expect(h).toContain('running non-interactively');
+    expect(h).toContain('do NOT block');
+    expect(h).toContain('record the open questions as explicit assumptions and risks');
+  });
+  it('does not invent questions when clear; em-dash-free, provider-neutral, gating-safe', () => {
+    win.state.clarifyFirst = true;
+    const h = win.clarifyFirstHint();
+    expect(h).toContain('do not invent questions');
+    expect(h).toNotContain('—');
+    expect(h).toNotContain('–');
+    expect(h).toNotContain('Jira');
+    expect(h).toNotContain('Sourcebot');
+    expect(h).toNotContain('Durable Record'); // must not collide with durable-record gating
+  });
+  it('is opt-in: injected into all four exporters when on, absent when off', () => {
+    buildTestWorkflow('linear');
+    win.state.clarifyFirst = true;
+    expect(win.genWorkflow()).toContain('Clarify ambiguous requirements before planning');
+    expect(win.genSubAgents()).toContain('Clarify ambiguous requirements before planning');
+    expect(win.genAgentTeams()).toContain('Clarify ambiguous requirements before planning');
+    expect(win.genClaudePrompt()).toContain('Clarify ambiguous requirements before planning');
+    win.state.clarifyFirst = false;
+    expect(win.genWorkflow()).toNotContain('Clarify ambiguous requirements before planning');
   });
 });
 
@@ -3756,7 +3830,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.consumeRecordsHint = consumeRecordsHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

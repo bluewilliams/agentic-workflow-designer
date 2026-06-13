@@ -565,6 +565,10 @@ svg.canvas{width:100%;height:100%;display:block}
       <input type="checkbox" id="consumeRecordsToggle" onchange="toggleConsumeRecords()" checked/>
       <span style="font-size:12px">Ground in prior records <span style="color:var(--text3);font-weight:400">(scan committed .workflow records)</span></span>
     </label>
+    <label class="memory-toggle">
+      <input type="checkbox" id="clarifyFirstToggle" onchange="toggleClarifyFirst()"/>
+      <span style="font-size:12px">Clarify requirements first <span style="color:var(--text3);font-weight:400">(ask the director about ambiguity before planning)</span></span>
+    </label>
     <div style="margin-top:8px">
       <textarea id="mcpCustomNotes" placeholder="Describe other MCPs available to your agents (e.g. Playwright MCP for browser testing)..." oninput="savePrefsDebounced()" rows="2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;font-family:inherit"></textarea>
     </div>
@@ -950,11 +954,27 @@ function customMcpHint() {
 function consumeRecordsHint() {
   if (!state.consumeRecords) return null;
   const r = [];
-  r.push('> **Ground in prior committed records (if any).** The planning or orchestrating step does this once, before it plans, and folds what it finds into the plan so later steps inherit it without re-reading.');
+  r.push('> **Ground in prior committed records (if any).** The orchestrator (the top-level agent that drives this workflow and spawns its steps - the session you paste this into or the team lead, even when there is no named Planner step) does this once before the work begins, and folds what it finds into the brief it gives the steps so they inherit it without re-reading.');
   r.push('> - If a record index exists at `.workflow/_index.md` in a repository in scope, scan it first (a cheap one-line-per-record breadcrumb). Match entries by the files and capability your change touches; prefer entries marked `status: current`. Then open ONLY the matched records and carry their decisions, gotchas, surface-area map, and requirements into your plan.');
   r.push('> - Do not read every record, and do not follow a record\'s cross-repository `siblings` link unless a matched entry shows a real dependency on that repository - never follow links transitively.');
   r.push('> - If your change will modify or replace a behavior a current record defines, reconcile your plan against that record and plan to supersede it at finalize (set `supersedes` on the new entry and flip the old entry to `superseded`).');
   r.push('> - If no index exists or no entry matches, proceed normally - this adds nothing to greenfield work.');
+  return r.join('\n');
+}
+
+// Clarify gate (equivalent of spec-kit's clarify skill): when on, the planning step probes a
+// structured ambiguity taxonomy, asks the director focused questions in one round, then folds the
+// resolutions into the plan and the durable record. Default off (it blocks for input). Degrades
+// gracefully when non-interactive. Avoids the literal "Durable Record" string to dodge gating.
+function clarifyFirstHint() {
+  if (!state.clarifyFirst) return null;
+  const r = [];
+  r.push('> **Clarify ambiguous requirements before planning.** The orchestrator (the top-level agent driving this workflow and spawning its steps, even when there is no named Planner step) runs this gate once, before the first step begins.');
+  r.push('> - Examine the requirements for material ambiguity across these areas: under-specified or conflicting behavior; edge, null or empty, and error cases; data shapes and contracts; scope boundaries and non-goals; and non-functional constraints (performance, security, backward compatibility). Note only the gaps that would actually change what gets built.');
+  r.push('> - If there are material gaps, STOP and ask the director a short, focused set of clarifying questions - prefer structured multiple-choice or yes/no, ask only what changes the build, and keep it to ONE round. Wait for the answers; do not guess past a real ambiguity.');
+  r.push('> - Once answered, fold each resolution into the plan, and into the durable record if one is being maintained: record it as a resolved decision (question -> answer -> resulting choice), update the requirements and scope to match, and clear it from any open-questions list so the spec quality check can confirm no open clarifications remain.');
+  r.push('> - If you are running non-interactively (no director available to answer - for example in CI, a scheduled run, or an SDK pipeline), do NOT block: record the open questions as explicit assumptions and risks in the plan and the record, proceed with the most reasonable interpretation, and flag them for review.');
+  r.push('> - If the requirements are already clear, say so in one line and proceed - do not invent questions.');
   return r.join('\n');
 }
 
@@ -1116,6 +1136,7 @@ let state = {
   mcpAtlassian: true,
   mcpSourcebot: true,
   consumeRecords: true,
+  clarifyFirst: false,
   mcpCustom: ''
 };
 
@@ -1595,6 +1616,11 @@ function toggleConsumeRecords() {
   updatePrompt();
   savePrefs();
 }
+function toggleClarifyFirst() {
+  state.clarifyFirst = $('clarifyFirstToggle').checked;
+  updatePrompt();
+  savePrefs();
+}
 
 function setMemoryEnabled(enabled) {
   state.memoryEnabled = enabled;
@@ -1646,6 +1672,7 @@ function savePrefs() {
       mcpAtlassian: state.mcpAtlassian,
       mcpSourcebot: state.mcpSourcebot,
       consumeRecords: state.consumeRecords,
+      clarifyFirst: state.clarifyFirst,
       mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : '',
       plibOpen: state.plibOpen || null,
       plibFavs: state.plibFavs || null
@@ -1691,6 +1718,11 @@ function restorePrefs() {
       state.consumeRecords = !!p.consumeRecords;
       const cb = $('consumeRecordsToggle');
       if (cb) cb.checked = state.consumeRecords;
+    }
+    if (p.clarifyFirst !== undefined) {
+      state.clarifyFirst = !!p.clarifyFirst;
+      const cb = $('clarifyFirstToggle');
+      if (cb) cb.checked = state.clarifyFirst;
     }
     if (p.mcpCustom !== undefined) {
       state.mcpCustom = p.mcpCustom;
@@ -2322,6 +2354,7 @@ function genDurableRecordProtocol() {
   p.push('### How to maintain it');
   p.push('- Write it in plain, natural language a teammate would actually use: concise and concrete, no filler or marketing tone. Use hyphens, not em dashes or en dashes. It is read by both humans and agents maintaining the project later, so favor clarity over polish.');
   p.push('- ANY agent in this workflow may amend the record - update the sections your step actually touched, by action not by role (this keeps it working for any workflow shape): defined or refined a behavior the system must guarantee -> Requirements (write its Given/When/Then scenarios, and once tests exist name the verifying test on each scenario); stated a measurable outcome -> Success criteria; validated the spec before building or at completion -> Spec quality check; made a decision -> Approach and decisions (record the rejected alternative and why); created or changed files -> Surface area; ran a build or tests -> Verify (record the real result); identified a forward-looking risk or trade-off -> Risks; hit a non-obvious edge or contract -> Gotchas; discovered new work -> add to the Task checklist; you are the last or synthesizing agent -> write the Outcome, write or update this record\'s entry in the `.workflow/_index.md` breadcrumb index (see Durable Record Index), and remove the in-progress scaffolding.');
+  p.push('- The ORCHESTRATOR owns the record. The orchestrator is the top-level agent that drives this workflow and spawns its steps - the session you paste this into, the team lead, or the SDK harness - and it exists even when there is no named Planner step (for example a bug-fix workflow of Investigator -> Fixer -> Tester). It creates the record at kickoff, runs any up-front gates (clarify, grounding) before the first step, folds each step\'s findings in as they report back, and finalizes the record at the end. Individual steps amend the sections their own work touches.');
   p.push('- For parallel steps: fan-out agents write findings to the ephemeral memory, NOT to this record, to avoid write races on the shared document; the agent that joins or synthesizes folds the relevant findings into this record.');
   p.push('- Create it at kickoff with the H1 title, the Why and scope, the initial Requirements and Success criteria drawn from the work item (requirement scenarios filled in as the spec is understood; verifying-test names added once tests are written), the initial checklist, and the Built-with provenance line (the workflow name and its agent roles are known up front). Run the Spec quality check before implementation begins.');
   p.push('- Keep the minute-to-minute step progress (which agent/step is currently running) in the Current state / next-action scaffolding, NOT in the Built-with line or the Task checklist - it is transient and is removed on commit, whereas the Built-with provenance is durable and stays.');
@@ -4957,10 +4990,12 @@ function clearCanvas(skipConfirm) {
   state.mcpAtlassian = true;
   state.mcpSourcebot = true;
   state.consumeRecords = true;
+  state.clarifyFirst = false;
   state.mcpCustom = '';
   const _matl = $('mcpAtlassianToggle'); if (_matl) _matl.checked = true;
   const _msb = $('mcpSourcebotToggle'); if (_msb) _msb.checked = true;
   const _crt = $('consumeRecordsToggle'); if (_crt) _crt.checked = true;
+  const _clt = $('clarifyFirstToggle'); if (_clt) _clt.checked = false;
   const _mcn = $('mcpCustomNotes'); if (_mcn) _mcn.value = '';
   render();
   updateConfig();
@@ -5325,6 +5360,8 @@ function genWorkflow() {
   if (_wfSb) { p.push(_wfSb); p.push(''); }
   const _wfCr = consumeRecordsHint();
   if (_wfCr) { p.push(_wfCr); p.push(''); }
+  const _wfCl = clarifyFirstHint();
+  if (_wfCl) { p.push(_wfCl); p.push(''); }
   const _wfCm = customMcpHint();
   if (_wfCm) { p.push(_wfCm); p.push(''); }
 
@@ -5485,6 +5522,8 @@ function genSubAgents() {
   if (_saSb) { p.push(_saSb); p.push(''); }
   const _saCr = consumeRecordsHint();
   if (_saCr) { p.push(_saCr); p.push(''); }
+  const _saCl = clarifyFirstHint();
+  if (_saCl) { p.push(_saCl); p.push(''); }
   const _saCm = customMcpHint();
   if (_saCm) { p.push(_saCm); p.push(''); }
 
@@ -5741,6 +5780,8 @@ function genAgentTeams() {
   if (_atSb) { p.push(_atSb); p.push(''); }
   const _atCr = consumeRecordsHint();
   if (_atCr) { p.push(_atCr); p.push(''); }
+  const _atCl = clarifyFirstHint();
+  if (_atCl) { p.push(_atCl); p.push(''); }
   const _atCm = customMcpHint();
   if (_atCm) { p.push(_atCm); p.push(''); }
 
@@ -6167,6 +6208,8 @@ function genClaudePrompt() {
   if (_cpSb) { p.push(_cpSb); p.push(''); }
   const _cpCr = consumeRecordsHint();
   if (_cpCr) { p.push(_cpCr); p.push(''); }
+  const _cpCl = clarifyFirstHint();
+  if (_cpCl) { p.push(_cpCl); p.push(''); }
   const _cpCm = customMcpHint();
   if (_cpCm) { p.push(_cpCm); p.push(''); }
 
