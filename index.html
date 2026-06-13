@@ -561,6 +561,10 @@ svg.canvas{width:100%;height:100%;display:block}
       <input type="checkbox" id="mcpSourcebotToggle" onchange="toggleMcpSourcebot()" checked/>
       <span style="font-size:12px">Sourcebot <span style="color:var(--text3);font-weight:400">(cross-repo code search)</span></span>
     </label>
+    <label class="memory-toggle">
+      <input type="checkbox" id="consumeRecordsToggle" onchange="toggleConsumeRecords()" checked/>
+      <span style="font-size:12px">Ground in prior records <span style="color:var(--text3);font-weight:400">(scan committed .workflow records)</span></span>
+    </label>
     <div style="margin-top:8px">
       <textarea id="mcpCustomNotes" placeholder="Describe other MCPs available to your agents (e.g. Playwright MCP for browser testing)..." oninput="savePrefsDebounced()" rows="2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;font-family:inherit"></textarea>
     </div>
@@ -939,6 +943,21 @@ function customMcpHint() {
   return `> **Custom MCP Tools**: The following MCP integrations are available to agents:\n> ${notes.replace(/\n/g, '\n> ')}`;
 }
 
+// Ground new work in prior committed records: the planning step scans the .workflow/_index.md
+// breadcrumb, opens only matched records, and folds them into the plan. Gated by consumeRecords
+// (default on); self-gating at runtime - a no-op when no index exists. Avoids the exact string
+// "Durable Record" so it never collides with the durable-record gating in the exporters/tests.
+function consumeRecordsHint() {
+  if (!state.consumeRecords) return null;
+  const r = [];
+  r.push('> **Ground in prior committed records (if any).** The planning or orchestrating step does this once, before it plans, and folds what it finds into the plan so later steps inherit it without re-reading.');
+  r.push('> - If a record index exists at `.workflow/_index.md` in a repository in scope, scan it first (a cheap one-line-per-record breadcrumb). Match entries by the files and capability your change touches; prefer entries marked `status: current`. Then open ONLY the matched records and carry their decisions, gotchas, surface-area map, and requirements into your plan.');
+  r.push('> - Do not read every record, and do not follow a record\'s cross-repository `siblings` link unless a matched entry shows a real dependency on that repository - never follow links transitively.');
+  r.push('> - If your change will modify or replace a behavior a current record defines, reconcile your plan against that record and plan to supersede it at finalize (set `supersedes` on the new entry and flip the old entry to `superseded`).');
+  r.push('> - If no index exists or no entry matches, proceed normally - this adds nothing to greenfield work.');
+  return r.join('\n');
+}
+
 // Maps agentType to a PROMPTS key for fallback when user leaves prompt blank
 const AGENT_TYPE_PROMPT_MAP = {
   planner: 'planner', architect: 'architect', coder: 'implementer',
@@ -1096,6 +1115,7 @@ let state = {
   activePreset: null,
   mcpAtlassian: true,
   mcpSourcebot: true,
+  consumeRecords: true,
   mcpCustom: ''
 };
 
@@ -1570,6 +1590,11 @@ function toggleMcpSourcebot() {
   updatePrompt();
   savePrefs();
 }
+function toggleConsumeRecords() {
+  state.consumeRecords = $('consumeRecordsToggle').checked;
+  updatePrompt();
+  savePrefs();
+}
 
 function setMemoryEnabled(enabled) {
   state.memoryEnabled = enabled;
@@ -1620,6 +1645,7 @@ function savePrefs() {
       repositories: state.repositories,
       mcpAtlassian: state.mcpAtlassian,
       mcpSourcebot: state.mcpSourcebot,
+      consumeRecords: state.consumeRecords,
       mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : '',
       plibOpen: state.plibOpen || null,
       plibFavs: state.plibFavs || null
@@ -1660,6 +1686,11 @@ function restorePrefs() {
       state.mcpSourcebot = !!p.mcpSourcebot;
       const cb = $('mcpSourcebotToggle');
       if (cb) cb.checked = state.mcpSourcebot;
+    }
+    if (p.consumeRecords !== undefined) {
+      state.consumeRecords = !!p.consumeRecords;
+      const cb = $('consumeRecordsToggle');
+      if (cb) cb.checked = state.consumeRecords;
     }
     if (p.mcpCustom !== undefined) {
       state.mcpCustom = p.mcpCustom;
@@ -2290,16 +2321,25 @@ function genDurableRecordProtocol() {
   p.push('');
   p.push('### How to maintain it');
   p.push('- Write it in plain, natural language a teammate would actually use: concise and concrete, no filler or marketing tone. Use hyphens, not em dashes or en dashes. It is read by both humans and agents maintaining the project later, so favor clarity over polish.');
-  p.push('- ANY agent in this workflow may amend the record - update the sections your step actually touched, by action not by role (this keeps it working for any workflow shape): defined or refined a behavior the system must guarantee -> Requirements (write its Given/When/Then scenarios, and once tests exist name the verifying test on each scenario); stated a measurable outcome -> Success criteria; validated the spec before building or at completion -> Spec quality check; made a decision -> Approach and decisions (record the rejected alternative and why); created or changed files -> Surface area; ran a build or tests -> Verify (record the real result); identified a forward-looking risk or trade-off -> Risks; hit a non-obvious edge or contract -> Gotchas; discovered new work -> add to the Task checklist; you are the last or synthesizing agent -> write the Outcome and remove the in-progress scaffolding.');
+  p.push('- ANY agent in this workflow may amend the record - update the sections your step actually touched, by action not by role (this keeps it working for any workflow shape): defined or refined a behavior the system must guarantee -> Requirements (write its Given/When/Then scenarios, and once tests exist name the verifying test on each scenario); stated a measurable outcome -> Success criteria; validated the spec before building or at completion -> Spec quality check; made a decision -> Approach and decisions (record the rejected alternative and why); created or changed files -> Surface area; ran a build or tests -> Verify (record the real result); identified a forward-looking risk or trade-off -> Risks; hit a non-obvious edge or contract -> Gotchas; discovered new work -> add to the Task checklist; you are the last or synthesizing agent -> write the Outcome, write or update this record\'s entry in the `.workflow/_index.md` breadcrumb index (see Durable Record Index), and remove the in-progress scaffolding.');
   p.push('- For parallel steps: fan-out agents write findings to the ephemeral memory, NOT to this record, to avoid write races on the shared document; the agent that joins or synthesizes folds the relevant findings into this record.');
   p.push('- Create it at kickoff with the H1 title, the Why and scope, the initial Requirements and Success criteria drawn from the work item (requirement scenarios filled in as the spec is understood; verifying-test names added once tests are written), the initial checklist, and the Built-with provenance line (the workflow name and its agent roles are known up front). Run the Spec quality check before implementation begins.');
   p.push('- Keep the minute-to-minute step progress (which agent/step is currently running) in the Current state / next-action scaffolding, NOT in the Built-with line or the Task checklist - it is transient and is removed on commit, whereas the Built-with provenance is durable and stays.');
   p.push('- Keep it CURRENT as work progresses. Overwrite the state / next-action section each update (do not just append to it) so that at any moment it is enough for another engineer or agent to resume. Append to the decisions and checklist sections as they grow.');
-  p.push('- On completion, finalize it for commit: confirm each Requirement scenario names its verifying test, re-confirm the Spec quality check passes, fill in the Outcome, mark the checklist done, capture the final decisions, and add the branch/PR links. Add the Contents index if the record grew long. Then remove the in-progress scaffolding (the "Current state / next action" line and the "Resume / handoff" section), which have no purpose once the work is done. The committed artifact is the requirements (with verifying tests), the approach and decisions, the completed checklist, the Verify results, and the outcome.');
+  p.push('- On completion, finalize it for commit: confirm each Requirement scenario names its verifying test, re-confirm the Spec quality check passes, fill in the Outcome, mark the checklist done, capture the final decisions, and add the branch/PR links. Write or update this record\'s entry in the `.workflow/_index.md` breadcrumb index (see Durable Record Index). Add the Contents index if the record grew long. Then remove the in-progress scaffolding (the "Current state / next action" line and the "Resume / handoff" section), which have no purpose once the work is done. The committed artifact is the requirements (with verifying tests), the approach and decisions, the completed checklist, the Verify results, and the outcome.');
   p.push('');
   p.push('### Where it lives');
   p.push('- **Single repository**: write it to `' + apath + '` in that repo so it versions with the code (the change to this file lands in the same PR as the implementation).');
-  p.push('- **Multiple repositories or no repository**: no single repo owns it, so attach or link it to the work item (issue tracker) instead, with links to each repository’s branch and PR.');
+  p.push('- **Multiple repositories or no repository**: write a record in EACH repository the change touches, each describing that repository\'s slice, and cross-link them through their shared work item plus sibling links (see the Durable Record Index below) so every repository stays self-describing. Link each record to the work item (issue tracker) and to each repository\'s branch and PR. If truly no repository is involved, attach the single record to the work item.');
+  p.push('');
+  p.push('### Durable Record Index (breadcrumb)');
+  p.push('Alongside the records, keep a lightweight index at `.workflow/_index.md` in the same repository - one entry per record. Its job is retrieval at scale: a future workflow or person scans this index first (cheap) to decide which records are worth opening, instead of reading every record. The pattern is scan-then-open: read the index, match on what the current work touches, then open only the relevant records.');
+  p.push('- **Write it at finalize, as a projection of the record.** When a record is finalized for commit, write or update that record\'s single entry in `.workflow/_index.md`. The entry is distilled from fields the record already has, so the record stays the single source of truth and the two cannot drift. Write the entry once at finalize, not mid-run, to avoid write races (the same reason fan-out agents do not write the record directly).');
+  p.push('- **Group by a stable capability slug; structured but readable.** Start the file with a one-line header noting the scan-then-open pattern. Group entries under a stable kebab-case capability heading (the area the work touches, for example `batch-item-filter`) so every record touching that capability groups together over time, even as wording changes. Each entry is a short block of labeled facets; omit any facet that does not apply, so a trivial change stays a couple of lines.');
+  p.push('- **Facets:** Identity - `record` (path), `intent` (one line). Matchers (how an agent judges relevance) - `files` (the main files or types touched, the sharpest matcher for code), `work-item` (the immediate ticket), `epic` (the parent unit when there is one, which groups an epic\'s records across repositories and tickets). Scale - `repos` (repositories this unit of work touched), `siblings` (paths to the sibling records in other repositories for the same unit of work). Lineage - `status` (current, superseded, or partial), `supersedes`, `superseded_by`, `date`.');
+  p.push('- **Example entry** (under a `## batch-item-filter` heading): `record: .workflow/prj-201-size-tiers.md` / `intent: tiered size filter (min + max), replacing the single-min filter` / `files: SizeQueryRepository, SizeRequest(+Factory), RequestDto` / `work-item: PRJ-201 | epic: PRJ-150 | status: current | supersedes: PRJ-064 | date: 2026-09-02`.');
+  p.push('- **Evolution over time.** When a later change re-works a capability (a changed requirement or a new business need), do NOT delete the old record - it is the history of why the capability looked the way it did. Instead: the new entry sets `supersedes` to the prior record; the prior entry flips `status` to superseded and gains `superseded_by` pointing at the new one; and the new record captures why it changed in Why and scope. A scan then lands a reader on the current record with the prior one one hop away. The forward link (the new naming what it supersedes) is always written; the backward link (the old naming the new) is best effort - write it when the old record is in a repository the current work already touches, but do not make a cross-repository edit just to add it, since the parent work item or epic and the forward link already connect them.');
+  p.push('- **Multiple repositories.** When a unit of work spans repositories, write a record AND an index entry in each touched repository, each describing that repository\'s slice, linked by `siblings` plus the shared `work-item`/`epic` when there is one. (When the work was described in plain text with no work item, the `siblings` links and the shared capability slug carry the correlation, and the `work-item`/`epic` facets are simply omitted.) This keeps every repository self-describing - a scan of its own index finds its own work - without depending on another repository being checked out. When grounding new work, read the index only from the repositories in scope (not every repository), and follow a sibling link into another repository only when a matched local entry shows a real dependency, never transitively.');
   p.push('');
   p.push('This record is the spec-and-state of the work in one place. The ephemeral memory keeps the run alive across compaction; this record makes the run resumable by a human and useful to future human and agent maintainers, who get the requirements (with the tests that verify them), the approach and decisions, and the surface area touched in one navigable document.');
   return p.join('\n');
@@ -2324,8 +2364,12 @@ function genDurableRecordComment(prefix) {
   p.push(c + 'name + agent roles + grounding, kept in the commit); and a resume note. Add a Contents');
   p.push(c + 'index near the top once it grows large. Any agent amends the sections its step touched.');
   p.push(c + 'Keep it current during the run (resumable handoff); finalize on completion as the');
-  p.push(c + 'committable artifact. Single repo: commit at the path above. Multiple/no repo: attach');
-  p.push(c + 'or link it to the work item with per-repo branch and PR links.');
+  p.push(c + 'committable artifact. Single repo: commit at the path above. Multiple repos: a record +');
+  p.push(c + 'index entry in EACH touched repo (each repo self-describing), cross-linked via siblings +');
+  p.push(c + 'the shared work item/epic. Also keep a `.workflow/_index.md` breadcrumb: one structured entry');
+  p.push(c + 'per record (facets: files, work-item, epic, status, supersedes/superseded_by, date), grouped');
+  p.push(c + 'by a stable capability slug, written at finalize, so future workflows scan it to find');
+  p.push(c + 'relevant records. On a capability re-work, keep the old record and mark it superseded.');
   return p.join('\n');
 }
 
@@ -4912,9 +4956,11 @@ function clearCanvas(skipConfirm) {
   if ($('planInput')) $('planInput').value = '';
   state.mcpAtlassian = true;
   state.mcpSourcebot = true;
+  state.consumeRecords = true;
   state.mcpCustom = '';
   const _matl = $('mcpAtlassianToggle'); if (_matl) _matl.checked = true;
   const _msb = $('mcpSourcebotToggle'); if (_msb) _msb.checked = true;
+  const _crt = $('consumeRecordsToggle'); if (_crt) _crt.checked = true;
   const _mcn = $('mcpCustomNotes'); if (_mcn) _mcn.value = '';
   render();
   updateConfig();
@@ -5277,6 +5323,8 @@ function genWorkflow() {
   if (_wfAtl) { p.push(_wfAtl); p.push(''); }
   const _wfSb = sourcebotHint();
   if (_wfSb) { p.push(_wfSb); p.push(''); }
+  const _wfCr = consumeRecordsHint();
+  if (_wfCr) { p.push(_wfCr); p.push(''); }
   const _wfCm = customMcpHint();
   if (_wfCm) { p.push(_wfCm); p.push(''); }
 
@@ -5435,6 +5483,8 @@ function genSubAgents() {
   if (_saAtl) { p.push(_saAtl); p.push(''); }
   const _saSb = sourcebotHint();
   if (_saSb) { p.push(_saSb); p.push(''); }
+  const _saCr = consumeRecordsHint();
+  if (_saCr) { p.push(_saCr); p.push(''); }
   const _saCm = customMcpHint();
   if (_saCm) { p.push(_saCm); p.push(''); }
 
@@ -5689,6 +5739,8 @@ function genAgentTeams() {
   if (_atAtl) { p.push(_atAtl); p.push(''); }
   const _atSb = sourcebotHint();
   if (_atSb) { p.push(_atSb); p.push(''); }
+  const _atCr = consumeRecordsHint();
+  if (_atCr) { p.push(_atCr); p.push(''); }
   const _atCm = customMcpHint();
   if (_atCm) { p.push(_atCm); p.push(''); }
 
@@ -6113,6 +6165,8 @@ function genClaudePrompt() {
   if (_cpAtl) { p.push(_cpAtl); p.push(''); }
   const _cpSb = sourcebotHint();
   if (_cpSb) { p.push(_cpSb); p.push(''); }
+  const _cpCr = consumeRecordsHint();
+  if (_cpCr) { p.push(_cpCr); p.push(''); }
   const _cpCm = customMcpHint();
   if (_cpCm) { p.push(_cpCm); p.push(''); }
 
