@@ -237,6 +237,7 @@ function resetState() {
   win.state.defaultModel = 'opus-4.6';
   win.state.repositories = [];
   win.state.activePreset = null;
+  win.state.mcpCodeSearch = true;  // app default is ON (index.html state init)
   // Reset DOM inputs
   const wfName = win.document.getElementById('workflowName');
   if (wfName) wfName.value = '';
@@ -2366,18 +2367,43 @@ describe('MCP Integrations', () => {
   beforeEach(() => { resetState(); });
 
   describe('hint functions', () => {
-    it('should return null for sourcebotHint when disabled', () => {
-      win.state.mcpSourcebot = false;
-      expect(win.sourcebotHint()).toBe(null);
+    it('should return null for codeSearchHint when disabled', () => {
+      win.state.mcpCodeSearch = false;
+      expect(win.codeSearchHint()).toBe(null);
     });
-    it('should return prompt text for sourcebotHint when enabled', () => {
-      win.state.mcpSourcebot = true;
-      const hint = win.sourcebotHint();
-      expect(hint).toContain('Sourcebot MCP');
-      expect(hint).toContain('search_code');
-      expect(hint).toContain('ask_codebase');
-      expect(hint).toContain('read_file');
-      expect(hint).toContain('list_tree');
+    it('should default mcpCodeSearch to ON', () => {
+      resetState();
+      expect(win.state.mcpCodeSearch).toBe(true);
+    });
+    it('should name multiple example code-search tools and mandate none', () => {
+      win.state.mcpCodeSearch = true;
+      const hint = win.codeSearchHint();
+      // names at least two illustrative example tools, including Sourcebot
+      expect(hint).toContain('Sourcebot');
+      expect(hint).toContain('Sourcegraph');
+      expect(hint).toContain('Kilo Code');
+      // presents none as required
+      expect(hint).toContain('none is required');
+    });
+    it('should not claim a specific named server is available', () => {
+      win.state.mcpCodeSearch = true;
+      const hint = win.codeSearchHint();
+      expect(hint).toNotContain('Sourcebot server is available');
+      expect(hint).toNotContain('A Sourcebot MCP server is available');
+    });
+    it('should describe a discover/browse/search/read flow with a Glob/Grep/LSP fallback', () => {
+      win.state.mcpCodeSearch = true;
+      const hint = win.codeSearchHint();
+      expect(hint).toContain('discover');
+      expect(hint).toContain('browse');
+      expect(hint).toContain('search');
+      expect(hint).toContain('read');
+      expect(hint).toContain('Glob');
+      expect(hint).toContain('Grep');
+      expect(hint).toContain('LSP');
+      // hyphens only - no em or en dashes
+      expect(hint).toNotContain('—');
+      expect(hint).toNotContain('–');
     });
     it('should return null for atlassianHint when toggle is off', () => {
       win.state.mcpAtlassian = false;
@@ -2407,11 +2433,59 @@ describe('MCP Integrations', () => {
   });
 
   describe('export integration', () => {
-    it('should include Sourcebot hint in sub-agents export when enabled', () => {
+    it('should include code-search hint in sub-agents export when enabled', () => {
       buildTestWorkflow('linear');
-      win.state.mcpSourcebot = true;
+      win.state.mcpCodeSearch = true;
       const output = win.genSubAgents();
-      expect(output).toContain('Sourcebot MCP');
+      expect(output).toContain('Code search (MCP)');
+    });
+    it('should include code-search hint in workflow export when enabled', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpCodeSearch = true;
+      const output = win.genWorkflow();
+      expect(output).toContain('Code search (MCP)');
+    });
+    it('should include code-search hint in agent-teams export when enabled', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpCodeSearch = true;
+      const output = win.genAgentTeams();
+      expect(output).toContain('Code search (MCP)');
+    });
+    it('should include code-search hint in claude-prompt export when enabled', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpCodeSearch = true;
+      const output = win.genClaudePrompt();
+      expect(output).toContain('Code search (MCP)');
+    });
+    it('should include code-search header in agent-SDK (comment) export when enabled', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpCodeSearch = true;
+      const output = win.genAgentSDK();
+      expect(output).toContain('Code search (MCP)');
+    });
+    it('should NOT include code-search hint in workflow export when disabled', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpCodeSearch = false;
+      const output = win.genWorkflow();
+      expect(output).toNotContain('Code search (MCP)');
+    });
+    it('should NOT include code-search hint in agent-teams export when disabled', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpCodeSearch = false;
+      const output = win.genAgentTeams();
+      expect(output).toNotContain('Code search (MCP)');
+    });
+    it('should NOT include code-search hint in claude-prompt export when disabled', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpCodeSearch = false;
+      const output = win.genClaudePrompt();
+      expect(output).toNotContain('Code search (MCP)');
+    });
+    it('should NOT include code-search header in agent-SDK (comment) export when disabled', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpCodeSearch = false;
+      const output = win.genAgentSDK();
+      expect(output).toNotContain('Code search (MCP)');
     });
     it('should include custom MCP hint in sub-agents export when populated', () => {
       buildTestWorkflow('linear');
@@ -2423,14 +2497,40 @@ describe('MCP Integrations', () => {
     });
   });
 
-  it('should reset MCP state on New Workflow (Atlassian on, Sourcebot on)', () => {
+  it('should reset MCP state on New Workflow (Atlassian on, code-search on)', () => {
     win.state.mcpAtlassian = false;
-    win.state.mcpSourcebot = false;
+    win.state.mcpCodeSearch = false;
     win.state.mcpCustom = 'something';
     win.clearCanvas();
     expect(win.state.mcpAtlassian).toBe(true);
-    expect(win.state.mcpSourcebot).toBe(true);
+    expect(win.state.mcpCodeSearch).toBe(true);
     expect(win.state.mcpCustom).toBe('');
+  });
+
+  describe('prefs persistence', () => {
+    it('stale old mcpSourcebot localStorage key has no effect (no migration)', () => {
+      resetState();
+      localStorage.setItem('awd_prefs', JSON.stringify({ mcpSourcebot: false }));
+      win.restorePrefs();
+      // old key is never read; new key takes its default (ON)
+      expect(win.state.mcpCodeSearch).toBe(true);
+    });
+    it('restorePrefs applies a saved mcpCodeSearch value', () => {
+      resetState();
+      localStorage.setItem('awd_prefs', JSON.stringify({ mcpCodeSearch: false }));
+      win.restorePrefs();
+      expect(win.state.mcpCodeSearch).toBe(false);
+    });
+  });
+
+  describe('UI label', () => {
+    it('code-search toggle shows tool-agnostic label', () => {
+      const cb = win.document.getElementById('mcpCodeSearchToggle');
+      expect(!!cb).toBe(true);
+      const span = cb.parentElement.querySelector('span');
+      expect(span.textContent).toContain('Code search (MCP)');
+      expect(span.textContent).toContain('Sourcebot, Sourcegraph, Kilo Code');
+    });
   });
 });
 
@@ -2578,24 +2678,24 @@ describe('Refine Prompt Generation', () => {
     });
   });
 
-  describe('Sourcebot integration', () => {
+  describe('code-search integration', () => {
     it('should include hint when enabled', () => {
       win.document.getElementById('storyInput').value = 'Build a new auth service';
       win.document.getElementById('workflowName').value = 'auth-service';
-      win.state.mcpSourcebot = true;
+      win.state.mcpCodeSearch = true;
       let copied = '';
       win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
       win.generateRefinePrompt();
-      expect(copied).toContain('Sourcebot MCP');
+      expect(copied).toContain('Code search (MCP)');
     });
     it('should NOT include hint when disabled', () => {
       win.document.getElementById('storyInput').value = 'Build a new auth service';
       win.document.getElementById('workflowName').value = 'auth-service';
-      win.state.mcpSourcebot = false;
+      win.state.mcpCodeSearch = false;
       let copied = '';
       win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
       win.generateRefinePrompt();
-      expect(copied).toNotContain('Sourcebot MCP');
+      expect(copied).toNotContain('Code search (MCP)');
     });
   });
 
@@ -2640,25 +2740,25 @@ describe('Plan Prompt Generation', () => {
   });
 
   describe('MCP integration', () => {
-    it('should include Sourcebot exploration guidance when enabled', () => {
+    it('should include code-search exploration guidance when enabled', () => {
       win.document.getElementById('storyInput').value = 'Refactor data layer';
       win.document.getElementById('workflowName').value = 'data-refactor';
-      win.state.mcpSourcebot = true;
+      win.state.mcpCodeSearch = true;
       let copied = '';
       win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
       win.generatePlanPrompt();
-      expect(copied).toContain('Sourcebot MCP');
-      expect(copied).toContain('search_code');
+      expect(copied).toContain('Codebase Exploration');
+      expect(copied).toContain('discover');
       expect(copied).toContain('Explore the codebase thoroughly');
     });
-    it('should NOT include Sourcebot when disabled', () => {
+    it('should NOT include code-search guidance when disabled', () => {
       win.document.getElementById('storyInput').value = 'Refactor data layer';
       win.document.getElementById('workflowName').value = 'data-refactor';
-      win.state.mcpSourcebot = false;
+      win.state.mcpCodeSearch = false;
       let copied = '';
       win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
       win.generatePlanPrompt();
-      expect(copied).toNotContain('Sourcebot MCP');
+      expect(copied).toNotContain('Codebase Exploration');
     });
     it('should include Atlassian hint when Jira URL present', () => {
       win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-789';
@@ -2726,30 +2826,30 @@ describe('Plan Prompt Generation', () => {
 describe('Cross-Feature Edge Cases', () => {
   beforeEach(() => { clearStorage(); resetState(); });
 
-  it('should not include find_class in Refine Sourcebot hint', () => {
+  it('should not include find_class in Refine code-search hint', () => {
     win.document.getElementById('storyInput').value = 'Build a service';
     win.document.getElementById('workflowName').value = 'test-svc';
-    win.state.mcpSourcebot = true;
+    win.state.mcpCodeSearch = true;
     let copied = '';
     win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
     win.generateRefinePrompt();
     expect(copied).toNotContain('find_class');
-    expect(copied).toContain('ask_codebase');
+    expect(copied).toContain('Code search (MCP)');
   });
 
-  it('should include Sourcebot hint in sub-agents export when enabled', () => {
+  it('should include code-search hint in sub-agents export when enabled', () => {
     buildTestWorkflow('linear');
-    win.state.mcpSourcebot = true;
+    win.state.mcpCodeSearch = true;
     const output = win.genSubAgents();
-    expect(output).toContain('Sourcebot MCP');
-    expect(output).toContain('search_code');
+    expect(output).toContain('Code search (MCP)');
+    expect(output).toContain('Sourcebot');
   });
 
-  it('should NOT include Sourcebot hint in sub-agents export when disabled', () => {
+  it('should NOT include code-search hint in sub-agents export when disabled', () => {
     buildTestWorkflow('linear');
-    win.state.mcpSourcebot = false;
+    win.state.mcpCodeSearch = false;
     const output = win.genSubAgents();
-    expect(output).toNotContain('Sourcebot MCP');
+    expect(output).toNotContain('Code search (MCP)');
   });
 
   it('should include plan in all export formats when populated', () => {
@@ -3830,7 +3930,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.sourcebotHint = sourcebotHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
