@@ -5666,6 +5666,16 @@ function updatePrompt() {
 
 // ── Helpers ──
 function getStory() { return ($('storyInput') ? $('storyInput').value : '').trim(); }
+function requirementsBlock(story, heading) {
+  if (!story) return [];
+  const h = heading || '## Requirements';
+  if (isUrlOnly(story)) {
+    const urls = extractAtlassianUrls(story);
+    const url = urls.length ? urls[0] : story;
+    return [h, '', 'The requirements live in the ticket below, which the orchestrator resolved once up front. Work from the resolved spec in your brief (and the durable record, if any) - do not re-fetch the ticket. Source ticket (reference only, for a detail the brief did not carry): ' + url, ''];
+  }
+  return [h, '', story, ''];
+}
 function getName() { return $('workflowName').value.trim(); }
 function getPlan() { return $('planInput') ? $('planInput').value.trim() : ''; }
 function getAppSource() {
@@ -5803,7 +5813,7 @@ function genWorkflow() {
 
   p.push('## AI Agent Workflow' + (name ? ': ' + name : ''));
   p.push('');
-  if (story) { p.push('### Requirements'); p.push(''); p.push(story); p.push(''); }
+  requirementsBlock(story, '### Requirements').forEach(l => p.push(l));
   const _wfPlan = getPlan();
   if (_wfPlan) { p.push('### Implementation Plan (starting guidance - adapt based on findings)'); p.push(''); p.push('The following plan provides codebase-specific context from an initial analysis. Use it as a starting point, not a rigid constraint. If your research reveals better approaches, contradictory patterns, or additional considerations, update the approach accordingly and note what changed and why.'); p.push(''); p.push(_wfPlan); p.push(''); }
   appSourceBlock('### App Source').forEach(l => p.push(l));
@@ -6096,11 +6106,7 @@ function genSubAgents() {
       }
     }
 
-    if (story) {
-      promptLines.push('## Requirements');
-      promptLines.push(story);
-      promptLines.push('');
-    }
+    requirementsBlock(story, '## Requirements').forEach(l => promptLines.push(l));
     appSourceBlock('## App Source').forEach(l => promptLines.push(l));
     uiContextBlock('## UI Context').forEach(l => promptLines.push(l));
     (state.commitPr ? prBlock('## Pull Request Creation') : noCommitBlock('## Delivery')).forEach(l => promptLines.push(l));
@@ -6234,12 +6240,7 @@ function genAgentTeams() {
   p.push('Pass context between dependent steps explicitly - teammates do NOT share state.');
   p.push('');
 
-  if (story) {
-    p.push('## Requirements');
-    p.push('');
-    p.push(story);
-    p.push('');
-  }
+  requirementsBlock(story, '## Requirements').forEach(l => p.push(l));
   const _atPlan = getPlan();
   if (_atPlan) {
     p.push('## Implementation Plan (starting guidance - adapt based on findings)');
@@ -6723,12 +6724,7 @@ function genClaudePrompt() {
   p.push('4. At decision checkpoints, evaluate your work against the criteria before continuing');
   p.push('');
 
-  if (story) {
-    p.push('## Requirements');
-    p.push('');
-    p.push(story);
-    p.push('');
-  }
+  requirementsBlock(story, '## Requirements').forEach(l => p.push(l));
   const _cpPlan = getPlan();
   if (_cpPlan) {
     p.push('## Implementation Plan (starting guidance - adapt based on findings)');
