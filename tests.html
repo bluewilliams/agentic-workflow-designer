@@ -2885,16 +2885,36 @@ describe('MCP Integrations', () => {
       expect(hint).toNotContain('—');
       expect(hint).toNotContain('–');
     });
-    it('should return null for atlassianHint when toggle is off', () => {
-      win.state.mcpAtlassian = false;
-      const result = win.atlassianHint(['https://foo.atlassian.net/browse/TEST-1']);
-      expect(result).toBe(null);
+    it('should return null for atlassianTicketFetchHint on empty/non-URL input', () => {
+      expect(win.atlassianTicketFetchHint([])).toBe(null);
+      expect(win.atlassianTicketFetchHint(null)).toBe(null);
     });
-    it('should return hint for atlassianHint when toggle is on', () => {
-      win.state.mcpAtlassian = true;
-      const result = win.atlassianHint(['https://foo.atlassian.net/browse/TEST-1']);
-      expect(result).toContain('Atlassian Context');
+    it('should return ticket-fetch block REGARDLESS of toggle (off)', () => {
+      win.state.mcpAtlassian = false;
+      const result = win.atlassianTicketFetchHint(['https://foo.atlassian.net/browse/TEST-1']);
+      expect(result).toContain('resolved ticket is the spec');
       expect(result).toContain('TEST-1');
+      expect(result).toContain('browser');
+      expect(result).toNotContain('—');
+      expect(result).toNotContain('–');
+    });
+    it('should return ticket-fetch block REGARDLESS of toggle (on)', () => {
+      win.state.mcpAtlassian = true;
+      const result = win.atlassianTicketFetchHint(['https://foo.atlassian.net/browse/TEST-1']);
+      expect(result).toContain('resolved ticket is the spec');
+      expect(result).toContain('TEST-1');
+      expect(result).toContain('browser');
+    });
+    it('should return null for atlassianGeneralHint when toggle is off', () => {
+      win.state.mcpAtlassian = false;
+      expect(win.atlassianGeneralHint()).toBe(null);
+    });
+    it('should return general block when toggle is on', () => {
+      win.state.mcpAtlassian = true;
+      const result = win.atlassianGeneralHint();
+      expect(result).toContain('Atlassian (general)');
+      expect(result).toNotContain('—');
+      expect(result).toNotContain('–');
     });
     it('should return null for customMcpHint when text is empty', () => {
       const ta = win.document.getElementById('mcpCustomNotes');
@@ -3275,13 +3295,15 @@ describe('Refine Prompt Generation', () => {
   });
 
   describe('input validation', () => {
-    it('should block URL-only input when Atlassian MCP is off', () => {
+    it('should NOT block URL-only input when Atlassian MCP is off (browser fallback)', () => {
       win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-99';
+      win.document.getElementById('workflowName').value = 'jira-test-off';
       win.state.mcpAtlassian = false;
       let copied = '';
       win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
       win.generateRefinePrompt();
-      expect(copied).toBe('');
+      expect(copied).toContain('Requirements Refinement Interview');
+      expect(copied).toContain('resolved ticket is the spec');
     });
     it('should allow URL-only input when Atlassian MCP is on', () => {
       win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-99';
@@ -3324,9 +3346,20 @@ describe('Refine Prompt Generation', () => {
       expect(copied).toContain('from the fetched Jira ticket content MUST');
       expect(copied).toNotContain('Source Requirements above AND');
     });
-    it('should NOT include hint when MCP disabled', () => {
+    it('should STILL include ticket-fetch hint when MCP disabled but URL present (browser fallback)', () => {
       win.document.getElementById('storyInput').value = 'See https://myco.atlassian.net/browse/PROJ-123 for details';
       win.document.getElementById('workflowName').value = 'jira-feature';
+      win.state.mcpAtlassian = false;
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.generateRefinePrompt();
+      expect(copied).toContain('Atlassian Context');
+      expect(copied).toContain('resolved ticket is the spec');
+      expect(copied).toContain('PROJ-123');
+    });
+    it('should NOT include any Atlassian hint when MCP disabled and no URL', () => {
+      win.document.getElementById('storyInput').value = 'Build a brand new auth service with sessions';
+      win.document.getElementById('workflowName').value = 'no-jira';
       win.state.mcpAtlassian = false;
       let copied = '';
       win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
@@ -3450,13 +3483,15 @@ describe('Plan Prompt Generation', () => {
   });
 
   describe('input validation', () => {
-    it('should block URL-only input when Atlassian MCP is off', () => {
+    it('should NOT block URL-only input when Atlassian MCP is off (browser fallback)', () => {
       win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-99';
+      win.document.getElementById('workflowName').value = 'jira-plan-off';
       win.state.mcpAtlassian = false;
       let copied = '';
       win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
       win.generatePlanPrompt();
-      expect(copied).toBe('');
+      expect(copied).toContain('Implementation Planning');
+      expect(copied).toContain('resolved ticket is the spec');
     });
     it('should allow URL-only input when Atlassian MCP is on', () => {
       win.document.getElementById('storyInput').value = 'https://myco.atlassian.net/browse/PROJ-99';
@@ -4583,6 +4618,167 @@ describe('Prompt Panel Resize', () => {
 });
 
 // ═══════════════════════════════════════════════════════════
+// Suite: Atlassian two-block model (ticket-fetch + general) - scenario matrix
+// ═══════════════════════════════════════════════════════════
+describe('Atlassian two-block scenario matrix', () => {
+  // Markers. TF uses the case-robust substring (prose capitalizes "The" at sentence start).
+  const TF = 'resolved ticket is the spec';
+  const GEN = 'Atlassian (general)';
+  const HARDCODED = 'If an Atlassian MCP tool is available';
+  const JIRA_URL = 'https://foo.atlassian.net/browse/TEST-1';
+
+  // Each generator built on a 'linear' workflow. resetState() does NOT reset mcpAtlassian,
+  // so every test sets it explicitly. URL is plumbed via storyInput unless noted.
+  const gens = [
+    { name: 'genWorkflow',     fn: () => win.genWorkflow() },
+    { name: 'genSubAgents',    fn: () => win.genSubAgents() },
+    { name: 'genAgentTeams',   fn: () => win.genAgentTeams() },
+    { name: 'genClaudePrompt', fn: () => win.genClaudePrompt() },
+  ];
+
+  function setUrl(present) {
+    const si = win.document.getElementById('storyInput');
+    if (si) si.value = present ? ('Build a feature, see ' + JIRA_URL) : 'Build a feature';
+  }
+
+  gens.forEach(g => {
+    describe(g.name + ' matrix', () => {
+      it('ON + URL -> contains TF and GEN', () => {
+        buildTestWorkflow('linear');
+        win.state.mcpAtlassian = true;
+        setUrl(true);
+        const out = g.fn();
+        expect(out).toContain(TF);
+        expect(out).toContain(GEN);
+      });
+      it('ON + no URL -> GEN only, no TF', () => {
+        buildTestWorkflow('linear');
+        win.state.mcpAtlassian = true;
+        setUrl(false);
+        const out = g.fn();
+        expect(out).toNotContain(TF);
+        expect(out).toContain(GEN);
+      });
+      it('OFF + URL -> TF only, no GEN', () => {
+        buildTestWorkflow('linear');
+        win.state.mcpAtlassian = false;
+        setUrl(true);
+        const out = g.fn();
+        expect(out).toContain(TF);
+        expect(out).toNotContain(GEN);
+      });
+      it('OFF + no URL -> neither TF nor GEN', () => {
+        buildTestWorkflow('linear');
+        win.state.mcpAtlassian = false;
+        setUrl(false);
+        const out = g.fn();
+        expect(out).toNotContain(TF);
+        expect(out).toNotContain(GEN);
+      });
+    });
+  });
+
+  // genAgentSDK: same matrix; TF/GEN live in the # comment block.
+  describe('genAgentSDK matrix', () => {
+    it('ON + URL -> contains TF and GEN', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpAtlassian = true;
+      setUrl(true);
+      const out = win.genAgentSDK();
+      expect(out).toContain(TF);
+      expect(out).toContain(GEN);
+    });
+    it('ON + no URL -> GEN only, no TF', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpAtlassian = true;
+      setUrl(false);
+      const out = win.genAgentSDK();
+      expect(out).toNotContain(TF);
+      expect(out).toContain(GEN);
+    });
+    it('OFF + URL -> TF only, no GEN', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpAtlassian = false;
+      setUrl(true);
+      const out = win.genAgentSDK();
+      expect(out).toContain(TF);
+      expect(out).toNotContain(GEN);
+    });
+    it('OFF + no URL -> neither TF nor GEN', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpAtlassian = false;
+      setUrl(false);
+      const out = win.genAgentSDK();
+      expect(out).toNotContain(TF);
+      expect(out).toNotContain(GEN);
+    });
+  });
+
+  // Node-driven URL detection (config.description on the input node), storyInput empty.
+  it('detects a Jira URL on an input node config.description', () => {
+    const refs = buildTestWorkflow('linear');
+    win.state.mcpAtlassian = false;
+    const si = win.document.getElementById('storyInput');
+    if (si) si.value = '';
+    refs.input.config = refs.input.config || {};
+    refs.input.config.description = 'Implements ' + JIRA_URL;
+    const out = win.genWorkflow();
+    expect(out).toContain(TF);
+    expect(out).toContain('TEST-1');
+  });
+
+  // The PROMPTS templates that had hardcoded Atlassian lines removed.
+  describe('PROMPTS templates no longer hardcode Atlassian', () => {
+    const edited = ['planner','architect','investigator','reviewer','tester','codebaseExplorer','researcher','testPlanner','testReviewer'];
+    edited.forEach(key => {
+      it(key + ' template does not contain the hardcoded Atlassian line', () => {
+        expect(win.PROMPTS[key]).toNotContain(HARDCODED);
+      });
+    });
+  });
+
+  // Negative control: the Prompt Library reviewer prompt STILL has the hardcoded phrase (untouched).
+  it('Prompt Library reviewer prompt STILL contains the hardcoded phrase (proves it is untouched)', () => {
+    const lib = win.PROMPT_LIBRARY || [];
+    const allPrompts = lib.flatMap(cat => (cat && Array.isArray(cat.prompts)) ? cat.prompts : []);
+    const hit = allPrompts.find(p => p && typeof p.prompt === 'string' && p.prompt.indexOf(HARDCODED) !== -1);
+    expect(hit !== undefined).toBe(true);
+  });
+
+  // Softened guards: URL + toggle off must NOT early-return; output carries the heading + TF.
+  it('generateRefinePrompt does NOT early-return on URL + toggle off', () => {
+    resetState();
+    win.document.getElementById('storyInput').value = JIRA_URL;
+    win.document.getElementById('workflowName').value = 'refine-guard';
+    win.state.mcpAtlassian = false;
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generateRefinePrompt();
+    expect(copied).toContain('Requirements Refinement Interview');
+    expect(copied).toContain(TF);
+  });
+  it('generatePlanPrompt does NOT early-return on URL + toggle off', () => {
+    resetState();
+    win.document.getElementById('storyInput').value = JIRA_URL;
+    win.document.getElementById('workflowName').value = 'plan-guard';
+    win.state.mcpAtlassian = false;
+    let copied = '';
+    win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+    win.generatePlanPrompt();
+    expect(copied).toContain('Implementation Planning');
+    expect(copied).toContain(TF);
+  });
+  it('urlPresetPicker shows for a bare URL even when toggle is off', () => {
+    resetState();
+    win.document.getElementById('storyInput').value = JIRA_URL;
+    win.state.mcpAtlassian = false;
+    win.validateStoryInput();
+    const picker = win.document.getElementById('urlPresetPicker');
+    expect(picker.style.display).toBe('');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
 document.getElementById('app').addEventListener('load', function() {
@@ -4591,7 +4787,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
