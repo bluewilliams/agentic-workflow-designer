@@ -60,3 +60,10 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - intent: make Atlassian guidance toggle-driven without breaking the Jira-URL-as-input flow - split atlassianHint into a URL-driven toggle-INDEPENDENT ticket-fetch block (orchestrator resolves the ticket once as the SOURCE for the plan, MCP-or-browser fallback, no raw-ticket-plus-plan duplication) and a toggle-driven permissive-but-anti-redundant general block; removed the hardcoded "If an Atlassian MCP tool is available" line from 10 PROMPTS templates; softened validateStoryInput so a Jira URL works in every toggle state
 - files: index.html (atlassianTicketFetchHint + atlassianGeneralHint replacing atlassianHint + four generators + SDK + Refine/Plan blocks + validateStoryInput softening + 10 template removals), tests.html (harness export + rewritten unit tests + 4x4 scenario suite)
 - status: current | date: 2026-06-14 | follow-up: validate on a real Jira issue post-merge
+
+## delivery-commit-pr
+
+- record: .workflow/delivery-section-enhancement.md
+- intent: make committing/pushing/opening-a-PR an explicit opt-in (default OFF) via a new "Delivery" sidebar section + commitPr toggle that gates the five prBlock() call sites (noCommitBlock emitted when off); resolves the prBlock-vs-safety-list contradiction. ALSO (Part B, durable-record-protocol capability) restructured genDurableRecordProtocol's finalize prose into an explicit "### FINALIZE" step + a read-only-steps fold-in point.
+- files: index.html (Delivery section + commitPr state wiring like mcpDatadog + noCommitBlock + 5 gated prBlock sites + genDurableRecordProtocol FINALIZE restructure), tests.html (+15 tests)
+- status: current | date: 2026-06-14 | related: .workflow/compress-durable-record-at-finalize.md (Part B coexists with it - sibling refinements of the durable-record-protocol finalize guidance, no supersession)
