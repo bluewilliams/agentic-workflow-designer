@@ -243,6 +243,7 @@ function resetState() {
   win.state.activePreset = null;
   win.state.mcpCodeSearch = true;  // app default is ON (index.html state init)
   win.state.mcpDatadog = false;    // app default is OFF (opt-in)
+  win.state.commitPr = false;      // app default is OFF (opt-in)
   win.state.rulesPaths = [];       // repo context paths default empty (or undefined in tests)
   win.state.productDocPaths = [];
   // Reset DOM inputs
@@ -1229,6 +1230,12 @@ describe('Durable Record: protocol content', () => {
     // readability guard: compress the transcript, not the reasoning
     expect(proto).toContain('not the reasoning');
   });
+  it('v2.9: finalize is an explicit headed step (FINALIZE), folds read-only findings, writes the index', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('### FINALIZE');
+    expect(proto).toContain('Fold in any READ-ONLY steps');
+    expect(proto).toContain('.workflow/_index.md');
+  });
   it('v2.7: Surface area is marked provisional until grounded', () => {
     const proto = win.genDurableRecordProtocol();
     expect(proto).toContain('provisional until the grounding');
@@ -1495,6 +1502,68 @@ describe('Datadog grounding gate', () => {
   });
   it('R5 single source of truth: investigator prompt no longer hardcodes Datadog', () => {
     expect(win.PROMPTS.investigator).toNotMatch(/datadog/i);
+  });
+});
+
+// ─── Delivery: commit/PR toggle (default OFF) gates prBlock across all generators ───
+describe('Delivery: commitPr toggle gates the PR/commit block', () => {
+  beforeEach(() => { resetState(); });
+
+  const ON_MARK = 'NEVER commit or push directly to the target branch';
+  const OFF_MARK = 'Leave all changes uncommitted on the current branch';
+
+  // Minimal input -> agent -> pr-format output workflow (prBlock only emits for pr outputs).
+  function prWorkflow() {
+    resetState();
+    const input = win.addNode('input', 100, 200, 'Requirements');
+    const agent = win.addNode('agent', 350, 200, 'Implementer', {});
+    const output = win.addNode('output', 600, 200, 'Done', { deliverable: 'PR', format: 'pr' });
+    win.addConnection(input.id, agent.id);
+    win.addConnection(agent.id, output.id);
+  }
+
+  it('defaults to OFF (opt-in) on fresh state', () => {
+    resetState();
+    expect(win.state.commitPr).toBe(false);
+  });
+  it('DOM: commitPrToggle exists and defaults unchecked', () => {
+    const cb = win.document.getElementById('commitPrToggle');
+    expect(!!cb).toBe(true);
+    expect(cb.checked).toBe(false);
+  });
+
+  const generators = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genAgentSDK', 'genClaudePrompt'];
+  generators.forEach(gen => {
+    it(gen + ': OFF emits the no-commit line and not the PR block', () => {
+      prWorkflow();
+      win.state.commitPr = false;
+      const out = win[gen]();
+      expect(out).toNotContain(ON_MARK);
+      expect(out).toContain(OFF_MARK);
+    });
+    it(gen + ': ON emits the PR block and not the no-commit line', () => {
+      prWorkflow();
+      win.state.commitPr = true;
+      const out = win[gen]();
+      expect(out).toContain(ON_MARK);
+      expect(out).toNotContain(OFF_MARK);
+    });
+  });
+
+  it('savePrefs / restorePrefs round-trips commitPr', () => {
+    resetState();
+    localStorage.setItem('awd_prefs', JSON.stringify({ commitPr: true }));
+    win.restorePrefs();
+    expect(win.state.commitPr).toBe(true);
+  });
+  it('clearCanvas resets commitPr to false and unchecks the toggle', () => {
+    win.state.commitPr = true;
+    const cb = win.document.getElementById('commitPrToggle');
+    if (cb) cb.checked = true;
+    win.clearCanvas();
+    expect(win.state.commitPr).toBe(false);
+    const cb2 = win.document.getElementById('commitPrToggle');
+    if (cb2) expect(cb2.checked).toBe(false);
   });
 });
 

@@ -684,6 +684,15 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
   </div>
 
+  <div class="sidebar-section">
+    <h3>Delivery</h3>
+    <label class="memory-toggle">
+      <input type="checkbox" id="commitPrToggle" onchange="toggleCommitPr()"/>
+      <span>Commit &amp; open a PR</span>
+    </label>
+    <p class="memory-help">Off (default): agents leave all changes uncommitted on the current branch for you to review and commit. On: agents work on a feature branch, commit, push, and open a PR.</p>
+  </div>
+
   <div class="sidebar-section config-panel" id="configPanel">
     <h3>Node Configuration</h3>
     <div id="configFields"></div>
@@ -1340,6 +1349,7 @@ let state = {
   mcpAtlassian: true,
   mcpCodeSearch: true,
   mcpDatadog: false,
+  commitPr: false,
   consumeRecords: true,
   clarifyFirst: false,
   mcpCustom: '',
@@ -1821,6 +1831,7 @@ function toggleMcpDatadog() {
   updatePrompt();
   savePrefs();
 }
+function toggleCommitPr() { state.commitPr = $('commitPrToggle').checked; updatePrompt(); savePrefs(); }
 function toggleConsumeRecords() {
   state.consumeRecords = $('consumeRecordsToggle').checked;
   updatePrompt();
@@ -1884,6 +1895,7 @@ function savePrefs() {
       mcpAtlassian: state.mcpAtlassian,
       mcpCodeSearch: state.mcpCodeSearch,
       mcpDatadog: state.mcpDatadog,
+      commitPr: state.commitPr,
       consumeRecords: state.consumeRecords,
       clarifyFirst: state.clarifyFirst,
       mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : '',
@@ -1935,6 +1947,7 @@ function restorePrefs() {
       const cb = $('mcpDatadogToggle');
       if (cb) cb.checked = state.mcpDatadog;
     }
+    if (p.commitPr !== undefined) { state.commitPr = !!p.commitPr; const cb = $('commitPrToggle'); if (cb) cb.checked = state.commitPr; }
     if (p.consumeRecords !== undefined) {
       state.consumeRecords = !!p.consumeRecords;
       const cb = $('consumeRecordsToggle');
@@ -2676,7 +2689,13 @@ function genDurableRecordProtocol() {
   p.push('- Create it at kickoff with the H1 title, the Why and scope, the initial Requirements and Success criteria drawn from the work item (requirement scenarios filled in as the spec is understood; verifying-test names added once tests are written), the initial checklist, and the Built-with provenance line (the workflow name and its agent roles are known up front). Run the Spec quality check before implementation begins.');
   p.push('- Keep the minute-to-minute step progress (which agent/step is currently running) in the Current state / next-action scaffolding, NOT in the Built-with line or the Task checklist - it is transient and is removed on commit, whereas the Built-with provenance is durable and stays.');
   p.push('- Keep it CURRENT as work progresses. Overwrite the state / next-action section each update (do not just append to it) so that at any moment it is enough for another engineer or agent to resume. Append to the decisions and checklist sections as they grow.');
-  p.push('- On completion, finalize it for commit: confirm each Requirement scenario names its verifying test, re-confirm the Spec quality check passes, fill in the Outcome, mark the checklist done, capture the final decisions, and add the branch/PR links. Write or update this record\'s entry in the `.workflow/_index.md` breadcrumb index (see Durable Record Index). Add the Contents index if the record grew long. Then remove the in-progress scaffolding (the "Current state / next action" line and the "Resume / handoff" section), which have no purpose once the work is done. The committed artifact is the requirements (with verifying tests), the approach and decisions, the completed checklist, the Verify results, and the outcome. Finalize also COMPRESSES Verify and Gotchas into a tight final statement: collapse the per-agent running commentary (for example a reviewer verdict block or an implementer-attributed gotcha line, and any "this agent did X" narration), drop duplicate scan-line restatements down to one line each, and keep only the final facts plus the Built-with provenance line - so the committed record reads as a clean spec, not a transcript. In short, the orchestrator compresses Verify and Gotchas from running commentary into the durable facts. Compress the transcript accretion, not the reasoning: the committed record must still read like an authored spec (as clean and complete as an OpenSpec or spec-kit document), so a maintainer reading it cold can see what changed and why; never compress away the Why, the decisions and their rejected alternatives, or the durable gotchas.');
+  p.push('### FINALIZE (the orchestrator runs this once, after the last step)');
+  p.push('This step is enforced, not optional: the record is not done until the orchestrator has run every item below.');
+  p.push('- (a) Fold in any READ-ONLY steps\' findings. A step with no write access (for example a Reviewer running read-only) cannot amend the record itself, so the orchestrator records that step\'s verdict and ticks its checklist box on its behalf.');
+  p.push('- (b) Confirm each Requirement scenario names its verifying test, and re-confirm the Spec quality check passes.');
+  p.push('- (c) Fill in the Outcome, mark the checklist done, and capture the final decisions plus the branch/PR links.');
+  p.push('- (d) Write or update this record\'s entry in the `.workflow/_index.md` breadcrumb index (see Durable Record Index). Add the Contents index if the record grew long.');
+  p.push('- (e) Strip the in-progress scaffolding (the "Current state / next action" line and the "Resume / handoff" section) AND apply the compression directive. The committed artifact is the requirements (with verifying tests), the approach and decisions, the completed checklist, the Verify results, and the outcome. In short, the orchestrator compresses Verify and Gotchas from running commentary into the durable facts: collapse the per-agent running commentary (a reviewer verdict block, an implementer-attributed gotcha line, any "this agent did X" narration), drop duplicate scan-line restatements to one line each, and keep only the final facts plus the Built-with provenance line. Compress the transcript accretion, not the reasoning: the committed record must still read like an authored spec (as clean and complete as an OpenSpec or spec-kit document), so a maintainer reading it cold can see what changed and why; never compress away the Why, the decisions and their rejected alternatives, or the durable gotchas.');
   p.push('');
   p.push('### Where it lives');
   p.push('- **Single repository**: write it to `' + apath + '` in that repo so it versions with the code (the change to this file lands in the same PR as the implementation).');
@@ -5409,12 +5428,14 @@ function clearCanvas(skipConfirm) {
   state.mcpAtlassian = true;
   state.mcpCodeSearch = true;
   state.mcpDatadog = false;
+  state.commitPr = false;
   state.consumeRecords = true;
   state.clarifyFirst = false;
   state.mcpCustom = '';
   const _matl = $('mcpAtlassianToggle'); if (_matl) _matl.checked = true;
   const _msb = $('mcpCodeSearchToggle'); if (_msb) _msb.checked = true;
   const _mdd = $('mcpDatadogToggle'); if (_mdd) _mdd.checked = false;
+  const _cpr = $('commitPrToggle'); if (_cpr) _cpr.checked = false;
   const _crt = $('consumeRecordsToggle'); if (_crt) _crt.checked = true;
   const _clt = $('clarifyFirstToggle'); if (_clt) _clt.checked = false;
   const _mcn = $('mcpCustomNotes'); if (_mcn) _mcn.value = '';
@@ -5711,6 +5732,10 @@ function prBlock(heading) {
   lines.push('');
   return lines;
 }
+function noCommitBlock(heading) {
+  const h = heading || '### Delivery';
+  return [ h, '', 'Do not commit, push, or open a PR. Leave all changes uncommitted on the current branch for the director to review and commit.', '' ];
+}
 function getAgentTypeName(id) { const a = AGENT_TYPES.find(t => t.id === id); return a ? a.name : 'General'; }
 function getDeps(nodeId) {
   // Upstream AGENT labels, resolved through parallel (fork/join) and decision
@@ -5776,7 +5801,7 @@ function genWorkflow() {
   if (_wfPlan) { p.push('### Implementation Plan (starting guidance - adapt based on findings)'); p.push(''); p.push('The following plan provides codebase-specific context from an initial analysis. Use it as a starting point, not a rigid constraint. If your research reveals better approaches, contradictory patterns, or additional considerations, update the approach accordingly and note what changed and why.'); p.push(''); p.push(_wfPlan); p.push(''); }
   appSourceBlock('### App Source').forEach(l => p.push(l));
   uiContextBlock('### UI Context').forEach(l => p.push(l));
-  prBlock('### Pull Request Creation').forEach(l => p.push(l));
+  (state.commitPr ? prBlock('### Pull Request Creation') : noCommitBlock('### Delivery')).forEach(l => p.push(l));
   repoBlock('### Repositories').forEach(l => p.push(l));
   const _wfAtlUrls = getWorkflowAtlassianUrls();
   const _wfAtlT = atlassianTicketFetchHint(_wfAtlUrls);
@@ -6069,7 +6094,7 @@ function genSubAgents() {
     }
     appSourceBlock('## App Source').forEach(l => promptLines.push(l));
     uiContextBlock('## UI Context').forEach(l => promptLines.push(l));
-    prBlock('## Pull Request Creation').forEach(l => promptLines.push(l));
+    (state.commitPr ? prBlock('## Pull Request Creation') : noCommitBlock('## Delivery')).forEach(l => promptLines.push(l));
     repoBlock('## Repositories').forEach(l => promptLines.push(l));
 
     promptLines.push('## Output Format');
@@ -6217,7 +6242,7 @@ function genAgentTeams() {
   }
   appSourceBlock('## App Source').forEach(l => p.push(l));
   uiContextBlock('## UI Context').forEach(l => p.push(l));
-  prBlock('## Pull Request Creation').forEach(l => p.push(l));
+  (state.commitPr ? prBlock('## Pull Request Creation') : noCommitBlock('## Delivery')).forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _atAtlUrls = getWorkflowAtlassianUrls();
   const _atAtlT = atlassianTicketFetchHint(_atAtlUrls);
@@ -6572,10 +6597,10 @@ function genAgentSDK() {
     p.push(`    ui_context = """${_sdkUiNotes}"""  # Styling preferences - Design System Analyzer will use these as constraints`);
     p.push('');
   }
-  const _sdkPrLines = prBlock();
+  const _sdkPrLines = state.commitPr ? prBlock() : noCommitBlock();
   if (_sdkPrLines.length > 0) {
     p.push('    # ' + '\u2500'.repeat(59));
-    p.push('    # PULL REQUEST CREATION');
+    p.push('    # ' + (state.commitPr ? 'PULL REQUEST CREATION' : 'DELIVERY'));
     p.push('    # ' + '\u2500'.repeat(59));
     _sdkPrLines.slice(2).forEach(l => { if (l) p.push('    # ' + l); else p.push('    #'); });
     p.push('');
@@ -6695,7 +6720,7 @@ function genClaudePrompt() {
   }
   appSourceBlock('## App Source').forEach(l => p.push(l));
   uiContextBlock('## UI Context').forEach(l => p.push(l));
-  prBlock('## Pull Request Creation').forEach(l => p.push(l));
+  (state.commitPr ? prBlock('## Pull Request Creation') : noCommitBlock('## Delivery')).forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _cpAtlUrls = getWorkflowAtlassianUrls();
   const _cpAtlT = atlassianTicketFetchHint(_cpAtlUrls);
