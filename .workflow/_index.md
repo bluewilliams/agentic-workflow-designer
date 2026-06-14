@@ -34,3 +34,10 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - intent: node-config UI shows the attached role template (status line + inline read-only preview + ~6-row textarea) so agents stop looking thin; plus two additive lines (minimality + record-assumptions) to the coder/implementer template
 - files: index.html (classifyAgentPrompt + agentPromptStatusBlock + updateConfig agent branch + configTextarea attrs param + PROMPTS.implementer), tests.html
 - status: superseded | superseded_by: .workflow/agent-prompt-edit-ux.md | date: 2026-06-13
+
+## in-app-help
+
+- record: .workflow/documentation-updates.md
+- intent: refresh the in-app Help modal (the `?` button) to match the current feature set - four new h3 sections (Editing Agent Prompts, Durable Record, Ground in Prior Records, Clarify Requirements First), an input-aware Generate note, and fixing the stale "Shared Memory" wording to the real toggle names
+- files: index.html (.help-body div only - four new h3 sections + Quick Start and Power User Tips edits), tests.html (help-sections assertion extended for the four new headings)
+- status: current | date: 2026-06-14

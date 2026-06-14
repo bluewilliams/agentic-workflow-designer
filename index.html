@@ -817,6 +817,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li>Customize nodes by clicking them: change agent types, models, prompts, and tools</li>
   <li>Pick an export format tab at the bottom, then <strong>Copy</strong> the prompt into Claude Code</li>
 </ol>
+<p><strong>Generate</strong> stays disabled until you've pasted enough prose to auto-pick a workflow - roughly a sentence (at least 6 words once any URL or ticket key is set aside). A bare Jira key (like <code>PROJ-42</code>) prompts you to paste the full URL; a ticket URL on its own opens a workflow-type picker. <strong>Refine Prompt</strong> is available as soon as the box isn't empty, and <strong>Plan Prompt</strong> isn't gated by the input validator (it checks itself at click time), so you can refine or plan before Generate lights up.</p>
 
 <h3>Refine Prompt Flow</h3>
 <p>Use this when your requirements are rough or incomplete and you want Claude to interview you before building.</p>
@@ -839,8 +840,32 @@ svg.canvas{width:100%;height:100%;display:block}
 2. Paste refined spec → <strong>Plan Prompt</strong> → codebase analysis → implementation plan
 3. Paste plan → build workflow → <strong>Copy</strong> prompt → execute in Claude Code</div>
 
+<h3>Editing Agent Prompts</h3>
+<p>Clicking a node exposes an editable <strong>Agent Prompt</strong> pre-filled with that agent type's role template, so you can tune the instructions instead of starting from a blank box. A status line tells you which state you're in:</p>
+<ul>
+  <li><strong>Using the role template</strong> - the prompt still matches the agent type's default.</li>
+  <li><strong>Full template attached</strong> - the complete template is in place.</li>
+  <li><strong>Edited from the {Role} template</strong> - once you change it, the status shows you've diverged from the pristine default.</li>
+</ul>
+<p>A <strong>Reset</strong> control restores the pristine template (and the reset is undoable). <strong>Custom Notes</strong> is a separate field: its contents are <strong>appended</strong> to the agent's prompt, not a replacement for it. Use the Agent Prompt to shape the role, and Custom Notes to layer on extra constraints or implementation details.</p>
+
 <h3>Jira Integration</h3>
 <p>Paste a full Jira URL (not just the ticket key) and enable <strong>Atlassian MCP</strong> in the sidebar. The exported prompts will instruct agents to fetch ticket details at runtime. For URL-only input, you'll be asked to pick a workflow preset since there aren't enough keywords to auto-generate.</p>
+
+<h3>Durable Record</h3>
+<p>Two sidebar toggles control how a run persists its context:</p>
+<ul>
+  <li><strong>Enable workflow memory</strong> - ephemeral agent scratch state under <code>~/.claude</code>. Nothing is committed; it keeps a long run alive across compaction.</li>
+  <li><strong>Keep a durable record</strong> - a committable spec + state document. It is a strict superset that builds on memory, written to <code>.workflow/{slug}.md</code> in your repo so it versions with the code.</li>
+</ul>
+<p>The <strong>orchestrator</strong> (the top-level agent driving the workflow and spawning its steps) owns the record: it creates it at kickoff, folds in each step's findings as the run proceeds, and finalizes it for commit - compressing the running per-agent commentary into a clean spec without dropping the why or the decisions.</p>
+<p>A breadcrumb index at <code>.workflow/_index.md</code> keeps one entry per record, grouped by capability. It is scanned first (scan-then-open) so future work reads only the relevant records instead of all of them. Supersession lineage keeps history one hop away: a re-worked capability leaves the old record marked superseded with the new one linked, so the index always points at current behavior.</p>
+
+<h3>Ground in Prior Records</h3>
+<p>The <strong>Ground in prior records</strong> toggle (on by default) is the read side. Before planning, the orchestrator scans <code>.workflow/_index.md</code> if it exists, opens only the records relevant to the files and capability the change touches (preferring current ones), and folds their decisions and gotchas into the plan. It is self-gating - a no-op on greenfield repos with no records yet. Producing a record is opt-in; benefiting from existing ones is automatic.</p>
+
+<h3>Clarify Requirements First</h3>
+<p>The <strong>Clarify requirements first</strong> toggle (off by default) adds an in-flow clarification gate to the planning step - distinct from the <strong>Refine Prompt</strong> flow above. When on, the planning step probes the requirements for material ambiguity, asks you a focused set of questions in one round, then folds the answers into the plan and the durable record. It degrades gracefully when run non-interactively (CI or an SDK pipeline): it records the open questions as assumptions and risks and proceeds rather than blocking.</p>
 
 <h3>Export Formats</h3>
 <ul>
@@ -888,7 +913,7 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h3>Power User Tips</h3>
 <ul>
-  <li>Enable <strong>Shared Memory</strong> for complex workflows so agents write to a shared file and later agents can see earlier findings</li>
+  <li>Enable <strong>workflow memory</strong> for long runs that need to survive compaction, and <strong>Keep a durable record</strong> when you want a committable handoff - see the <strong>Durable Record</strong> section above</li>
   <li>Add <strong>Repository</strong> paths to scope agents to specific codebases</li>
   <li>Use <strong>Decision</strong> nodes with revision loops to add quality gates (review / revise cycles)</li>
   <li><strong>Parallel</strong> groups run agents concurrently, great for independent tasks like "backend + frontend"</li>
