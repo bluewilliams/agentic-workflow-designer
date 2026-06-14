@@ -47,6 +47,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 .btn:hover{background:var(--surface3);border-color:var(--border2)}
 .btn.primary{background:var(--accent);border-color:var(--accent2);color:#fff}
 .btn.primary:hover{background:var(--accent2)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
 .btn.active{background:var(--accent);border-color:var(--accent);color:#fff;
   box-shadow:0 0 0 2px rgba(59,130,246,.3)}
 .btn.sm{padding:5px 10px;font-size:11px}
@@ -418,8 +419,8 @@ svg.canvas{width:100%;height:100%;display:block}
       <span style="font-size:12px">Clarify requirements first <span style="color:var(--text3);font-weight:400">(agent asks you about ambiguity before planning)</span></span>
     </label>
     <div class="btn-row mt">
-      <button class="btn primary" onclick="generateFromStory()">Generate</button>
-      <button class="btn sm" onclick="generateRefinePrompt()">Refine Prompt</button>
+      <button class="btn primary" id="generateBtn" onclick="generateFromStory()">Generate</button>
+      <button class="btn sm" id="refineBtn" onclick="generateRefinePrompt()">Refine Prompt</button>
     </div>
     <div id="urlPresetPicker" style="display:none;margin-top:8px;padding:10px;background:var(--surface2);border:1px solid var(--accent);border-radius:8px">
       <div style="font-size:11px;color:var(--text2);margin-bottom:8px;font-weight:600">Your input looks like a ticket URL. What type of work is it?</div>
@@ -4292,17 +4293,47 @@ function isJiraKeyOnly(text) {
 }
 function validateStoryInput() {
   autoSaveWorkflow();
-  const hint = $('storyHint');
-  if (!hint) return;
   const text = ($('storyInput') ? $('storyInput').value : '').trim();
-  if (!text) { hint.style.display = 'none'; return; }
-  if (isJiraKeyOnly(text)) {
-    const key = text.match(/\b[A-Z][A-Z0-9]+-\d+\b/)[0];
-    hint.textContent = 'This looks like a Jira ticket key. Paste the full URL (e.g. https://team.atlassian.net/browse/' + key + ') so agents can fetch ticket details at runtime.';
-    hint.style.display = '';
-    return;
+  const empty = !text;
+  const keyOnly = !empty && isJiraKeyOnly(text);
+  const urlOnly = !empty && !keyOnly && isUrlOnly(text);
+  // Generate auto-picks a workflow from requirement KEYWORDS. It can't do that for an empty box,
+  // a bare ticket URL, or a bare Jira key - so disable it in those cases and point the user to
+  // the right path (pick a workflow type) instead of letting a primary button do nothing useful.
+  // Generate auto-picks a workflow from keywords, so it needs enough prose to be meaningful.
+  // Strip any URL/Jira key, then require a sentence's worth of words.
+  const prose = text.replace(/https?:\/\/\S+/gi, '').replace(/\b[A-Z][A-Z0-9]+-\d+\b/g, '').trim();
+  const wordCount = prose ? prose.split(/\s+/).length : 0;
+  const MIN_GEN_WORDS = 6;
+  const tooShort = !empty && !urlOnly && !keyOnly && wordCount < MIN_GEN_WORDS;
+  const canGenerate = !empty && !urlOnly && !keyOnly && !tooShort;
+  const gen = $('generateBtn');
+  if (gen) {
+    gen.disabled = !canGenerate;
+    gen.title = canGenerate ? '' : (empty
+      ? 'Paste requirements to auto-build a workflow, or pick a preset below'
+      : urlOnly
+        ? 'A ticket URL has no keywords to pick from - choose a workflow type below (the agent fetches the ticket at runtime)'
+        : keyOnly
+          ? 'Paste the full Jira URL, then pick a workflow type below'
+          : 'Add a sentence or two of requirements so a workflow can be auto-picked, or pick a preset below');
   }
-  hint.style.display = 'none';
+  const ref = $('refineBtn');
+  if (ref) ref.disabled = empty;
+  // For a bare ticket URL, surface the workflow-type picker immediately (Generate is the wrong tool here).
+  const picker = $('urlPresetPicker');
+  if (picker) picker.style.display = urlOnly ? '' : 'none';
+  // Bare Jira key: guide the user to the full URL.
+  const hint = $('storyHint');
+  if (hint) {
+    if (keyOnly) {
+      const key = text.match(/\b[A-Z][A-Z0-9]+-\d+\b/)[0];
+      hint.textContent = 'This looks like a Jira ticket key. Paste the full URL (e.g. https://team.atlassian.net/browse/' + key + ') so agents can fetch ticket details at runtime.';
+      hint.style.display = '';
+    } else {
+      hint.style.display = 'none';
+    }
+  }
 }
 function pickUrlPreset(preset) {
   $('urlPresetPicker').style.display = 'none';
@@ -6819,6 +6850,7 @@ restorePrefs();
 const _autoRestored = restoreAutoSave();
 if (!_autoRestored) { updateTransform(); render(); }
 renderSavedWorkflowList();
+validateStoryInput();
 </script>
 </body>
 </html>
