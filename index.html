@@ -644,6 +644,10 @@ svg.canvas{width:100%;height:100%;display:block}
       <input type="checkbox" id="mcpCodeSearchToggle" onchange="toggleMcpCodeSearch()" checked/>
       <span style="font-size:12px">Code search (MCP) <span style="color:var(--text3);font-weight:400">(Sourcebot, Sourcegraph, Kilo Code, etc.)</span></span>
     </label>
+    <label class="memory-toggle">
+      <input type="checkbox" id="mcpDatadogToggle" onchange="toggleMcpDatadog()"/>
+      <span style="font-size:12px">Datadog <span style="color:var(--text3);font-weight:400">(metrics, logs, traces)</span></span>
+    </label>
     <div style="margin-top:8px">
       <textarea id="mcpCustomNotes" placeholder="Describe other MCPs available to your agents (e.g. Playwright MCP for browser testing)..." oninput="savePrefsDebounced()" rows="2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;font-family:inherit"></textarea>
     </div>
@@ -907,7 +911,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <ul>
   <li><strong>Atlassian MCP</strong>: built into Claude Code. Lets agents fetch Jira tickets and Confluence pages at runtime. Toggle on/off in the sidebar.</li>
   <li><strong>Code search MCP</strong>: any cross-repo code-search server (for example <a href="https://sourcebot.dev" target="_blank" style="color:var(--accent);pointer-events:auto">Sourcebot</a>, Sourcegraph, or Kilo Code). Typically exposes tools to discover repos, browse trees, search code, and read files across all your repositories. None is required; toggle the hint on/off in the sidebar.</li>
-  <li><strong>Datadog MCP</strong>: install with <code>curl -sSL https://coterm.datadoghq.com/mcp-cli/install.sh | bash</code>, then <code>datadog_mcp_cli login</code>, then <code>claude mcp add -s user datadog</code>. Enables the Observability prompts in the Prompt Library. Bug Fix workflows also use it automatically to check production logs and error context during investigation.</li>
+  <li><strong>Datadog MCP</strong>: install with <code>curl -sSL https://coterm.datadoghq.com/mcp-cli/install.sh | bash</code>, then <code>datadog_mcp_cli login</code>, then <code>claude mcp add -s user datadog</code>. Enables the Observability prompts in the Prompt Library. Bug Fix workflows also use it automatically to check production logs and error context during investigation. Toggle it on in the sidebar to add a production-telemetry grounding hint to exported workflows.</li>
   <li><strong>LSP</strong>: install a language server for your stack (e.g. <code>typescript-language-server</code>, <code>pyright</code>, <code>gopls</code>). Gives agents go-to-definition and find-references for deeper code analysis.</li>
 </ul>
 
@@ -1121,6 +1125,29 @@ function clarifyFirstHint() {
   return r.join('\n');
 }
 
+function datadogGroundingHint() {
+  if (!state.mcpDatadog) return null;
+  const r = [];
+  r.push('> **Ground the plan in production telemetry (if relevant).** The orchestrator (the top-level agent driving this workflow and spawning its steps, even when there is no named Planner or Investigator step) runs this gate once, before the first step begins.');
+  r.push('> - First, self-gate on relevance: would current production telemetry materially inform this work? It would for a bug, regression, incident, performance, reliability, or capacity concern, OR when documenting or validating a service\'s real runtime behavior. If the work is not telemetry-relevant, skip this entirely - it adds nothing.');
+  r.push('> - Then gate on availability: only proceed if a Datadog MCP server is connected. If it is not available, do NOT block and do NOT install anything - just proceed normally.');
+  r.push('> - When both gates pass, pull a BOUNDED, point-in-time, plan-shaping read scoped to the work: the current error rate, the regression window (when the symptom first appeared and any correlated deploy), the affected-service health, and recent anomalies relevant to scope. Fold what you find into the brief you hand the steps, so they inherit it without re-querying.');
+  r.push('> - Keep it bounded: this is a quick read to shape the plan, NOT a full investigation. Do not chase every metric, trace, or dashboard. Hand the deep, fresh Datadog query to whatever step owns the investigation - the bounded read is the orchestrator\'s job, the deep dive is the step\'s.');
+  r.push('> - If the work is not telemetry-relevant or Datadog is unavailable, this is a no-op - proceed as normal.');
+  return r.join('\n');
+}
+
+// Per-agent escalation hint for the reason-about-the-system roles. Generation-only:
+// injected at the per-agent emission sites, NEVER in getEffectivePrompt (which also
+// drives the node-config display). Toggle is the single source of truth for Datadog
+// guidance - no Datadog text is hardcoded in any agent template. Returns '' when not applicable.
+const DATADOG_STEP_ROLES = new Set(['planner', 'architect', 'researcher', 'debugger', 'tester']);
+function datadogStepHint(node) {
+  if (!state.mcpDatadog) return '';
+  if (!node || !node.config || !DATADOG_STEP_ROLES.has(node.config.agentType)) return '';
+  return 'If a Datadog MCP server is connected and your task could be informed by production data (telemetry, dashboards, SLOs, dependencies, deploy history, or other operational signals), prefer what the orchestrator already folded into your brief over re-running the same query for information you already have. You may still run your own deeper or differently-angled Datadog query when you judge it could surface something the orchestrator\'s bounded read did not. Skip this if Datadog is unavailable or your task does not need it.';
+}
+
 // Maps agentType to a PROMPTS key for fallback when user leaves prompt blank
 const AGENT_TYPE_PROMPT_MAP = {
   planner: 'planner', architect: 'architect', coder: 'implementer',
@@ -1192,7 +1219,7 @@ const PROMPTS = {
   uiReviewer: 'Review the UI component for correctness, quality, and design system compliance.\n\n## CRITICAL: Read the Design System Brief first\nBefore reviewing, read the Design System Analyzer\'s output completely. Use it as your compliance checklist - every component must conform to the Brief.\n\n## Design System Compliance Review\n\n1. **Styling approach**: Verify the component uses ONLY the approach specified in the Brief. Flag ANY use of alternative or legacy styling methods\n2. **Token usage**: Verify design tokens are imported from the Brief\'s token source and used for ALL colors, spacing, typography, and shadows. Flag any hardcoded visual values. For utility-first CSS (Tailwind), verify configured theme classes are used instead of arbitrary values\n3. **Avoid list**: Check for ANY use of patterns listed in the Brief\'s \"Avoid List\" - these are automatic rejections\n4. **Canonical pattern adherence**: Compare the component\'s file structure, naming, and composition method against the canonical example from the Brief\n5. **Composition method**: Verify classes are composed using the specified utility (clsx, classnames, cn, etc.) - not string concatenation or other methods\n6. **Component library compliance**: If the Brief specifies a component library, verify it is consumed correctly - through project wrappers if documented, with proper theming integration, no mixing of different component libraries\n7. **Shared component reuse**: Check that existing shared components were reused where appropriate rather than creating duplicates\n\n## Standard Code Review\n\n8. Use `LSP findReferences` on modified functions to check all call sites are consistent with any changes\n9. Use `LSP goToDefinition` on new types/interfaces to verify they align with usage\n10. Use `LSP goToImplementation` on changed interfaces to confirm all implementations are updated\n11. **Correctness**: Does the implementation match requirements?\n12. **Accessibility**: Semantic HTML, ARIA attributes, keyboard navigation, focus management\n13. **Responsive design**: Works across viewport sizes, no overflow or layout breaks\n14. **State handling**: Loading, error, and empty states are covered\n15. **Performance**: No unnecessary re-renders, efficient event handlers, proper memoization where needed\n16. **Conventions**: Follows project patterns for naming, file organization, and imports\n\nFor each issue: file:line, severity (Critical/High/Medium/Low), category (Design System / Correctness / Accessibility / Performance), and fix suggestion.\n\n**Design system violations are Critical severity** - they undermine the migration effort and create technical debt.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or NEEDS REVISION\n- **Design System Compliance**: PASS or list of violations\n- **Critical Issues**: Must-fix items with file:line (if any)\n- **Improvements**: Suggested enhancements, non-blocking\n- **Test Gaps**: Areas needing test coverage',
 
   // --- Investigation & Fixing ---
-  investigator: 'Investigate the reported bug systematically to find the root cause.\n\nIf an Atlassian MCP tool is available, fetch the full bug report details and search for related issues (duplicates, prior incidents in the same area, linked tickets) to gather additional context.\n\nIf Datadog MCP tools are available, use them to gather production context BEFORE diving into the code:\n- Search logs for the error message, affected service, or endpoint mentioned in the bug report\n- Check when the error first appeared and whether it correlates with a specific deploy or version\n- Look at error frequency and affected user count to understand severity and scope\n- Pull stack traces or error details from production logs that may not be in the bug report\n- Check if the error rate is increasing, stable, or already resolved\nThis production context often reveals the root cause faster than code analysis alone.\n\n1. Understand expected vs actual behavior from the bug report (enriched with Datadog findings if available)\n2. Use `Grep` to find the entry point - the function/handler most likely involved\n3. Use `LSP incomingCalls` on the suspected function to trace how it is invoked - find all call sites leading to the bug\n4. Use `LSP outgoingCalls` to trace what the function calls, following the execution path deeper into the stack\n5. Use `LSP findReferences` on any variable, type, or constant that may be incorrectly set to find where it originates\n6. Use `LSP goToDefinition` to inspect type definitions and ensure the data shapes match expectations at every layer\n7. Use `LSP hover` to get type information on ambiguous expressions without reading the full definition file\n8. Check `git log` for recent changes to suspected files that may have introduced the issue\n9. Identify the ROOT CAUSE, not just the symptom\n10. **Write a failing reproduction test (when feasible)**: If the project has a test framework set up (check for existing test files, test scripts in package.json, pytest.ini, etc.) AND the bug is reproducible in code (not a config, environment, or infrastructure issue), write a test that FAILS with the current bug and PASSES when the bug is fixed. This gives the Fixer a concrete success criterion and becomes a permanent regression guard. If the bug is not reproducible via automated test (UI-only, environment-specific, timing-dependent), skip this step and note why.\n\nOutput: reproduction steps, full call chain (using LSP findings), affected files/functions, root cause analysis, recommended fix approach, impact assessment, and the failing reproduction test (if written).\n\n## Handoff Summary\nEnd your response with:\n- **Root Cause**: Clear description of what is wrong and where\n- **Call Chain**: The traced path from entry point to failure (file:line at each step)\n- **Reproduction Test**: Path to the failing test (or "Not feasible" with reason)\n- **Recommended Fix**: Specific approach for the Fixer to take. If a reproduction test was written, the fix MUST make that test pass.\n- **Affected Files**: Files the Fixer will need to modify\n- **Risk Areas**: Related code that could be affected by the fix',
+  investigator: 'Investigate the reported bug systematically to find the root cause.\n\nIf an Atlassian MCP tool is available, fetch the full bug report details and search for related issues (duplicates, prior incidents in the same area, linked tickets) to gather additional context.\n\n1. Understand expected vs actual behavior from the bug report\n2. Use `Grep` to find the entry point - the function/handler most likely involved\n3. Use `LSP incomingCalls` on the suspected function to trace how it is invoked - find all call sites leading to the bug\n4. Use `LSP outgoingCalls` to trace what the function calls, following the execution path deeper into the stack\n5. Use `LSP findReferences` on any variable, type, or constant that may be incorrectly set to find where it originates\n6. Use `LSP goToDefinition` to inspect type definitions and ensure the data shapes match expectations at every layer\n7. Use `LSP hover` to get type information on ambiguous expressions without reading the full definition file\n8. Check `git log` for recent changes to suspected files that may have introduced the issue\n9. Identify the ROOT CAUSE, not just the symptom\n10. **Write a failing reproduction test (when feasible)**: If the project has a test framework set up (check for existing test files, test scripts in package.json, pytest.ini, etc.) AND the bug is reproducible in code (not a config, environment, or infrastructure issue), write a test that FAILS with the current bug and PASSES when the bug is fixed. This gives the Fixer a concrete success criterion and becomes a permanent regression guard. If the bug is not reproducible via automated test (UI-only, environment-specific, timing-dependent), skip this step and note why.\n\nOutput: reproduction steps, full call chain (using LSP findings), affected files/functions, root cause analysis, recommended fix approach, impact assessment, and the failing reproduction test (if written).\n\n## Handoff Summary\nEnd your response with:\n- **Root Cause**: Clear description of what is wrong and where\n- **Call Chain**: The traced path from entry point to failure (file:line at each step)\n- **Reproduction Test**: Path to the failing test (or "Not feasible" with reason)\n- **Recommended Fix**: Specific approach for the Fixer to take. If a reproduction test was written, the fix MUST make that test pass.\n- **Affected Files**: Files the Fixer will need to modify\n- **Risk Areas**: Related code that could be affected by the fix',
 
   fixer: 'Fix the bug based on the root cause analysis.\n\n1. Read the investigation report and fully understand the root cause\n2. If the Investigator wrote a reproduction test, run it first to confirm it FAILS before your fix (this validates the test catches the bug)\n3. Before editing, use `LSP findReferences` on every symbol you plan to change - confirm the full blast radius of your fix\n4. Use `LSP incomingCalls` on the function being fixed to identify any other callers that may need the same fix or be affected by the change\n5. Make the minimal, targeted fix that addresses the root cause\n6. Re-read surrounding code paths with `LSP outgoingCalls` to check for related side effects\n7. If a reproduction test exists, run it to confirm it now PASSES. This is your primary success criterion.\n8. Run targeted tests related to the changed files to confirm no regressions. Leave the comprehensive test run for the Tester agent.\n9. Add a brief comment if the fix is non-obvious\n\nProvide: what was changed, why, files modified, LSP-confirmed blast radius, and any remaining concerns.\n\n## Handoff Summary\nEnd your response with:\n- **Root Cause**: One-line summary\n- **Fix Applied**: What was changed and why\n- **Reproduction Test**: PASSES / was not provided (with reason)\n- **Files Changed**: Each file with description\n- **Blast Radius**: LSP-confirmed scope of impact\n- **Regression Risk**: What to test to verify the fix and avoid regressions',
 
@@ -1302,6 +1329,7 @@ let state = {
   activePreset: null,
   mcpAtlassian: true,
   mcpCodeSearch: true,
+  mcpDatadog: false,
   consumeRecords: true,
   clarifyFirst: false,
   mcpCustom: '',
@@ -1780,6 +1808,11 @@ function toggleMcpCodeSearch() {
   updatePrompt();
   savePrefs();
 }
+function toggleMcpDatadog() {
+  state.mcpDatadog = $('mcpDatadogToggle').checked;
+  updatePrompt();
+  savePrefs();
+}
 function toggleConsumeRecords() {
   state.consumeRecords = $('consumeRecordsToggle').checked;
   updatePrompt();
@@ -1842,6 +1875,7 @@ function savePrefs() {
       repositories: state.repositories,
       mcpAtlassian: state.mcpAtlassian,
       mcpCodeSearch: state.mcpCodeSearch,
+      mcpDatadog: state.mcpDatadog,
       consumeRecords: state.consumeRecords,
       clarifyFirst: state.clarifyFirst,
       mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : '',
@@ -1887,6 +1921,11 @@ function restorePrefs() {
       state.mcpCodeSearch = !!p.mcpCodeSearch;
       const cb = $('mcpCodeSearchToggle');
       if (cb) cb.checked = state.mcpCodeSearch;
+    }
+    if (p.mcpDatadog !== undefined) {
+      state.mcpDatadog = !!p.mcpDatadog;
+      const cb = $('mcpDatadogToggle');
+      if (cb) cb.checked = state.mcpDatadog;
     }
     if (p.consumeRecords !== undefined) {
       state.consumeRecords = !!p.consumeRecords;
@@ -5363,11 +5402,13 @@ function clearCanvas(skipConfirm) {
   if ($('planInput')) $('planInput').value = '';
   state.mcpAtlassian = true;
   state.mcpCodeSearch = true;
+  state.mcpDatadog = false;
   state.consumeRecords = true;
   state.clarifyFirst = false;
   state.mcpCustom = '';
   const _matl = $('mcpAtlassianToggle'); if (_matl) _matl.checked = true;
   const _msb = $('mcpCodeSearchToggle'); if (_msb) _msb.checked = true;
+  const _mdd = $('mcpDatadogToggle'); if (_mdd) _mdd.checked = false;
   const _crt = $('consumeRecordsToggle'); if (_crt) _crt.checked = true;
   const _clt = $('clarifyFirstToggle'); if (_clt) _clt.checked = false;
   const _mcn = $('mcpCustomNotes'); if (_mcn) _mcn.value = '';
@@ -5743,6 +5784,8 @@ function genWorkflow() {
   if (_wfCr) { p.push(_wfCr); p.push(''); }
   const _wfCl = clarifyFirstHint();
   if (_wfCl) { p.push(_wfCl); p.push(''); }
+  const _wfDd = datadogGroundingHint();
+  if (_wfDd) { p.push(_wfDd); p.push(''); }
   const _wfCm = customMcpHint();
   if (_wfCm) { p.push(_wfCm); p.push(''); }
 
@@ -5777,6 +5820,7 @@ function genWorkflow() {
           p.push(`  - Model: ${getModelLabel(s.config.model)} (\`${getTaskModelParam(s.config.model)}\`)`);
           if (s.config.tools.length > 0) p.push(`  - Tools: ${s.config.tools.join(', ')}`);
           p.push(`  - Instructions: ${getEffectivePrompt(s)}`);
+          const _ddS = datadogStepHint(s); if (_ddS) p.push('  ' + _ddS);
           if (s.config.notes && s.config.notes.trim()) p.push(`  - Context: ${s.config.notes.trim()}`);
           p.push('');
         });
@@ -5788,6 +5832,7 @@ function genWorkflow() {
         p.push(`- Model: ${getModelLabel(node.config.model)} (\`${getTaskModelParam(node.config.model)}\`)`);
         if (node.config.tools.length > 0) p.push(`- Tools: ${node.config.tools.join(', ')}`);
         p.push(`- Instructions: ${getEffectivePrompt(node)}`);
+        const _ddN = datadogStepHint(node); if (_ddN) p.push('- ' + _ddN);
         if (node.config.notes && node.config.notes.trim()) p.push(`- Additional context: ${node.config.notes.trim()}`);
         if (node.config.maxTurns) p.push(`- Max turns: ${node.config.maxTurns}`);
         if (deps.length > 0) p.push(`- Depends on: ${deps.join(', ')}`);
@@ -5909,6 +5954,8 @@ function genSubAgents() {
   if (_saCr) { p.push(_saCr); p.push(''); }
   const _saCl = clarifyFirstHint();
   if (_saCl) { p.push(_saCl); p.push(''); }
+  const _saDd = datadogGroundingHint();
+  if (_saDd) { p.push(_saDd); p.push(''); }
   const _saCm = customMcpHint();
   if (_saCm) { p.push(_saCm); p.push(''); }
 
@@ -5971,6 +6018,7 @@ function genSubAgents() {
 
     promptLines.push('## Your Task');
     promptLines.push(getEffectivePrompt(node));
+    const _ddSa = datadogStepHint(node); if (_ddSa) { promptLines.push(''); promptLines.push(_ddSa); }
     promptLines.push('');
 
     if (node.config.notes && node.config.notes.trim()) {
@@ -6171,6 +6219,8 @@ function genAgentTeams() {
   if (_atCr) { p.push(_atCr); p.push(''); }
   const _atCl = clarifyFirstHint();
   if (_atCl) { p.push(_atCl); p.push(''); }
+  const _atDd = datadogGroundingHint();
+  if (_atDd) { p.push(_atDd); p.push(''); }
   const _atCm = customMcpHint();
   if (_atCm) { p.push(_atCm); p.push(''); }
 
@@ -6214,6 +6264,7 @@ function genAgentTeams() {
     lines.push(`${pre}- **Task**:`);
     lines.push('');
     effectivePrompt.split('\n').forEach(line => lines.push(`${pre}  ${line}`));
+    const _ddAt = datadogStepHint(node); if (_ddAt) lines.push(`${pre}  ${_ddAt}`);
     lines.push('');
 
     if (node.config.notes && node.config.notes.trim()) {
@@ -6627,6 +6678,8 @@ function genClaudePrompt() {
   if (_cpCr) { p.push(_cpCr); p.push(''); }
   const _cpCl = clarifyFirstHint();
   if (_cpCl) { p.push(_cpCl); p.push(''); }
+  const _cpDd = datadogGroundingHint();
+  if (_cpDd) { p.push(_cpDd); p.push(''); }
   const _cpCm = customMcpHint();
   if (_cpCm) { p.push(_cpCm); p.push(''); }
 
@@ -6662,6 +6715,7 @@ function genClaudePrompt() {
           p.push(`**${s.label}** (as ${sAt}):`);
           p.push('');
           p.push(getEffectivePrompt(s));
+          const _ddCpS = datadogStepHint(s); if (_ddCpS) p.push(_ddCpS);
           p.push('');
           if (s.config.notes && s.config.notes.trim()) {
             p.push(`Additional context: ${s.config.notes.trim()}`);
@@ -6686,6 +6740,7 @@ function genClaudePrompt() {
         p.push(`**Role**: ${at}`);
         p.push('');
         p.push(getEffectivePrompt(node));
+        const _ddCpN = datadogStepHint(node); if (_ddCpN) p.push(_ddCpN);
         p.push('');
         if (node.config.notes && node.config.notes.trim()) {
           p.push(`**Additional context**: ${node.config.notes.trim()}`);

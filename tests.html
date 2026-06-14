@@ -134,6 +134,10 @@ class Expectation {
     if (!regex.test(this.actual))
       throw new Error(`Expected "${String(this.actual).slice(0, 200)}" to match ${regex}`);
   }
+  toNotMatch(regex) {
+    if (regex.test(this.actual))
+      throw new Error(`Expected "${String(this.actual).slice(0, 200)}" NOT to match ${regex}`);
+  }
   toBeInstanceOf(cls) {
     if (!(this.actual instanceof cls))
       throw new Error(`Expected instance of ${cls.name}`);
@@ -238,6 +242,7 @@ function resetState() {
   win.state.repositories = [];
   win.state.activePreset = null;
   win.state.mcpCodeSearch = true;  // app default is ON (index.html state init)
+  win.state.mcpDatadog = false;    // app default is OFF (opt-in)
   win.state.rulesPaths = [];       // repo context paths default empty (or undefined in tests)
   win.state.productDocPaths = [];
   // Reset DOM inputs
@@ -1417,6 +1422,181 @@ describe('Clarify gate', () => {
     expect(win.genClaudePrompt()).toContain('Clarify ambiguous requirements before planning');
     win.state.clarifyFirst = false;
     expect(win.genWorkflow()).toNotContain('Clarify ambiguous requirements before planning');
+  });
+});
+
+// ─── Datadog grounding gate (orchestrator telemetry read, opt-in / default off) ─────
+describe('Datadog grounding gate', () => {
+  beforeEach(() => { resetState(); });
+
+  it('datadogGroundingHint is null when off, present when on, and owned by the orchestrator', () => {
+    win.state.mcpDatadog = false;
+    expect(win.datadogGroundingHint()).toBe(null);
+    win.state.mcpDatadog = true;
+    const h = win.datadogGroundingHint();
+    expect(h).toContain('Ground the plan in production telemetry');
+    expect(h).toContain('The orchestrator');
+    expect(h).toContain('even when there is no named Planner or Investigator step');
+  });
+  it('contracts a BOUNDED plan-shaping read, not a full investigation', () => {
+    win.state.mcpDatadog = true;
+    const h = win.datadogGroundingHint();
+    expect(h).toContain('BOUNDED');
+    expect(h).toContain('NOT a full investigation');
+    expect(h).toContain('error rate');
+    expect(h).toContain('regression window');
+    expect(h).toContain('Hand the deep');
+  });
+  it('self-gates on relevance AND availability, no-op otherwise', () => {
+    win.state.mcpDatadog = true;
+    const h = win.datadogGroundingHint();
+    expect(h).toContain('materially inform');
+    expect(h).toContain('no-op');
+    expect(h).toContain('a Datadog MCP server is connected');
+  });
+  it('is em-dash-free and provider-clean (hyphens only)', () => {
+    win.state.mcpDatadog = true;
+    const h = win.datadogGroundingHint();
+    expect(h).toNotContain('—');
+    expect(h).toNotContain('–');
+  });
+  it('is opt-in: injected into all four exporters when on, absent when off', () => {
+    buildTestWorkflow('linear');
+    win.state.mcpDatadog = true;
+    expect(win.genWorkflow()).toContain('Ground the plan in production telemetry');
+    expect(win.genSubAgents()).toContain('Ground the plan in production telemetry');
+    expect(win.genAgentTeams()).toContain('Ground the plan in production telemetry');
+    expect(win.genClaudePrompt()).toContain('Ground the plan in production telemetry');
+    win.state.mcpDatadog = false;
+    expect(win.genWorkflow()).toNotContain('Ground the plan in production telemetry');
+  });
+  it('DOM: mcpDatadogToggle exists, defaults unchecked, labeled for telemetry', () => {
+    const cb = win.document.getElementById('mcpDatadogToggle');
+    expect(!!cb).toBe(true);
+    expect(cb.checked).toBe(false);
+    const span = cb.parentElement.querySelector('span');
+    expect(span.textContent).toContain('Datadog');
+    expect(span.textContent).toContain('metrics, logs, traces');
+  });
+  it('defaults to OFF (opt-in) on fresh state', () => {
+    resetState();
+    expect(win.state.mcpDatadog).toBe(false);
+  });
+  it('clearCanvas resets mcpDatadog to false (not forced true)', () => {
+    win.state.mcpDatadog = true;
+    win.clearCanvas();
+    expect(win.state.mcpDatadog).toBe(false);
+  });
+  it('restorePrefs applies a saved mcpDatadog value', () => {
+    resetState();
+    localStorage.setItem('awd_prefs', JSON.stringify({ mcpDatadog: true }));
+    win.restorePrefs();
+    expect(win.state.mcpDatadog).toBe(true);
+  });
+  it('R5 single source of truth: investigator prompt no longer hardcodes Datadog', () => {
+    expect(win.PROMPTS.investigator).toNotMatch(/datadog/i);
+  });
+});
+
+// ─── Datadog step escalation (per-agent self-gating hint for reason-about-the-system roles) ───
+describe('Datadog step escalation', () => {
+  beforeEach(() => { resetState(); });
+
+  const MARK = 'differently-angled Datadog query';
+
+  // Build a minimal input -> agent -> output workflow with a single agent node of the given config.
+  function workflowWith(agentLabel, agentConfig) {
+    resetState();
+    const input = win.addNode('input', 100, 200, 'Requirements');
+    const agent = win.addNode('agent', 350, 200, agentLabel, agentConfig);
+    const output = win.addNode('output', 600, 200, 'Done', { deliverable: 'Result', format: 'code' });
+    win.addConnection(input.id, agent.id);
+    win.addConnection(agent.id, output.id);
+    return agent;
+  }
+
+  it('R1 helper off: researcher node with toggle off returns empty', () => {
+    const node = win.addNode('agent', 350, 200, 'Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Look into it.', maxTurns:5 });
+    win.state.mcpDatadog = false;
+    expect(win.datadogStepHint(node)).toBe('');
+  });
+
+  it('R1 helper on: planner/architect/researcher/tester nodes all receive the hint', () => {
+    win.state.mcpDatadog = true;
+    const planner = win.addNode('agent', 350, 200, 'Planner', { agentType:'planner', model:'opus-4.6', tools:['Read'], prompt:'Plan it.', maxTurns:5 });
+    expect(win.datadogStepHint(planner)).toContain(MARK);
+    const architect = win.addNode('agent', 350, 250, 'Architect', { agentType:'architect', model:'opus-4.6', tools:['Read'], prompt:'Design it.', maxTurns:5 });
+    expect(win.datadogStepHint(architect)).toContain(MARK);
+    const researcher = win.addNode('agent', 350, 300, 'Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read'], prompt:'Research it.', maxTurns:5 });
+    expect(win.datadogStepHint(researcher)).toContain(MARK);
+    const tester = win.addNode('agent', 350, 350, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+    expect(win.datadogStepHint(tester)).toContain(MARK);
+  });
+
+  it('R1 helper on: debugger node (investigator template) receives the hint', () => {
+    win.state.mcpDatadog = true;
+    const debuggr = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-4.6', tools:['Read','Grep'], prompt:win.PROMPTS.investigator, maxTurns:5 });
+    expect(win.datadogStepHint(debuggr)).toContain(MARK);
+  });
+
+  it('R1 helper on: coder node is not in the role set, returns empty', () => {
+    win.state.mcpDatadog = true;
+    const coder = win.addNode('agent', 350, 200, 'Coder', { agentType:'coder', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
+    expect(win.datadogStepHint(coder)).toBe('');
+  });
+
+  it('R2 wording: hint encodes prefer/judgment/skip guidance, hyphens only', () => {
+    win.state.mcpDatadog = true;
+    const node = win.addNode('agent', 350, 200, 'Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read'], prompt:'Research it.', maxTurns:5 });
+    const h = win.datadogStepHint(node);
+    expect(h).toContain('prefer what the orchestrator');
+    expect(h).toContain('differently-angled');
+    expect(h).toMatch(/use your judgment|you judge/);
+    expect(h).toContain('Skip this');
+    expect(h).toNotContain('—');
+    expect(h).toNotContain('–');
+  });
+
+  it('R4 toggle off: hint marker absent from all four formats', () => {
+    workflowWith('Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    win.state.mcpDatadog = false;
+    expect(win.genWorkflow()).toNotContain(MARK);
+    expect(win.genSubAgents()).toNotContain(MARK);
+    expect(win.genAgentTeams()).toNotContain(MARK);
+    expect(win.genClaudePrompt()).toNotContain(MARK);
+  });
+
+  it('R6 toggle on: hint marker present in all four formats for a researcher', () => {
+    workflowWith('Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    win.state.mcpDatadog = true;
+    expect(win.genWorkflow()).toContain(MARK);
+    expect(win.genSubAgents()).toContain(MARK);
+    expect(win.genAgentTeams()).toContain(MARK);
+    expect(win.genClaudePrompt()).toContain(MARK);
+  });
+
+  it('R3 SDK exporter is excluded even when toggle is on', () => {
+    workflowWith('Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    win.state.mcpDatadog = true;
+    expect(win.genAgentSDK()).toNotContain(MARK);
+  });
+
+  it('R5 investigator template does not match /datadog/i', () => {
+    expect(win.PROMPTS.investigator).toNotMatch(/datadog/i);
+  });
+
+  it('R5 bugfix node: toggle-on output carries the hint and has no leftover hardcoded Datadog line', () => {
+    workflowWith('Investigator', { agentType:'debugger', model:'opus-4.6', tools:['Read','Grep'], prompt:win.PROMPTS.investigator, maxTurns:5 });
+    win.state.mcpDatadog = true;
+    const out = win.genWorkflow();
+    expect(out).toContain(MARK);
+    expect(out).toNotContain('If Datadog MCP tools are available');
+  });
+
+  it('R7 display unaffected: classifyAgentPrompt text omits the hint even when toggle is on', () => {
+    const node = win.addNode('agent', 350, 200, 'Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    win.state.mcpDatadog = true;
+    expect(win.classifyAgentPrompt(node).text).toNotContain(MARK);
   });
 });
 
@@ -4411,7 +4591,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.customMcpHint = customMcpHint; window.atlassianHint = atlassianHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
