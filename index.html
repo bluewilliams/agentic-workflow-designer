@@ -1070,6 +1070,13 @@ function codeSearchHint() {
   if (!state.mcpCodeSearch) return null;
   return '> **Code search (MCP)** (cross-repo code search): If a code-search MCP server is connected (for example Sourcebot, Sourcegraph, or Kilo Code - any one of these works, and none is required), use it to explore the codebase across repositories. These servers typically expose tools to discover repos, browse directory trees, search code, and read files; exact tool names vary by server, so inspect the tools you actually have.\n>\n> **Recommended flow**: discover (list the available repositories) -> browse (walk the directory tree to understand layout) -> search (query for implementations, patterns, and call sites) -> read (open the matching files in full). Many servers also offer natural-language Q&A across repos for complex multi-step questions.\n>\n> **Fallback when no code-search MCP is available**: use the built-in `Glob` and `Grep` tools to find files and match patterns, and an `LSP` (language server) for go-to-definition and find-references. Combine `Glob`/`Grep` for discovery and `LSP` for precise symbol navigation.';
 }
+function conventionsHint() {
+  const r = [];
+  r.push('> **Conventions.** Prefer self-describing code over comments - in tests as much as in production code. Comment only for genuinely complex logic, a non-obvious why, or where the project\'s conventions call for it; never to restate what well-named code already says. Public or exported APIs may carry JSDoc or docstrings.');
+  r.push('>');
+  r.push('> When writing tests, first read the project\'s existing and recent tests and follow their conventions - framework, the unit/integration split, naming, fixtures, and comment style. The repo\'s rules and CLAUDE.md define these conventions and take precedence over this guidance.');
+  return r.join('\n');
+}
 function customMcpHint() {
   const notes = ($('mcpCustomNotes') ? $('mcpCustomNotes').value : state.mcpCustom || '').trim();
   if (!notes) return null;
@@ -1243,7 +1250,7 @@ const PROMPTS = {
   fixer: 'Fix the bug based on the root cause analysis.\n\n1. Read the investigation report and fully understand the root cause\n2. If the Investigator wrote a reproduction test, run it first to confirm it FAILS before your fix (this validates the test catches the bug)\n3. Before editing, use `LSP findReferences` on every symbol you plan to change - confirm the full blast radius of your fix\n4. Use `LSP incomingCalls` on the function being fixed to identify any other callers that may need the same fix or be affected by the change\n5. Make the minimal, targeted fix that addresses the root cause\n6. Re-read surrounding code paths with `LSP outgoingCalls` to check for related side effects\n7. If a reproduction test exists, run it to confirm it now PASSES. This is your primary success criterion.\n8. Run targeted tests related to the changed files to confirm no regressions. Leave the comprehensive test run for the Tester agent.\n9. Add a brief comment if the fix is non-obvious\n\nProvide: what was changed, why, files modified, LSP-confirmed blast radius, and any remaining concerns.\n\n## Handoff Summary\nEnd your response with:\n- **Root Cause**: One-line summary\n- **Fix Applied**: What was changed and why\n- **Reproduction Test**: PASSES / was not provided (with reason)\n- **Files Changed**: Each file with description\n- **Blast Radius**: LSP-confirmed scope of impact\n- **Regression Risk**: What to test to verify the fix and avoid regressions',
 
   // --- Review ---
-  reviewer: 'Review all code changes for quality and correctness.\n\n1. For each modified function or method, use `LSP findReferences` to check that all call sites are consistent with any signature changes\n2. Use `LSP goToDefinition` on any new type or interface introduced - verify it aligns with how it is actually used\n3. Use `LSP goToImplementation` on any interface that was changed - confirm all implementations were updated\n4. Use `LSP incomingCalls` on modified functions to detect callers that may not handle new error cases or changed return shapes\n\nEvaluate against:\n- **Correctness**: Does implementation match requirements? Are all LSP-found callers handled?\n- **Scope and minimality**: Is the change the simplest solution that solves the problem? Flag any unnecessary complexity, over-engineering, or changes to files unrelated to the task. A bug fix should fix the bug, not refactor the surrounding code. A feature should implement the feature, not redesign the module.\n- **Code quality**: Naming, structure, DRY, single responsibility\n- **Security**: Input validation, injection prevention, data handling\n- **Performance**: Efficient algorithms, no unnecessary work\n- **Conventions**: Follows project patterns and style\n\nFor each issue, provide file:line, severity (Critical/High/Medium/Low), and fix suggestion. Output a clear PASS or NEEDS REVISION verdict.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or NEEDS REVISION\n- **Scope Check**: Is the change minimal and focused, or does it include unnecessary changes?\n- **Critical Issues**: Must-fix items with file:line (if any)\n- **Improvements**: Suggested enhancements, non-blocking\n- **Test Gaps**: Areas needing test coverage',
+  reviewer: 'Review all code changes for quality and correctness.\n\n1. For each modified function or method, use `LSP findReferences` to check that all call sites are consistent with any signature changes\n2. Use `LSP goToDefinition` on any new type or interface introduced - verify it aligns with how it is actually used\n3. Use `LSP goToImplementation` on any interface that was changed - confirm all implementations were updated\n4. Use `LSP incomingCalls` on modified functions to detect callers that may not handle new error cases or changed return shapes\n\nEvaluate against:\n- **Correctness**: Does implementation match requirements? Are all LSP-found callers handled?\n- **Scope and minimality**: Is the change the simplest solution that solves the problem? Flag any unnecessary complexity, over-engineering, or changes to files unrelated to the task. A bug fix should fix the bug, not refactor the surrounding code. A feature should implement the feature, not redesign the module.\n- **Code quality**: Naming, structure, DRY, single responsibility\n- **Security**: Input validation, injection prevention, data handling\n- **Performance**: Efficient algorithms, no unnecessary work\n- **Conventions**: Follows project patterns and style\n- **Comments**: Flag narrating or redundant comments - comment the why, not the what.\n\nFor each issue, provide file:line, severity (Critical/High/Medium/Low), and fix suggestion. Output a clear PASS or NEEDS REVISION verdict.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or NEEDS REVISION\n- **Scope Check**: Is the change minimal and focused, or does it include unnecessary changes?\n- **Critical Issues**: Must-fix items with file:line (if any)\n- **Improvements**: Suggested enhancements, non-blocking\n- **Test Gaps**: Areas needing test coverage',
 
   fullstackReviewer: 'Review all changes from Backend and Frontend for quality, correctness, and integration.\n\n1. Use `LSP findReferences` on shared types between frontend and backend to verify both sides agree on data shapes\n2. Use `LSP goToDefinition` on API call sites in the frontend to trace them to the endpoint handler - confirm request/response shapes match\n3. Use `LSP incomingCalls` on modified backend handlers to check that all callers (including the new frontend code) handle error responses correctly\n4. Use `LSP goToImplementation` on any shared interfaces to confirm both frontend and backend implementations are consistent\n\nEvaluate:\n- **API contract**: Do frontend calls match backend endpoints exactly? Request shapes, response shapes, status codes, error formats\n- **Correctness**: Does the implementation match the architectural design?\n- **Security**: Input validation on both sides, auth token handling, data exposure in API responses\n- **Performance**: Query efficiency, unnecessary re-renders, payload sizes\n- **Conventions**: Consistent patterns, naming, and error handling across frontend and backend\n\nFor each issue: file:line, severity (Critical/High/Medium/Low), and fix suggestion.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or NEEDS REVISION\n- **Contract Issues**: Any API mismatches between frontend and backend\n- **Critical Issues**: Must-fix items with file:line\n- **Integration Risks**: Areas where frontend-backend interaction may break\n- **Test Gaps**: Integration scenarios needing coverage',
 
@@ -5810,6 +5817,7 @@ function genWorkflow() {
   if (_wfAtlG) { p.push(_wfAtlG); p.push(''); }
   const _wfSb = codeSearchHint();
   if (_wfSb) { p.push(_wfSb); p.push(''); }
+  const _wfCo = conventionsHint(); p.push(_wfCo); p.push('');
   const _wfRu = rulesPathsHint();
   if (_wfRu) { p.push(_wfRu); p.push(''); }
   const _wfPd = productDocsHint();
@@ -5983,6 +5991,7 @@ function genSubAgents() {
   if (_saAtlG) { p.push(_saAtlG); p.push(''); }
   const _saSb = codeSearchHint();
   if (_saSb) { p.push(_saSb); p.push(''); }
+  const _saCo = conventionsHint(); p.push(_saCo); p.push('');
   const _saRu = rulesPathsHint();
   if (_saRu) { p.push(_saRu); p.push(''); }
   const _saPd = productDocsHint();
@@ -6251,6 +6260,7 @@ function genAgentTeams() {
   if (_atAtlG) { p.push(_atAtlG); p.push(''); }
   const _atSb = codeSearchHint();
   if (_atSb) { p.push(_atSb); p.push(''); }
+  const _atCo = conventionsHint(); p.push(_atCo); p.push('');
   const _atRu = rulesPathsHint();
   if (_atRu) { p.push(_atRu); p.push(''); }
   const _atPd = productDocsHint();
@@ -6495,6 +6505,16 @@ function genAgentSDK() {
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
+  p.push('# ── Conventions ─────────────────────────────────────────────');
+  p.push('# Prefer self-describing code over comments - in tests as much as in production');
+  p.push('# code. Comment only for genuinely complex logic, a non-obvious why, or where the');
+  p.push('# project\'s conventions call for it; never to restate what well-named code says.');
+  p.push('# Public/exported APIs may carry JSDoc or docstrings. When writing tests, first read');
+  p.push('# the project\'s existing/recent tests and follow their conventions (framework,');
+  p.push('# unit/integration split, naming, fixtures, comment style). The repo\'s rules/CLAUDE.md');
+  p.push('# define these and take precedence.');
+  p.push('# ───────────────────────────────────────────────────────');
+  p.push('');
   if (state.rulesPaths && state.rulesPaths.length) {
     p.push('# ── Repo rules / constitution (BINDING) ──────────────────────────────────────');
     p.push('# Binding rules/conventions you MUST follow, on top of the auto-loaded CLAUDE.md.');
@@ -6729,6 +6749,7 @@ function genClaudePrompt() {
   if (_cpAtlG) { p.push(_cpAtlG); p.push(''); }
   const _cpSb = codeSearchHint();
   if (_cpSb) { p.push(_cpSb); p.push(''); }
+  const _cpCo = conventionsHint(); p.push(_cpCo); p.push('');
   const _cpRu = rulesPathsHint();
   if (_cpRu) { p.push(_cpRu); p.push(''); }
   const _cpPd = productDocsHint();

@@ -3056,6 +3056,56 @@ describe('MCP Integrations', () => {
       const output = win.genAgentSDK();
       expect(output).toNotContain('Code search (MCP)');
     });
+    it('should include conventions block in workflow export', () => {
+      buildTestWorkflow('linear');
+      const output = win.genWorkflow();
+      expect(output).toContain('self-describing code over comments');
+      expect(output).toContain('in tests as much as in production code');
+    });
+    it('should include conventions block in sub-agents export', () => {
+      buildTestWorkflow('linear');
+      const output = win.genSubAgents();
+      expect(output).toContain('self-describing code over comments');
+      expect(output).toContain('in tests as much as in production code');
+    });
+    it('should include conventions block in agent-teams export', () => {
+      buildTestWorkflow('linear');
+      const output = win.genAgentTeams();
+      expect(output).toContain('self-describing code over comments');
+      expect(output).toContain('in tests as much as in production code');
+    });
+    it('should include conventions block in claude-prompt export', () => {
+      buildTestWorkflow('linear');
+      const output = win.genClaudePrompt();
+      expect(output).toContain('self-describing code over comments');
+      expect(output).toContain('in tests as much as in production code');
+    });
+    it('should include conventions block in agent-SDK (comment) export', () => {
+      buildTestWorkflow('linear');
+      const output = win.genAgentSDK();
+      expect(output).toContain('self-describing code over comments');
+    });
+    it('should include conventions block regardless of code-search toggle (off)', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpCodeSearch = false;
+      expect(win.genWorkflow()).toContain('self-describing code over comments');
+      expect(win.genAgentSDK()).toContain('self-describing code over comments');
+    });
+    it('should include conventions block regardless of code-search toggle (on)', () => {
+      buildTestWorkflow('linear');
+      win.state.mcpCodeSearch = true;
+      expect(win.genWorkflow()).toContain('self-describing code over comments');
+      expect(win.genAgentSDK()).toContain('self-describing code over comments');
+    });
+    it('should carry the conventions marker without throwing on any workflow shape', () => {
+      buildTestWorkflow('decision');
+      const output = win.genWorkflow();
+      expect(output).toContain('self-describing code over comments');
+    });
+    it('reviewer template flags narrating comments and keeps the conventions line', () => {
+      expect(win.PROMPTS.reviewer).toContain('comment the why, not the what');
+      expect(win.PROMPTS.reviewer).toContain('Follows project patterns and style');
+    });
     it('should include custom MCP hint in sub-agents export when populated', () => {
       buildTestWorkflow('linear');
       const ta = win.document.getElementById('mcpCustomNotes');
