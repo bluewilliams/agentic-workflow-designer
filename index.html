@@ -413,6 +413,10 @@ svg.canvas{width:100%;height:100%;display:block}
     <h3>Requirements</h3>
     <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Generate to auto-build a workflow from keywords." oninput="validateStoryInput()"></textarea>
     <div id="storyHint" class="input-hint"></div>
+    <label class="memory-toggle" style="margin-top:6px">
+      <input type="checkbox" id="clarifyFirstToggle" onchange="toggleClarifyFirst()"/>
+      <span style="font-size:12px">Clarify requirements first <span style="color:var(--text3);font-weight:400">(agent asks you about ambiguity before planning)</span></span>
+    </label>
     <div class="btn-row mt">
       <button class="btn primary" onclick="generateFromStory()">Generate</button>
       <button class="btn sm" onclick="generateRefinePrompt()">Refine Prompt</button>
@@ -639,14 +643,6 @@ svg.canvas{width:100%;height:100%;display:block}
       <input type="checkbox" id="mcpCodeSearchToggle" onchange="toggleMcpCodeSearch()" checked/>
       <span style="font-size:12px">Code search (MCP) <span style="color:var(--text3);font-weight:400">(Sourcebot, Sourcegraph, Kilo Code, etc.)</span></span>
     </label>
-    <label class="memory-toggle">
-      <input type="checkbox" id="consumeRecordsToggle" onchange="toggleConsumeRecords()" checked/>
-      <span style="font-size:12px">Ground in prior records <span style="color:var(--text3);font-weight:400">(scan committed .workflow records)</span></span>
-    </label>
-    <label class="memory-toggle">
-      <input type="checkbox" id="clarifyFirstToggle" onchange="toggleClarifyFirst()"/>
-      <span style="font-size:12px">Clarify requirements first <span style="color:var(--text3);font-weight:400">(ask the director about ambiguity before planning)</span></span>
-    </label>
     <div style="margin-top:8px">
       <textarea id="mcpCustomNotes" placeholder="Describe other MCPs available to your agents (e.g. Playwright MCP for browser testing)..." oninput="savePrefsDebounced()" rows="2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;font-family:inherit"></textarea>
     </div>
@@ -654,6 +650,12 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-section memory-section">
     <h3>Memory &amp; Durable Record</h3>
+    <label class="memory-toggle">
+      <input type="checkbox" id="consumeRecordsToggle" onchange="toggleConsumeRecords()" checked/>
+      <span>Ground in prior records</span>
+    </label>
+    <p class="memory-help">Before planning, agents scan committed <code>.workflow</code> records and inherit the relevant decisions, gotchas, and surface area. The read side of the durable record; a no-op on greenfield work.</p>
+    <div style="border-top:1px solid var(--border);margin:12px 0"></div>
     <label class="memory-toggle">
       <input type="checkbox" id="memoryToggle" onchange="toggleMemory()"/>
       <span>Enable workflow memory</span>
