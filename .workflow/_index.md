@@ -74,3 +74,10 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - intent: bake a soft, always-on orchestrator-level "Conventions" directive into generated workflows (prefer self-describing code over comments incl. tests; comment only for complex/why/project-convention; JSDoc for public APIs; when writing tests, match the project's existing test conventions; repo rules/CLAUDE.md override) + a reviewer line flagging narrating/redundant comments
 - files: index.html (new conventionsHint() emitted at the 4 prose generators + an unconditional SDK #-comment block, next to codeSearchHint; one PROMPTS.reviewer "comment the why, not the what" line), tests.html (+9 tests)
 - status: current | date: 2026-06-14
+
+## atlassian-mcp-fortification
+
+- record: .workflow/requirements-should-not-be-a-bare-uri.md
+- intent: per-step "## Requirements" no longer emits a bare ticket URL (which invited every step to re-fetch); a new requirementsBlock(story, heading) helper points steps at the orchestrator-resolved spec + keeps the URL as a labeled reference when isUrlOnly(story), and emits plain-text input unchanged. Reinforces the resolve-once ticket-fetch protocol at the per-step level.
+- files: index.html (requirementsBlock helper + the 4 multi-step generator Requirements sites routed through it; Refine/Plan single-agent prompts left as-is), tests.html (+12 tests)
+- status: current | date: 2026-06-14 | related: .workflow/atlassian-mcp-fortification.md (complements the orchestrator-side ticket-fetch; no supersession)

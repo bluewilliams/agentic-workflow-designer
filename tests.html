@@ -1806,6 +1806,43 @@ describe('Handoff bundle', () => {
   });
 });
 
+// ─── Per-step Requirements: resolved-spec pointer for URL-only input ───
+describe('Per-step Requirements: URL-only pointer vs plain text', () => {
+  const MARK = 'Work from the resolved spec in your brief';
+  const URL = 'https://myco.atlassian.net/browse/PROJ-321';
+  const REF = 'reference only, for a detail the brief did not carry): ' + URL;
+  const TEXT = 'Build a login feature with sessions';
+  const PROSE_URL = 'Add OAuth, see https://myco.atlassian.net/browse/PROJ-9 for AC';
+  const gens = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt'];
+
+  beforeEach(() => { resetState(); });
+
+  function run(gen, story) {
+    buildTestWorkflow('linear');
+    win.document.getElementById('storyInput').value = story;
+    return win[gen]();
+  }
+
+  gens.forEach((gen) => {
+    it(gen + ': URL-only story emits resolved-spec pointer + URL reference (not bare URL)', () => {
+      const out = run(gen, URL);
+      expect(out).toContain(MARK);
+      expect(out).toContain('PROJ-321');
+      expect(out).toContain(REF);
+    });
+    it(gen + ': plain-text story emits text unchanged, no pointer', () => {
+      const out = run(gen, TEXT);
+      expect(out).toContain(TEXT);
+      expect(out).toNotContain(MARK);
+    });
+    it(gen + ': prose+URL story emits text unchanged, no pointer (DECISION-1 guard)', () => {
+      const out = run(gen, PROSE_URL);
+      expect(out).toContain(PROSE_URL);
+      expect(out).toNotContain(MARK);
+    });
+  });
+});
+
 // ─── Suite 5: Export Generators ──────────────────────────
 describe('Export: genWorkflow', () => {
   beforeEach(() => { resetState(); });
