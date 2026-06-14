@@ -1228,6 +1228,12 @@ describe('Durable Record: protocol content', () => {
     const proto = win.genDurableRecordProtocol();
     expect(proto).toContain('provisional until the grounding');
   });
+  it('v2.8: the index protocol describes scaling (grep-not-load-whole, archive superseded, capability-shard)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('Scaling the index');
+    expect(proto).toContain('context cost tracks relevance');
+    expect(proto).toContain('_index_archive.md');
+  });
 });
 
 describe('Durable Record: exporter injection', () => {
@@ -1310,6 +1316,13 @@ describe('Consume prior records (read side)', () => {
     const h = win.consumeRecordsHint();
     expect(h).toContain('will modify or replace a behavior a current record defines');
     expect(h).toContain('plan to supersede it at finalize');
+  });
+  it('hint tells a large index to be grepped, not loaded whole, so context stays bounded', () => {
+    win.state.consumeRecords = true;
+    const h = win.consumeRecordsHint();
+    expect(h).toContain('If the index is large');
+    expect(h).toContain('context stays bounded');
+    expect(h).toNotContain('Durable Record');
   });
   it('hint is a no-op note for greenfield work, em-dash-free, provider-neutral', () => {
     win.state.consumeRecords = true;
