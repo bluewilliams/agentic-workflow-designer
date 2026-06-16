@@ -2321,6 +2321,37 @@ describe('Export: genAgentSDK', () => {
     const out = win.genAgentSDK();
     expect(out).toContain('SDK req text');
   });
+  it('emits the consumeRecords grounding banner when the toggle is on', () => {
+    buildTestWorkflow('linear');
+    win.state.consumeRecords = true;
+    const out = win.genAgentSDK();
+    expect(out).toContain('Ground in prior committed records (if any)');
+    expect(out).toContain('.workflow/_index.md');
+    expect(out).toContain('adds nothing to greenfield work');
+    expect(out).toNotContain('—'); // em dash
+    expect(out).toNotContain('–'); // en dash
+  });
+  it('omits the consumeRecords grounding banner when the toggle is off', () => {
+    buildTestWorkflow('linear');
+    win.state.consumeRecords = false;
+    const out = win.genAgentSDK();
+    expect(out).toNotContain('Ground in prior committed records (if any)');
+  });
+  it('uses a comment banner not the prose blockquote (no prose-hint leak)', () => {
+    buildTestWorkflow('linear');
+    win.state.consumeRecords = true;
+    const out = win.genAgentSDK();
+    expect(out).toNotContain('> **Ground in prior committed records (if any).**');
+  });
+  it('does not change the prose generators which use the blockquote hint not the SDK comment banner', () => {
+    buildTestWorkflow('linear');
+    win.state.consumeRecords = true;
+    const generators = [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genClaudePrompt()];
+    generators.forEach((out) => {
+      expect(out).toContain('Ground in prior committed records');
+      expect(out).toNotContain('# ── Ground in prior committed records (if any)');
+    });
+  });
 });
 
 describe('Export: genClaudePrompt', () => {
