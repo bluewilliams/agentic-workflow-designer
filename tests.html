@@ -1026,7 +1026,7 @@ describe('Durable Record: protocol content', () => {
     expect(proto).toNotContain('—'); // em dash
     expect(proto).toNotContain('–'); // en dash
     expect(proto).toContain('not em dashes or en dashes');
-    expect(proto).toContain('natural language a teammate');
+    expect(proto).toContain('natural language a colleague');
   });
   it('v2: has Surface area, Verify, Gotchas, omit-when-empty, and action-based ownership', () => {
     const proto = win.genDurableRecordProtocol();
@@ -1838,6 +1838,176 @@ describe('MCP toggle leak guard (off = no hint-body strings in any exporter)', (
     win.state.mcpDatadog = true;
     expect(win.genWorkflow()).toContain('production telemetry');
     expect(win.genWorkflow()).toContain('If a Datadog MCP server is connected');
+  });
+});
+
+// The orchestrator-identity prose ("the session you paste this into" / "the team lead" / etc.)
+// must match the chosen export format. Regression for: a Sub-Agents export that called the
+// orchestrator "the team lead", which read like it had become an Agent Teams workflow.
+describe('Orchestrator identity is format-aware', () => {
+  beforeEach(() => { resetState(); });
+
+  function bugfixWorkflow() {
+    resetState();
+    const input = win.addNode('input', 100, 200, 'Requirements');
+    const agent = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-4.6', tools:['Read','Grep'], prompt:'Investigate.', maxTurns:10 });
+    const output = win.addNode('output', 600, 200, 'Done', { deliverable:'Result', format:'code' });
+    win.addConnection(input.id, agent.id);
+    win.addConnection(agent.id, output.id);
+    win.state.consumeRecords = true;
+    win.state.memoryEnabled = true;
+    win.state.durableRecord = true;
+  }
+
+  it('orchestratorIdentity returns the right phrase for each of the five formats', () => {
+    expect(win.orchestratorIdentity('prompt')).toBe('the session you paste this into');
+    expect(win.orchestratorIdentity('subagent')).toBe('the session you paste this into');
+    expect(win.orchestratorIdentity('teams')).toBe('the team lead');
+    expect(win.orchestratorIdentity('sdk')).toBe('the SDK harness');
+    expect(win.orchestratorIdentity('claude')).toBe('the Claude.ai conversation you paste this into');
+  });
+
+  it('consumeRecordsHint names the format-appropriate orchestrator', () => {
+    win.state.consumeRecords = true;
+    expect(win.consumeRecordsHint('subagent')).toContain('the session you paste this into');
+    expect(win.consumeRecordsHint('subagent')).toNotContain('team lead');
+    expect(win.consumeRecordsHint('teams')).toContain('the team lead');
+  });
+
+  it('genDurableRecordProtocol names the format-appropriate orchestrator', () => {
+    expect(win.genDurableRecordProtocol('subagent')).toContain('the session you paste this into');
+    expect(win.genDurableRecordProtocol('subagent')).toNotContain('the team lead');
+    expect(win.genDurableRecordProtocol('teams')).toContain('the team lead');
+    expect(win.genDurableRecordProtocol('sdk')).toContain('the SDK harness');
+  });
+
+  it('Sub-Agents export never calls the orchestrator a team lead', () => {
+    bugfixWorkflow();
+    const out = win.genSubAgents();
+    expect(out).toNotContain('team lead');
+    expect(out).toContain('the session you paste this into');
+  });
+
+  it('Agent Teams export still calls the orchestrator the team lead (its own brief)', () => {
+    bugfixWorkflow();
+    expect(win.genAgentTeams()).toContain('team lead');
+  });
+
+  it('Claude.ai export uses the conversation phrasing, not team lead', () => {
+    bugfixWorkflow();
+    const out = win.genClaudePrompt();
+    expect(out).toNotContain('team lead');
+    expect(out).toContain('the Claude.ai conversation you paste this into');
+  });
+
+  // Independence from the memory/durable/consume toggles: no non-Teams format may ever say
+  // "team lead" under ANY combination of those toggles (the format tab drives the identity,
+  // not the toggles). Includes the consume-on/memory-off case, which renders the consume
+  // identity prose without the durable block.
+  it('no non-Teams format says "team lead" under any memory/durable/consume combination', () => {
+    function buildNodes() {
+      const input = win.addNode('input', 100, 200, 'Requirements');
+      const agent = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-4.6', tools:['Read','Grep'], prompt:'Investigate.', maxTurns:10 });
+      const output = win.addNode('output', 600, 200, 'Done', { deliverable:'Result', format:'code' });
+      win.addConnection(input.id, agent.id);
+      win.addConnection(agent.id, output.id);
+    }
+    const combos = [
+      { consumeRecords:false, memoryEnabled:false, durableRecord:false },
+      { consumeRecords:true,  memoryEnabled:false, durableRecord:false }, // consume prose, no durable block
+      { consumeRecords:false, memoryEnabled:true,  durableRecord:true  }, // durable block, no consume prose
+      { consumeRecords:true,  memoryEnabled:true,  durableRecord:true  }, // both
+    ];
+    const nonTeams = ['genWorkflow', 'genSubAgents', 'genClaudePrompt'];
+    combos.forEach(c => {
+      nonTeams.forEach(fn => {
+        resetState();
+        buildNodes();
+        win.state.consumeRecords = c.consumeRecords;
+        win.state.memoryEnabled = c.memoryEnabled;
+        win.state.durableRecord = c.durableRecord;
+        expect(win[fn]()).toNotContain('team lead');
+      });
+    });
+  });
+
+  // Anti-priming: the agent-teams FEATURE vocabulary must stay confined to the Agent Teams
+  // export. Leaking it into a Sub-Agents prompt can nudge the executor toward spinning up a
+  // team. With every gate on, no non-Teams format may contain any team-feature term.
+  it('agent-teams feature vocabulary never leaks into a non-Teams format', () => {
+    const TEAM_VOCAB = ['team lead', 'TeamCreate', 'team_name', 'teammate', 'coordinate teammates', 'shutdown_request'];
+    function buildNodes() {
+      const input = win.addNode('input', 100, 200, 'Requirements');
+      const agent = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-4.6', tools:['Read','Grep'], prompt:'Investigate.', maxTurns:10 });
+      const output = win.addNode('output', 600, 200, 'Done', { deliverable:'Result', format:'code' });
+      win.addConnection(input.id, agent.id);
+      win.addConnection(agent.id, output.id);
+    }
+    ['genWorkflow', 'genSubAgents', 'genClaudePrompt'].forEach(fn => {
+      resetState();
+      buildNodes();
+      win.state.consumeRecords = true;
+      win.state.memoryEnabled = true;
+      win.state.durableRecord = true;
+      const out = win[fn]();
+      TEAM_VOCAB.forEach(term => expect(out).toNotContain(term));
+    });
+    // Positive control: the Agent Teams export DOES use that vocabulary (it should).
+    resetState();
+    buildNodes();
+    expect(win.genAgentTeams()).toContain('TeamCreate');
+    expect(win.genAgentTeams()).toContain('teammate');
+  });
+});
+
+// Every generated prompt must declare its execution model early, so the runtime runs it as the
+// chosen format instead of inferring a different one. Additive to the existing format headers.
+describe('Execution-model directive is present and format-specific', () => {
+  beforeEach(() => { resetState(); });
+
+  function buildNodes() {
+    const input = win.addNode('input', 100, 200, 'Requirements');
+    const agent = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-4.6', tools:['Read','Grep'], prompt:'Investigate.', maxTurns:10 });
+    const output = win.addNode('output', 600, 200, 'Done', { deliverable:'Result', format:'code' });
+    win.addConnection(input.id, agent.id);
+    win.addConnection(agent.id, output.id);
+  }
+
+  it('executionModelDirective returns a distinct label for each of the five formats', () => {
+    expect(win.executionModelDirective('prompt')[0]).toBe('Execution model - single-session workflow');
+    expect(win.executionModelDirective('subagent')[0]).toBe('Execution model - sub-agent workflow');
+    expect(win.executionModelDirective('teams')[0]).toBe('Execution model - agent team');
+    expect(win.executionModelDirective('sdk')[0]).toBe('Execution model - programmatic SDK pipeline');
+    expect(win.executionModelDirective('claude')[0]).toBe('Execution model - single-conversation workflow');
+  });
+
+  it('each generator emits its own execution-model label', () => {
+    buildNodes();
+    expect(win.genWorkflow()).toContain('Execution model - single-session workflow');
+    expect(win.genSubAgents()).toContain('Execution model - sub-agent workflow');
+    expect(win.genAgentTeams()).toContain('Execution model - agent team');
+    expect(win.genAgentSDK()).toContain('Execution model - programmatic SDK pipeline');
+    expect(win.genClaudePrompt()).toContain('Execution model - single-conversation workflow');
+  });
+
+  it('the Sub-Agents directive forbids the team alternative', () => {
+    buildNodes();
+    const out = win.genSubAgents();
+    expect(out).toContain('Spawn each step as its own sub-agent');
+    expect(out).toContain('do not create a team');
+  });
+
+  it('the directive appears before the first agent step (early in the prompt)', () => {
+    buildNodes();
+    const out = win.genSubAgents();
+    expect(out.indexOf('Execution model -') < out.indexOf('Investigator')).toBe(true);
+  });
+
+  it('a generator never emits another format\'s execution-model label', () => {
+    buildNodes();
+    expect(win.genSubAgents()).toNotContain('Execution model - agent team');
+    expect(win.genSubAgents()).toNotContain('Execution model - single-session workflow');
+    expect(win.genWorkflow()).toNotContain('Execution model - sub-agent workflow');
   });
 });
 
@@ -5119,7 +5289,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

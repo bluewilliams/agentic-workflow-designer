@@ -1124,10 +1124,35 @@ function productDocsHint() {
 // breadcrumb, opens only matched records, and folds them into the plan. Gated by consumeRecords
 // (default on); self-gating at runtime - a no-op when no index exists. Avoids the exact string
 // "Durable Record" so it never collides with the durable-record gating in the exporters/tests.
-function consumeRecordsHint() {
+// The concrete identity of the orchestrator for the chosen export format, so prose that names
+// "who the orchestrator is" reads correctly in every format (no "team lead" in a Sub-Agents export,
+// etc.). Falls back to the active format when no explicit format is passed.
+function orchestratorIdentity(fmt) {
+  fmt = fmt || state.exportFormat;
+  if (fmt === 'teams') return 'the team lead';
+  if (fmt === 'sdk') return 'the SDK harness';
+  if (fmt === 'claude') return 'the Claude.ai conversation you paste this into';
+  return 'the session you paste this into'; // prompt (Workflow) and subagent (Sub-Agents)
+}
+// A short, always-present directive stating HOW this generated prompt must be executed, placed
+// early so the runtime sets the right model from the start instead of inferring it from later role
+// vocabulary (which is how a Sub-Agents prompt could get mis-run as a team). Keyed on the export
+// format; returns [label, body].
+function executionModelDirective(fmt) {
+  fmt = fmt || state.exportFormat;
+  const m = {
+    prompt: ['Execution model - single-session workflow', 'Run this entire workflow yourself in one session: adopt each role in turn and complete the steps in order. Launch parallel Task calls only where steps are explicitly marked parallel. Do not create a team.'],
+    subagent: ['Execution model - sub-agent workflow', 'Spawn each step as its own sub-agent with the Task tool, in sequence (launch steps marked parallel concurrently). Do not run every step yourself in one context, and do not create a team.'],
+    teams: ['Execution model - agent team', 'You are the team lead: create the team with TeamCreate, then delegate each step to a teammate via the Task tool with team_name. Coordinate the steps, review each output, and pass context explicitly between dependent steps.'],
+    sdk: ['Execution model - programmatic SDK pipeline', 'This is a Python orchestration skeleton on the Anthropic SDK; each step is an agent call in code, run by the program. Adapt it to your harness - it is not an interactive prompt to execute by hand.'],
+    claude: ['Execution model - single-conversation workflow', 'Complete this multi-step workflow yourself, step by step, in this conversation: you play each role in turn. Do not spawn sub-agents and do not create a team.']
+  };
+  return m[fmt] || m.prompt;
+}
+function consumeRecordsHint(fmt) {
   if (!state.consumeRecords) return null;
   const r = [];
-  r.push('> **Ground in prior committed records (if any).** The orchestrator (the top-level agent that drives this workflow and spawns its steps - the session you paste this into or the team lead, even when there is no named Planner step) does this once before the work begins, and folds what it finds into the brief it gives the steps so they inherit it without re-reading.');
+  r.push('> **Ground in prior committed records (if any).** The orchestrator (the top-level agent that drives this workflow and spawns its steps - ' + orchestratorIdentity(fmt) + ', even when there is no named Planner step) does this once before the work begins, and folds what it finds into the brief it gives the steps so they inherit it without re-reading.');
   r.push('> - If a record index exists at `.workflow/_index.md` in a repository in scope, scan it first (a cheap one-line-per-record breadcrumb). Match entries by the files and capability your change touches; prefer entries marked `status: current`. If the index is large, do NOT read it whole - `Grep` it for the file names, symbols, and capability slug your change touches and read only the matching entries, so your context stays bounded no matter how many entries the index holds. Then open ONLY the matched records and carry their decisions, gotchas, surface-area map, and requirements into your plan.');
   r.push('> - Do not read every record, and do not follow a record\'s cross-repository `siblings` link unless a matched entry shows a real dependency on that repository - never follow links transitively.');
   r.push('> - If your change will modify or replace a behavior a current record defines, reconcile your plan against that record and plan to supersede it at finalize (set `supersedes` on the new entry and flip the old entry to `superseded`).');
@@ -2663,7 +2688,7 @@ const tempLayer = () => $('tempLayer');
 // Durable Record protocol - a workflow-level, human-readable artifact that is the
 // resumable handoff doc while work is in progress and the committable record when
 // it is done. Distinct from the ephemeral memory. Provider-neutral.
-function genDurableRecordProtocol() {
+function genDurableRecordProtocol(fmt) {
   const apath = getArtifactPath();
   const wfName = getName() || 'workflow';
   const p = [];
@@ -2700,9 +2725,9 @@ function genDurableRecordProtocol() {
   p.push('- Do not copy the full original workflow prompt in here; reference the workflow by name. Re-running it (or handing this record to a fresh agent with "continue from Current state") is what resumes the work.');
   p.push('');
   p.push('### How to maintain it');
-  p.push('- Write it in plain, natural language a teammate would actually use: concise and concrete, no filler or marketing tone. Use hyphens, not em dashes or en dashes. It is read by both humans and agents maintaining the project later, so favor clarity over polish.');
+  p.push('- Write it in plain, natural language a colleague would actually use: concise and concrete, no filler or marketing tone. Use hyphens, not em dashes or en dashes. It is read by both humans and agents maintaining the project later, so favor clarity over polish.');
   p.push('- ANY agent in this workflow may amend the record - update the sections your step actually touched, by action not by role (this keeps it working for any workflow shape): defined or refined a behavior the system must guarantee -> Requirements (write its Given/When/Then scenarios, and once tests exist name the verifying test on each scenario); stated a measurable outcome -> Success criteria; validated the spec before building or at completion -> Spec quality check; made a decision -> Approach and decisions (record the rejected alternative and why); created or changed files -> Surface area; ran a build or tests -> Verify (record the real result); identified a forward-looking risk or trade-off -> Risks; hit a non-obvious edge or contract -> Gotchas; discovered new work -> add to the Task checklist; you are the last or synthesizing agent -> write the Outcome, write or update this record\'s entry in the `.workflow/_index.md` breadcrumb index (see Durable Record Index), and remove the in-progress scaffolding.');
-  p.push('- The ORCHESTRATOR owns the record. The orchestrator is the top-level agent that drives this workflow and spawns its steps - the session you paste this into, the team lead, or the SDK harness - and it exists even when there is no named Planner step (for example a bug-fix workflow of Investigator -> Fixer -> Tester). It creates the record at kickoff, runs any up-front gates (clarify, grounding) before the first step, folds each step\'s findings in as they report back, and finalizes the record at the end. Individual steps amend the sections their own work touches.');
+  p.push('- The ORCHESTRATOR owns the record. The orchestrator is the top-level agent that drives this workflow and spawns its steps - ' + orchestratorIdentity(fmt) + ' - and it exists even when there is no named Planner step (for example a bug-fix workflow of Investigator -> Fixer -> Tester). It creates the record at kickoff, runs any up-front gates (clarify, grounding) before the first step, folds each step\'s findings in as they report back, and finalizes the record at the end. Individual steps amend the sections their own work touches.');
   p.push('- For parallel steps: fan-out agents write findings to the ephemeral memory, NOT to this record, to avoid write races on the shared document; the agent that joins or synthesizes folds the relevant findings into this record.');
   p.push('- Create it at kickoff with the H1 title, the Why and scope, the initial Requirements and Success criteria drawn from the work item (requirement scenarios filled in as the spec is understood; verifying-test names added once tests are written), the initial checklist, and the Built-with provenance line (the workflow name and its agent roles are known up front). Run the Spec quality check before implementation begins.');
   p.push('- Keep the minute-to-minute step progress (which agent/step is currently running) in the Current state / next-action scaffolding, NOT in the Built-with line or the Task checklist - it is transient and is removed on commit, whereas the Built-with provenance is durable and stays.');
@@ -5824,6 +5849,7 @@ function genWorkflow() {
 
   p.push('## AI Agent Workflow' + (name ? ': ' + name : ''));
   p.push('');
+  const _wfEm = executionModelDirective('prompt'); p.push('> **' + _wfEm[0] + '.** ' + _wfEm[1]); p.push('');
   requirementsBlock(story, '### Requirements').forEach(l => p.push(l));
   const _wfPlan = getPlan();
   if (_wfPlan) { p.push('### Implementation Plan (starting guidance - adapt based on findings)'); p.push(''); p.push('The following plan provides codebase-specific context from an initial analysis. Use it as a starting point, not a rigid constraint. If your research reveals better approaches, contradictory patterns, or additional considerations, update the approach accordingly and note what changed and why.'); p.push(''); p.push(_wfPlan); p.push(''); }
@@ -5843,7 +5869,7 @@ function genWorkflow() {
   if (_wfRu) { p.push(_wfRu); p.push(''); }
   const _wfPd = productDocsHint();
   if (_wfPd) { p.push(_wfPd); p.push(''); }
-  const _wfCr = consumeRecordsHint();
+  const _wfCr = consumeRecordsHint('prompt');
   if (_wfCr) { p.push(_wfCr); p.push(''); }
   const _wfCl = clarifyFirstHint();
   if (_wfCl) { p.push(_wfCl); p.push(''); }
@@ -5967,7 +5993,7 @@ function genWorkflow() {
     p.push(genMemoryProtocol());
     if (state.durableRecord) {
       p.push('');
-      p.push(genDurableRecordProtocol());
+      p.push(genDurableRecordProtocol('prompt'));
     }
   }
 
@@ -5991,6 +6017,7 @@ function genSubAgents() {
   p.push('> Sequential steps wait for the previous to complete before starting.');
   p.push('> Parallel steps should be launched concurrently.');
   p.push('');
+  const _saEm = executionModelDirective('subagent'); p.push('> **' + _saEm[0] + '.** ' + _saEm[1]); p.push('');
 
   if (story) {
     p.push('## Context');
@@ -6019,7 +6046,7 @@ function genSubAgents() {
   if (_saRu) { p.push(_saRu); p.push(''); }
   const _saPd = productDocsHint();
   if (_saPd) { p.push(_saPd); p.push(''); }
-  const _saCr = consumeRecordsHint();
+  const _saCr = consumeRecordsHint('subagent');
   if (_saCr) { p.push(_saCr); p.push(''); }
   const _saCl = clarifyFirstHint();
   if (_saCl) { p.push(_saCl); p.push(''); }
@@ -6043,7 +6070,7 @@ function genSubAgents() {
     p.push('**If an agent fails to write to memory files, their progress will be permanently lost on compaction.**');
     p.push('');
     if (state.durableRecord) {
-      p.push(genDurableRecordProtocol());
+      p.push(genDurableRecordProtocol('subagent'));
       p.push('');
     }
   }
@@ -6245,6 +6272,7 @@ function genAgentTeams() {
   p.push('> Enable with: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1');
   p.push('> Paste this prompt to the lead agent to orchestrate your team.');
   p.push('');
+  const _atEm = executionModelDirective('teams'); p.push('> **' + _atEm[0] + '.** ' + _atEm[1]); p.push('');
 
   p.push('## Your Role');
   p.push('');
@@ -6280,7 +6308,7 @@ function genAgentTeams() {
   if (_atRu) { p.push(_atRu); p.push(''); }
   const _atPd = productDocsHint();
   if (_atPd) { p.push(_atPd); p.push(''); }
-  const _atCr = consumeRecordsHint();
+  const _atCr = consumeRecordsHint('teams');
   if (_atCr) { p.push(_atCr); p.push(''); }
   const _atCl = clarifyFirstHint();
   if (_atCl) { p.push(_atCl); p.push(''); }
@@ -6445,7 +6473,7 @@ function genAgentTeams() {
     p.push(genMemoryProtocol());
     if (state.durableRecord) {
       p.push('');
-      p.push(genDurableRecordProtocol());
+      p.push(genDurableRecordProtocol('teams'));
     }
   }
 
@@ -6470,6 +6498,9 @@ function genAgentSDK() {
   p.push('');
   p.push('Generated by AI Agent Workflow Designer');
   p.push('Structural skeleton - adapt to your orchestration library.');
+  const _sdkEm = executionModelDirective('sdk');
+  p.push('');
+  p.push(_sdkEm[0] + ': ' + _sdkEm[1]);
   p.push('Anthropic Python SDK: pip install anthropic');
   p.push('Docs: https://docs.anthropic.com/en/api/overview');
   p.push('"""');
@@ -6740,6 +6771,7 @@ function genClaudePrompt() {
   p.push('3. Present your output clearly before moving to the next step');
   p.push('4. At decision checkpoints, evaluate your work against the criteria before continuing');
   p.push('');
+  const _cpEm = executionModelDirective('claude'); p.push('> **' + _cpEm[0] + '.** ' + _cpEm[1]); p.push('');
 
   requirementsBlock(story, '## Requirements').forEach(l => p.push(l));
   const _cpPlan = getPlan();
@@ -6767,7 +6799,7 @@ function genClaudePrompt() {
   if (_cpRu) { p.push(_cpRu); p.push(''); }
   const _cpPd = productDocsHint();
   if (_cpPd) { p.push(_cpPd); p.push(''); }
-  const _cpCr = consumeRecordsHint();
+  const _cpCr = consumeRecordsHint('claude');
   if (_cpCr) { p.push(_cpCr); p.push(''); }
   const _cpCl = clarifyFirstHint();
   if (_cpCl) { p.push(_cpCl); p.push(''); }
@@ -6909,7 +6941,7 @@ function genClaudePrompt() {
     p.push(genSingleAgentMemoryProtocol());
     if (state.durableRecord) {
       p.push('');
-      p.push(genDurableRecordProtocol());
+      p.push(genDurableRecordProtocol('claude'));
     }
   }
 
