@@ -1669,6 +1669,178 @@ describe('Datadog step escalation', () => {
   });
 });
 
+// ─── Code search step awareness (per-agent self-gating hint for code-search-relevant roles) ───
+describe('Code search step awareness', () => {
+  beforeEach(() => { resetState(); });
+
+  // Substring UNIQUE to the step hint (the standing codeSearchHint also contains "Code search (MCP)").
+  const MARK = 'Code search (MCP) is available. A code-search MCP (for example Sourcebot)';
+
+  // The 8 roles in CODE_SEARCH_STEP_ROLES.
+  const STEP_ROLES = ['planner', 'architect', 'researcher', 'debugger', 'coder', 'backend', 'frontend', 'general'];
+
+  // Build a minimal input -> agent -> output workflow with a single agent node of the given config.
+  function workflowWith(agentLabel, agentConfig) {
+    resetState();
+    const input = win.addNode('input', 100, 200, 'Requirements');
+    const agent = win.addNode('agent', 350, 200, agentLabel, agentConfig);
+    const output = win.addNode('output', 600, 200, 'Done', { deliverable: 'Result', format: 'code' });
+    win.addConnection(input.id, agent.id);
+    win.addConnection(agent.id, output.id);
+    return agent;
+  }
+
+  it('C1 in-scope role, toggle on: helper returns the mark for researcher and coder', () => {
+    win.state.mcpCodeSearch = true;
+    expect(win.codeSearchStepHint({ config: { agentType: 'researcher' } })).toContain(MARK);
+    expect(win.codeSearchStepHint({ config: { agentType: 'coder' } })).toContain(MARK);
+  });
+
+  it('C1 in-scope role, toggle on: mark present in all four injecting exporters', () => {
+    workflowWith('Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    win.state.mcpCodeSearch = true;
+    expect(win.genWorkflow()).toContain(MARK);
+    expect(win.genSubAgents()).toContain(MARK);
+    expect(win.genAgentTeams()).toContain(MARK);
+    expect(win.genClaudePrompt()).toContain(MARK);
+  });
+
+  it('C2 all 8 roles in CODE_SEARCH_STEP_ROLES receive a non-empty hint containing the mark', () => {
+    win.state.mcpCodeSearch = true;
+    STEP_ROLES.forEach(role => {
+      const h = win.codeSearchStepHint({ config: { agentType: role } });
+      expect(typeof h).toBe('string');
+      expect(h.length > 0).toBe(true);
+      expect(h).toContain(MARK);
+    });
+  });
+
+  it('C3 toggle off: helper returns empty for an in-scope role', () => {
+    win.state.mcpCodeSearch = false;
+    expect(win.codeSearchStepHint({ config: { agentType: 'researcher' } })).toBe('');
+  });
+
+  it('C3 toggle off: mark absent from all four exporters', () => {
+    workflowWith('Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    win.state.mcpCodeSearch = false;
+    expect(win.genWorkflow()).toNotContain(MARK);
+    expect(win.genSubAgents()).toNotContain(MARK);
+    expect(win.genAgentTeams()).toNotContain(MARK);
+    expect(win.genClaudePrompt()).toNotContain(MARK);
+  });
+
+  it('C4 out-of-scope role, toggle on: reviewer and tester return empty', () => {
+    win.state.mcpCodeSearch = true;
+    expect(win.codeSearchStepHint({ config: { agentType: 'reviewer' } })).toBe('');
+    expect(win.codeSearchStepHint({ config: { agentType: 'tester' } })).toBe('');
+  });
+
+  it('C4 out-of-scope role, toggle on: mark absent from a reviewer node step text', () => {
+    workflowWith('Reviewer', { agentType:'reviewer', model:'opus-4.6', tools:['Read','Grep'], prompt:'Review it.', maxTurns:5 });
+    win.state.mcpCodeSearch = true;
+    expect(win.genWorkflow()).toNotContain(MARK);
+    expect(win.genSubAgents()).toNotContain(MARK);
+    expect(win.genAgentTeams()).toNotContain(MARK);
+    expect(win.genClaudePrompt()).toNotContain(MARK);
+  });
+
+  it('C5 SDK exporter is excluded even when toggle is on', () => {
+    workflowWith('Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    win.state.mcpCodeSearch = true;
+    expect(win.genAgentSDK()).toNotContain(MARK);
+  });
+
+  it('C6 additive guard: in-scope planner keeps its template Glob/Grep/LSP steps in BOTH toggle states', () => {
+    workflowWith('Planner', { agentType:'planner', model:'opus-4.6', tools:['Read','Grep'], prompt:win.PROMPTS.planner, maxTurns:5 });
+    // Toggle ON: template steps present AND the hint is added.
+    win.state.mcpCodeSearch = true;
+    const on = win.genWorkflow();
+    expect(on).toContain('Use `Grep`');
+    expect(on).toContain('LSP workspaceSymbol');
+    expect(on).toContain(MARK);
+    // Toggle OFF: template steps still present, hint gone.
+    win.state.mcpCodeSearch = false;
+    const off = win.genWorkflow();
+    expect(off).toContain('Use `Grep`');
+    expect(off).toContain('LSP workspaceSymbol');
+    expect(off).toNotContain(MARK);
+  });
+
+  it('C7 wording: hint is awareness-not-preference and uses hyphens only (no em/en dash, no precedence/prefer)', () => {
+    win.state.mcpCodeSearch = true;
+    const h = win.codeSearchStepHint({ config: { agentType: 'researcher' } });
+    expect(h).toNotContain('—');
+    expect(h).toNotContain('–');
+    expect(h).toNotContain('precedence');
+    expect(h).toNotContain('prefer');
+    expect(h).toNotContain('preferred');
+  });
+
+  it('C8 display unaffected: classifyAgentPrompt text omits the hint even when toggle is on', () => {
+    const node = win.addNode('agent', 350, 200, 'Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    win.state.mcpCodeSearch = true;
+    expect(win.classifyAgentPrompt(node).text).toNotContain(MARK);
+  });
+});
+
+// Guards the "I unchecked the box but still see the feature" confusion: when an MCP
+// toggle is OFF, NONE of its hint-body strings may appear in ANY exporter. We assert on
+// strings unique to the hint BODY (not the generic feature name), because the generic
+// name can legitimately appear via the workflow's own title in the memory breadcrumb and
+// file paths - that is name-derived, not a hint leak.
+describe('MCP toggle leak guard (off = no hint-body strings in any exporter)', () => {
+  beforeEach(() => { resetState(); });
+
+  const EXPORTERS = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genAgentSDK', 'genClaudePrompt'];
+
+  // Neutral workflow: a planner agent (in both CODE_SEARCH and DATADOG role sets) so the
+  // per-agent hints would fire if not gated. The title is generic, so no feature word can
+  // leak through a name-derived breadcrumb.
+  function neutralWorkflow() {
+    resetState();
+    const input = win.addNode('input', 100, 200, 'Requirements');
+    const agent = win.addNode('agent', 350, 200, 'Builder', { agentType:'planner', model:'opus-4.6', tools:['Read','Grep','LSP'], prompt:'Build it.', maxTurns:5 });
+    const output = win.addNode('output', 600, 200, 'Done', { deliverable:'Result', format:'code' });
+    win.addConnection(input.id, agent.id);
+    win.addConnection(agent.id, output.id);
+  }
+  function allOutputs() { return EXPORTERS.map(fn => win[fn]()); }
+
+  // Hint-body strings unique to each feature (would never appear in a workflow title).
+  const CODE_SEARCH_STRINGS = ['Sourcebot', 'Code search (MCP) is available', 'cross-repo code search'];
+  const DATADOG_STRINGS = ['production telemetry', 'If a Datadog MCP server is connected', 'Datadog MCP server is connected'];
+
+  it('code search OFF: no code-search hint-body string in any of the five exporters', () => {
+    neutralWorkflow();
+    win.state.mcpCodeSearch = false;
+    allOutputs().forEach(out => {
+      CODE_SEARCH_STRINGS.forEach(s => expect(out).toNotContain(s));
+    });
+  });
+
+  it('code search ON: hint body is present (positive control - proves the OFF check is meaningful)', () => {
+    neutralWorkflow();
+    win.state.mcpCodeSearch = true;
+    expect(win.genWorkflow()).toContain('Sourcebot');
+    expect(win.genWorkflow()).toContain('Code search (MCP) is available');
+  });
+
+  it('datadog OFF: no datadog hint-body string in any of the five exporters', () => {
+    neutralWorkflow();
+    win.state.mcpDatadog = false;
+    allOutputs().forEach(out => {
+      DATADOG_STRINGS.forEach(s => expect(out).toNotContain(s));
+    });
+  });
+
+  it('datadog ON: hint body is present (positive control - proves the OFF check is meaningful)', () => {
+    neutralWorkflow();
+    win.state.mcpDatadog = true;
+    expect(win.genWorkflow()).toContain('production telemetry');
+    expect(win.genWorkflow()).toContain('If a Datadog MCP server is connected');
+  });
+});
+
 describe('Durable Record: persistence', () => {
   beforeEach(() => { resetState(); });
 
@@ -2977,7 +3149,7 @@ describe('MCP Integrations', () => {
       expect(hint).toNotContain('Sourcebot server is available');
       expect(hint).toNotContain('A Sourcebot MCP server is available');
     });
-    it('should describe a discover/browse/search/read flow with a Glob/Grep/LSP fallback', () => {
+    it('should describe a discover/browse/search/read flow and frame Glob/Grep/LSP as complementary, not a fallback', () => {
       win.state.mcpCodeSearch = true;
       const hint = win.codeSearchHint();
       expect(hint).toContain('discover');
@@ -2987,6 +3159,10 @@ describe('MCP Integrations', () => {
       expect(hint).toContain('Glob');
       expect(hint).toContain('Grep');
       expect(hint).toContain('LSP');
+      // Glob/Grep/LSP are complementary to code search, not a second-string fallback
+      expect(hint).toContain('alongside');
+      expect(hint).toContain('in addition to code search');
+      expect(hint).toNotContain('Fallback when no');
       // hyphens only - no em or en dashes
       expect(hint).toNotContain('—');
       expect(hint).toNotContain('–');
@@ -4943,7 +5119,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
