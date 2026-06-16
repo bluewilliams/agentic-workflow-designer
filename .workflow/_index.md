@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## orchestrator-identity
+
+- record: .workflow/orchestrator-identity-format-aware.md
+- intent: make a generated prompt unambiguous about its format so it is not mis-run (e.g. Sub-Agents as Agent Teams) - orchestratorIdentity(fmt) tracks the format in the identity prose (threaded into consumeRecordsHint + genDurableRecordProtocol), plus an always-on executionModelDirective(fmt) injected early in all five generators that names the run model and forbids the wrong alternatives; also softened a colloquial "teammate" to "colleague" in the durable-record protocol
+- files: index.html (orchestratorIdentity + executionModelDirective + consumeRecordsHint(fmt) + genDurableRecordProtocol(fmt) + 8 threaded call sites + 5 directive injection sites), tests.html (export parity + "Orchestrator identity is format-aware" + "Execution-model directive" suites)
+- status: current | date: 2026-06-16
+
 ## code-search-mcp-option
 
 - record: .workflow/code-search-mcp-awareness-in-agent-role-prompts.md
