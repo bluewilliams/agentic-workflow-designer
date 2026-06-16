@@ -1068,7 +1068,7 @@ function atlassianGeneralHint() {
 }
 function codeSearchHint() {
   if (!state.mcpCodeSearch) return null;
-  return '> **Code search (MCP)** (cross-repo code search): If a code-search MCP server is connected (for example Sourcebot, Sourcegraph, or Kilo Code - any one of these works, and none is required), use it to explore the codebase across repositories. These servers typically expose tools to discover repos, browse directory trees, search code, and read files; exact tool names vary by server, so inspect the tools you actually have.\n>\n> **Recommended flow**: discover (list the available repositories) -> browse (walk the directory tree to understand layout) -> search (query for implementations, patterns, and call sites) -> read (open the matching files in full). Many servers also offer natural-language Q&A across repos for complex multi-step questions.\n>\n> **Fallback when no code-search MCP is available**: use the built-in `Glob` and `Grep` tools to find files and match patterns, and an `LSP` (language server) for go-to-definition and find-references. Combine `Glob`/`Grep` for discovery and `LSP` for precise symbol navigation.';
+  return '> **Code search (MCP)** (cross-repo code search): If a code-search MCP server is connected (for example Sourcebot, Sourcegraph, or Kilo Code - any one of these works, and none is required), use it to explore the codebase across repositories - it is especially helpful for the seams between systems (API contracts, shared schemas, and producer/consumer pairs that span repos and are hard to see with single-repo Grep or LSP). These servers typically expose tools to discover repos, browse directory trees, search code, and read files; exact tool names vary by server, so inspect the tools you actually have.\n>\n> **Recommended flow**: discover (list the available repositories) -> browse (walk the directory tree to understand layout) -> search (query for implementations, patterns, and call sites) -> read (open the matching files in full). Many servers also offer natural-language Q&A across repos for complex multi-step questions.\n>\n> **Use it alongside Glob, Grep, and LSP, not instead of them**: the built-in `Glob` and `Grep` (find files, match patterns) and an `LSP` language server (go-to-definition, find-references, precise symbol navigation) stay valuable in addition to code search - reach for whichever fits, and combine them, for example code search to locate a cross-repo call site and `LSP` to navigate it precisely. If no code-search MCP is connected, `Glob`/`Grep` plus `LSP` cover discovery and navigation on their own.';
 }
 function conventionsHint() {
   const r = [];
@@ -1172,6 +1172,17 @@ function datadogStepHint(node) {
   if (!state.mcpDatadog) return '';
   if (!node || !node.config || !DATADOG_STEP_ROLES.has(node.config.agentType)) return '';
   return 'If a Datadog MCP server is connected and your task could be informed by production data (telemetry, dashboards, SLOs, dependencies, deploy history, or other operational signals), prefer what the orchestrator already folded into your brief over re-running the same query for information you already have. You may still run your own deeper or differently-angled Datadog query when you judge it could surface something the orchestrator\'s bounded read did not. Skip this if Datadog is unavailable or your task does not need it.';
+}
+
+// Per-agent code-search hint for the explore-the-codebase roles. Generation-only:
+// injected at the per-agent emission sites, NEVER in getEffectivePrompt (which also
+// drives the node-config display). Toggle is the single source of truth for code-search
+// guidance - no code-search text is hardcoded in any agent template. Returns '' when not applicable.
+const CODE_SEARCH_STEP_ROLES = new Set(['planner', 'architect', 'researcher', 'debugger', 'coder', 'backend', 'frontend', 'general']);
+function codeSearchStepHint(node) {
+  if (!state.mcpCodeSearch) return '';
+  if (!node || !node.config || !CODE_SEARCH_STEP_ROLES.has(node.config.agentType)) return '';
+  return 'Code search (MCP) is available. A code-search MCP (for example Sourcebot) is connected to this workflow. In addition to Glob, Grep, and LSP, you can use it to search across repositories at once - especially helpful for understanding the seams between systems: API contracts, shared schemas, and producer/consumer pairs that span repos and are hard to see with single-repo Grep or LSP. Reach for whichever technique fits the question.';
 }
 
 // Maps agentType to a PROMPTS key for fallback when user leaves prompt blank
@@ -4520,7 +4531,7 @@ function generateRefinePrompt() {
 
   // Code-search hint - mention cross-repo search for context gathering
   if (state.mcpCodeSearch) {
-    lines.push('> **Code search (MCP)**: If a cross-repo code-search server is connected (for example Sourcebot, Sourcegraph, or Kilo Code - any one works, none required), use it to discover repos, browse trees, search code, and read files so you can inform your questions about integration points, existing patterns, and architectural constraints. If no such MCP is available, fall back to the built-in `Glob`/`Grep` tools and an `LSP` for symbol navigation.');
+    lines.push('> **Code search (MCP)**: If a cross-repo code-search server is connected (for example Sourcebot, Sourcegraph, or Kilo Code - any one works, none required), use it to discover repos, browse trees, search code, and read files so you can inform your questions about integration points, existing patterns, and architectural constraints. Use it alongside the built-in `Glob`/`Grep` tools and an `LSP` for symbol navigation, not instead of them - combine whichever fit; if no such MCP is connected, `Glob`/`Grep` plus `LSP` cover this on their own.');
     lines.push('');
   }
 
@@ -4627,7 +4638,7 @@ function generatePlanPrompt() {
     lines.push('');
     lines.push('Many servers also offer natural-language Q&A across repos for complex multi-step questions.');
     lines.push('');
-    lines.push('Fallback when no code-search MCP is available: use the built-in `Glob` and `Grep` tools for discovery and an `LSP` (language server) for go-to-definition and find-references.');
+    lines.push('Use it alongside the built-in `Glob` and `Grep` tools and an `LSP` (language server, for go-to-definition and find-references), not instead of them - combine whichever fit the question; if no code-search MCP is connected, `Glob`/`Grep` plus `LSP` cover discovery and navigation on their own.');
     lines.push('');
     lines.push('Explore the codebase thoroughly before writing the plan. The plan should reference real file paths, real patterns, and real architectural decisions from the codebase.');
     lines.push('');
@@ -5873,6 +5884,7 @@ function genWorkflow() {
           if (s.config.tools.length > 0) p.push(`  - Tools: ${s.config.tools.join(', ')}`);
           p.push(`  - Instructions: ${getEffectivePrompt(s)}`);
           const _ddS = datadogStepHint(s); if (_ddS) p.push('  ' + _ddS);
+          const _csS = codeSearchStepHint(s); if (_csS) p.push('  ' + _csS);
           if (s.config.notes && s.config.notes.trim()) p.push(`  - Context: ${s.config.notes.trim()}`);
           p.push('');
         });
@@ -5885,6 +5897,7 @@ function genWorkflow() {
         if (node.config.tools.length > 0) p.push(`- Tools: ${node.config.tools.join(', ')}`);
         p.push(`- Instructions: ${getEffectivePrompt(node)}`);
         const _ddN = datadogStepHint(node); if (_ddN) p.push('- ' + _ddN);
+        const _csN = codeSearchStepHint(node); if (_csN) p.push('- ' + _csN);
         if (node.config.notes && node.config.notes.trim()) p.push(`- Additional context: ${node.config.notes.trim()}`);
         if (node.config.maxTurns) p.push(`- Max turns: ${node.config.maxTurns}`);
         if (deps.length > 0) p.push(`- Depends on: ${deps.join(', ')}`);
@@ -6075,6 +6088,7 @@ function genSubAgents() {
     promptLines.push('## Your Task');
     promptLines.push(getEffectivePrompt(node));
     const _ddSa = datadogStepHint(node); if (_ddSa) { promptLines.push(''); promptLines.push(_ddSa); }
+    const _csSa = codeSearchStepHint(node); if (_csSa) { promptLines.push(''); promptLines.push(_csSa); }
     promptLines.push('');
 
     if (node.config.notes && node.config.notes.trim()) {
@@ -6316,6 +6330,7 @@ function genAgentTeams() {
     lines.push('');
     effectivePrompt.split('\n').forEach(line => lines.push(`${pre}  ${line}`));
     const _ddAt = datadogStepHint(node); if (_ddAt) lines.push(`${pre}  ${_ddAt}`);
+    const _csAt = codeSearchStepHint(node); if (_csAt) lines.push(`${pre}  ${_csAt}`);
     lines.push('');
 
     if (node.config.notes && node.config.notes.trim()) {
@@ -6502,7 +6517,9 @@ function genAgentSDK() {
     p.push('# If a code-search MCP is connected (e.g. Sourcebot, Sourcegraph, Kilo Code - any');
     p.push('# one works, none required), use it. Flow: discover repos -> browse trees ->');
     p.push('# search code -> read files. Many servers also offer NL Q&A across repos.');
-    p.push('# Fallback if none: built-in Glob/Grep for discovery, LSP for symbol navigation.');
+    p.push('# Use it alongside built-in Glob/Grep (discovery) and LSP (symbol navigation),');
+    p.push('# not instead of them - combine whichever fit; if none is connected, Glob/Grep');
+    p.push('# plus LSP cover discovery and navigation on their own.');
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
@@ -6792,6 +6809,7 @@ function genClaudePrompt() {
           p.push('');
           p.push(getEffectivePrompt(s));
           const _ddCpS = datadogStepHint(s); if (_ddCpS) p.push(_ddCpS);
+          const _csCpS = codeSearchStepHint(s); if (_csCpS) p.push(_csCpS);
           p.push('');
           if (s.config.notes && s.config.notes.trim()) {
             p.push(`Additional context: ${s.config.notes.trim()}`);
@@ -6817,6 +6835,7 @@ function genClaudePrompt() {
         p.push('');
         p.push(getEffectivePrompt(node));
         const _ddCpN = datadogStepHint(node); if (_ddCpN) p.push(_ddCpN);
+        const _csCpN = codeSearchStepHint(node); if (_csCpN) p.push(_csCpN);
         p.push('');
         if (node.config.notes && node.config.notes.trim()) {
           p.push(`**Additional context**: ${node.config.notes.trim()}`);

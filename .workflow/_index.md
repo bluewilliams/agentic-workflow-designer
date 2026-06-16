@@ -4,6 +4,11 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 ## code-search-mcp-option
 
+- record: .workflow/code-search-mcp-awareness-in-agent-role-prompts.md
+- intent: per-agent code-search-MCP awareness (gated codeSearchStepHint mirroring datadogStepHint) injected into 8 planning/implementing/navigating roles at the six datadog sites; plus a complementary-not-fallback reframe of the four code-search blocks (standing/Refine/Plan/SDK banner)
+- files: index.html (CODE_SEARCH_STEP_ROLES + codeSearchStepHint + six injection sites + codeSearchHint clause + Refine/Plan/SDK-banner reframe), tests.html (export parity + "Code search step awareness" suite + tightened codeSearchHint test)
+- status: current | builds-on: .workflow/make-sourcebot-option-general-and-called-code-search-mcp.md | date: 2026-06-15
+
 - record: .workflow/make-sourcebot-option-general-and-called-code-search-mcp.md
 - intent: generalize the single "Sourcebot" toggle into a tool-agnostic "Code search (MCP)" option (UI label, injected hint, exporters, docs)
 - files: index.html (codeSearchHint + mcpCodeSearch toggle wiring + the four exporter injection sites + two inline hint blocks + SDK comment banner), tests.html, README.md, TECHNICAL.md
