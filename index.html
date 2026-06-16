@@ -6554,6 +6554,19 @@ function genAgentSDK() {
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
+  if (state.consumeRecords) {
+    p.push('# ── Ground in prior committed records (if any) ───────────────────────────────');
+    p.push('# Before the first step, the orchestrator grounds in prior committed records and');
+    p.push('# folds what it finds into the brief it hands the steps. If a record index exists');
+    p.push('# at .workflow/_index.md in a repo in scope, scan it first (one line per record),');
+    p.push('# match entries by the files and capability this change touches, and prefer those');
+    p.push('# marked status: current. Open ONLY the matched records - do not read them all -');
+    p.push('# and carry their decisions, gotchas, surface-area map, and requirements into the');
+    p.push('# plan. If no index exists or nothing matches, this is a no-op - proceed normally');
+    p.push('# (it adds nothing to greenfield work).');
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
   p.push('# ── Conventions ─────────────────────────────────────────────');
   p.push('# Prefer self-describing code over comments - in tests as much as in production');
   p.push('# code. Comment only for genuinely complex logic, a non-obvious why, or where the');

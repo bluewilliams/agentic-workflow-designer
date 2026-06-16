@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## consume-prior-records
+
+- record: .workflow/agent-sdk-ground-in-prior-records-gap.md
+- intent: give genAgentSDK the consume-records (ground-in-prior-records) guidance it lacked - a gated inline Python-comment banner mirroring the SDK's existing mcpAtlassian/mcpCodeSearch blocks; closes the read/write asymmetry the toggle-wiring audit surfaced (SDK wrote records but never grounded in them)
+- files: index.html (genAgentSDK consumeRecords banner ~6557-6568), tests.html ("Export: genAgentSDK" suite +4)
+- status: current | date: 2026-06-16 | note: surfaced by the toggle-wiring audit; other SDK gaps (clarifyFirst, Datadog, per-step code-search) remain
+
 ## orchestrator-identity
 
 - record: .workflow/orchestrator-identity-format-aware.md
