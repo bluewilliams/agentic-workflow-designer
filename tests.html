@@ -1037,6 +1037,25 @@ describe('Durable Record: protocol content', () => {
     expect(proto).toContain('by action not by role');
     expect(proto).toContain('fan-out agents write findings to the ephemeral memory');
   });
+  it('v2.2: has an enforced per-step KEEP CURRENT cadence and a before-Step-1 kickoff', () => {
+    const proto = win.genDurableRecordProtocol();
+    // Kickoff timing is explicit (create before the first step, not at finalize).
+    expect(proto).toContain('Create it at kickoff, before you spawn Step 1');
+    // The per-step update beat is a discrete, enforced section (symmetric with FINALIZE).
+    expect(proto).toContain('KEEP CURRENT (the orchestrator runs this after EVERY step, before spawning the next - enforced)');
+    expect(proto).toContain('Do NOT batch all record-writing to the end');
+    expect(proto).toContain('a fresh agent resuming after a crash, must be able to continue from this line alone');
+    // Still has the enforced FINALIZE beat - create -> update-each-step -> finalize spine.
+    expect(proto).toContain('FINALIZE (the orchestrator runs this once, after the last step)');
+  });
+  it('v2.2: the per-step cadence reaches the four prose generators when durableRecord is on', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    win.state.durableRecord = true;
+    ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt'].forEach(fn => {
+      expect(win[fn]()).toContain('KEEP CURRENT (the orchestrator runs this after EVERY step');
+    });
+  });
   it('v2.1: Task checklist is the work breakdown, not the workflow/agent steps', () => {
     const proto = win.genDurableRecordProtocol();
     // It frames the checklist as concrete units of work...
