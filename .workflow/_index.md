@@ -37,6 +37,11 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 ## durable-record-protocol
 
+- record: .workflow/cadence-granularity-and-clarify-sensitivity.md
+- intent: two cold-run tunings - KEEP CURRENT now requires ticking EACH checklist item per step (covers one Implementer finishing many items, tick-now-not-at-finalize); and the clarify gate leans toward asking on high-value forks (null/empty/below-threshold, conflicting behavior, contract shape) with a low-stakes escape
+- files: index.html (genDurableRecordProtocol KEEP CURRENT bullet + clarifyFirstHint bullet), tests.html (+2)
+- status: current | date: 2026-06-16 | builds-on: .workflow/durable-record-per-step-cadence.md
+
 - record: .workflow/durable-record-per-step-cadence.md
 - intent: force an enforced per-step KEEP CURRENT cadence (overwrite Current state/next action, tick checklist, fold step output by action - do not batch to finalize) plus an explicit before-Step-1 kickoff, so an interrupted large run is resumable; surfaced by a real run that deferred all record-writing to the end
 - files: index.html (genDurableRecordProtocol - new KEEP CURRENT section + kickoff sharpening), tests.html (Durable Record protocol-content +2)
