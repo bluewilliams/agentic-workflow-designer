@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## autosave-persistence
+
+- record: .workflow/autosave-toggle-sync.md
+- intent: a toggle change now refreshes the awd_autosave workflow snapshot (savePrefs -> autoSaveWorkflow), so a stale snapshot can no longer override a just-saved toggle on reload; fixes the Durable Record checkbox unchecking itself on refresh
+- files: index.html (savePrefs +autoSaveWorkflow call), tests.html ("Autosave stays in sync with toggle changes" suite + export parity)
+- status: current | date: 2026-06-16 | note: bug only manifests when an autosave snapshot exists (a workflow with nodes); reproduced on the deployed build
+
 ## consume-prior-records
 
 - record: .workflow/agent-sdk-ground-in-prior-records-gap.md
