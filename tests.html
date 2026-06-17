@@ -1048,6 +1048,13 @@ describe('Durable Record: protocol content', () => {
     // Still has the enforced FINALIZE beat - create -> update-each-step -> finalize spine.
     expect(proto).toContain('FINALIZE (the orchestrator runs this once, after the last step)');
   });
+  it('v2.3: ticks EACH checklist item per step (handles one step finishing many items)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('Tick EACH Task checklist item that step completed');
+    expect(proto).toContain('INCLUDING when one step (for example an Implementer) completes several items at once');
+    expect(proto).toContain('tick them all now, do not batch them to finalize');
+    expect(proto).toContain('An interrupted run must show exactly which items are done and which remain');
+  });
   it('v2.2: the per-step cadence reaches the four prose generators when durableRecord is on', () => {
     buildTestWorkflow('linear');
     win.state.memoryEnabled = true;
@@ -1397,6 +1404,16 @@ describe('Clarify gate', () => {
     expect(h).toContain('Clarify ambiguous requirements before planning');
     expect(h).toContain('The orchestrator');
     expect(h).toContain('even when there is no named Planner step');
+  });
+  it('leans toward asking on high-value forks (null/empty/contract) but keeps a low-stakes escape', () => {
+    win.state.clarifyFirst = true;
+    const h = win.clarifyFirstHint();
+    // Biases toward asking on the exact category it silently resolved before (null/below-threshold).
+    expect(h).toContain('Lean toward ASKING, not silently resolving, when a genuine fork exists');
+    expect(h).toContain('null, empty, missing, or below-threshold inputs (included vs excluded vs error)');
+    // ...without becoming spammy: self-resolve when low-stakes or a convention makes it clear.
+    expect(h).toContain('genuinely low-stakes OR a project convention makes one reading clearly correct');
+    expect(h).toContain('sensitivity floor for high-value forks, not a mandate to question everything');
   });
   it('probes a structured ambiguity taxonomy (the spec-kit-clarify steal, not freeform)', () => {
     win.state.clarifyFirst = true;
