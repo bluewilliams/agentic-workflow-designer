@@ -1948,6 +1948,12 @@ function savePrefs() {
       plibFavs: state.plibFavs || null
     }));
   } catch(e) { showToast('Auto-save failed, storage may be full'); }
+  // Keep the autosave workflow snapshot in sync with toggle/pref changes. The snapshot
+  // also carries the toggles (memory, durable, MCP, etc.) and is re-applied on the next
+  // reload; without this, a toggle would update prefs but leave the snapshot stale, and the
+  // stale snapshot would override the just-saved toggle on reload (e.g. Durable Record
+  // unchecking itself). Suppressed during restore by the _restoring guard above.
+  autoSaveWorkflow();
 }
 let _prefTimer = null;
 function savePrefsDebounced() {
