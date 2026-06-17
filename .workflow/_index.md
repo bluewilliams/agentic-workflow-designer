@@ -30,6 +30,11 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 ## durable-record-protocol
 
+- record: .workflow/durable-record-per-step-cadence.md
+- intent: force an enforced per-step KEEP CURRENT cadence (overwrite Current state/next action, tick checklist, fold step output by action - do not batch to finalize) plus an explicit before-Step-1 kickoff, so an interrupted large run is resumable; surfaced by a real run that deferred all record-writing to the end
+- files: index.html (genDurableRecordProtocol - new KEEP CURRENT section + kickoff sharpening), tests.html (Durable Record protocol-content +2)
+- status: current | date: 2026-06-16 | related: .workflow/compress-durable-record-at-finalize.md (sibling refinement of the same protocol)
+
 - record: .workflow/compress-durable-record-at-finalize.md
 - intent: finalize step compresses Verify/Gotchas into a clean spec (no per-agent transcript); surface area marked provisional until grounded
 - files: index.html (genDurableRecordProtocol - finalize guidance + surface-area guidance), tests.html (Durable Record protocol-content tests)
