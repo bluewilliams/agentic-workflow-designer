@@ -79,7 +79,7 @@ tests.html (iframe src=index.html; win on load; harness describe/it/expect toCon
 - [x] Reset-to-template control (.agent-prompt-reset, shown only when state==='custom'; handler = pushUndo() -> set config.prompt to role template (getEffectivePrompt of node with prompt blanked) -> updateConfig()+render(); instant, no dialog; undoable; click + keydown Enter/Space)
 - [x] Updated prior tests (rows===6 -> compact/expand+focus/blur; overrides-wording -> Edited-from); added 6 new tests (expand-preserves-value, two-box-hint+notes-helper, reset-appears-only-when-edited, reset-restores-no-dialog, reset-undoable-via-win.undo, generation-unchanged-no-leak)
 - [x] run-tests 515/515 (>= 509, exceeds 514 target); em/en-dash scan (0); fence scan (0)
-- [ ] (finalize) supersede strengthen-agent-prompts in _index.md (orchestrator at finalize)
+- [x] (finalize) supersede strengthen-agent-prompts in _index.md (done; confirmed present in _index.md)
 
 ## Verify
 - Baseline (before): ./run-tests.sh -> PASS 509/509.
