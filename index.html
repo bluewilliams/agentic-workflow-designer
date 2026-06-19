@@ -5505,17 +5505,30 @@ function loadPreset(preset) {
         tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LSP'],
         prompt: PROMPTS.uiImplementer, maxTurns: 15
       });
-      const rev = addNode('agent', 1020, 280, 'UI Reviewer', {
+      // Verify the built component actually works: the Verifier drives it in a browser
+      // and confirms it renders and behaves as specified, before the code review.
+      // Demonstrates the Verifier proving a runnable outcome (the "prove it" half of the
+      // doubt-early-prove-late pattern). Not verified loops back to the UI Implementer.
+      const vrf = addNode('agent', 1020, 440, 'Verification: UI Implementer', {
+        agentType: 'verifier', reviewLoopFor: impl.id, reviewLoopKind: 'verifier',
+        model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP', 'WebFetch'], maxTurns: 10
+      });
+      const vd = addNode('decision', 1180, 440, 'Objective met?', {
+        condition: 'The component is verified to render and behave as specified',
+        yesLabel: 'Verified', noLabel: 'Not verified', maxRevisions: 3, reviewLoopDecisionFor: impl.id
+      });
+      const rev = addNode('agent', 1340, 280, 'UI Reviewer', {
         agentType: 'reviewer', model: state.defaultModel,
         tools: ['Read', 'Grep', 'Glob', 'LSP'],
         prompt: PROMPTS.uiReviewer, maxTurns: 5
       });
-      const o = addNode('output', 1340, 280, 'Component Ready', {
+      const o = addNode('output', 1660, 280, 'Component Ready', {
         deliverable: 'UI component following project design system', format: 'code'
       });
       addConnection(i.id, dsa.id);
       addConnection(dsa.id, impl.id);
-      addConnection(impl.id, rev.id);
+      addConnection(impl.id, vrf.id); addConnection(vrf.id, vd.id);
+      addConnection(vd.id, rev.id, 'Verified'); addConnection(vd.id, impl.id, 'Not verified');
       addConnection(rev.id, o.id);
     },
     refactoring: () => {
