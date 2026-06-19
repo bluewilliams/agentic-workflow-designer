@@ -452,7 +452,7 @@ describe('Pure Utilities', () => {
       const writer = win.AGENT_TYPES.find(a => a.id === 'writer');
       expect(!!writer).toBe(true);
       expect(writer.name).toBe('Writer');
-      expect(win.AGENT_TYPES.length).toBe(12);
+      expect(win.AGENT_TYPES.length).toBe(13);
     });
     it('should return technical prompt for default style', () => {
       const node = { label:'Writer', config:{ prompt:'', agentType:'writer', notes:'' }};
@@ -4733,11 +4733,11 @@ describe('Usability & Help', () => {
   });
 
   describe('adversary role', () => {
-    it('should register adversary in AGENT_TYPES (length 12)', () => {
+    it('should register the Skeptic (adversary) in AGENT_TYPES (length 13)', () => {
       const adv = win.AGENT_TYPES.find(a => a.id === 'adversary');
       expect(!!adv).toBe(true);
-      expect(adv.name).toBe('Adversary');
-      expect(win.AGENT_TYPES.length).toBe(12);
+      expect(adv.name).toBe('Skeptic');
+      expect(win.AGENT_TYPES.length).toBe(13);
     });
     it('should map adversary to its PROMPTS key', () => {
       expect(win.AGENT_TYPE_PROMPT_MAP.adversary).toBe('adversary');
@@ -4752,7 +4752,7 @@ describe('Usability & Help', () => {
       const node = { label: 'Critic', config: { prompt: '', agentType: 'adversary', notes: '' } };
       const c = win.classifyAgentPrompt(node);
       expect(c.state).toBe('empty');
-      expect(c.role).toBe('Adversary');
+      expect(c.role).toBe('Skeptic');
     });
     it('should classify a role-matched adversary prompt as template', () => {
       const plannerPrompt = win.buildAdversaryPrompt('planner');
@@ -4807,7 +4807,7 @@ describe('Usability & Help', () => {
 
   describe('adversary attach / detach', () => {
     function attached(targetId) {
-      return win.state.nodes.find(n => n.config && n.config.adversaryFor === targetId);
+      return win.state.nodes.find(n => n.config && n.config.reviewLoopFor === targetId);
     }
     function buildTargetWithDownstream() {
       resetState();
@@ -4844,8 +4844,8 @@ describe('Usability & Help', () => {
       expect(!!critic).toBe(true);
       expect(critic.config.agentType).toBe('adversary');
       expect(critic.config.adversaryRole).toBe('coder');
-      expect(critic.label).toContain('Adversarial review:');
-      const decision = win.state.nodes.find(n => n.config && n.config.adversaryDecisionFor === target.id);
+      expect(critic.label).toContain('Skeptic review:');
+      const decision = win.state.nodes.find(n => n.config && n.config.reviewLoopDecisionFor === target.id);
       expect(!!decision).toBe(true);
       expect(decision.config.yesLabel).toBe('Passed');
       expect(decision.config.noLabel).toBe('Needs revision');
@@ -4877,14 +4877,14 @@ describe('Usability & Help', () => {
       win.detachAdversary(target.id);
       expect(win.state.nodes.length).toBe(nodesBefore);
       expect(attached(target.id)).toBe(undefined);
-      expect(win.state.nodes.find(n => n.config && n.config.adversaryDecisionFor === target.id)).toBe(undefined);
+      expect(win.state.nodes.find(n => n.config && n.config.reviewLoopDecisionFor === target.id)).toBe(undefined);
       expect(!!win.state.connections.find(c => c.from === target.id && c.to === out.id)).toBe(true);
     });
     it('should not double-attach', () => {
       const { target } = buildTargetWithDownstream();
       win.attachAdversary(target.id);
       win.attachAdversary(target.id);
-      const critics = win.state.nodes.filter(n => n.config && n.config.adversaryFor === target.id);
+      const critics = win.state.nodes.filter(n => n.config && n.config.reviewLoopFor === target.id);
       expect(critics.length).toBe(1);
     });
     it('toggle should attach then detach the same node', () => {
@@ -4915,25 +4915,147 @@ describe('Usability & Help', () => {
     it('feature preset reviews the Planner with an adversary critic + loop', () => {
       win.loadPreset('feature');
       const planner = win.state.nodes.find(n => n.label === 'Planner');
-      const critic = win.state.nodes.find(n => n.config && n.config.adversaryFor === planner.id);
+      const critic = win.state.nodes.find(n => n.config && n.config.reviewLoopFor === planner.id);
       expect(!!critic).toBe(true);
       expect(critic.config.agentType).toBe('adversary');
       expect(critic.config.adversaryRole).toBe('planner');
-      const decision = win.state.nodes.find(n => n.config && n.config.adversaryDecisionFor === planner.id);
+      const decision = win.state.nodes.find(n => n.config && n.config.reviewLoopDecisionFor === planner.id);
       expect(!!decision).toBe(true);
       expect(!!win.state.connections.find(c => c.from === decision.id && c.to === planner.id && c.label === 'Needs revision')).toBe(true);
     });
     it('documentation preset reviews the Doc Writer with the writer lens + loop', () => {
       win.loadPreset('documentation');
       const writer = win.state.nodes.find(n => n.label === 'Doc Writer');
-      const critic = win.state.nodes.find(n => n.config && n.config.adversaryFor === writer.id);
+      const critic = win.state.nodes.find(n => n.config && n.config.reviewLoopFor === writer.id);
       expect(!!critic).toBe(true);
       expect(critic.config.adversaryRole).toBe('writer');
-      const decision = win.state.nodes.find(n => n.config && n.config.adversaryDecisionFor === writer.id);
+      const decision = win.state.nodes.find(n => n.config && n.config.reviewLoopDecisionFor === writer.id);
       expect(!!decision).toBe(true);
       expect(!!win.state.connections.find(c => c.from === decision.id && c.to === writer.id && c.label === 'Needs revision')).toBe(true);
       // The balanced Doc Reviewer was replaced by the critic - no double review.
       expect(win.state.nodes.find(n => n.label === 'Doc Reviewer')).toBe(undefined);
+    });
+  });
+
+  describe('verifier role', () => {
+    it('should register the Verifier in AGENT_TYPES', () => {
+      const v = win.AGENT_TYPES.find(a => a.id === 'verifier');
+      expect(!!v).toBe(true);
+      expect(v.name).toBe('Verifier');
+    });
+    it('should map verifier to its PROMPTS key', () => {
+      expect(win.AGENT_TYPE_PROMPT_MAP.verifier).toBe('verifier');
+      expect(!!win.PROMPTS.verifier).toBe(true);
+    });
+    it('should resolve verifier via getEffectivePrompt like any role', () => {
+      const node = { label: 'V', config: { prompt: '', agentType: 'verifier', notes: '' } };
+      expect(win.getEffectivePrompt(node)).toContain('You are a verifier');
+      expect(win.classifyAgentPrompt(node).role).toBe('Verifier');
+    });
+  });
+
+  describe('verifier prompt content', () => {
+    const t = () => win.PROMPTS.verifier;
+    it('demands evidence by exercising the work, not trusting claims', () => {
+      expect(t()).toContain('with evidence, by exercising the work');
+      expect(t()).toContain('re-run it yourself');
+    });
+    it('anchors on a definition of done and honors custom acceptance notes', () => {
+      expect(t()).toContain('definition of done');
+      expect(t()).toContain('provided in your notes');
+    });
+    it('covers running, APIs, a browser UI, and following documentation', () => {
+      expect(t()).toContain('run the existing tests');
+      expect(t()).toContain('call it against a local or dev instance');
+      expect(t()).toContain('open it in a browser');
+      expect(t()).toContain('follow the steps literally');
+    });
+    it('includes the evidence ladder and never-fake-a-pass', () => {
+      expect(t()).toContain('evidence ladder');
+      expect(t()).toContain('never fake a pass');
+    });
+    it('tries to break it and is non-destructive', () => {
+      expect(t()).toContain('Try to make it fail');
+      expect(t()).toContain('non-destructive and local');
+    });
+    it('ends on a VERIFIED / NOT VERIFIED verdict with convergence', () => {
+      expect(t()).toContain('VERDICT: VERIFIED');
+      expect(t()).toContain('VERDICT: NOT VERIFIED');
+      expect(t()).toContain('after the cap');
+    });
+  });
+
+  describe('review-loop family (Skeptic + Verifier)', () => {
+    function loopOn(targetId) {
+      return win.state.nodes.find(n => n.config && n.config.reviewLoopFor === targetId);
+    }
+    function buildTarget() {
+      resetState();
+      const target = win.addNode('agent', 100, 100, 'Worker', { agentType: 'coder' });
+      const out = win.addNode('output', 700, 100, 'Result');
+      win.addConnection(target.id, out.id);
+      return { target, out };
+    }
+    it('attaches a verifier loop with Verified / Not verified routing', () => {
+      const { target, out } = buildTarget();
+      win.attachReviewLoop(target.id, 'verifier');
+      const v = loopOn(target.id);
+      expect(!!v).toBe(true);
+      expect(v.config.agentType).toBe('verifier');
+      expect(v.config.reviewLoopKind).toBe('verifier');
+      expect(v.config.tools.indexOf('Bash') >= 0).toBe(true);
+      const decision = win.state.nodes.find(n => n.config && n.config.reviewLoopDecisionFor === target.id);
+      expect(decision.config.yesLabel).toBe('Verified');
+      expect(decision.config.noLabel).toBe('Not verified');
+      expect(!!win.state.connections.find(c => c.from === decision.id && c.to === target.id && c.label === 'Not verified')).toBe(true);
+      expect(!!win.state.connections.find(c => c.from === decision.id && c.to === out.id && c.label === 'Verified')).toBe(true);
+    });
+    it('verifier attach is undoable in a single step', () => {
+      const { target } = buildTarget();
+      const nodesBefore = win.state.nodes.length;
+      win.attachReviewLoop(target.id, 'verifier');
+      expect(win.state.nodes.length).toBe(nodesBefore + 2);
+      win.undo();
+      expect(win.state.nodes.length).toBe(nodesBefore);
+      expect(loopOn(target.id)).toBe(undefined);
+    });
+    it('detaches a verifier loop and restores the downstream', () => {
+      const { target, out } = buildTarget();
+      win.attachReviewLoop(target.id, 'verifier');
+      win.detachReviewLoop(target.id);
+      expect(loopOn(target.id)).toBe(undefined);
+      expect(!!win.state.connections.find(c => c.from === target.id && c.to === out.id)).toBe(true);
+    });
+    it('allows only one loop per node (no skeptic + verifier stacking)', () => {
+      const { target } = buildTarget();
+      win.attachReviewLoop(target.id, 'adversary');
+      win.attachReviewLoop(target.id, 'verifier'); // should be a no-op
+      const loops = win.state.nodes.filter(n => n.config && n.config.reviewLoopFor === target.id);
+      expect(loops.length).toBe(1);
+      expect(loops[0].config.reviewLoopKind).toBe('adversary');
+    });
+    it('cannot attach a review loop to a Skeptic or Verifier node', () => {
+      resetState();
+      const skeptic = win.addNode('agent', 100, 100, 'S', { agentType: 'adversary' });
+      const verifier = win.addNode('agent', 100, 200, 'V', { agentType: 'verifier' });
+      const agent = win.addNode('agent', 100, 300, 'A', { agentType: 'coder' });
+      expect(win.canAttachReviewLoop(skeptic)).toBe(false);
+      expect(win.canAttachReviewLoop(verifier)).toBe(false);
+      expect(win.canAttachReviewLoop(agent)).toBe(true);
+    });
+    it('renders the verifier prompt and its loop in genWorkflow', () => {
+      const { target } = buildTarget();
+      win.attachReviewLoop(target.id, 'verifier');
+      const output = win.genWorkflow();
+      expect(output).toContain('You are a verifier');
+      expect(output).toContain('Not verified');
+    });
+    it('keeps the Skeptic working through the generalized family', () => {
+      const { target } = buildTarget();
+      win.attachReviewLoop(target.id, 'adversary');
+      const s = loopOn(target.id);
+      expect(s.config.agentType).toBe('adversary');
+      expect(s.label).toContain('Skeptic review:');
     });
   });
 
