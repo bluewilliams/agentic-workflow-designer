@@ -807,7 +807,8 @@ svg.canvas{width:100%;height:100%;display:block}
 <div class="context-menu" id="contextMenu">
   <div class="context-menu-item" onclick="duplicateNode()">Duplicate</div>
   <div class="context-menu-item" id="ctxAddBranch" style="display:none" onclick="addBranchToFork()">Add Branch</div>
-  <div class="context-menu-item" id="ctxAdversary" style="display:none" onclick="toggleAdversarialReview()">Add adversarial review</div>
+  <div class="context-menu-item" id="ctxSkeptic" style="display:none" onclick="toggleReviewLoop('adversary')">Add skeptic review</div>
+  <div class="context-menu-item" id="ctxVerifier" style="display:none" onclick="toggleReviewLoop('verifier')">Add verification</div>
   <div class="context-menu-item" onclick="disconnectNode()">Disconnect All</div>
   <div class="context-menu-item danger" onclick="deleteSelected()">Delete</div>
 </div>
@@ -994,7 +995,8 @@ const AGENT_TYPES = [
   { id: 'researcher', name: 'Researcher', desc: 'Explores codebase, gathers context' },
   { id: 'writer', name: 'Writer', desc: 'Documentation and content creation specialist' },
   { id: 'general', name: 'General', desc: 'General-purpose agent' },
-  { id: 'adversary', name: 'Adversary', desc: 'Refute-first critic; reviews any step and loops back only material defects' }
+  { id: 'adversary', name: 'Skeptic', desc: 'Refute-first critic; reviews any step and loops back only material defects' },
+  { id: 'verifier', name: 'Verifier', desc: 'Proves the outcome meets the objective with evidence; loops back what is not verified' }
 ];
 
 const WRITING_STYLES = [
@@ -1218,7 +1220,7 @@ const AGENT_TYPE_PROMPT_MAP = {
   planner: 'planner', architect: 'architect', coder: 'implementer',
   frontend: 'frontend', backend: 'backend', reviewer: 'reviewer',
   tester: 'tester', debugger: 'investigator', researcher: 'researcher',
-  writer: 'writerTechnical', general: 'researcher', adversary: 'adversary'
+  writer: 'writerTechnical', general: 'researcher', adversary: 'adversary', verifier: 'verifier'
 };
 
 // Returns a quality prompt for any node - user prompt > agentType template > smart fallback
@@ -1325,6 +1327,9 @@ const PROMPTS = {
 
   // --- Adversarial review (generic default; attach sets the role-aware lens) ---
   adversary: buildAdversaryPrompt(null),
+
+  // --- Verification (prove the outcome meets the objective, with evidence) ---
+  verifier: 'You are a verifier. Your job is to prove the outcome actually meets its objective - with evidence, by exercising the work - not by trusting that it looks right or that the producer says it is done.\n\n**Independence.** Verify the outcome against the objective, not the producer\'s claims. Do not trust "I tested this" - re-run it yourself. Do not trust a passing test you have not read - confirm it actually exercises the behavior. Assume nothing is done until you have seen it work.\n\n**1. Establish the definition of done.** Restate the objective and its acceptance criteria in concrete, checkable terms. If specific acceptance criteria or verification steps were provided in your notes, treat them as authoritative and check each one. If none were given, derive the criteria from the requirements and state them, so there is a clear bar to verify against.\n\n**2. Exercise the work - match the method to what was produced:**\n- Code, a function, or a library: run the existing tests; if there are none, write a quick throwaway harness or call the code directly with representative AND boundary inputs and observe the real results. Run the build, linter, and type checker if present.\n- An API, endpoint, or service: actually call it against a local or dev instance (curl or an HTTP client). Check status codes, the response shape, and the error and edge cases - not just the happy path.\n- A web app or UI: open it in a browser with whatever browser-automation tools are available, drive the real user flow, and confirm the expected behavior and state render. Check an error or empty state too.\n- A CLI, script, or job: run it with real arguments; confirm the output, exit code, and side effects match the objective.\n- Documentation, a runbook, or a guide: follow the steps literally, in order, as a brand-new reader with no extra context would, and confirm they actually produce the stated outcome. Flag any step that is wrong, out of order, missing, or assumes something the reader does not have.\n- Data, a migration, or a transformation: reconcile counts and totals against the source, spot-check records, and confirm reversibility or idempotency where required. Look for silent data loss.\n- Config, infrastructure, or a deployment: apply it to a safe local target or dry-run it, then confirm health checks pass, the service comes up, and the setting takes effect.\n- Research, analysis, or a recommendation: independently re-derive or spot-check the key claims against the primary sources; confirm cited facts exist and say what they are claimed to, and that the conclusion follows.\n- A design, plan, or spec (nothing runnable yet): trace every requirement to the exact place the design satisfies it; confirm it is complete and internally consistent.\n\nSet up whatever local environment you need, and use every tool you have - run commands, call services, drive a browser, read files - to get real evidence.\n\n**3. Try to make it fail, do not just confirm it passes.** Push the boundaries and the empty, null, and error inputs, and the path the producer most likely did not try. A verification that only walks the happy path gives false confidence.\n\n**4. The evidence ladder - degrade honestly, never fake a pass:**\n- Best: execute it and show the real evidence (the command and its output, the actual response, what the UI did, the steps you followed).\n- If you cannot execute it here, trace each acceptance criterion to concrete evidence in the artifact and say exactly how you confirmed it.\n- If something genuinely cannot be verified in this environment, say so plainly, state what evidence would settle it, and do NOT report it as verified. An honest "not verified" beats a hollow pass.\n\n**Safety.** Verification must be non-destructive and local. NEVER run destructive or state-changing operations to verify (DROP/DELETE/TRUNCATE, terraform apply or destroy, docker rm, rm -rf, git push, deploys, executing a migration), and never touch production or staging. Use localhost and dev only, read-only queries, and dry runs. If verifying truly requires a destructive or external action, describe the exact steps for a human to run instead.\n\n**Output contract.** End with exactly one verdict line, then the breakdown. NOT VERIFIED means an objective is genuinely unmet or could not be confirmed - not a stylistic preference.\n\nVERDICT: VERIFIED\nor\nVERDICT: NOT VERIFIED\n\n- Per objective or acceptance criterion: the method you used, the actual evidence, and pass or fail.\n- For NOT VERIFIED: each gap, exactly what failed, and the concrete change needed so the source step can fix it directly.\n- Could not verify: anything you could not check here and what evidence would settle it.\n\n**Convergence.** You are inside a fix-and-reverify loop with a cycle cap. On the final allowed cycle, focus only on the remaining failures. If something still cannot be verified after the cap, report it as NOT VERIFIED with the gap documented rather than blocking the workflow forever.',
 
   // --- Review ---
   reviewer: 'Review all code changes for quality and correctness.\n\n1. For each modified function or method, use `LSP findReferences` to check that all call sites are consistent with any signature changes\n2. Use `LSP goToDefinition` on any new type or interface introduced - verify it aligns with how it is actually used\n3. Use `LSP goToImplementation` on any interface that was changed - confirm all implementations were updated\n4. Use `LSP incomingCalls` on modified functions to detect callers that may not handle new error cases or changed return shapes\n\nEvaluate against:\n- **Correctness**: Does implementation match requirements? Are all LSP-found callers handled?\n- **Scope and minimality**: Is the change the simplest solution that solves the problem? Flag any unnecessary complexity, over-engineering, or changes to files unrelated to the task. A bug fix should fix the bug, not refactor the surrounding code. A feature should implement the feature, not redesign the module.\n- **Code quality**: Naming, structure, DRY, single responsibility\n- **Security**: Input validation, injection prevention, data handling\n- **Performance**: Efficient algorithms, no unnecessary work\n- **Conventions**: Follows project patterns and style\n- **Comments**: Flag narrating or redundant comments - comment the why, not the what.\n\nFor each issue, provide file:line, severity (Critical/High/Medium/Low), and fix suggestion. Output a clear PASS or NEEDS REVISION verdict.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or NEEDS REVISION\n- **Scope Check**: Is the change minimal and focused, or does it include unnecessary changes?\n- **Critical Issues**: Must-fix items with file:line (if any)\n- **Improvements**: Suggested enhancements, non-blocking\n- **Test Gaps**: Areas needing test coverage',
@@ -3379,72 +3384,97 @@ function addBranchToFork() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ADVERSARIAL REVIEW - one-click attach / detach of a critic + revise loop
+// REVIEW LOOPS - one-click attach / detach of a reviewer + revise loop.
+// Two kinds share the same machinery: a refute-first Skeptic and an
+// evidence-based Verifier. Adding a third kind is just another entry here.
 // ═══════════════════════════════════════════════════════════
-// True if `targetId` already has an attached adversarial critic.
-function hasAdversaryAttached(targetId) {
-  return state.nodes.some(n => n.config && n.config.adversaryFor === targetId);
+const REVIEW_LOOP_KINDS = {
+  adversary: { // the Skeptic (internal id stays 'adversary')
+    labelPrefix: 'Skeptic review: ', decisionLabel: 'Review passed?',
+    condition: 'Adversarial review passed (no Critical or High findings)',
+    yesLabel: 'Passed', noLabel: 'Needs revision',
+    tools: ['Read', 'Grep', 'Glob', 'LSP'], maxTurns: 5, useRoleLens: true,
+    menuAdd: 'Add skeptic review', menuRemove: 'Remove skeptic review'
+  },
+  verifier: { // the Verifier - needs execution tools to exercise the work
+    labelPrefix: 'Verification: ', decisionLabel: 'Objective met?',
+    condition: 'The outcome is verified to meet the objective',
+    yesLabel: 'Verified', noLabel: 'Not verified',
+    tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP', 'WebFetch'], maxTurns: 10, useRoleLens: false,
+    menuAdd: 'Add verification', menuRemove: 'Remove verification'
+  }
+};
+// The review node attached to targetId (and its kind), or null.
+function getReviewLoop(targetId) {
+  const node = state.nodes.find(n => n.config && n.config.reviewLoopFor === targetId);
+  return node ? { node, kind: node.config.reviewLoopKind } : null;
 }
-// An Agent or Task node can host a critic (but a critic itself cannot).
-function canAttachAdversary(node) {
+function hasReviewLoop(targetId) { return !!getReviewLoop(targetId); }
+// An Agent or Task node can host a review loop, but a review node (Skeptic or
+// Verifier) cannot itself be reviewed.
+function canAttachReviewLoop(node) {
   return !!node && (node.type === 'agent' || node.type === 'task') &&
-    !(node.config && node.config.agentType === 'adversary');
+    !(node.config && (node.config.agentType === 'adversary' || node.config.agentType === 'verifier'));
 }
-// Attaches a refute-first critic + a Decision revise-loop to `targetId` in one
-// undoable action: target -> critic -> decision, decision --Passed--> original
-// downstream(s), decision --Needs revision--> back to target. Reuses the existing
-// Decision/maxRevisions machinery, so all generators render the loop unchanged.
-function attachAdversary(targetId) {
+// Attaches a review loop of `kind` to targetId in one undoable action:
+// target -> reviewer -> decision, decision --yes--> original downstream(s),
+// decision --no--> back to target. Reuses the Decision/maxRevisions machinery,
+// so all generators render the loop unchanged.
+function attachReviewLoop(targetId, kind) {
+  const spec = REVIEW_LOOP_KINDS[kind];
   const target = state.nodes.find(n => n.id === targetId);
-  if (!canAttachAdversary(target) || hasAdversaryAttached(targetId)) return;
+  if (!spec || !canAttachReviewLoop(target) || hasReviewLoop(targetId)) return;
 
-  // The target's current outgoing edges become the Decision's "Passed" branch.
+  // The target's current outgoing edges become the Decision's pass branch.
   const outs = state.connections.filter(c => c.from === targetId);
   const reviewedRole = target.type === 'agent' ? (target.config.agentType || 'general') : 'generic';
 
   // batchUndo wraps a single pushUndo + try/finally so the whole attach is one
   // undo step and _undoBatch can never stick true if an inner call throws.
-  let critic;
+  let reviewer;
   batchUndo(() => {
-    critic = addNode('agent', target.x + 280, target.y, 'Adversarial review: ' + target.label, {
-      agentType: 'adversary', adversaryRole: reviewedRole, adversaryFor: targetId
-    });
-    const decision = addNode('decision', target.x + 560, target.y, 'Review passed?', {
-      condition: 'Adversarial review passed (no Critical or High findings)',
-      yesLabel: 'Passed', noLabel: 'Needs revision', maxRevisions: 3,
-      adversaryDecisionFor: targetId
+    const cfg = {
+      agentType: kind, reviewLoopFor: targetId, reviewLoopKind: kind,
+      tools: spec.tools.slice(), maxTurns: spec.maxTurns
+    };
+    if (spec.useRoleLens) cfg.adversaryRole = reviewedRole; // only the Skeptic has a role lens
+    reviewer = addNode('agent', target.x + 280, target.y, spec.labelPrefix + target.label, cfg);
+    const decision = addNode('decision', target.x + 560, target.y, spec.decisionLabel, {
+      condition: spec.condition, yesLabel: spec.yesLabel, noLabel: spec.noLabel,
+      maxRevisions: 3, reviewLoopDecisionFor: targetId
     });
 
     // Re-route: drop the target's direct outgoing edges, then rebuild through the loop.
     const outIds = new Set(outs.map(c => c.id));
     state.connections = state.connections.filter(c => !outIds.has(c.id));
-    addConnection(targetId, critic.id);
-    addConnection(critic.id, decision.id);
-    addConnection(decision.id, targetId, 'Needs revision');
-    outs.forEach(c => addConnection(decision.id, c.to, 'Passed'));
+    addConnection(targetId, reviewer.id);
+    addConnection(reviewer.id, decision.id);
+    addConnection(decision.id, targetId, spec.noLabel);
+    outs.forEach(c => addConnection(decision.id, c.to, spec.yesLabel));
   });
 
-  selectNode(critic.id, true);
+  selectNode(reviewer.id, true);
   render();
   updateConfig();
 }
-// Removes an attached critic + its Decision and restores the target's original
-// downstream, in one undoable action. Symmetric inverse of attachAdversary.
-function detachAdversary(targetId) {
-  const critic = state.nodes.find(n => n.config && n.config.adversaryFor === targetId);
-  if (!critic) return;
-  const decision = state.nodes.find(n => n.config && n.config.adversaryDecisionFor === targetId) ||
+// Removes an attached review loop and restores the target's original downstream,
+// in one undoable action. Symmetric inverse of attachReviewLoop.
+function detachReviewLoop(targetId) {
+  const loop = getReviewLoop(targetId);
+  if (!loop) return;
+  const reviewer = loop.node;
+  const decision = state.nodes.find(n => n.config && n.config.reviewLoopDecisionFor === targetId) ||
     (function () {
-      const dc = state.connections.find(c => c.from === critic.id);
+      const dc = state.connections.find(c => c.from === reviewer.id);
       return dc ? state.nodes.find(n => n.id === dc.to) : null;
     })();
-  // The Decision's "Passed" branch holds the original downstream targets to restore.
+  // The Decision's pass branch holds the original downstream targets to restore.
   const restoreTos = decision
-    ? state.connections.filter(c => c.from === decision.id && c.label === (decision.config.yesLabel || 'Passed')).map(c => c.to)
+    ? state.connections.filter(c => c.from === decision.id && c.label === decision.config.yesLabel).map(c => c.to)
     : [];
 
   batchUndo(() => {
-    deleteNode(critic.id);
+    deleteNode(reviewer.id);
     if (decision) deleteNode(decision.id);
     restoreTos.forEach(to => addConnection(targetId, to));
   });
@@ -3452,14 +3482,21 @@ function detachAdversary(targetId) {
   render();
   updateConfig();
 }
-// Context-menu entry point: toggles the adversarial loop on the selected node.
-function toggleAdversarialReview() {
+// Context-menu entry point: toggles a review loop of `kind` on the selected node.
+// One loop per node, so if any loop is already attached this detaches it.
+function toggleReviewLoop(kind) {
   hideContextMenu();
   const node = state.nodes.find(n => n.id === state.selectedId);
-  if (!canAttachAdversary(node)) return;
-  if (hasAdversaryAttached(node.id)) detachAdversary(node.id);
-  else attachAdversary(node.id);
+  if (!canAttachReviewLoop(node)) return;
+  if (hasReviewLoop(node.id)) detachReviewLoop(node.id);
+  else attachReviewLoop(node.id, kind);
 }
+// Backward-compatible aliases (the Skeptic shipped under these names first).
+function hasAdversaryAttached(targetId) { return hasReviewLoop(targetId); }
+function canAttachAdversary(node) { return canAttachReviewLoop(node); }
+function attachAdversary(targetId) { return attachReviewLoop(targetId, 'adversary'); }
+function detachAdversary(targetId) { return detachReviewLoop(targetId); }
+function toggleAdversarialReview() { return toggleReviewLoop('adversary'); }
 
 // ═══════════════════════════════════════════════════════════
 // CONFIGURATION PANEL
@@ -3922,14 +3959,18 @@ function showContextMenu(x, y) {
   // Show "Add Branch" only for parallel nodes
   const sel = state.nodes.find(n => n.id === state.selectedId);
   $('ctxAddBranch').style.display = (sel && sel.type === 'parallel') ? 'flex' : 'none';
-  // Show "Add/Remove adversarial review" only for Agent/Task nodes
-  const adv = $('ctxAdversary');
-  if (canAttachAdversary(sel)) {
-    adv.style.display = 'flex';
-    adv.textContent = hasAdversaryAttached(sel.id) ? 'Remove adversarial review' : 'Add adversarial review';
-  } else {
-    adv.style.display = 'none';
-  }
+  // Review-loop items (Skeptic / Verifier): only for Agent/Task nodes, one loop per node.
+  const loop = canAttachReviewLoop(sel) ? getReviewLoop(sel.id) : null;
+  const setReviewItem = (elId, kind) => {
+    const el = $(elId);
+    if (!canAttachReviewLoop(sel)) { el.style.display = 'none'; return; }
+    const spec = REVIEW_LOOP_KINDS[kind];
+    if (!loop) { el.style.display = 'flex'; el.textContent = spec.menuAdd; }
+    else if (loop.kind === kind) { el.style.display = 'flex'; el.textContent = spec.menuRemove; }
+    else { el.style.display = 'none'; }
+  };
+  setReviewItem('ctxSkeptic', 'adversary');
+  setReviewItem('ctxVerifier', 'verifier');
   menu.classList.add('show');
 }
 function hideContextMenu() { $('contextMenu').classList.remove('show'); }
@@ -5339,8 +5380,8 @@ function loadPreset(preset) {
       const p = addNode('agent', 340, 250, 'Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.planner, maxTurns:5 });
       // Adversarial review of the PLAN before implementation - catches the most expensive
       // errors earliest. Demonstrates the critic on a non-code artifact (a plan).
-      const pc = addNode('agent', 480, 430, 'Adversarial review: Planner', { agentType:'adversary', adversaryRole:'planner', adversaryFor:p.id, model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], maxTurns:5 });
-      const pd = addNode('decision', 620, 430, 'Plan sound?', { condition:'The plan is sound, complete, and addresses the requirements', yesLabel:'Passed', noLabel:'Needs revision', maxRevisions:3, adversaryDecisionFor:p.id });
+      const pc = addNode('agent', 480, 430, 'Skeptic review: Planner', { agentType:'adversary', adversaryRole:'planner', reviewLoopFor:p.id, reviewLoopKind:'adversary', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], maxTurns:5 });
+      const pd = addNode('decision', 620, 430, 'Plan sound?', { condition:'The plan is sound, complete, and addresses the requirements', yesLabel:'Passed', noLabel:'Needs revision', maxRevisions:3, reviewLoopDecisionFor:p.id });
       const c = addNode('agent', 620, 250, 'Implementer', { agentType:'coder', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.implementer, maxTurns:15 });
       const r = addNode('agent', 900, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, maxTurns:5 });
       const d = addNode('decision', 1180, 242, 'Review Passed?', { condition:'Code review passed with no critical issues', yesLabel:'Approved', noLabel:'Revise' });
@@ -5497,8 +5538,8 @@ function loadPreset(preset) {
       const dw = addNode('agent', 900, 250, 'Doc Writer', { agentType:'writer', writingStyle:'technical', model:state.defaultModel, tools:WRITER_TOOL_DEFAULTS.technical, prompt:PROMPTS.writerTechnical, maxTurns:15 });
       // Adversarial review of the DOCS - the writer lens checks accuracy against the code,
       // completeness, and clarity. Demonstrates the critic on a writing artifact.
-      const dc = addNode('agent', 1180, 250, 'Adversarial review: Doc Writer', { agentType:'adversary', adversaryRole:'writer', adversaryFor:dw.id, model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], maxTurns:5 });
-      const d = addNode('decision', 1460, 242, 'Docs accurate?', { condition:'Documentation is accurate against the code, complete, and clear', yesLabel:'Passed', noLabel:'Needs revision', maxRevisions:3, adversaryDecisionFor:dw.id });
+      const dc = addNode('agent', 1180, 250, 'Skeptic review: Doc Writer', { agentType:'adversary', adversaryRole:'writer', reviewLoopFor:dw.id, reviewLoopKind:'adversary', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], maxTurns:5 });
+      const d = addNode('decision', 1460, 242, 'Docs accurate?', { condition:'Documentation is accurate against the code, complete, and clear', yesLabel:'Passed', noLabel:'Needs revision', maxRevisions:3, reviewLoopDecisionFor:dw.id });
       const o = addNode('output', 1740, 250, 'Documentation', { deliverable:'Complete documentation deliverable', format:'docs' });
       addConnection(i.id, p.id); addConnection(p.id, res.id); addConnection(res.id, dw.id);
       addConnection(dw.id, dc.id); addConnection(dc.id, d.id);

@@ -40,9 +40,9 @@ Parked items with the real-run evidence behind them, so the dedicated passes sta
 
 **Why / evidence**: surfaced by the toggle-wiring audit (read-only run). Datadog is simply newer than the SDK exporter; clarify has a non-interactive branch that is relevant to SDK; the duplication is a maintenance smell.
 
-## 5. batchUndo dead code
+## 5. batchUndo dead code - RESOLVED (now in use)
 
-**What**: `batchUndo(fn)` at index.html:3103 is defined but never called. Trivial removal whenever convenient. Surfaced by the toggle-wiring audit.
+**Status (2026-06-19): no longer dead.** `batchUndo(fn)` is now called by the review-loop attach/detach (attachReviewLoop/detachReviewLoop) - it was adopted as the atomic+undoable wrapper (single pushUndo + try/finally) after the adversarial review flagged the missing try/finally. This item is closed; do not remove batchUndo.
 
 ## 6. Worktree support for large / parallel workflows
 
