@@ -1087,6 +1087,22 @@ describe('Durable Record: protocol content', () => {
     // Set at kickoff (known from the workflow shape up front).
     expect(proto).toContain('the Built-with provenance line (the workflow name and its agent roles are known up front)');
   });
+  it('provenance captures the workflow shape + notable config, not a full dump', () => {
+    const proto = win.genDurableRecordProtocol();
+    // The pipeline shape and topology that matters.
+    expect(proto).toContain('ordered pipeline shape with the topology that matters');
+    expect(proto).toContain('decision gates and their revision caps');
+    expect(proto).toContain('review loops');
+    expect(proto).toContain('where failures route');
+    // Notable non-default agent config.
+    expect(proto).toContain('the notable non-default config');
+    expect(proto).toContain('significant tool grants');
+    // The run context (toggles / integrations) that shaped it.
+    expect(proto).toContain('the run context that shaped it');
+    // Capped to shape + knobs; verbatim pipeline lives in the exported definition.
+    expect(proto).toContain('not a full config or prompt dump');
+    expect(proto).toContain('the exported workflow definition carries the verbatim pipeline');
+  });
   it('v2.1: provenance examples stay provider-neutral (no real grounding-tool name)', () => {
     const proto = win.genDurableRecordProtocol();
     // The example grounding is generic, not a specific product.
