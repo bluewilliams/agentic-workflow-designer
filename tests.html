@@ -882,9 +882,9 @@ describe('Memory Protocol', () => {
       win.loadPreset('feature');
       expect(win.state.memoryEnabled).toBe(true);
     });
-    it('should not enable for documentation preset', () => {
+    it('should enable for documentation preset (has adversarial review loop)', () => {
       win.loadPreset('documentation');
-      expect(win.state.memoryEnabled).toBe(false);
+      expect(win.state.memoryEnabled).toBe(true);
     });
   });
 
@@ -2560,9 +2560,9 @@ describe('Preset Loading', () => {
   beforeEach(() => { resetState(); });
 
   describe('agent counts', () => {
-    it('should load feature preset with 4 agents', () => {
+    it('should load feature preset with 5 agents', () => {
       win.loadPreset('feature');
-      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
     });
     it('should load bugfix preset with 3 agents', () => {
       win.loadPreset('bugfix');
@@ -4908,6 +4908,32 @@ describe('Usability & Help', () => {
       const output = win.genWorkflow();
       expect(output).toContain('adversarial critic');
       expect(output).toContain('Needs revision');
+    });
+  });
+
+  describe('adversary in presets (demo)', () => {
+    it('feature preset reviews the Planner with an adversary critic + loop', () => {
+      win.loadPreset('feature');
+      const planner = win.state.nodes.find(n => n.label === 'Planner');
+      const critic = win.state.nodes.find(n => n.config && n.config.adversaryFor === planner.id);
+      expect(!!critic).toBe(true);
+      expect(critic.config.agentType).toBe('adversary');
+      expect(critic.config.adversaryRole).toBe('planner');
+      const decision = win.state.nodes.find(n => n.config && n.config.adversaryDecisionFor === planner.id);
+      expect(!!decision).toBe(true);
+      expect(!!win.state.connections.find(c => c.from === decision.id && c.to === planner.id && c.label === 'Needs revision')).toBe(true);
+    });
+    it('documentation preset reviews the Doc Writer with the writer lens + loop', () => {
+      win.loadPreset('documentation');
+      const writer = win.state.nodes.find(n => n.label === 'Doc Writer');
+      const critic = win.state.nodes.find(n => n.config && n.config.adversaryFor === writer.id);
+      expect(!!critic).toBe(true);
+      expect(critic.config.adversaryRole).toBe('writer');
+      const decision = win.state.nodes.find(n => n.config && n.config.adversaryDecisionFor === writer.id);
+      expect(!!decision).toBe(true);
+      expect(!!win.state.connections.find(c => c.from === decision.id && c.to === writer.id && c.label === 'Needs revision')).toBe(true);
+      // The balanced Doc Reviewer was replaced by the critic - no double review.
+      expect(win.state.nodes.find(n => n.label === 'Doc Reviewer')).toBe(undefined);
     });
   });
 
