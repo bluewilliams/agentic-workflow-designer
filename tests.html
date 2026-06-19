@@ -3594,6 +3594,20 @@ describe('MCP Integrations', () => {
       const output = win.genWorkflow();
       expect(output).toContain('self-describing code over comments');
     });
+    it('conventions block bans ticket IDs in comments and demands brevity', () => {
+      buildTestWorkflow('linear');
+      const output = win.genWorkflow();
+      expect(output).toContain('Do NOT put ticket or issue IDs');
+      expect(output).toContain('version control already ties code to its ticket');
+      expect(output).toContain('do not add comments for the sake of it');
+      expect(output).toContain('public or exported API surface');
+    });
+    it('reviewer flags ticket-ID and changelog comments', () => {
+      expect(win.PROMPTS.reviewer).toContain('embed ticket IDs or changelog notes');
+    });
+    it('fixer does not reference ticket IDs in comments', () => {
+      expect(win.PROMPTS.fixer).toContain('do not reference ticket IDs');
+    });
     it('reviewer template flags narrating comments and keeps the conventions line', () => {
       expect(win.PROMPTS.reviewer).toContain('comment the why, not the what');
       expect(win.PROMPTS.reviewer).toContain('Follows project patterns and style');
