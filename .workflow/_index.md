@@ -123,6 +123,11 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 ## code-conventions
 
+- record: .workflow/comment-discipline-no-ticket-ids.md
+- intent: tighten the always-on comment directive - forbid ticket/issue IDs (Jira keys, PR numbers) + changelog notes in code comments (git already ties code to its ticket), demand brevity / no comments-for-the-sake-of-it (AI slop), keep the JSDoc-on-API-surfaces allowance; reviewer + fixer reinforce it. Triggered by generated code carrying  x3 + TODO() in a JSDoc block
+- files: index.html (conventionsHint para 1 ~1079, PROMPTS.reviewer Comments bullet ~1335, PROMPTS.fixer step 9 ~1326; prose-only), tests.html (+3); also ~/.claude/user/preferences.md (global pref)
+- status: current | date: 2026-06-19 | builds-on: .workflow/orchestrator-directives-for-code-comments-and-project-consistency.md
+
 - record: .workflow/orchestrator-directives-for-code-comments-and-project-consistency.md
 - intent: bake a soft, always-on orchestrator-level "Conventions" directive into generated workflows (prefer self-describing code over comments incl. tests; comment only for complex/why/project-convention; JSDoc for public APIs; when writing tests, match the project's existing test conventions; repo rules/CLAUDE.md override) + a reviewer line flagging narrating/redundant comments
 - files: index.html (new conventionsHint() emitted at the 4 prose generators + an unconditional SDK #-comment block, next to codeSearchHint; one PROMPTS.reviewer "comment the why, not the what" line), tests.html (+9 tests)
