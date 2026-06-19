@@ -82,3 +82,11 @@ Parked items with the real-run evidence behind them, so the dedicated passes sta
 **Key design note**: adversarial value depends on INDEPENDENCE + posture - the critic must default to skeptical, treat the burden as on the work to prove itself, and not rubber-stamp. Cost scales with cycles and critic count, so cap cycles and gate panels.
 
 **Size**: generic critic + reuse loop = medium; the attach-anywhere UI = medium; the full panel = medium-large.
+
+## 8. Review-loop decision: No Label rename desyncs the back-edge (minor, pre-existing)
+
+**What**: a review loop's back-edge is located by matching the connection's `label` against the decision's `config.noLabel` (in the generators, the reroute dropdown, and setReviewLoopBackTarget). If a user hand-edits the decision's **No Label** input after attaching, `config.noLabel` updates but the existing back-edge connection's `label` does not - they desync, and the back-edge can no longer be found (silent no-op for reroute; generators fall back).
+
+**Why / evidence**: surfaced by the independent review of the reroute feature (2026-06-19). Pre-existing assumption shared by the generators (the revise-branch match); the reroute code is consistent with it and does not worsen it.
+
+**Fix options**: when the No Label input changes on a review-loop decision, rewrite the matching back-edge connection's `label` to the new value (keep them in sync). Small, in the configInput change handler. Low priority - editing a managed review-loop decision's labels by hand is uncommon.

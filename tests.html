@@ -5069,6 +5069,72 @@ describe('Usability & Help', () => {
     });
   });
 
+  describe('review-loop reroute (back-edge target)', () => {
+    function buildChain() {
+      resetState();
+      const planner = win.addNode('agent', 100, 100, 'Planner', { agentType: 'planner' });
+      const impl = win.addNode('agent', 400, 100, 'Builder', { agentType: 'coder' });
+      const out = win.addNode('output', 900, 100, 'Result');
+      win.addConnection(planner.id, impl.id);
+      win.addConnection(impl.id, out.id);
+      win.attachReviewLoop(impl.id, 'verifier');
+      const decision = win.state.nodes.find(n => n.config && n.config.reviewLoopDecisionFor === impl.id);
+      return { planner, impl, out, decision };
+    }
+    function backEdge(decision) {
+      return win.state.connections.find(c => c.from === decision.id && c.label === decision.config.noLabel);
+    }
+    it('defaults the failure branch to the reviewed node', () => {
+      const { impl, decision } = buildChain();
+      expect(backEdge(decision).to).toBe(impl.id);
+    });
+    it('re-points the failure branch to a chosen node', () => {
+      const { planner, impl, decision } = buildChain();
+      win.setReviewLoopBackTarget(decision.id, planner.id);
+      expect(backEdge(decision).to).toBe(planner.id);
+      // The pass branch is untouched (still forwards to the original downstream).
+      expect(!!win.state.connections.find(c => c.from === decision.id && c.label === 'Verified')).toBe(true);
+    });
+    it('is undoable in a single step', () => {
+      const { planner, impl, decision } = buildChain();
+      win.setReviewLoopBackTarget(decision.id, planner.id);
+      win.undo();
+      expect(backEdge(decision).to).toBe(impl.id);
+    });
+    it('is a no-op for a non-review-loop decision', () => {
+      resetState();
+      const a = win.addNode('agent', 100, 100, 'A', { agentType: 'coder' });
+      const d = win.addNode('decision', 300, 100, 'Plain gate', { yesLabel: 'Yes', noLabel: 'No' });
+      win.addConnection(d.id, a.id, 'No');
+      win.setReviewLoopBackTarget(d.id, a.id); // no reviewLoopDecisionFor -> no-op, no throw
+      expect(win.state.connections.find(c => c.from === d.id && c.label === 'No').to).toBe(a.id);
+    });
+    it('the rerouted target survives serialize/deserialize', () => {
+      const { planner, decision } = buildChain();
+      win.setReviewLoopBackTarget(decision.id, planner.id);
+      const json = win.serializeWorkflow();
+      resetState();
+      win.deserializeWorkflow(json);
+      const d2 = win.state.nodes.find(n => n.config && n.config.reviewLoopDecisionFor !== undefined);
+      const be = win.state.connections.find(c => c.from === d2.id && c.label === d2.config.noLabel);
+      const planner2 = win.state.nodes.find(n => n.label === 'Planner');
+      expect(be.to).toBe(planner2.id);
+    });
+    it('the generated workflow re-runs the rerouted node on failure', () => {
+      const { planner, decision } = buildChain();
+      win.setReviewLoopBackTarget(decision.id, planner.id);
+      expect(win.genWorkflow()).toContain('Planner');
+      expect(win.genWorkflow()).toContain('Not verified');
+    });
+    it('detach still restores the original downstream after a reroute', () => {
+      const { planner, impl, out, decision } = buildChain();
+      win.setReviewLoopBackTarget(decision.id, planner.id);
+      win.detachReviewLoop(impl.id);
+      expect(win.state.nodes.find(n => n.config && n.config.reviewLoopFor === impl.id)).toBe(undefined);
+      expect(!!win.state.connections.find(c => c.from === impl.id && c.to === out.id)).toBe(true);
+    });
+  });
+
   describe('workflow validation', () => {
     it('should report disconnected nodes', () => {
       resetState();
