@@ -123,6 +123,11 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 ## code-conventions
 
+- record: .workflow/test-convention-discovery-by-recency.md
+- intent: make test-writing roles match the project's CURRENT test conventions by discovering them from the most recently modified/added test files (git history or newest-by-mtime), borrowing the designSystemAnalyzer's recency pattern. Strengthened conventionsHint para 2 + added the concrete step to tester/testWriter/testSuiteWriter/bugTester/e2eTester. Language-agnostic per Blue (generic "structure and phrasing of test cases", no JS describe/it idiom). Triggered by a generated tester ignoring the project's naming convention
+- files: index.html (conventionsHint para 2 ~1081 + 5 test-role templates), tests.html (+1)
+- status: current | date: 2026-06-19 | related: .workflow/comment-discipline-no-ticket-ids.md
+
 - record: .workflow/comment-discipline-no-ticket-ids.md
 - intent: tighten the always-on comment directive - forbid ticket/issue IDs (Jira keys, PR numbers) + changelog notes in code comments (git already ties code to its ticket), demand brevity / no comments-for-the-sake-of-it (AI slop), keep the JSDoc-on-API-surfaces allowance; reviewer + fixer reinforce it. Triggered by generated code carrying  x3 + TODO() in a JSDoc block
 - files: index.html (conventionsHint para 1 ~1079, PROMPTS.reviewer Comments bullet ~1335, PROMPTS.fixer step 9 ~1326; prose-only), tests.html (+3); also ~/.claude/user/preferences.md (global pref)

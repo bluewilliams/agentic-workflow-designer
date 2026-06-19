@@ -3594,6 +3594,17 @@ describe('MCP Integrations', () => {
       const output = win.genWorkflow();
       expect(output).toContain('self-describing code over comments');
     });
+    it('test-writing roles match conventions from recently modified tests (language-agnostic)', () => {
+      ['tester', 'testWriter', 'testSuiteWriter', 'bugTester', 'e2eTester'].forEach(role => {
+        expect(win.PROMPTS[role]).toContain('most recently modified');
+      });
+      // The shared conventions block carries the same recency-based discovery.
+      buildTestWorkflow('linear');
+      expect(win.genWorkflow()).toContain('most recently modified');
+      // Stays language-agnostic: describes structure/phrasing generically, no JS-only idiom.
+      expect(win.PROMPTS.tester).toContain('structure and phrasing of test cases');
+      expect(win.PROMPTS.tester).toNotContain("it('should");
+    });
     it('conventions block bans ticket IDs in comments and demands brevity', () => {
       buildTestWorkflow('linear');
       const output = win.genWorkflow();
