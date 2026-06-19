@@ -180,6 +180,8 @@ The strongest workflows don't just produce work - they check it. Right-click any
 
 The pattern they're built for is **doubt early, prove late**: put a Skeptic on the plan to catch the expensive errors before you build, and a Verifier on the final step to prove the outcome before you ship. You'll see this in the presets - Feature Build reviews the Planner with a Skeptic, Documentation reviews the Doc Writer with one, and UI Design verifies the built component with a Verifier.
 
+**Route failures where they belong.** By default a loop sends problems back to the step it's attached to. But sometimes the real fix is upstream - if a Verifier near the end can't verify the outcome because the *plan* was incomplete, re-running the implementer won't help. Select the loop's decision gate and use **"On {failure}, route back to"** to send the failure branch to any earlier step (the Planner, say) instead. The back-edge redraws on the canvas to wherever you point it, so the routing is always visible. It defaults to the reviewed node, so you only touch it when you want to.
+
 A few guardrails keep the graph sane: one review loop per node, and review nodes (Skeptics and Verifiers) can't themselves be reviewed - the one-click only offers what makes sense. (You can always wire an exotic graph by hand.) Both are also available as regular agent types in the node dropdown if you'd rather place them manually. Add a **Custom Note** to either one to give it task-specific acceptance criteria - they're strong out of the box without it.
 
 ## Refine & Plan

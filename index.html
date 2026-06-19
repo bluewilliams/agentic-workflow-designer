@@ -3482,6 +3482,22 @@ function detachReviewLoop(targetId) {
   render();
   updateConfig();
 }
+// Re-points a review loop's failure branch (the decision's back-edge, labelled
+// noLabel) to a different node - e.g. route a Verifier's "Not verified" back to the
+// Planner instead of the immediate reviewed node. The back-edge connection is the
+// single source of truth (detach, the generators, and serialization all read it),
+// so this just moves that one edge and re-renders. Undoable.
+function setReviewLoopBackTarget(decisionId, targetNodeId) {
+  const decision = state.nodes.find(n => n.id === decisionId);
+  if (!decision || decision.config.reviewLoopDecisionFor === undefined) return;
+  const edge = state.connections.find(c => c.from === decisionId && c.label === decision.config.noLabel);
+  if (!edge || edge.to === targetNodeId) return;
+  if (decisionId === targetNodeId) return; // never a self-loop
+  pushUndo();
+  edge.to = targetNodeId;
+  render();
+  updateConfig();
+}
 // Context-menu entry point: toggles a review loop of `kind` on the selected node.
 // One loop per node, so if any loop is already attached this detaches it.
 function toggleReviewLoop(kind) {
@@ -3547,6 +3563,21 @@ function updateConfig() {
     fields.innerHTML += configInput('Yes Label', 'yesLabel', node.config.yesLabel);
     fields.innerHTML += configInput('No Label', 'noLabel', node.config.noLabel);
     fields.innerHTML += configInput('Max Revisions', 'maxRevisions', node.config.maxRevisions || 3, 'number', '', 'min="1" max="20"');
+    // Review-loop decisions (from Add skeptic review / Add verification) can route their
+    // failure branch back to a different node - e.g. loop a Verifier's "Not verified"
+    // back to the Planner. The candidate list is the work nodes; review nodes are not
+    // valid fix targets. Selecting one re-points the back-edge and redraws it live.
+    if (node.config.reviewLoopDecisionFor !== undefined) {
+      const noLabel = node.config.noLabel || 'No';
+      const backEdge = state.connections.find(c => c.from === node.id && c.label === noLabel);
+      const currentTarget = backEdge ? backEdge.to : node.config.reviewLoopDecisionFor;
+      const candidates = state.nodes
+        .filter(n => (n.type === 'agent' || n.type === 'task') && !(n.config && (n.config.agentType === 'adversary' || n.config.agentType === 'verifier')))
+        .map(n => ({ value: n.id, label: escHtml(n.label || '') }));
+      if (candidates.length) {
+        fields.innerHTML += configSelect(`On "${escHtml(noLabel)}", route back to`, 'reviewLoopBackTo', currentTarget, candidates);
+      }
+    }
   } else if (node.type === 'parallel') {
     fields.innerHTML += configSelect('Strategy', 'strategy', node.config.strategy,
       [{ value:'all', label:'Wait for All' },{ value:'any', label:'First Complete' },{ value:'race', label:'Race' }]);
@@ -3609,6 +3640,9 @@ function updateConfig() {
       trigger.textContent = opt.textContent;
       optsContainer.querySelectorAll('.custom-select-option').forEach(o => o.classList.toggle('selected', o === opt));
       cs.classList.remove('open');
+
+      // Review-loop reroute: not a config value - re-points the decision's back-edge.
+      if (key === 'reviewLoopBackTo') { setReviewLoopBackTarget(node.id, val); return; }
 
       if (key === 'label') node.label = val;
       else node.config[key] = val;
