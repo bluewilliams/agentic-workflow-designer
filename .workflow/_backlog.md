@@ -64,6 +64,8 @@ Parked items with the real-run evidence behind them, so the dedicated passes sta
 
 ## 7. Generic adversarial-critic agent + attach-anywhere review loop
 
+**Status (2026-06-18): DONE.** Shipped the generic `adversary` role (one template + role-aware lens + materiality bar) and the one-click context-menu attach/detach review loop. See .workflow/generic-adversarial-critic-agent-with-one-click-attach.md. 671/671 tests, independent review PASS. The debate PANEL (below) remains deferred.
+
 **What**: a reusable adversarial "Critic" agent type (refute-first posture) attachable to ANY step, looped back through the existing decision routing (review -> if issues, re-spawn the source agent with the feedback, max N cycles) - generalizing code review to any work product (plan, research, design, docs).
 
 **Why**: the adversarial second look is a proven quality lever and is underused beyond code review. Adversarially reviewing the PLAN before implementation catches the most expensive errors earliest.
