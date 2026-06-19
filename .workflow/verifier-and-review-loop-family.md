@@ -82,6 +82,8 @@ Shipped the Verifier and generalized the one-click into a review-loop family, ad
 - Skeptic display rename (Adversary -> Skeptic), internal id unchanged. Preset demos relabeled "Skeptic review:" and switched to the generic markers.
 - Verification: 689/689 tests (16 new). Browser-verified menu states + render. Independent adversarial review: PASS, no Critical/High.
 
+Follow-on (preset demo + docs): added a Verifier demo to the ui_component preset - attached (one-click shape) to the UI Implementer so it proves the built component works (browser-driven) before the UI Reviewer; "Not verified" loops back to the implementer. ui_component goes 3->4 agents and is now memory-enabled (gained a loop). This is the "prove late" half that complements the Skeptic-on-the-plan demos. Tests 689->690. README updated: a Quick Start (paste requirements -> pick preset -> copy Sub-Agents prompt -> send to Claude), a "Review Loops: Skeptic & Verifier (one-click)" section, the two new agent types, the context-menu mention, and the 3 demoed preset descriptions.
+
 ## Built with (provenance)
 
 Workflow: direct implementation by the orchestrator (mostly assembly onto the existing review-loop machinery + one authored prompt) with a PLANNER CHECKPOINT (Blue signed off Skeptic+Verifier naming + the verifier prompt) and an independent adversarial code-review pass. Related to .workflow/generic-adversarial-critic-agent-with-one-click-attach.md (same `adversarial-review` capability).

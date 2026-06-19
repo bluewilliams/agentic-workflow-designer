@@ -2588,9 +2588,9 @@ describe('Preset Loading', () => {
       win.loadPreset('test_automation');
       expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(6);
     });
-    it('should load ui_component preset with 3 agents', () => {
+    it('should load ui_component preset with 4 agents', () => {
       win.loadPreset('ui_component');
-      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(3);
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
     });
     it('should load refactoring preset with 5 agents', () => {
       win.loadPreset('refactoring');
@@ -4934,6 +4934,16 @@ describe('Usability & Help', () => {
       expect(!!win.state.connections.find(c => c.from === decision.id && c.to === writer.id && c.label === 'Needs revision')).toBe(true);
       // The balanced Doc Reviewer was replaced by the critic - no double review.
       expect(win.state.nodes.find(n => n.label === 'Doc Reviewer')).toBe(undefined);
+    });
+    it('ui_component preset verifies the UI Implementer with a verifier loop', () => {
+      win.loadPreset('ui_component');
+      const impl = win.state.nodes.find(n => n.label === 'UI Implementer');
+      const verifier = win.state.nodes.find(n => n.config && n.config.reviewLoopFor === impl.id);
+      expect(!!verifier).toBe(true);
+      expect(verifier.config.agentType).toBe('verifier');
+      const decision = win.state.nodes.find(n => n.config && n.config.reviewLoopDecisionFor === impl.id);
+      expect(decision.config.yesLabel).toBe('Verified');
+      expect(!!win.state.connections.find(c => c.from === decision.id && c.to === impl.id && c.label === 'Not verified')).toBe(true);
     });
   });
 

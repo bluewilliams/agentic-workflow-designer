@@ -6,6 +6,18 @@ Design multi-agent pipelines visually, configure each agent's role, model, and t
 
 **[Try it live](https://bluewilliams.github.io/agentic-workflow-designer/)** - zero install, runs entirely in-browser.
 
+## Quick Start
+
+If you just want to get work done, this is the whole path:
+
+1. **Open it** - the [live link](https://bluewilliams.github.io/agentic-workflow-designer/), or `index.html` in any browser.
+2. **Paste your requirements** - a Jira URL, a user story, or a plain sentence describing the task, into the Requirements box.
+3. **Pick a preset** - click one that matches the work (Feature Build, Bug Fix, Documentation, ...). It drops a ready-made pipeline on the canvas. (Or click **Generate** to auto-build one from your text.)
+4. **Copy the prompt** - hit **Copy** on the **Sub-Agents** tab (the default for Claude Code). The banner above the tabs will point you to a different tab if your workflow fits one better.
+5. **Send it to Claude** - paste into Claude Code and let the agents run.
+
+That is the core loop. Everything below is optional polish - tweaking agents, adding review loops, turning on memory, and so on.
+
 ## Design Philosophy
 
 Single HTML file. No frameworks, no build step, no server, no dependencies, no drama. Open it in a browser and it works. Deploy it to GitHub Pages and it works. Send it to a colleague and it works.
@@ -103,16 +115,16 @@ When a list is non-empty, its hint is injected into all five export formats, ins
 
 ## Built-in Presets
 
-- **Feature Build** - Planner > Implementer > Reviewer > Decision gate > Tester
+- **Feature Build** - Planner > (Skeptic reviews the plan) > Implementer > Reviewer > Decision gate > Tester
 - **Bug Fix** - Investigator > Fixer > Tester > Verification gate
 - **Full Stack** - Architect > parallel Backend + Frontend > Review > E2E Test
 - **Code Review** - Analyzer > Reviewer > Improver > Validator
 - **Parallel Research** - mode-aware. Codebase-internal: Codebase Explorer + Doc Researcher + Pattern Analyzer > Synthesizer. Landscape/advisory: Current-State Inventory + Options Researcher + Fit & Tradeoff Analyzer > Advisor (writes ADVISORY.md)
 - **Agent Swarm** - Security + Quality + Performance + Architecture audit > Report
 - **Test Automation** - [Test Planner | App Explorer] > parallel Feature Writer + Screen Objects + Step Definitions > Test Reviewer (with app source path + branch support)
-- **UI Design & Development** - Design System Analyzer > UI Implementer > UI Reviewer
+- **UI Design & Development** - Design System Analyzer > UI Implementer > (Verifier proves it works in a browser) > UI Reviewer
 - **Refactoring** - Planner > Code Analyzer > Refactorer > Reviewer > Decision gate > Tester
-- **Documentation** - Planner > Researcher > Doc Writer (Writer: Technical) > Doc Reviewer
+- **Documentation** - Planner > Researcher > Doc Writer (Writer: Technical) > (Skeptic reviews the docs)
 - **DevOps** - Planner > DevOps Engineer > Reviewer > Decision gate > Tester
 - **Performance** - Planner > Profiler > Optimizer > Reviewer > Decision gate > Tester
 - **Testing** - Planner > Code Analyzer > Test Suite Writer > Reviewer > Decision gate > Tester
@@ -124,7 +136,7 @@ Click any node on the canvas to open its configuration panel. Each node type has
 
 ### Agent
 The core building block. Every agent can be individually configured:
-- **Agent Type** - Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, Writer, or General. Each type has a built-in prompt template that activates when you leave the prompt blank. Writer agents have a **Writing Style** selector (Technical, User Guide, Business, API Reference, Runbook) that auto-configures tools and prompt for each discipline
+- **Agent Type** - Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, Writer, General, plus **Skeptic** and **Verifier** (the review-loop roles - see [Review Loops](#review-loops-skeptic--verifier-one-click)). Each type has a built-in prompt template that activates when you leave the prompt blank. Writer agents have a **Writing Style** selector (Technical, User Guide, Business, API Reference, Runbook) that auto-configures tools and prompt for each discipline
 - **Model** - Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 4.6, Haiku 4.5, Sonnet 4.5, Opus 4.5, plus 1M context variants for Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, and Sonnet 4.6. The default stays Opus 4.8; set a different default in the sidebar or override per-node as needed. Max plan users get 1M context by default. API and Pro users can select 1M variants for research-heavy or long-running agents where the extra context window makes a difference
 - **Tools** - Toggle individual tools on/off: Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP. Presets assign sensible defaults (e.g. Reviewers get read-only tools, Coders get everything)
 - **Agent Prompt** - Custom instructions. Leave blank to use the agent type's built-in template, or write your own
@@ -158,6 +170,17 @@ Some presets reveal additional sidebar sections:
 - **Test Automation** shows an **App Under Test** field - specify the local path to the app being tested so agents can explore its source for DOM selectors, screen structure, and locator patterns (Selenium, Playwright, etc.)
 - **UI Design & Development** shows a **UI Context** field for styling preferences and design system notes (e.g. "Use vanilla-extract + clsx, avoid SCSS")
 - **Parallel Research** shows a **Research Mode** selector on the fork node (codebase-internal / landscape-advisory / hybrid), plus an **Options to Evaluate** slot and an **Evaluation Bias / Principle** field. Mode is inferred from your requirements (our own code vs external options) and can be changed at any time; the agents re-bake to match. Advisory mode does a current-state inventory (LSP stays available but the heavy call-hierarchy tracing is gated off), enumerates the full option space including status-quo and lighter-weight alternatives, scores every option on a shared rubric, and ends with an Advisor that writes ADVISORY.md (CTO-ready summary, scored matrix, follow-up tickets, open questions). Recommending the minimal or do-nothing option is a valid conclusion.
+
+## Review Loops: Skeptic & Verifier (one-click)
+
+The strongest workflows don't just produce work - they check it. Right-click any **Agent or Task** node and you get two one-click options that build a review-and-revise loop around that step in a single action (and remove it just as easily). Each one drops in a reviewer, a decision gate, and a back-edge that routes problems back to the step to fix, reusing the same revision-loop machinery the presets use - so it renders correctly in every output format. Both are undoable in one step.
+
+- **Add skeptic review** - attaches a **Skeptic**: a refute-first critic that hunts for what is *wrong* by inspection. It runs a strict materiality bar - its default verdict is PASS, and it only loops work back for genuinely material defects (a correctness bug, a missing edge/null/error case, a requirement not met, a security issue, scope over-reach, a test that doesn't actually verify the behavior). It never sends work back for style or nitpicks, and it tailors what it scrutinizes to the kind of work under review (a plan, code, research, tests, docs, ...). Verdict: `PASS` / `NEEDS REVISION`.
+- **Add verification** - attaches a **Verifier**: it proves the outcome actually *meets the objective*, with evidence, by exercising the work - running the tests, calling the API, driving the app in a browser, following the documentation steps to confirm they produce the stated outcome, reconciling the data, and so on. It climbs an evidence ladder and never fakes a pass: if something genuinely can't be verified, it says so rather than rubber-stamping. Verdict: `VERIFIED` / `NOT VERIFIED`, with failures looped back to fix.
+
+The pattern they're built for is **doubt early, prove late**: put a Skeptic on the plan to catch the expensive errors before you build, and a Verifier on the final step to prove the outcome before you ship. You'll see this in the presets - Feature Build reviews the Planner with a Skeptic, Documentation reviews the Doc Writer with one, and UI Design verifies the built component with a Verifier.
+
+A few guardrails keep the graph sane: one review loop per node, and review nodes (Skeptics and Verifiers) can't themselves be reviewed - the one-click only offers what makes sense. (You can always wire an exotic graph by hand.) Both are also available as regular agent types in the node dropdown if you'd rather place them manually. Add a **Custom Note** to either one to give it task-specific acceptance criteria - they're strong out of the box without it.
 
 ## Refine & Plan
 
@@ -235,7 +258,7 @@ LSP is enabled by default on most agent presets. Code-analysis prompts in the Pr
 - **New Workflow**: The small "New Workflow" link next to the Workflow Name heading clears everything and starts fresh. Save or export your current workflow first if you want to keep it.
 - **Auto-naming**: Leave the workflow name blank and it generates a memorable two-part name (e.g. `swift-falcon`). Every workflow gets a unique identity for memory paths and file exports.
 - **Generate feedback**: After auto-generating a workflow, a toast tells you how many agents were created so you know it worked.
-- **Right-click context menu**: Right-click any node for quick access to Duplicate, Disconnect All, and Delete.
+- **Right-click context menu**: Right-click any node for quick access to Duplicate, Disconnect All, and Delete. On agent and task nodes it also offers **Add skeptic review** and **Add verification** (the one-click [review loops](#review-loops-skeptic--verifier-one-click)); on a parallel fork it offers Add Branch.
 - **Empty prompt detection**: When you copy a prompt, the app warns if any agents have empty prompts (they won't know what to do).
 - **Undo/Redo**: Toolbar buttons or `Ctrl+Z` / `Cmd+Z` to undo, `Ctrl+Shift+Z` / `Cmd+Shift+Z` to redo. Covers adding, deleting, connecting, disconnecting, and dragging nodes. 50-step history.
 - **Workflow validation**: A health indicator in the toolbar shows a green check or amber warning count. Click it to see issues like disconnected nodes, empty prompts, or incomplete decision gates. Catches problems before you copy the prompt.
