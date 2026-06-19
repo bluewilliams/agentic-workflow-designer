@@ -71,6 +71,11 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 ## repo-context-paths
 
+- record: .workflow/multi-repo-claudemd-loading.md
+- intent: fix the multi-repo CLAUDE.md gap - CLAUDE.md/.claude/rules auto-load ONLY for the launch dir (verified vs Claude Code docs), so secondary repos' rules were silently ignored and our prompts wrongly said "CLAUDE.md already auto-loaded, do not re-read". Now the multi-repo block has agents read each repo's CLAUDE.md/CLAUDE.local.md/.claude/rules before changing it + names the `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 claude --add-dir` setup; rulesPathsHint/productDocsHint + sidebar text made repo-aware
+- files: index.html (repoBlock ~2103, rulesPathsHint ~1096, productDocsHint ~1116, sidebar text ~467/471), tests.html (+2, updated sidebar assertion), README.md (multi-repo gotcha subsection)
+- status: current | date: 2026-06-19 | note: listed Rule/Product paths were already resolved per-repo (correct); only the CLAUDE.md auto-load assumption was wrong. Verified via claude-code-guide vs memory.md + sub-agents.md. ALSO added per-repo rule SCOPING (repoBlock step 4): each repo's CLAUDE.md/.claude/rules govern only that repo's work, the auto-loaded launch-repo CLAUDE.md is scoped to the launch repo (not a global default), conflict -> repo-being-changed wins. Behavioral scoping, NOT hard isolation (launch CLAUDE.md stays in session context; a prompt cannot unload it)
+
 - record: .workflow/repo-context-paths.md
 - intent: two settings inputs (Rules/constitution paths + Product docs PRD/ADR) that inject repo-scoped binding-rules and product-goals guidance into generated prompts; flat lists, sticky, per-repo anti-contamination in the hint
 - files: index.html (rulesPathsHint + productDocsHint + the two chip-list inputs + savePrefs/restorePrefs + sticky clearCanvas + five injection sites), tests.html, README.md, TECHNICAL.md
