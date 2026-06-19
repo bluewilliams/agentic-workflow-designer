@@ -5337,12 +5337,19 @@ function loadPreset(preset) {
     feature: () => {
       const i = addNode('input', 80, 250, 'Requirements');
       const p = addNode('agent', 340, 250, 'Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.planner, maxTurns:5 });
+      // Adversarial review of the PLAN before implementation - catches the most expensive
+      // errors earliest. Demonstrates the critic on a non-code artifact (a plan).
+      const pc = addNode('agent', 480, 430, 'Adversarial review: Planner', { agentType:'adversary', adversaryRole:'planner', adversaryFor:p.id, model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], maxTurns:5 });
+      const pd = addNode('decision', 620, 430, 'Plan sound?', { condition:'The plan is sound, complete, and addresses the requirements', yesLabel:'Passed', noLabel:'Needs revision', maxRevisions:3, adversaryDecisionFor:p.id });
       const c = addNode('agent', 620, 250, 'Implementer', { agentType:'coder', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.implementer, maxTurns:15 });
       const r = addNode('agent', 900, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, maxTurns:5 });
       const d = addNode('decision', 1180, 242, 'Review Passed?', { condition:'Code review passed with no critical issues', yesLabel:'Approved', noLabel:'Revise' });
       const t = addNode('agent', 1460, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
       const o = addNode('output', 1740, 250, 'Feature Complete', { deliverable:'Tested feature', format:'code' });
-      addConnection(i.id, p.id); addConnection(p.id, c.id); addConnection(c.id, r.id);
+      addConnection(i.id, p.id);
+      addConnection(p.id, pc.id); addConnection(pc.id, pd.id);
+      addConnection(pd.id, c.id, 'Passed'); addConnection(pd.id, p.id, 'Needs revision');
+      addConnection(c.id, r.id);
       addConnection(r.id, d.id); addConnection(d.id, c.id, 'Revise');
       addConnection(d.id, t.id, 'Approved'); addConnection(t.id, o.id);
     },
@@ -5488,10 +5495,14 @@ function loadPreset(preset) {
       const p = addNode('agent', 340, 250, 'Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.planner, maxTurns:5 });
       const res = addNode('agent', 620, 250, 'Researcher', { agentType:'researcher', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.researcher, maxTurns:10 });
       const dw = addNode('agent', 900, 250, 'Doc Writer', { agentType:'writer', writingStyle:'technical', model:state.defaultModel, tools:WRITER_TOOL_DEFAULTS.technical, prompt:PROMPTS.writerTechnical, maxTurns:15 });
-      const r = addNode('agent', 1180, 250, 'Doc Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, notes:'Review documentation for accuracy, completeness, clarity, and adherence to project documentation conventions.', maxTurns:5 });
-      const o = addNode('output', 1460, 250, 'Documentation', { deliverable:'Complete documentation deliverable', format:'docs' });
+      // Adversarial review of the DOCS - the writer lens checks accuracy against the code,
+      // completeness, and clarity. Demonstrates the critic on a writing artifact.
+      const dc = addNode('agent', 1180, 250, 'Adversarial review: Doc Writer', { agentType:'adversary', adversaryRole:'writer', adversaryFor:dw.id, model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], maxTurns:5 });
+      const d = addNode('decision', 1460, 242, 'Docs accurate?', { condition:'Documentation is accurate against the code, complete, and clear', yesLabel:'Passed', noLabel:'Needs revision', maxRevisions:3, adversaryDecisionFor:dw.id });
+      const o = addNode('output', 1740, 250, 'Documentation', { deliverable:'Complete documentation deliverable', format:'docs' });
       addConnection(i.id, p.id); addConnection(p.id, res.id); addConnection(res.id, dw.id);
-      addConnection(dw.id, r.id); addConnection(r.id, o.id);
+      addConnection(dw.id, dc.id); addConnection(dc.id, d.id);
+      addConnection(d.id, dw.id, 'Needs revision'); addConnection(d.id, o.id, 'Passed');
     },
     devops: () => {
       const i = addNode('input', 80, 250, 'Infrastructure Requirements');
