@@ -49,6 +49,11 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 ## durable-record-protocol
 
+- record: .workflow/provenance-captures-workflow-shape.md
+- intent: enrich the durable record's "Built with (provenance)" line to capture the workflow SHAPE (ordered roles + topology: decision gates/revision caps, parallel forks, Skeptic/Verifier review loops incl. attach points + reroute targets), the notable non-default config (models, significant tool grants, turn limits), and the run context (toggles/MCPs/repo-context) - capped to shape-and-knobs, NOT a full dump (the exported .json/Handoff carry the verbatim pipeline). Answers "should the durable doc include the workflow spec" = yes, as compact provenance
+- files: index.html (genDurableRecordProtocol Built-with bullet ~2771; prose-only, protected phrases preserved), tests.html (+1 provenance-shape test)
+- status: current | date: 2026-06-19
+
 - record: .workflow/cadence-granularity-and-clarify-sensitivity.md
 - intent: two cold-run tunings - KEEP CURRENT now requires ticking EACH checklist item per step (covers one Implementer finishing many items, tick-now-not-at-finalize); and the clarify gate leans toward asking on high-value forks (null/empty/below-threshold, conflicting behavior, contract shape) with a low-stakes escape
 - files: index.html (genDurableRecordProtocol KEEP CURRENT bullet + clarifyFirstHint bullet), tests.html (+2)
