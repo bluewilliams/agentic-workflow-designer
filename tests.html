@@ -3686,7 +3686,7 @@ describe('Repo context paths', () => {
       // descriptive labels + helper text present
       const html = doc.querySelector('body').innerHTML;
       expect(html).toContain('Rules / constitution paths');
-      expect(html).toContain('(binding; CLAUDE.md already read)');
+      expect(html).toContain('(binding; CLAUDE.md auto-read in the launch repo)');
       expect(html).toContain('Product docs (PRD / ADR)');
       expect(html).toContain('(goals/direction to honor)');
     });
@@ -3795,6 +3795,32 @@ describe('Repo context paths', () => {
         expect(out).toNotContain('Repo rules / constitution');
         expect(out).toNotContain('Product / architecture docs');
       });
+    });
+    it('multi-repo block has agents read each repo CLAUDE.md/rules and names the env-var setup', () => {
+      buildTestWorkflow('linear'); // resets state, so set repositories AFTER
+      win.state.repositories = [{ path: '/repos/a', branch: 'main' }, { path: '/repos/b', branch: '' }];
+      const block = win.repoBlock('### Repositories').join('\n');
+      expect(block).toContain('read its own rules');
+      expect(block).toContain('NOT loaded automatically');
+      expect(block).toContain('CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1');
+      expect(block).toContain('--add-dir');
+      expect(win.genWorkflow()).toContain('read its own rules'); // flows into the generated prompt
+      win.state.repositories = [];
+    });
+    it('rules hint tells agents to read other repos CLAUDE.md in a multi-repo run', () => {
+      win.state.rulesPaths = ['.claude/rules'];
+      expect(win.rulesPathsHint()).toContain("read each OTHER repository's CLAUDE.md");
+      win.state.rulesPaths = [];
+    });
+    it('multi-repo block scopes each repo CLAUDE.md to its own repo, including the launch repo', () => {
+      win.state.repositories = [{ path: '/repos/a', branch: 'main' }, { path: '/repos/b', branch: '' }];
+      const block = win.repoBlock('### Repositories').join('\n');
+      expect(block).toContain("govern ONLY that repository's own work");
+      // The launch repo's auto-loaded CLAUDE.md is scoped to the launch repo, not a global default.
+      expect(block).toContain('belongs to the repository you launched in');
+      expect(block).toContain('not a global default for the others');
+      expect(block).toContain('follow the rules of the repository you are changing');
+      win.state.repositories = [];
     });
   });
 

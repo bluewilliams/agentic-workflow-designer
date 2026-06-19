@@ -113,6 +113,18 @@ This is the **three-tier context model** the generated prompts make explicit:
 
 When a list is non-empty, its hint is injected into all five export formats, instructing agents to read only what is listed (no blind-hunt), to use directory-vs-file discovery (a directory: discover relevant files by common name; a file: read it directly), and - in a multi-repo run - to resolve each path within each in-scope repository and never carry one repo's context into another's. The lists are **sticky**: they persist to localStorage and survive a New Workflow reset (only Clear-all empties them), because they are repo-level context that carries across workflows in the same repo. When both lists are empty, nothing is injected and output is unchanged.
 
+### Multi-repo gotcha: CLAUDE.md only auto-loads for the launch repo
+
+Worth knowing for multi-repo workflows: Claude Code auto-loads `CLAUDE.md` and `.claude/rules/` only for the **directory the session launched in** (its tree). A second repository cloned elsewhere is outside that tree, so **its `CLAUDE.md` is not loaded automatically** - and subagents inherit the launch repo's rules rather than re-scanning new directories. So an agent working in repo B can silently miss repo B's rules.
+
+The generated multi-repo prompt handles this for you: it instructs each agent to **read every working repo's own `CLAUDE.md` / `CLAUDE.local.md` / `.claude/rules/` before changing it**, and your listed Rule Paths are resolved per-repo (which also covers files that never auto-load anywhere, like `CONVENTIONS.md` / `CONTRIBUTING.md`). For the cleanest setup, launch the session with each repo added and the memory flag set so the loading happens automatically:
+
+```bash
+CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 claude --add-dir ../repo-b ../repo-c
+```
+
+`--add-dir` grants file access to the extra repos; the env var makes their `CLAUDE.md` load at startup (and thus propagate to subagents). The explicit per-repo read in the prompt is the fallback that works no matter how the session was launched.
+
 ## Built-in Presets
 
 - **Feature Build** - Planner > (Skeptic reviews the plan) > Implementer > Reviewer > Decision gate > Tester
