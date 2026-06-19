@@ -807,6 +807,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <div class="context-menu" id="contextMenu">
   <div class="context-menu-item" onclick="duplicateNode()">Duplicate</div>
   <div class="context-menu-item" id="ctxAddBranch" style="display:none" onclick="addBranchToFork()">Add Branch</div>
+  <div class="context-menu-item" id="ctxAdversary" style="display:none" onclick="toggleAdversarialReview()">Add adversarial review</div>
   <div class="context-menu-item" onclick="disconnectNode()">Disconnect All</div>
   <div class="context-menu-item danger" onclick="deleteSelected()">Delete</div>
 </div>
@@ -992,7 +993,8 @@ const AGENT_TYPES = [
   { id: 'debugger', name: 'Debugger', desc: 'Investigates and fixes bugs' },
   { id: 'researcher', name: 'Researcher', desc: 'Explores codebase, gathers context' },
   { id: 'writer', name: 'Writer', desc: 'Documentation and content creation specialist' },
-  { id: 'general', name: 'General', desc: 'General-purpose agent' }
+  { id: 'general', name: 'General', desc: 'General-purpose agent' },
+  { id: 'adversary', name: 'Adversary', desc: 'Refute-first critic; reviews any step and loops back only material defects' }
 ];
 
 const WRITING_STYLES = [
@@ -1216,7 +1218,7 @@ const AGENT_TYPE_PROMPT_MAP = {
   planner: 'planner', architect: 'architect', coder: 'implementer',
   frontend: 'frontend', backend: 'backend', reviewer: 'reviewer',
   tester: 'tester', debugger: 'investigator', researcher: 'researcher',
-  writer: 'writerTechnical', general: 'researcher'
+  writer: 'writerTechnical', general: 'researcher', adversary: 'adversary'
 };
 
 // Returns a quality prompt for any node - user prompt > agentType template > smart fallback
@@ -1226,6 +1228,9 @@ function getEffectivePrompt(node) {
   if (node.config.agentType === 'writer') {
     const styleKey = 'writer' + capitalize(node.config.writingStyle || 'technical');
     if (PROMPTS[styleKey]) return PROMPTS[styleKey];
+  }
+  if (node.config.agentType === 'adversary') {
+    return buildAdversaryPrompt(node.config.adversaryRole);
   }
   const mapped = AGENT_TYPE_PROMPT_MAP[node.config.agentType];
   if (mapped && PROMPTS[mapped]) return PROMPTS[mapped];
@@ -1250,12 +1255,44 @@ function classifyAgentPrompt(node) {
     const styleKey = 'writer' + capitalize(node.config.writingStyle || 'technical');
     if (PROMPTS[styleKey]) template = PROMPTS[styleKey];
   }
+  if (template === null && node.config.agentType === 'adversary') {
+    template = buildAdversaryPrompt(node.config.adversaryRole);
+  }
   if (template === null) {
     const mapped = AGENT_TYPE_PROMPT_MAP[node.config.agentType];
     if (mapped && PROMPTS[mapped]) template = PROMPTS[mapped];
   }
   if (template !== null && stored.trim() === template.trim()) return { state: 'template', role, lines, text };
   return { state: 'custom', role, lines, text };
+}
+
+// ═══════════════════════════════════════════════════════════
+// ADVERSARY CRITIC - one refute-first template, role-aware lens
+// ═══════════════════════════════════════════════════════════
+// Per-role scrutiny lens. One line per reviewed-role kind; spliced into the
+// shared critic template by buildAdversaryPrompt so the critic scrutinizes the
+// right things for the work it is reviewing.
+const ADVERSARY_LENSES = {
+  planner: '**What to scrutinize (reviewing a plan):** does the plan actually satisfy every requirement it was given? Are the edge, null, empty, and error cases planned for, not just the happy path? Are the named files and integration points the right ones, and is anything missing? Is each decision justified, or merely asserted? Would following this plan as written produce the asked-for result?',
+  architect: '**What to scrutinize (reviewing a design or architecture):** are the contracts and interfaces sound? Is there hidden coupling, or a missing integration point between components? Does the design handle failure, scale, and the boundary conditions, or only the nominal path? Does it actually meet the requirements it was given?',
+  implementer: '**What to scrutinize (reviewing code):** is it correct on the boundaries, not just the happy path? Is error and null handling present where it matters? Did it stay in scope, or refactor and add things that were not asked for? Does it follow the existing conventions of the codebase? Do the changes actually do what the requirements asked?',
+  researcher: '**What to scrutinize (reviewing research or findings):** is every claim grounded in something real and verifiable, or merely asserted? Are there hallucinated files, APIs, or paths? Were the sources actually consulted? What relevant ground was left uncovered?',
+  tester: '**What to scrutinize (reviewing tests):** do the tests actually exercise the behavior they name, or do they pass trivially? Where is coverage thin - the boundary, null, empty, and error cases? Would these tests catch a real regression, or do they give false confidence?',
+  writer: '**What to scrutinize (reviewing docs or written content):** is it accurate against the actual code and behavior, or does it describe something that is not true? Is it complete, or does it skip the hard parts? Is it clear to its intended reader, or only to the author?',
+  generic: '**What to scrutinize:** does the output actually do what the task asked, completely? Are the boundary, empty, and failure cases handled, not just the obvious path? Is anything missing, incorrect, or out of scope? Is every claim it makes actually true?'
+};
+// Normalizes a reviewed node's agentType to a lens key. Unknown/blank -> generic.
+const ADVERSARY_LENS_BY_ROLE = {
+  planner: 'planner', architect: 'architect',
+  coder: 'implementer', frontend: 'implementer', backend: 'implementer', debugger: 'implementer',
+  researcher: 'researcher', tester: 'tester', writer: 'writer'
+};
+// Builds the full critic prompt for a reviewed role: shared core + the matching lens.
+function buildAdversaryPrompt(reviewedRole) {
+  const head = 'You are an adversarial critic. Your job is to find what is wrong with the work under review before it moves forward, not to rubber-stamp it.\n\n**Posture (refute-first):** assume the work is flawed until it proves otherwise. The burden is on the work to demonstrate it is correct and complete, not on you to prove it is broken. Hunt actively for defects. But stay scoped: judge the work that was produced against the requirements it was given. Do not invent new requirements, redesign the approach, or expand the task.\n\n**Independence:** judge the OUTPUT against the original requirements or spec you were handed, not the producer\'s reasoning, confidence, or self-assessment.\n\n**The materiality bar (read this twice).** Your default verdict is PASS. Return NEEDS REVISION only for a MATERIAL defect, something that genuinely changes the outcome: a correctness or logic bug; a stated requirement not met; a missing edge, null, empty, or error case; a security or data-handling problem; scope over-reach (work that was not asked for and carries risk); or a test that does not actually verify the behavior it claims. Do NOT send work back for style, naming, taste, formatting, wording, or "this could be a bit better." When you are on the fence, PASS and record the concern as a non-blocking note. A revise cycle has a real cost; only spend it when the fix is worth more than the round trip.\n\n**Severity gating.** Tag every finding Critical, High, Medium, or Low. ONLY Critical or High findings make the verdict NEEDS REVISION. Medium and Low findings are recorded as non-blocking notes and the verdict stays PASS - they inform the next step without forcing a loop.\n\n';
+  const tail = '\n\n**Convergence.** You are inside a revise loop with a cycle cap. On the final allowed cycle, raise only the remaining blockers, nothing new. If blockers still remain after the cap is reached, PASS and document the unresolved issues (in the durable record if one is maintained) rather than blocking the workflow forever.\n\n**Output contract.** End with exactly one verdict line, then the issues:\n\nVERDICT: PASS\nor\nVERDICT: NEEDS REVISION\n\n- **Blocking issues (Critical/High only)** - for each: the location (file:line or the exact claim), the severity, and the concrete change required so the source step can fix it directly.\n- **Non-blocking notes (Medium/Low)** - brief, for awareness, no action forced.\n\nBe specific and actionable. "This seems off" is useless; "the factory returns null when size is below the threshold, so the null branch is never reached" is what lets the looped-back step fix it in one pass.';
+  const lensKey = ADVERSARY_LENS_BY_ROLE[reviewedRole] || 'generic';
+  return head + ADVERSARY_LENSES[lensKey] + tail;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1285,6 +1322,9 @@ const PROMPTS = {
   investigator: 'Investigate the reported bug systematically to find the root cause.\n\n1. Understand expected vs actual behavior from the bug report\n2. Use `Grep` to find the entry point - the function/handler most likely involved\n3. Use `LSP incomingCalls` on the suspected function to trace how it is invoked - find all call sites leading to the bug\n4. Use `LSP outgoingCalls` to trace what the function calls, following the execution path deeper into the stack\n5. Use `LSP findReferences` on any variable, type, or constant that may be incorrectly set to find where it originates\n6. Use `LSP goToDefinition` to inspect type definitions and ensure the data shapes match expectations at every layer\n7. Use `LSP hover` to get type information on ambiguous expressions without reading the full definition file\n8. Check `git log` for recent changes to suspected files that may have introduced the issue\n9. Identify the ROOT CAUSE, not just the symptom\n10. **Write a failing reproduction test (when feasible)**: If the project has a test framework set up (check for existing test files, test scripts in package.json, pytest.ini, etc.) AND the bug is reproducible in code (not a config, environment, or infrastructure issue), write a test that FAILS with the current bug and PASSES when the bug is fixed. This gives the Fixer a concrete success criterion and becomes a permanent regression guard. If the bug is not reproducible via automated test (UI-only, environment-specific, timing-dependent), skip this step and note why.\n\nOutput: reproduction steps, full call chain (using LSP findings), affected files/functions, root cause analysis, recommended fix approach, impact assessment, and the failing reproduction test (if written).\n\n## Handoff Summary\nEnd your response with:\n- **Root Cause**: Clear description of what is wrong and where\n- **Call Chain**: The traced path from entry point to failure (file:line at each step)\n- **Reproduction Test**: Path to the failing test (or "Not feasible" with reason)\n- **Recommended Fix**: Specific approach for the Fixer to take. If a reproduction test was written, the fix MUST make that test pass.\n- **Affected Files**: Files the Fixer will need to modify\n- **Risk Areas**: Related code that could be affected by the fix',
 
   fixer: 'Fix the bug based on the root cause analysis.\n\n1. Read the investigation report and fully understand the root cause\n2. If the Investigator wrote a reproduction test, run it first to confirm it FAILS before your fix (this validates the test catches the bug)\n3. Before editing, use `LSP findReferences` on every symbol you plan to change - confirm the full blast radius of your fix\n4. Use `LSP incomingCalls` on the function being fixed to identify any other callers that may need the same fix or be affected by the change\n5. Make the minimal, targeted fix that addresses the root cause\n6. Re-read surrounding code paths with `LSP outgoingCalls` to check for related side effects\n7. If a reproduction test exists, run it to confirm it now PASSES. This is your primary success criterion.\n8. Run targeted tests related to the changed files to confirm no regressions. Leave the comprehensive test run for the Tester agent.\n9. Add a brief comment if the fix is non-obvious\n\nProvide: what was changed, why, files modified, LSP-confirmed blast radius, and any remaining concerns.\n\n## Handoff Summary\nEnd your response with:\n- **Root Cause**: One-line summary\n- **Fix Applied**: What was changed and why\n- **Reproduction Test**: PASSES / was not provided (with reason)\n- **Files Changed**: Each file with description\n- **Blast Radius**: LSP-confirmed scope of impact\n- **Regression Risk**: What to test to verify the fix and avoid regressions',
+
+  // --- Adversarial review (generic default; attach sets the role-aware lens) ---
+  adversary: buildAdversaryPrompt(null),
 
   // --- Review ---
   reviewer: 'Review all code changes for quality and correctness.\n\n1. For each modified function or method, use `LSP findReferences` to check that all call sites are consistent with any signature changes\n2. Use `LSP goToDefinition` on any new type or interface introduced - verify it aligns with how it is actually used\n3. Use `LSP goToImplementation` on any interface that was changed - confirm all implementations were updated\n4. Use `LSP incomingCalls` on modified functions to detect callers that may not handle new error cases or changed return shapes\n\nEvaluate against:\n- **Correctness**: Does implementation match requirements? Are all LSP-found callers handled?\n- **Scope and minimality**: Is the change the simplest solution that solves the problem? Flag any unnecessary complexity, over-engineering, or changes to files unrelated to the task. A bug fix should fix the bug, not refactor the surrounding code. A feature should implement the feature, not redesign the module.\n- **Code quality**: Naming, structure, DRY, single responsibility\n- **Security**: Input validation, injection prevention, data handling\n- **Performance**: Efficient algorithms, no unnecessary work\n- **Conventions**: Follows project patterns and style\n- **Comments**: Flag narrating or redundant comments - comment the why, not the what.\n\nFor each issue, provide file:line, severity (Critical/High/Medium/Low), and fix suggestion. Output a clear PASS or NEEDS REVISION verdict.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or NEEDS REVISION\n- **Scope Check**: Is the change minimal and focused, or does it include unnecessary changes?\n- **Critical Issues**: Must-fix items with file:line (if any)\n- **Improvements**: Suggested enhancements, non-blocking\n- **Test Gaps**: Areas needing test coverage',
@@ -3339,6 +3379,89 @@ function addBranchToFork() {
 }
 
 // ═══════════════════════════════════════════════════════════
+// ADVERSARIAL REVIEW - one-click attach / detach of a critic + revise loop
+// ═══════════════════════════════════════════════════════════
+// True if `targetId` already has an attached adversarial critic.
+function hasAdversaryAttached(targetId) {
+  return state.nodes.some(n => n.config && n.config.adversaryFor === targetId);
+}
+// An Agent or Task node can host a critic (but a critic itself cannot).
+function canAttachAdversary(node) {
+  return !!node && (node.type === 'agent' || node.type === 'task') &&
+    !(node.config && node.config.agentType === 'adversary');
+}
+// Attaches a refute-first critic + a Decision revise-loop to `targetId` in one
+// undoable action: target -> critic -> decision, decision --Passed--> original
+// downstream(s), decision --Needs revision--> back to target. Reuses the existing
+// Decision/maxRevisions machinery, so all generators render the loop unchanged.
+function attachAdversary(targetId) {
+  const target = state.nodes.find(n => n.id === targetId);
+  if (!canAttachAdversary(target) || hasAdversaryAttached(targetId)) return;
+
+  // The target's current outgoing edges become the Decision's "Passed" branch.
+  const outs = state.connections.filter(c => c.from === targetId);
+  const reviewedRole = target.type === 'agent' ? (target.config.agentType || 'general') : 'generic';
+
+  // batchUndo wraps a single pushUndo + try/finally so the whole attach is one
+  // undo step and _undoBatch can never stick true if an inner call throws.
+  let critic;
+  batchUndo(() => {
+    critic = addNode('agent', target.x + 280, target.y, 'Adversarial review: ' + target.label, {
+      agentType: 'adversary', adversaryRole: reviewedRole, adversaryFor: targetId
+    });
+    const decision = addNode('decision', target.x + 560, target.y, 'Review passed?', {
+      condition: 'Adversarial review passed (no Critical or High findings)',
+      yesLabel: 'Passed', noLabel: 'Needs revision', maxRevisions: 3,
+      adversaryDecisionFor: targetId
+    });
+
+    // Re-route: drop the target's direct outgoing edges, then rebuild through the loop.
+    const outIds = new Set(outs.map(c => c.id));
+    state.connections = state.connections.filter(c => !outIds.has(c.id));
+    addConnection(targetId, critic.id);
+    addConnection(critic.id, decision.id);
+    addConnection(decision.id, targetId, 'Needs revision');
+    outs.forEach(c => addConnection(decision.id, c.to, 'Passed'));
+  });
+
+  selectNode(critic.id, true);
+  render();
+  updateConfig();
+}
+// Removes an attached critic + its Decision and restores the target's original
+// downstream, in one undoable action. Symmetric inverse of attachAdversary.
+function detachAdversary(targetId) {
+  const critic = state.nodes.find(n => n.config && n.config.adversaryFor === targetId);
+  if (!critic) return;
+  const decision = state.nodes.find(n => n.config && n.config.adversaryDecisionFor === targetId) ||
+    (function () {
+      const dc = state.connections.find(c => c.from === critic.id);
+      return dc ? state.nodes.find(n => n.id === dc.to) : null;
+    })();
+  // The Decision's "Passed" branch holds the original downstream targets to restore.
+  const restoreTos = decision
+    ? state.connections.filter(c => c.from === decision.id && c.label === (decision.config.yesLabel || 'Passed')).map(c => c.to)
+    : [];
+
+  batchUndo(() => {
+    deleteNode(critic.id);
+    if (decision) deleteNode(decision.id);
+    restoreTos.forEach(to => addConnection(targetId, to));
+  });
+  selectNode(targetId, true);
+  render();
+  updateConfig();
+}
+// Context-menu entry point: toggles the adversarial loop on the selected node.
+function toggleAdversarialReview() {
+  hideContextMenu();
+  const node = state.nodes.find(n => n.id === state.selectedId);
+  if (!canAttachAdversary(node)) return;
+  if (hasAdversaryAttached(node.id)) detachAdversary(node.id);
+  else attachAdversary(node.id);
+}
+
+// ═══════════════════════════════════════════════════════════
 // CONFIGURATION PANEL
 // ═══════════════════════════════════════════════════════════
 function updateConfig() {
@@ -3799,6 +3922,14 @@ function showContextMenu(x, y) {
   // Show "Add Branch" only for parallel nodes
   const sel = state.nodes.find(n => n.id === state.selectedId);
   $('ctxAddBranch').style.display = (sel && sel.type === 'parallel') ? 'flex' : 'none';
+  // Show "Add/Remove adversarial review" only for Agent/Task nodes
+  const adv = $('ctxAdversary');
+  if (canAttachAdversary(sel)) {
+    adv.style.display = 'flex';
+    adv.textContent = hasAdversaryAttached(sel.id) ? 'Remove adversarial review' : 'Add adversarial review';
+  } else {
+    adv.style.display = 'none';
+  }
   menu.classList.add('show');
 }
 function hideContextMenu() { $('contextMenu').classList.remove('show'); }

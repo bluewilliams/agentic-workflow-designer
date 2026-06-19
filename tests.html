@@ -452,7 +452,7 @@ describe('Pure Utilities', () => {
       const writer = win.AGENT_TYPES.find(a => a.id === 'writer');
       expect(!!writer).toBe(true);
       expect(writer.name).toBe('Writer');
-      expect(win.AGENT_TYPES.length).toBe(11);
+      expect(win.AGENT_TYPES.length).toBe(12);
     });
     it('should return technical prompt for default style', () => {
       const node = { label:'Writer', config:{ prompt:'', agentType:'writer', notes:'' }};
@@ -4732,6 +4732,185 @@ describe('Usability & Help', () => {
     });
   });
 
+  describe('adversary role', () => {
+    it('should register adversary in AGENT_TYPES (length 12)', () => {
+      const adv = win.AGENT_TYPES.find(a => a.id === 'adversary');
+      expect(!!adv).toBe(true);
+      expect(adv.name).toBe('Adversary');
+      expect(win.AGENT_TYPES.length).toBe(12);
+    });
+    it('should map adversary to its PROMPTS key', () => {
+      expect(win.AGENT_TYPE_PROMPT_MAP.adversary).toBe('adversary');
+      expect(!!win.PROMPTS.adversary).toBe(true);
+    });
+    it('should resolve adversary via getEffectivePrompt', () => {
+      const node = { label: 'Critic', config: { prompt: '', agentType: 'adversary', notes: '' } };
+      const result = win.getEffectivePrompt(node);
+      expect(result).toContain('adversarial critic');
+    });
+    it('should classify a bare adversary node like any role', () => {
+      const node = { label: 'Critic', config: { prompt: '', agentType: 'adversary', notes: '' } };
+      const c = win.classifyAgentPrompt(node);
+      expect(c.state).toBe('empty');
+      expect(c.role).toBe('Adversary');
+    });
+    it('should classify a role-matched adversary prompt as template', () => {
+      const plannerPrompt = win.buildAdversaryPrompt('planner');
+      const node = { label: 'Critic', config: { prompt: plannerPrompt, agentType: 'adversary', adversaryRole: 'planner', notes: '' } };
+      expect(win.classifyAgentPrompt(node).state).toBe('template');
+    });
+  });
+
+  describe('adversary template content', () => {
+    const t = () => win.PROMPTS.adversary;
+    it('should state a refute-first posture', () => {
+      expect(t()).toContain('refute-first');
+      expect(t()).toContain('burden is on the work');
+    });
+    it('should define the PASS / NEEDS REVISION verdict contract', () => {
+      expect(t()).toContain('VERDICT: PASS');
+      expect(t()).toContain('VERDICT: NEEDS REVISION');
+    });
+    it('should default to PASS and exclude nitpicks (materiality bar)', () => {
+      expect(t()).toContain('default verdict is PASS');
+      expect(t()).toContain('When you are on the fence, PASS');
+      expect(t()).toContain('Do NOT send work back for style');
+    });
+    it('should gate the verdict on Critical/High severity only', () => {
+      expect(t()).toContain('ONLY Critical or High findings make the verdict NEEDS REVISION');
+    });
+    it('should encode convergence (proceed after the cap)', () => {
+      expect(t()).toContain('after the cap');
+      expect(t()).toContain('rather than blocking the workflow forever');
+    });
+  });
+
+  describe('adversary role-aware lens', () => {
+    it('should apply the planner lens for a planner role', () => {
+      const p = win.buildAdversaryPrompt('planner');
+      expect(p).toContain('reviewing a plan');
+      expect(p).toNotContain('reviewing code');
+    });
+    it('should apply the code lens for coder/frontend/backend roles', () => {
+      expect(win.buildAdversaryPrompt('coder')).toContain('reviewing code');
+      expect(win.buildAdversaryPrompt('frontend')).toContain('reviewing code');
+      expect(win.buildAdversaryPrompt('backend')).toContain('reviewing code');
+      expect(win.buildAdversaryPrompt('coder')).toNotContain('reviewing a plan');
+    });
+    it('should fall back to the generic lens for Task/unknown roles', () => {
+      const g = win.buildAdversaryPrompt('generic');
+      expect(g).toContain('does the output actually do what the task asked');
+      expect(win.buildAdversaryPrompt('totally_unknown')).toContain('does the output actually do what the task asked');
+      expect(win.buildAdversaryPrompt(null)).toContain('does the output actually do what the task asked');
+    });
+  });
+
+  describe('adversary attach / detach', () => {
+    function attached(targetId) {
+      return win.state.nodes.find(n => n.config && n.config.adversaryFor === targetId);
+    }
+    function buildTargetWithDownstream() {
+      resetState();
+      const target = win.addNode('agent', 100, 100, 'Worker', { agentType: 'coder' });
+      const out = win.addNode('output', 700, 100, 'Result');
+      win.addConnection(target.id, out.id);
+      return { target, out };
+    }
+    it('should offer attach only on Agent and Task nodes', () => {
+      resetState();
+      const agent = win.addNode('agent', 100, 100, 'A', { agentType: 'coder' });
+      const task = win.addNode('task', 100, 200, 'T');
+      const decision = win.addNode('decision', 100, 300, 'D');
+      const input = win.addNode('input', 100, 400, 'I');
+      const output = win.addNode('output', 100, 500, 'O');
+      const parallel = win.addNode('parallel', 100, 600, 'P');
+      expect(win.canAttachAdversary(agent)).toBe(true);
+      expect(win.canAttachAdversary(task)).toBe(true);
+      expect(win.canAttachAdversary(decision)).toBe(false);
+      expect(win.canAttachAdversary(input)).toBe(false);
+      expect(win.canAttachAdversary(output)).toBe(false);
+      expect(win.canAttachAdversary(parallel)).toBe(false);
+    });
+    it('should not offer attach on a critic node itself', () => {
+      const { target } = buildTargetWithDownstream();
+      win.attachAdversary(target.id);
+      const critic = attached(target.id);
+      expect(win.canAttachAdversary(critic)).toBe(false);
+    });
+    it('should create critic + decision + revise loop on attach', () => {
+      const { target, out } = buildTargetWithDownstream();
+      win.attachAdversary(target.id);
+      const critic = attached(target.id);
+      expect(!!critic).toBe(true);
+      expect(critic.config.agentType).toBe('adversary');
+      expect(critic.config.adversaryRole).toBe('coder');
+      expect(critic.label).toContain('Adversarial review:');
+      const decision = win.state.nodes.find(n => n.config && n.config.adversaryDecisionFor === target.id);
+      expect(!!decision).toBe(true);
+      expect(decision.config.yesLabel).toBe('Passed');
+      expect(decision.config.noLabel).toBe('Needs revision');
+      expect(decision.config.maxRevisions).toBe(3);
+      const conns = win.state.connections;
+      expect(!!conns.find(c => c.from === target.id && c.to === critic.id)).toBe(true);
+      expect(!!conns.find(c => c.from === critic.id && c.to === decision.id)).toBe(true);
+      expect(!!conns.find(c => c.from === decision.id && c.to === target.id && c.label === 'Needs revision')).toBe(true);
+      expect(!!conns.find(c => c.from === decision.id && c.to === out.id && c.label === 'Passed')).toBe(true);
+      // The target's original direct edge to the downstream is rerouted away.
+      expect(!!conns.find(c => c.from === target.id && c.to === out.id)).toBe(false);
+    });
+    it('should be undoable in a single step', () => {
+      const { target, out } = buildTargetWithDownstream();
+      const nodesBefore = win.state.nodes.length;
+      const connsBefore = win.state.connections.length;
+      win.attachAdversary(target.id);
+      expect(win.state.nodes.length).toBe(nodesBefore + 2);
+      win.undo();
+      expect(win.state.nodes.length).toBe(nodesBefore);
+      expect(win.state.connections.length).toBe(connsBefore);
+      expect(attached(target.id)).toBe(undefined);
+      expect(!!win.state.connections.find(c => c.from === target.id && c.to === out.id)).toBe(true);
+    });
+    it('should restore the original downstream on detach', () => {
+      const { target, out } = buildTargetWithDownstream();
+      const nodesBefore = win.state.nodes.length;
+      win.attachAdversary(target.id);
+      win.detachAdversary(target.id);
+      expect(win.state.nodes.length).toBe(nodesBefore);
+      expect(attached(target.id)).toBe(undefined);
+      expect(win.state.nodes.find(n => n.config && n.config.adversaryDecisionFor === target.id)).toBe(undefined);
+      expect(!!win.state.connections.find(c => c.from === target.id && c.to === out.id)).toBe(true);
+    });
+    it('should not double-attach', () => {
+      const { target } = buildTargetWithDownstream();
+      win.attachAdversary(target.id);
+      win.attachAdversary(target.id);
+      const critics = win.state.nodes.filter(n => n.config && n.config.adversaryFor === target.id);
+      expect(critics.length).toBe(1);
+    });
+    it('toggle should attach then detach the same node', () => {
+      const { target } = buildTargetWithDownstream();
+      win.state.selectedId = target.id;
+      win.toggleAdversarialReview();
+      expect(!!attached(target.id)).toBe(true);
+      win.state.selectedId = target.id;
+      win.toggleAdversarialReview();
+      expect(attached(target.id)).toBe(undefined);
+    });
+  });
+
+  describe('adversary in generated output', () => {
+    it('should render the critic prompt and revise loop in genWorkflow', () => {
+      resetState();
+      const target = win.addNode('agent', 100, 100, 'Worker', { agentType: 'coder' });
+      const out = win.addNode('output', 700, 100, 'Result');
+      win.addConnection(target.id, out.id);
+      win.attachAdversary(target.id);
+      const output = win.genWorkflow();
+      expect(output).toContain('adversarial critic');
+      expect(output).toContain('Needs revision');
+    });
+  });
+
   describe('workflow validation', () => {
     it('should report disconnected nodes', () => {
       resetState();
@@ -5382,7 +5561,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## adversarial-review
+
+- record: .workflow/generic-adversarial-critic-agent-with-one-click-attach.md
+- intent: a generic refute-first `adversary` agent role (one template + role-aware lens + strict materiality bar: default PASS, NEEDS REVISION only for Critical/High material defects, never nitpicks) plus a one-click context-menu action that attaches/detaches a critic + Decision + back-edge revise loop on any Agent/Task node in a single undoable step, reusing the existing Decision/maxRevisions loop so all five generators render it unchanged
+- files: index.html (AGENT_TYPES +adversary, AGENT_TYPE_PROMPT_MAP, ADVERSARY_LENSES + ADVERSARY_LENS_BY_ROLE + buildAdversaryPrompt, getEffectivePrompt/classifyAgentPrompt adversary branch, attachAdversary/detachAdversary/toggleAdversarialReview/hasAdversaryAttached/canAttachAdversary via batchUndo, ctxAdversary markup + showContextMenu), tests.html (5 new suites / 21 tests; AGENT_TYPES length 11->12; AGENT_TYPE_PROMPT_MAP added to win.* bridge)
+- status: current | date: 2026-06-18 | note: independent adversarial review verdict PASS (no Critical/High); lens travels via config.adversaryRole (parallels writer/writingStyle); deleting a target leaves its critic+decision orphaned (same as deleting any node); debate panel deferred (backlog #7)
+
 ## autosave-persistence
 
 - record: .workflow/autosave-toggle-sync.md
