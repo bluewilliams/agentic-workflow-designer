@@ -9,7 +9,7 @@ Work item: Blue - the "Agent Swarm" preset name did not signal its read-only cod
 2. **Added a new showcase preset** `delivery_swarm` -> **"Delivery Swarm"**: an intricate end-to-end build that demonstrates the marquee features in one flow - two parallel fan-outs, the Skeptic (doubt early) AND the Verifier (prove late), plus a review gate and tests.
 
    Topology (20 nodes, 11 agents, 25 connections, 0 dangling):
-   `Feature/Ticket -> Discovery Swarm (fork) -> {Codebase Cartographer, Requirements Analyst, Prior-Art Researcher} -> Synthesize (join) -> Lead Planner [Skeptic loop: Plan sound?] -> Build Swarm (fork) -> {Backend Engineer, Frontend Engineer} -> Merge (join) -> Integrator [Verifier loop: Objective met?] -> Code Reviewer -> Review passed? -> Test Engineer -> Feature Delivered (format code / Leave Uncommitted)`
+   `Feature Request -> Discovery Swarm (fork) -> {Codebase Cartographer, Requirements Analyst, Prior-Art Researcher} -> Synthesize (join) -> Lead Planner [Skeptic loop: Plan sound?] -> Build Swarm (fork) -> {Backend Engineer, Frontend Engineer} -> Merge (join) -> Integrator [Verifier loop: Objective met?] -> Code Reviewer -> Review passed? -> Test Engineer -> Feature Delivered (format code / Leave Uncommitted)`
 
    - Skeptic attached to Lead Planner via the standard markers (agentType 'adversary', adversaryRole 'planner', reviewLoopFor/reviewLoopKind on the reviewer + reviewLoopDecisionFor on the decision). Decision back-edge "Needs revision" -> Lead Planner.
    - Verifier attached to Integrator (agentType 'verifier', reviewLoopKind 'verifier'). Decision back-edge "Not verified" -> Integrator. Final review gate "Revise" also loops back to Integrator.
