@@ -77,6 +77,13 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
   font-family:var(--mono);border:1px solid var(--border)}
 .help-body .flow-diagram{background:var(--bg);border:1px solid var(--border);border-radius:6px;
   padding:10px 14px;margin:8px 0;font-family:var(--mono);font-size:11px;color:var(--text3);white-space:pre;overflow-x:auto}
+.help-body h2{color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:1.5px;margin:26px 0 10px;font-weight:700}
+.help-body h2:first-child{margin-top:0}
+.help-toc{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 13px;margin-bottom:6px;font-size:11px;color:var(--text3);line-height:1.9}
+.help-toc strong{color:var(--text2)}
+.help-toc a{color:var(--accent);cursor:pointer;pointer-events:auto;text-decoration:none}
+.help-toc a:hover{text-decoration:underline}
+.help-toc + h2{margin-top:10px}
 .plib-modal{width:min(780px,92vw);max-height:85vh}
 .plib-category{margin-bottom:6px}
 .plib-cat-btn{display:flex;align-items:center;justify-content:space-between;width:100%;padding:8px 12px;
@@ -823,6 +830,10 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
     <div class="help-body">
 
+<div class="help-toc"><strong>Jump to:</strong> <a onclick="helpJump('hg-start')">Getting Started</a> &middot; <a onclick="helpJump('hg-prep')">Sharpen the Task</a> &middot; <a onclick="helpJump('hg-build')">Build the Workflow</a> &middot; <a onclick="helpJump('hg-context')">Give Agents Context</a> &middot; <a onclick="helpJump('hg-export')">Export &amp; Delivery</a> &middot; <a onclick="helpJump('hg-memory')">Memory, Records &amp; Handoff</a> &middot; <a onclick="helpJump('hg-more')">More</a></div>
+
+<h2 id="hg-start">Getting Started</h2>
+
 <h3>Quick Start</h3>
 <ol>
   <li>Paste requirements into the <strong>Requirements</strong> field (or a Jira ticket URL)</li>
@@ -831,6 +842,17 @@ svg.canvas{width:100%;height:100%;display:block}
   <li>Pick an export format tab at the bottom, then <strong>Copy</strong> the prompt into Claude Code</li>
 </ol>
 <p><strong>Auto Workflow</strong> stays disabled until you've pasted enough prose to auto-pick a workflow - roughly a sentence (at least 6 words once any URL or ticket key is set aside). A bare Jira key (like <code>PROJ-42</code>) prompts you to paste the full URL; a ticket URL on its own opens a workflow-type picker. <strong>Generate Refine Prompt</strong> is available as soon as the box isn't empty, and <strong>Generate Plan Prompt</strong> isn't gated by the input validator (it checks itself at click time), so you can refine or plan before Auto Workflow lights up.</p>
+
+<h2 id="hg-prep">Sharpen the Task</h2>
+
+<h3>Which prep step should I use?</h3>
+<p>Three optional ways to sharpen a task - they solve different problems and can stack:</p>
+<ul>
+  <li><strong>Generate Refine Prompt</strong> - when the requirements themselves are rough. Claude interviews <em>you</em> about edge cases, UX, and tradeoffs, then writes a refined spec you paste back into Requirements. Sharpens the <em>what</em>.</li>
+  <li><strong>Generate Plan Prompt</strong> - when the requirements are solid but you want a codebase-aware approach. Claude explores your code and writes an implementation plan you paste into <strong>Workflow Context</strong>. Sharpens the <em>how</em>.</li>
+  <li><strong>Clarify requirements first</strong> (toggle) - the same kind of clarification as Refine, but built <em>into</em> the workflow's planning step instead of a separate up-front prompt. It asks one focused round of questions at runtime and folds the answers into the plan and the durable record. Best when you want a single self-contained prompt rather than a multi-step prep flow.</li>
+</ul>
+<p>For maximum quality on a big task, stack them: Refine to lock the spec, Plan to ground the approach, then build. For a lighter touch, just flip on Clarify. The three flow diagrams below walk through each step by step.</p>
 
 <h3>Generate Refine Prompt Flow</h3>
 <p>Use this when your requirements are rough or incomplete and you want Claude to interview you before building.</p>
@@ -853,6 +875,11 @@ svg.canvas{width:100%;height:100%;display:block}
 2. Paste refined spec → <strong>Generate Plan Prompt</strong> → codebase analysis → implementation plan
 3. Paste plan → build workflow → <strong>Copy</strong> prompt → execute in Claude Code</div>
 
+<h3>Clarify Requirements First</h3>
+<p>The <strong>Clarify requirements first</strong> toggle (off by default) adds an in-flow clarification gate to the planning step - distinct from the <strong>Generate Refine Prompt</strong> step (see <strong>Which prep step should I use?</strong> above for how they differ). When on, the planning step probes the requirements for material ambiguity, asks you a focused set of questions in one round, then folds the answers into the plan and the durable record. It degrades gracefully when run non-interactively (CI or an SDK pipeline): it records the open questions as assumptions and risks and proceeds rather than blocking.</p>
+
+<h2 id="hg-build">Build the Workflow</h2>
+
 <h3>Editing Agent Prompts</h3>
 <p>Clicking a node exposes an editable <strong>Agent Prompt</strong> pre-filled with that agent type's role template, so you can tune the instructions instead of starting from a blank box. A status line tells you which state you're in:</p>
 <ul>
@@ -871,6 +898,31 @@ svg.canvas{width:100%;height:100%;display:block}
 <p><strong>When to use which.</strong> Reach for a <strong>Skeptic</strong> on high-stakes or expensive-to-undo steps where a confident-but-wrong output is costly: the plan (a wrong direction is the most expensive mistake to make), security-sensitive code, or anything subtle. Reach for a <strong>Verifier</strong> on any step with a runnable outcome - a built feature, an API integration, a UI, a data migration - placed late, right before delivery.</p>
 <p><strong>Why they're powerful.</strong> They are complementary: the Skeptic catches what reasoning can see (logic, design, security), the Verifier catches what only execution reveals (it reads fine - but does it actually run?). Together they give defense in depth - doubt early, prove late - which is exactly how a careful senior engineer works. One click drops in the whole reviewer + Decision gate + back-edge that routes failures back to the step to fix, with a bounded revision count so it retries and then stops rather than spinning. It reuses the same loop machinery the presets use, so it renders correctly in every export format. Right-click again to <strong>Remove</strong> it, or use the Decision node's <strong>send-back target</strong> dropdown to re-point the failure branch to a different node. The <strong>Delivery Swarm</strong> preset shows both in one flow.</p>
 
+<h3>Canvas Tips</h3>
+<ul>
+  <li><kbd>Ctrl+Z</kbd> / <kbd>Cmd+Z</kbd>: Undo (also available as toolbar buttons)</li>
+  <li><kbd>Ctrl+Shift+Z</kbd> / <kbd>Cmd+Shift+Z</kbd>: Redo</li>
+  <li><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>: Switch between Select, Connect, and Delete modes</li>
+  <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>: Delete selected node or connection</li>
+  <li><kbd>Alt+Drag</kbd>: Pan the canvas</li>
+  <li><kbd>Scroll</kbd>: Zoom in/out</li>
+  <li><strong>Right-click</strong> a node for its context menu: add a <strong>Skeptic review</strong> or <strong>Verification</strong> loop, duplicate, disconnect, or delete</li>
+  <li><strong>Auto Layout</strong> re-arranges nodes using the Sugiyama layered algorithm</li>
+  <li><strong>Fit</strong> zooms to show all nodes</li>
+  <li><strong>Quick Patterns</strong> in the palette (Fork 2/3/4, Fan-Out) scaffold a parallel agent group in one click</li>
+  <li>You are not limited to presets - add any nodes from the palette and wire them up however you like; the generators handle the scaffolding</li>
+</ul>
+
+<h3>Toolbar Features</h3>
+<ul>
+  <li><strong>Undo / Redo</strong> buttons (or keyboard shortcuts) let you reverse adding, deleting, connecting, disconnecting, and dragging nodes. 50-step history.</li>
+  <li><strong>Validation indicator</strong> shows a green check or amber warning count. Click it to see issues like disconnected nodes, empty prompts, or incomplete decision gates.</li>
+  <li><strong>Token estimate</strong> appears next to the Copy button showing the approximate size of the generated prompt.</li>
+  <li><strong>Clone</strong> button in Saved Workflows duplicates the current workflow under a new name for creating variants.</li>
+</ul>
+
+<h2 id="hg-context">Give Agents Context</h2>
+
 <h3>Jira Integration</h3>
 <p>Paste a full Jira URL (not just the ticket key) and enable <strong>Atlassian MCP</strong> in the sidebar. The exported prompts will instruct agents to fetch ticket details at runtime. For URL-only input, you'll be asked to pick a workflow preset since there aren't enough keywords to auto-generate.</p>
 
@@ -880,36 +932,11 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Repositories</strong> - list each repo with its branch; the prompts tell agents to check out the right branch and pull before starting.</li>
   <li><strong>Repo Context Paths</strong> - point agents at a repo's own rules and product docs so they honor more than the per-task spec. <strong>Rules / constitution</strong> paths (e.g. <code>.claude/rules</code>, <code>CONVENTIONS.md</code>) are binding constraints on <em>how</em> to build; <strong>Product docs</strong> (e.g. <code>docs/</code>, ADRs) are goals the work must not contradict. The lists are sticky - they persist across workflows in the same repo.</li>
 </ul>
-<p><strong>Multi-repo gotcha:</strong> Claude Code auto-loads <code>CLAUDE.md</code> and <code>.claude/rules/</code> only for the repo the session launched in, so a second repo's rules are silently missed. The generated multi-repo prompt handles this by telling each agent to read every working repo's own <code>CLAUDE.md</code> before changing it, and your Rule Paths are resolved per-repo. For the cleanest setup, launch the session with each repo added so their rules load automatically:</p>
+<p><strong>Multi-repo rules - handled for you.</strong> On its own, Claude Code only auto-loads <code>CLAUDE.md</code> and <code>.claude/rules/</code> for the repo the session launched in, so it would miss the others. The generated multi-repo prompt closes that gap: it tells each agent to read every in-scope repo's own <code>CLAUDE.md</code> and <code>.claude/rules/</code> before changing it, and any <strong>Rule Paths</strong> you list (e.g. <code>.claude/rules</code>) are resolved <em>within each repo</em> and scoped to it. So with three repos selected and <code>.claude/rules</code> listed once, each repo's own rules are honored for changes made in that repo - no per-repo entry needed, and no environment variable required.</p>
+<p>The setup below is an <em>optional</em> reliability boost - it makes Claude Code <em>also</em> auto-load each added repo's <code>CLAUDE.md</code> at startup - but the prompt's explicit per-repo read works no matter how the session was launched:</p>
 <div class="flow-diagram">CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 claude --add-dir ../repo-b ../repo-c</div>
 
-<h3>Durable Record</h3>
-<p>Two sidebar toggles control how a run persists its context:</p>
-<ul>
-  <li><strong>Enable workflow memory</strong> - ephemeral agent scratch state under <code>~/.claude</code>. Nothing is committed; it keeps a long run alive across compaction.</li>
-  <li><strong>Keep a durable record</strong> - a committable spec + state document. It is a strict superset that builds on memory, written to <code>.workflow/{slug}.md</code> in your repo so it versions with the code.</li>
-</ul>
-<p>The <strong>orchestrator</strong> (the top-level agent driving the workflow and spawning its steps) owns the record: it creates it at kickoff, folds in each step's findings as the run proceeds, and finalizes it for commit - compressing the running per-agent commentary into a clean spec without dropping the why or the decisions.</p>
-<p>A breadcrumb index at <code>.workflow/_index.md</code> keeps one entry per record, grouped by capability. It is scanned first (scan-then-open) so future work reads only the relevant records instead of all of them. Supersession lineage keeps history one hop away: a re-worked capability leaves the old record marked superseded with the new one linked, so the index always points at current behavior.</p>
-
-<h3>Ground in Prior Records</h3>
-<p>The <strong>Ground in prior records</strong> toggle (on by default) is the read side. Before planning, the orchestrator scans <code>.workflow/_index.md</code> if it exists, opens only the records relevant to the files and capability the change touches (preferring current ones), and folds their decisions and gotchas into the plan. It is self-gating - a no-op on greenfield repos with no records yet. Producing a record is opt-in; benefiting from existing ones is automatic.</p>
-<p>Together, <strong>Keep a durable record</strong> (the write side) and <strong>Ground in prior records</strong> (the read side) form a flywheel: every run leaves behind its decisions, gotchas, and a tested spec, and the next run reads them before planning - so workflows in the same repo get sharper and stop repeating the same mistakes over time, with nobody curating anything by hand. The more you run, the better-grounded each new workflow starts.</p>
-
-<h3>Clarify Requirements First</h3>
-<p>The <strong>Clarify requirements first</strong> toggle (off by default) adds an in-flow clarification gate to the planning step - distinct from the <strong>Generate Refine Prompt</strong> flow above. When on, the planning step probes the requirements for material ambiguity, asks you a focused set of questions in one round, then folds the answers into the plan and the durable record. It degrades gracefully when run non-interactively (CI or an SDK pipeline): it records the open questions as assumptions and risks and proceeds rather than blocking.</p>
-
-<h3>Which prep step should I use?</h3>
-<p>Three optional ways to sharpen a task - they solve different problems and can stack:</p>
-<ul>
-  <li><strong>Generate Refine Prompt</strong> - when the requirements themselves are rough. Claude interviews <em>you</em> about edge cases, UX, and tradeoffs, then writes a refined spec you paste back into Requirements. Sharpens the <em>what</em>.</li>
-  <li><strong>Generate Plan Prompt</strong> - when the requirements are solid but you want a codebase-aware approach. Claude explores your code and writes an implementation plan you paste into <strong>Workflow Context</strong>. Sharpens the <em>how</em>.</li>
-  <li><strong>Clarify requirements first</strong> (toggle) - the same kind of clarification as Refine, but built <em>into</em> the workflow's planning step instead of a separate up-front prompt. It asks one focused round of questions at runtime and folds the answers into the plan and the durable record. Best when you want a single self-contained prompt rather than a multi-step prep flow.</li>
-</ul>
-<p>For maximum quality on a big task, stack them: Refine to lock the spec, Plan to ground the approach, then build. For a lighter touch, just flip on Clarify. The three flow diagrams near the top walk through each step by step.</p>
-
-<h3>Handoff</h3>
-<p>The <strong>Handoff</strong> button under <strong>Saved Workflows</strong> downloads a single resume package (<code>.md</code>) so another engineer can pick up in-progress work: how to resume, the durable-record path, the ready-to-run prompt, and the full workflow definition. The live run state travels with your git branch and the durable record, not this file - so enable <strong>Keep a durable record</strong> before running for a truly resumable handoff.</p>
+<h2 id="hg-export">Export &amp; Delivery</h2>
 
 <h3>How the Prompts Work</h3>
 <p>Whatever format you export, every agent's section is workflow-aware - it carries everything that agent needs to act, with no manual glue between steps:</p>
@@ -945,28 +972,25 @@ svg.canvas{width:100%;height:100%;display:block}
 </ul>
 <p>Click the Output node to set it. No preset defaults to Pull Request - commit/push/PR is always an explicit choice.</p>
 
-<h3>Canvas Tips</h3>
-<ul>
-  <li><kbd>Ctrl+Z</kbd> / <kbd>Cmd+Z</kbd>: Undo (also available as toolbar buttons)</li>
-  <li><kbd>Ctrl+Shift+Z</kbd> / <kbd>Cmd+Shift+Z</kbd>: Redo</li>
-  <li><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>: Switch between Select, Connect, and Delete modes</li>
-  <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>: Delete selected node or connection</li>
-  <li><kbd>Alt+Drag</kbd>: Pan the canvas</li>
-  <li><kbd>Scroll</kbd>: Zoom in/out</li>
-  <li><strong>Right-click</strong> a node for its context menu: add a <strong>Skeptic review</strong> or <strong>Verification</strong> loop, duplicate, disconnect, or delete</li>
-  <li><strong>Auto Layout</strong> re-arranges nodes using the Sugiyama layered algorithm</li>
-  <li><strong>Fit</strong> zooms to show all nodes</li>
-  <li><strong>Quick Patterns</strong> in the palette (Fork 2/3/4, Fan-Out) scaffold a parallel agent group in one click</li>
-  <li>You are not limited to presets - add any nodes from the palette and wire them up however you like; the generators handle the scaffolding</li>
-</ul>
+<h2 id="hg-memory">Memory, Records &amp; Handoff</h2>
 
-<h3>Toolbar Features</h3>
+<h3>Durable Record</h3>
+<p>Two sidebar toggles control how a run persists its context:</p>
 <ul>
-  <li><strong>Undo / Redo</strong> buttons (or keyboard shortcuts) let you reverse adding, deleting, connecting, disconnecting, and dragging nodes. 50-step history.</li>
-  <li><strong>Validation indicator</strong> shows a green check or amber warning count. Click it to see issues like disconnected nodes, empty prompts, or incomplete decision gates.</li>
-  <li><strong>Token estimate</strong> appears next to the Copy button showing the approximate size of the generated prompt.</li>
-  <li><strong>Clone</strong> button in Saved Workflows duplicates the current workflow under a new name for creating variants.</li>
+  <li><strong>Enable workflow memory</strong> - ephemeral agent scratch state under <code>~/.claude</code>. Nothing is committed; it keeps a long run alive across compaction.</li>
+  <li><strong>Keep a durable record</strong> - a committable spec + state document. It is a strict superset that builds on memory, written to <code>.workflow/{slug}.md</code> in your repo so it versions with the code.</li>
 </ul>
+<p>The <strong>orchestrator</strong> (the top-level agent driving the workflow and spawning its steps) owns the record: it creates it at kickoff, folds in each step's findings as the run proceeds, and finalizes it for commit - compressing the running per-agent commentary into a clean spec without dropping the why or the decisions.</p>
+<p>A breadcrumb index at <code>.workflow/_index.md</code> keeps one entry per record, grouped by capability. It is scanned first (scan-then-open) so future work reads only the relevant records instead of all of them. Supersession lineage keeps history one hop away: a re-worked capability leaves the old record marked superseded with the new one linked, so the index always points at current behavior.</p>
+
+<h3>Ground in Prior Records</h3>
+<p>The <strong>Ground in prior records</strong> toggle (on by default) is the read side. Before planning, the orchestrator scans <code>.workflow/_index.md</code> if it exists, opens only the records relevant to the files and capability the change touches (preferring current ones), and folds their decisions and gotchas into the plan. It is self-gating - a no-op on greenfield repos with no records yet. Producing a record is opt-in; benefiting from existing ones is automatic.</p>
+<p>Together, <strong>Keep a durable record</strong> (the write side) and <strong>Ground in prior records</strong> (the read side) form a flywheel: every run leaves behind its decisions, gotchas, and a tested spec, and the next run reads them before planning - so workflows in the same repo get sharper and stop repeating the same mistakes over time, with nobody curating anything by hand. The more you run, the better-grounded each new workflow starts.</p>
+
+<h3>Handoff</h3>
+<p>The <strong>Handoff</strong> button under <strong>Saved Workflows</strong> downloads a single resume package (<code>.md</code>) so another engineer can pick up in-progress work: how to resume, the durable-record path, the ready-to-run prompt, and the full workflow definition. The live run state travels with your git branch and the durable record, not this file - so enable <strong>Keep a durable record</strong> before running for a truly resumable handoff.</p>
+
+<h2 id="hg-more">More</h2>
 
 <h3>Prompt Library</h3>
 <p>Click the <strong>Prompts</strong> button in the toolbar for a library of ready-to-use prompts. Use the search box to filter by title or description. Star your favorites and they float to the top. Prompts that need your input (like a file path or bug description) show a popup before copying so the prompt is ready to paste.</p>
@@ -4092,6 +4116,8 @@ function showContextMenu(x, y) {
 }
 function hideContextMenu() { $('contextMenu').classList.remove('show'); }
 function toggleHelp() { $('helpOverlay').classList.toggle('show'); }
+// Smooth-scroll the help modal to a group header (the ToC "jump to" links).
+function helpJump(id) { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 function togglePromptLib() {
   const overlay = $('promptLibOverlay');
   overlay.classList.toggle('show');
