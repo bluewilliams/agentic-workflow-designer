@@ -3158,17 +3158,17 @@ describe('Agent Prompt Visibility', () => {
     });
   });
 
-  // R2: two-box hint + Custom Notes helper
-  describe('two-box hint and Custom Notes helper', () => {
-    it('the two-box hint is present and the Custom Notes helper names its appended job', () => {
+  // R2: two-box hint + Agent Context helper
+  describe('two-box hint and Agent Context helper', () => {
+    it('the two-box hint is present and the Agent Context helper names its appended job', () => {
       const node = win.addNode('agent', 100, 200, 'Coder', { agentType:'coder', prompt:'' });
       win.selectNode(node.id);
       win.updateConfig();
       const hint = win.document.querySelector('.agent-prompt-hint');
       expect(!!hint).toBe(true);
-      expect(hint.textContent).toContain('Custom Notes');
+      expect(hint.textContent).toContain('Agent Context');
       const notes = win.document.querySelector('[data-key="notes"]');
-      expect(notes.getAttribute('placeholder')).toContain('appended to this agent');
+      expect(notes.getAttribute('placeholder')).toContain('appended to its prompt');
     });
   });
 
@@ -3896,7 +3896,7 @@ describe('Implementation Plan', () => {
       const pi = win.document.getElementById('planInput');
       if (pi) pi.value = 'Architecture: use repository pattern for data access';
       const output = win.genSubAgents();
-      expect(output).toContain('Implementation Plan');
+      expect(output).toContain('Workflow Context');
       expect(output).toContain('repository pattern');
       expect(output).toContain('starting point, not a rigid constraint');
     });
@@ -3905,14 +3905,14 @@ describe('Implementation Plan', () => {
       const pi = win.document.getElementById('planInput');
       if (pi) pi.value = '';
       const output = win.genSubAgents();
-      expect(output).toNotContain('Implementation Plan');
+      expect(output).toNotContain('Workflow Context');
     });
     it('should include plan in workflow export when populated', () => {
       buildTestWorkflow('linear');
       const pi = win.document.getElementById('planInput');
       if (pi) pi.value = 'Plan: modify controllers/UserController.cs';
       const output = win.genWorkflow();
-      expect(output).toContain('Implementation Plan');
+      expect(output).toContain('Workflow Context');
       expect(output).toContain('UserController.cs');
     });
   });
@@ -4088,7 +4088,7 @@ describe('Plan Prompt Generation', () => {
     expect(copied).toContain('Implementation Planning');
     expect(copied).toContain('OAuth2');
     expect(copied).toContain('.claude/plans/user-auth.md');
-    expect(copied).toContain('paste them into the **Implementation Plan** field');
+    expect(copied).toContain('paste them into the **Workflow Context** field');
   });
 
   describe('MCP integration', () => {
@@ -4215,7 +4215,7 @@ describe('Cross-Feature Edge Cases', () => {
     const at = win.genAgentTeams();
     const cp = win.genClaudePrompt();
     [wf, sa, at, cp].forEach(output => {
-      expect(output).toContain('Implementation Plan');
+      expect(output).toContain('Workflow Context');
       expect(output).toContain('handler.ts');
       expect(output).toContain('starting point, not a rigid constraint');
     });
@@ -4242,7 +4242,7 @@ describe('Cross-Feature Edge Cases', () => {
     const pi = win.document.getElementById('planInput');
     if (pi) pi.value = '   ';
     const output = win.genSubAgents();
-    expect(output).toNotContain('Implementation Plan');
+    expect(output).toNotContain('Workflow Context');
   });
 
   it('should not show empty Refine prompt toast when requirements have content', () => {

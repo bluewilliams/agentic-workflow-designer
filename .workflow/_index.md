@@ -95,6 +95,11 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 ## ui-labels
 
+- record: .workflow/workflow-context-agent-context-rename.md
+- intent: rename the two free-form context fields as a scoped pair - "Implementation Plan" -> **Workflow Context** (injected into every agent) + a scope sub-label and a hairline separator before the Generate Plan Prompt button; "Custom Notes" -> **Agent Context** (this node only). Generated output section "## Implementation Plan (starting guidance)" -> "## Workflow Context (...)" in all 5 generators. Dissolves the box-vs-button "Plan" overlap + reflects that the field is general context (Blue pasted a Datadog-MCP hint, not a plan). Internal ids/keys (planInput, getPlan, plan, config.notes) UNCHANGED for serialization compat
+- files: index.html (Workflow Context sidebar block + Agent Context node field + 5 generator headers + Help-modal refs), tests.html (output-section + helper assertions), README.md (2 refs), TECHNICAL.md (3 refs)
+- status: current | date: 2026-06-19 | builds-on: .workflow/button-label-clarity.md | note: kept "Generate Plan Prompt" button + "Implementation Planning" plan-prompt title + the tech-spec template's "## Implementation Plan" section; 705/705; browser-verified
+
 - record: .workflow/button-label-clarity.md
 - intent: relabel the three "generate" buttons for clarity - `Generate` -> **Auto Workflow** (in-app build, parallels Auto Layout), `Refine Prompt` -> **Generate Refine Prompt**, `Plan Prompt` -> **Generate Plan Prompt**. Two-tier read: Auto Workflow builds now vs the two Generate-___-Prompt helpers make a prompt to run elsewhere. Fixes "Plan Prompt looks like it acts on the Implementation Plan box"
 - files: index.html (3 button labels + helper texts + Help-modal "click X" refs, kept the flow-title h3s; one genClaudePrompt help line), README.md (4 refs); tests.html none (705/705)
