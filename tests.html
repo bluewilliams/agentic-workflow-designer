@@ -2623,13 +2623,13 @@ describe('Node config: Input Source framing', () => {
     const ag = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
     win.addConnection(inp.id, ag.id);
   }
-  it('jira (default) emits no source-framing hint', () => {
-    srcWorkflow('jira');
+  it('freeform (default) emits no source-framing hint', () => {
+    srcWorkflow('freeform');
     const all = [win.genWorkflow(), win.genAgentTeams(), win.genClaudePrompt(), win.genAgentSDK()].join('\n');
     expect(all).toNotContain('Treat the input as');
   });
-  it('custom emits no source-framing hint', () => {
-    srcWorkflow('custom');
+  it('a legacy/unknown source value degrades to silent (no hint, no throw)', () => {
+    srcWorkflow('jira'); // 'jira'/'custom' are no longer options; must remain harmless
     expect(win.genWorkflow()).toNotContain('Treat the input as');
   });
   it('prd emits the PRD framing across markdown + SDK generators', () => {
@@ -6276,6 +6276,17 @@ describe('Prompt Panel Resize', () => {
 // ═══════════════════════════════════════════════════════════
 // Suite: Atlassian two-block model (ticket-fetch + general) - scenario matrix
 // ═══════════════════════════════════════════════════════════
+describe('Atlassian ticket resolution depth (plan-time leverage)', () => {
+  it('the up-front resolution pulls deeper Jira context for the original plan', () => {
+    const out = win.atlassianTicketFetchHint(['https://foo.atlassian.net/browse/TEST-1']);
+    expect(out).toContain('resolved ticket is the spec'); // pinned phrase preserved
+    expect(out).toContain('acceptance criteria');
+    expect(out).toContain('parent epic');
+    expect(out).toContain('sub-tasks');
+    expect(out).toContain('comments');
+  });
+});
+
 describe('Atlassian two-block scenario matrix', () => {
   // Markers. TF uses the case-robust substring (prose capitalizes "The" at sentence start).
   const TF = 'resolved ticket is the spec';

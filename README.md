@@ -178,7 +178,7 @@ Splits the workflow into concurrent branches. **Strategy** shapes the join seman
 - **Race** - take the first useful result and stop waiting on the rest
 
 ### Input
-- **Source** - Jira Ticket / Custom (neutral - the story box carries requirements), or **User Story** / **PRD**, which add a one-line framing hint telling agents how to read the input. The hint only appears for User Story and PRD
+- **Source** - how to frame the pasted input: **Freeform** (default, neutral), or **User Story** / **PRD**, which add a one-line framing hint telling agents how to read it. Jira handling is automatic and *content-driven* (independent of this selector): paste a Jira URL - bare or inline - and the orchestrator is instructed to resolve the ticket in depth before planning (acceptance criteria, parent epic, sub-tasks, blockers/linked issues, recent comments), so the original plan reflects the full picture. Plain text without a Jira URL is treated as the requirements as-is
 - **Description** - Requirements text. Preset-specific placeholder templates guide you to provide the right information
 
 ### Output

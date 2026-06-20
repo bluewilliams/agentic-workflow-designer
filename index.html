@@ -1075,7 +1075,7 @@ const NODE_DEFAULTS = {
   parallel: { w: 220, h: 36, color: '#8b5cf6', icon: '\u2261', label: 'Parallel Fork',
     config: { strategy: 'all', description: '' }},
   input: { w: 180, h: 52, color: '#06b6d4', icon: '\u{1F4CB}', label: 'Input',
-    config: { source: 'jira', description: '' }},
+    config: { source: 'freeform', description: '' }},
   output: { w: 180, h: 52, color: '#f43f5e', icon: '\u{1F4E6}', label: 'Output',
     config: { deliverable: '', format: 'code', targetBranch: '', branchName: '' }}
 };
@@ -1157,7 +1157,7 @@ function atlassianTicketFetchHint(urls) {
   if (!urls || urls.length === 0) return null;
   const list = urls.map(u => `>   - ${u}`).join('\n');
   const r = [];
-  r.push('> **Atlassian ticket (the spec) - resolve once, up front.** The orchestrator (the top-level agent driving this workflow and spawning its steps, even when there is no named Planner step) fetches the ticket(s) below ONCE before the first step - via Atlassian MCP if connected, otherwise the browser tools (assumes you are signed in to Atlassian there). The resolved ticket is the spec: it is the SOURCE for the plan and requirements this workflow produces (and the durable record, if any), and the steps work from that distilled spec - so steps do not re-fetch the ticket, and the orchestrator does NOT pass the raw ticket down on top of the plan (keep it available only as the reference for a detail the plan did not carry). If the workflow has no planning step, the orchestrator folds the relevant ticket content into the steps brief and that becomes their spec. Either way the steps work from one coherent spec, never a duplicate of ticket-plus-plan.');
+  r.push('> **Atlassian ticket (the spec) - resolve once, up front.** The orchestrator (the top-level agent driving this workflow and spawning its steps, even when there is no named Planner step) fetches the ticket(s) below ONCE before the first step - via Atlassian MCP if connected, otherwise the browser tools (assumes you are signed in to Atlassian there). Resolve it in depth so the original plan reflects the full picture, not just the ticket summary: pull the description and acceptance criteria, the parent epic (the broader goal), sub-tasks and any blocking or linked issues (scope and dependencies), and the most recent comments (clarifications or decisions). The resolved ticket is the spec: it is the SOURCE for the plan and requirements this workflow produces (and the durable record, if any), and the steps work from that distilled spec - so steps do not re-fetch the ticket, and the orchestrator does NOT pass the raw ticket down on top of the plan (keep it available only as the reference for a detail the plan did not carry). If the workflow has no planning step, the orchestrator folds the relevant ticket content into the steps brief and that becomes their spec. Either way the steps work from one coherent spec, never a duplicate of ticket-plus-plan.');
   r.push('>');
   r.push(list);
   return r.join('\n');
@@ -3705,7 +3705,7 @@ function updateConfig() {
     }
   } else if (node.type === 'input') {
     fields.innerHTML += configSelect('Source', 'source', node.config.source,
-      [{ value:'jira', label:'Jira Ticket' },{ value:'story', label:'User Story' },{ value:'prd', label:'PRD' },{ value:'custom', label:'Custom' }]);
+      [{ value:'freeform', label:'Freeform' },{ value:'story', label:'User Story' },{ value:'prd', label:'PRD' }]);
     fields.innerHTML += configTextarea('Description', 'description', node.config.description, 'Input details...');
   } else if (node.type === 'output') {
     fields.innerHTML += configSelect('Format', 'format', node.config.format,
@@ -5287,7 +5287,7 @@ function generateFromStory() {
   }
 
   // ── Input node ──
-  const inp = addNode('input', 0, 0, 'User Story', { source: 'jira', description: story.slice(0, 200) });
+  const inp = addNode('input', 0, 0, 'User Story', { source: 'freeform', description: story.slice(0, 200) });
 
   // ── Planning layer (skipped for read-only research/review intents) ──
   let entryNode = inp;
@@ -5912,7 +5912,7 @@ function loadPreset(preset) {
     },
     test_automation: () => {
       const i = addNode('input', 80, 200, 'Requirements');
-      const appIn = addNode('input', 80, 380, 'App Source', { source:'custom', description:'Path to the app under test (set in sidebar)' });
+      const appIn = addNode('input', 80, 380, 'App Source', { source:'freeform', description:'Path to the app under test (set in sidebar)' });
       const planFork = addNode('parallel', 340, 286, 'Parallel Analysis', { strategy:'all' });
       const plan = addNode('agent', 620, 200, 'Test Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.testPlanner, maxTurns:10 });
       const appExp = addNode('agent', 620, 380, 'App Explorer', { agentType:'researcher', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','Bash'], prompt:PROMPTS.appExplorer, maxTurns:15 });
