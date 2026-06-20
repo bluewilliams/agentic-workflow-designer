@@ -2649,6 +2649,27 @@ describe('Preset Loading', () => {
       win.loadPreset('data_migration');
       expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
     });
+    it('should load delivery_swarm preset with 11 agents', () => {
+      win.loadPreset('delivery_swarm');
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(11);
+    });
+  });
+
+  describe('delivery_swarm review loops', () => {
+    it('wires a Skeptic on the Lead Planner and a Verifier on the Integrator', () => {
+      win.loadPreset('delivery_swarm');
+      const plan = win.state.nodes.find(n => n.label === 'Lead Planner');
+      const integ = win.state.nodes.find(n => n.label === 'Integrator');
+      expect(win.getReviewLoop(plan.id).kind).toBe('adversary');
+      expect(win.getReviewLoop(integ.id).kind).toBe('verifier');
+    });
+    it('has no dangling connections and two parallel fan-outs', () => {
+      win.loadPreset('delivery_swarm');
+      const ids = new Set(win.state.nodes.map(n => n.id));
+      const dangling = win.state.connections.filter(c => !ids.has(c.from) || !ids.has(c.to));
+      expect(dangling.length).toBe(0);
+      expect(win.state.nodes.filter(n => n.type === 'parallel').length).toBe(4); // 2 forks + 2 joins
+    });
   });
 
   describe('research / advisory mode', () => {

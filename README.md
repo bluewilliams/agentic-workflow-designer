@@ -132,7 +132,8 @@ CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 claude --add-dir ../repo-b ../rep
 - **Full Stack** - Architect > parallel Backend + Frontend > Review > E2E Test
 - **Code Review** - Analyzer > Reviewer > Improver > Validator
 - **Parallel Research** - mode-aware. Codebase-internal: Codebase Explorer + Doc Researcher + Pattern Analyzer > Synthesizer. Landscape/advisory: Current-State Inventory + Options Researcher + Fit & Tradeoff Analyzer > Advisor (writes ADVISORY.md)
-- **Agent Swarm** - Security + Quality + Performance + Architecture audit > Report
+- **Review Swarm** - parallel Security + Quality + Performance + Architecture audit > Aggregate > Report Builder > Audit Report (read-only, never touches code)
+- **Delivery Swarm** - the showcase. Discovery fan-out (Codebase Cartographer + Requirements Analyst + Prior-Art Researcher) > Synthesize > Lead Planner (Skeptic doubts the plan) > parallel Backend + Frontend > Integrator (Verifier proves it runs) > Code Review gate > Test > Feature Delivered
 - **Test Automation** - [Test Planner | App Explorer] > parallel Feature Writer + Screen Objects + Step Definitions > Test Reviewer (with app source path + branch support)
 - **UI Design & Development** - Design System Analyzer > UI Implementer > (Verifier proves it works in a browser) > UI Reviewer
 - **Refactoring** - Planner > Code Analyzer > Refactorer > Reviewer > Decision gate > Tester

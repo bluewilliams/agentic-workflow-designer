@@ -592,8 +592,12 @@ svg.canvas{width:100%;height:100%;display:block}
           <div class="preset-desc">[Codebase | Docs | Patterns] &rarr; Synthesize</div>
         </div>
         <div class="preset-item" data-preset="swarm" onclick="loadPreset('swarm')">
-          <div class="preset-name">Agent Swarm</div>
-          <div class="preset-desc">[Security | Quality | Performance | Architecture] &rarr; Report</div>
+          <div class="preset-name">Review Swarm</div>
+          <div class="preset-desc">[Security | Quality | Performance | Architecture] &rarr; Audit Report</div>
+        </div>
+        <div class="preset-item" data-preset="delivery_swarm" onclick="loadPreset('delivery_swarm')">
+          <div class="preset-name">Delivery Swarm</div>
+          <div class="preset-desc">Discover &rarr; Plan (Skeptic) &rarr; Build &rarr; Integrate (Verify) &rarr; Ship</div>
         </div>
       </div>
     </div>
@@ -1364,6 +1368,14 @@ const PROMPTS = {
   archReviewer: 'Review architecture for structural health and scalability.\n\n1. Use `LSP workspaceSymbol` to inventory all modules, services, and layers by their type/namespace patterns\n2. Use `LSP outgoingCalls` on each module\'s public API functions to map inter-module dependencies - build a dependency direction graph\n3. Use `LSP incomingCalls` on lower-layer modules to detect upper-layer violations (e.g., data layer calling presentation layer)\n4. Use `LSP goToImplementation` on service interfaces to verify concrete implementations respect the defined contract and don\'t introduce hidden couplings\n5. Use `LSP findReferences` on shared domain types to identify which layers consume them - flag any that cross expected layer boundaries\n\nFocus: module coupling, cohesion, dependency direction, layer violations, circular dependencies, separation of concerns, scalability bottlenecks.\n\nFor each finding: severity, affected components (with LSP-traced dependency evidence), description, and recommendation. Output an architecture health report with dependency direction graph.\n\n## Handoff Summary\nEnd your response with:\n- **Dependency Graph**: Module dependency direction summary\n- **Layer Violations**: Components reaching across layer boundaries\n- **Coupling Hotspots**: Tightly coupled modules with evidence\n- **Scalability Risks**: Architectural bottlenecks that limit growth\n- **Recommendations**: Structural improvements prioritized by impact',
 
   reportBuilder: 'Compile all analyst findings into a unified, prioritized report.\n\n1. Aggregate findings across security, quality, performance, and architecture\n2. Deduplicate overlapping findings\n3. Assign overall severity considering cross-cutting impact\n4. Create an executive summary with key health metrics\n5. Organize recommendations by priority and effort\n\nOutput: executive summary, critical findings (immediate action), high-priority improvements (next sprint), and overall health scores per dimension.\n\n## Handoff Summary\nEnd your response with:\n- **Overall Health**: Score per dimension (security/quality/performance/architecture)\n- **Critical Items**: Must-fix findings requiring immediate action\n- **Sprint Priorities**: High-priority items for next sprint\n- **Cross-Cutting Themes**: Issues that appear across multiple dimensions\n- **Metrics**: Quantitative summary (finding counts, severity breakdown)',
+
+  codebaseCartographer: 'Map exactly where this feature will land in the codebase so the planner and implementers do not work blind.\n\n1. Use `Grep`/`Glob` to locate the modules, entry points, and routes the feature touches\n2. Use `LSP documentSymbol` on the key files to enumerate the functions/types involved\n3. Use `LSP incomingCalls`/`outgoingCalls` on the central functions to trace the call paths the change will ripple through\n4. Use `LSP goToDefinition`/`hover` to capture the data shapes and contracts at each integration seam\n5. Identify the project conventions the new code must match: error handling, logging, state management, test layout\n\nDo NOT propose a design or write code - your job is the map, not the route.\n\n## Handoff Summary\nEnd your response with:\n- **Touch Points**: Files/functions the feature must modify or extend (file:line)\n- **Integration Seams**: Interfaces, types, and contracts the change must honor\n- **Call Paths**: How the affected code is reached and what it calls\n- **Conventions**: Patterns the implementation must follow to fit in\n- **Risks**: Fragile or high-fan-out areas to touch carefully',
+
+  requirementsAnalyst: 'Turn the request into concrete, testable acceptance criteria the team can build and verify against.\n\n1. Restate the objective in one sentence - the outcome, not the implementation\n2. Enumerate explicit acceptance criteria as checkable statements (Given/When/Then where it helps)\n3. Surface the edge cases, error paths, and non-functional needs (performance, security, accessibility) the request implies but does not state\n4. Flag every ambiguity or missing decision as an explicit open question with a recommended default\n5. Define what is explicitly OUT of scope so the build does not sprawl\n\nGround the criteria in the Codebase Cartographer findings where available; do not invent behavior the system cannot support.\n\n## Handoff Summary\nEnd your response with:\n- **Objective**: The one-sentence outcome\n- **Acceptance Criteria**: Numbered, testable conditions for done\n- **Edge Cases**: Boundary and error conditions to handle\n- **Open Questions**: Ambiguities with recommended defaults\n- **Out of Scope**: What this work will not do',
+
+  priorArtResearcher: 'Find what already exists so the team reuses instead of reinventing.\n\n1. Use `Grep`/`Glob` to find existing patterns, helpers, and components in this repo that solve part of the problem\n2. Use `LSP findReferences`/`goToImplementation` to confirm how those existing pieces are used and whether they generalize\n3. Identify the established library or framework idiom for this kind of work in this codebase\n4. Use `WebSearch` only for genuinely external unknowns (a library API, a standard, a known pitfall) - prefer in-repo precedent\n5. Call out anti-patterns or deprecated approaches in the repo that the new work should NOT copy\n\n## Handoff Summary\nEnd your response with:\n- **Reuse**: Existing code/components to build on (file:line)\n- **Idioms**: The established pattern for this kind of change here\n- **External References**: Libraries/APIs/standards that apply, with links\n- **Avoid**: Deprecated or anti-pattern approaches present in the repo\n- **Gaps**: What genuinely has to be built new',
+
+  integrator: 'Merge the parallel implementation streams into one coherent, working whole.\n\n1. Read every changed file from the build stream and reconcile the interfaces where backend and frontend (or other streams) meet - types, payloads, routes, contracts must line up exactly\n2. Resolve conflicts and duplicated logic; prefer a single shared implementation over near-duplicates\n3. Wire the pieces together end to end so the feature actually runs, not just compiles\n4. Build/typecheck/lint and fix what breaks at the seams\n5. Leave the working tree coherent and ready for verification - do not commit\n\n## Handoff Summary\nEnd your response with:\n- **Integrated**: What was wired together and how the streams connect\n- **Reconciled**: Interface or contract mismatches you resolved\n- **Build State**: Result of build/typecheck/lint after integration\n- **Seams to Verify**: The integration points the Verifier should exercise first\n- **Follow-ups**: Anything deferred or left for review',
 
   securityReview: 'Review all changes for security vulnerabilities.\n\n1. Use `LSP findReferences` on user-controlled input parameters to trace them through the changed code - identify where they reach sinks (queries, shell commands, HTML output) without sanitization\n2. Use `LSP incomingCalls` on authentication/authorization check functions to verify every new code path calls them appropriately\n3. Use `LSP goToDefinition` on any security-sensitive types (tokens, sessions, credentials) to verify correct handling\n4. Check for injection risks: SQL, command, XSS, template injection\n5. Verify authentication and authorization logic - especially on new endpoints or state changes\n6. Review data exposure: are API responses leaking sensitive fields? Are error messages safe?\n7. Check CSRF protections and input validation on all user-facing inputs\n8. Verify secure defaults: passwords hashed, tokens expiring, cookies httpOnly/secure\n\nFor each finding: severity (Critical/High/Medium/Low), location (file:line), potential exploit scenario, and remediation.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or NEEDS FIX\n- **Critical Findings**: Immediate-action security issues\n- **High Findings**: Important but not exploitable without additional conditions\n- **Recommendations**: Security hardening suggestions (non-blocking)',
 
@@ -5499,6 +5511,58 @@ function loadPreset(preset) {
       const o = addNode('output', 1500, 310, 'Audit Report', { deliverable:'Multi-dimensional code audit with prioritized findings', format:'report' });
       addConnection(report.id, o.id);
     },
+    delivery_swarm: () => {
+      // The showcase preset: an end-to-end delivery pipeline that demonstrates the
+      // full toolkit - two parallel fan-outs, the Skeptic doubting the plan early,
+      // the Verifier proving the integration late, plus a review gate and tests.
+      const i = addNode('input', 80, 320, 'Feature / Ticket');
+
+      // Discovery fan-out: three angles on the problem before any code is written.
+      const fork1 = addNode('parallel', 320, 316, 'Discovery Swarm', { strategy:'all' });
+      const d1 = addNode('agent', 580, 140, 'Codebase Cartographer', { agentType:'researcher', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.codebaseCartographer, notes:'', maxTurns:10 });
+      const d2 = addNode('agent', 580, 320, 'Requirements Analyst', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.requirementsAnalyst, notes:'', maxTurns:8 });
+      const d3 = addNode('agent', 580, 500, 'Prior-Art Researcher', { agentType:'researcher', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.priorArtResearcher, notes:'', maxTurns:10 });
+      const join1 = addNode('parallel', 860, 316, 'Synthesize', { strategy:'all' });
+
+      // Lead Planner designs the approach, with a Skeptic challenging the plan before
+      // anyone builds - the cheapest place to catch a wrong direction.
+      const plan = addNode('agent', 1100, 320, 'Lead Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.planner, notes:'', maxTurns:6 });
+      const pc = addNode('agent', 1200, 540, 'Skeptic review: Lead Planner', { agentType:'adversary', adversaryRole:'planner', reviewLoopFor:plan.id, reviewLoopKind:'adversary', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], maxTurns:5 });
+      const pd = addNode('decision', 1380, 540, 'Plan sound?', { condition:'The plan is sound, complete, and addresses the acceptance criteria', yesLabel:'Passed', noLabel:'Needs revision', maxRevisions:3, reviewLoopDecisionFor:plan.id });
+
+      // Build fan-out: backend and frontend in parallel, then merged.
+      const fork2 = addNode('parallel', 1420, 316, 'Build Swarm', { strategy:'all' });
+      const be = addNode('agent', 1680, 200, 'Backend Engineer', { agentType:'backend', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.backend, notes:'', maxTurns:15 });
+      const fe = addNode('agent', 1680, 440, 'Frontend Engineer', { agentType:'frontend', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.frontend, notes:'', maxTurns:15 });
+      const join2 = addNode('parallel', 1940, 316, 'Merge', { strategy:'all' });
+
+      // Integrator wires the streams into a working whole, with a Verifier that proves
+      // the feature actually runs and meets the objective (prove late, doubt early).
+      const integ = addNode('agent', 2180, 320, 'Integrator', { agentType:'coder', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.integrator, notes:'', maxTurns:12 });
+      const vc = addNode('agent', 2280, 540, 'Verification: Integrator', { agentType:'verifier', reviewLoopFor:integ.id, reviewLoopKind:'verifier', model:state.defaultModel, tools:['Read','Grep','Glob','Bash','LSP','WebFetch'], maxTurns:10 });
+      const vd = addNode('decision', 2460, 540, 'Objective met?', { condition:'The integrated feature is verified to run and meet the acceptance criteria', yesLabel:'Verified', noLabel:'Not verified', maxRevisions:3, reviewLoopDecisionFor:integ.id });
+
+      // Final code-review gate, then tests, then delivery (uncommitted by default).
+      const rev = addNode('agent', 2500, 320, 'Code Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, notes:'', maxTurns:5 });
+      const rd = addNode('decision', 2760, 312, 'Review passed?', { condition:'Code review passed with no critical issues', yesLabel:'Approved', noLabel:'Revise' });
+      const test = addNode('agent', 3000, 320, 'Test Engineer', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, notes:'', maxTurns:10 });
+      const o = addNode('output', 3260, 320, 'Feature Delivered', { deliverable:'Integrated, verified, reviewed, and tested feature', format:'code' });
+
+      addConnection(i.id, fork1.id);
+      addConnection(fork1.id, d1.id); addConnection(fork1.id, d2.id); addConnection(fork1.id, d3.id);
+      addConnection(d1.id, join1.id); addConnection(d2.id, join1.id); addConnection(d3.id, join1.id);
+      addConnection(join1.id, plan.id);
+      addConnection(plan.id, pc.id); addConnection(pc.id, pd.id);
+      addConnection(pd.id, fork2.id, 'Passed'); addConnection(pd.id, plan.id, 'Needs revision');
+      addConnection(fork2.id, be.id); addConnection(fork2.id, fe.id);
+      addConnection(be.id, join2.id); addConnection(fe.id, join2.id);
+      addConnection(join2.id, integ.id);
+      addConnection(integ.id, vc.id); addConnection(vc.id, vd.id);
+      addConnection(vd.id, rev.id, 'Verified'); addConnection(vd.id, integ.id, 'Not verified');
+      addConnection(rev.id, rd.id);
+      addConnection(rd.id, test.id, 'Approved'); addConnection(rd.id, integ.id, 'Revise');
+      addConnection(test.id, o.id);
+    },
     test_automation: () => {
       const i = addNode('input', 80, 200, 'Jira Ticket');
       const appIn = addNode('input', 80, 380, 'App Source', { source:'custom', description:'Path to the app under test (set in sidebar)' });
@@ -5669,7 +5733,8 @@ const STORY_PLACEHOLDERS = {
   test_automation: 'App under test:\n\nFeatures/screens to automate:\n- \n\nTest scenarios:\n- \n\nBrowser/device requirements:\n\nExisting test framework:',
   review: 'Code/PR to review:\n\nAreas of concern:\n\nReview focus (security, performance, quality, all):\n\nContext or background:',
   parallel_research: 'Research question or topic:\n\nWhat to explore:\n- Codebase patterns\n- Documentation\n- Best practices\n\nExpected output format:\n\nScope constraints:',
-  swarm: 'System/codebase to audit:\n\nAudit focus areas:\n- [ ] Security\n- [ ] Quality\n- [ ] Performance\n- [ ] Architecture\n\nRelevant files/modules:\n\nKnown concerns:'
+  swarm: 'System/codebase to audit:\n\nAudit focus areas:\n- [ ] Security\n- [ ] Quality\n- [ ] Performance\n- [ ] Architecture\n\nRelevant files/modules:\n\nKnown concerns:',
+  delivery_swarm: 'Feature or ticket to deliver:\n\nWhat done looks like (acceptance criteria):\n\nAffected areas (backend / frontend / both):\n\nConstraints or non-negotiables:\n\nOut of scope:'
 };
 
 function updateStoryPlaceholder(preset) {
