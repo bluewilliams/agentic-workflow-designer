@@ -5409,7 +5409,8 @@ describe('Usability & Help', () => {
   describe('verifier prompt content', () => {
     const t = () => win.PROMPTS.verifier;
     it('demands evidence by exercising the work, not trusting claims', () => {
-      expect(t()).toContain('with evidence, by exercising the work');
+      expect(t()).toContain('with evidence');       // intro summary
+      expect(t()).toContain('Exercise the work');   // body step 2
       expect(t()).toContain('re-run it yourself');
     });
     it('anchors on a definition of done and honors custom acceptance notes', () => {
