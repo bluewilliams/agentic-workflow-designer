@@ -346,16 +346,31 @@ Right-click a node to access: Duplicate, Add Branch (Parallel only), **Add skept
 
 ## Workflow Generation (`generateFromStory`)
 
-Parses the user story with keyword detection to build an appropriate workflow automatically:
+A weighted-keyword scoring engine over **13 categories** builds a bespoke workflow shape (it does not pick a preset). Key properties:
 
-| Keywords Detected | Workflow Shape |
+- **Inflection-tolerant matching** - keywords match common plurals and verb forms (`tests`, `endpoints`, `deploying`, `migrations`, `document`), so phrasing variants score the same as the base word.
+- **Intent vs domain** - two read-only intents, **research** (research/evaluate/compare/spike/"X vs Y"/"whether to use") and **review** (review/audit/assess/"code review"), lead with a strong leading-verb rule so an imperative like "Review the service" wins, while an incidental mid-sentence word ("audit logging", "a service that evaluates X") stays weak and does not hijack a build request.
+- **Principled tie-breaking** - on equal scores a specificity `PRIORITY` map wins (security/research/review/data/performance over generic build domains) instead of object insertion order.
+- **Per-rule repetition cap** - each keyword rule contributes at most `weight x 3`, so a word repeated many times in a long ticket ("service"/"database" x8, a list of "X vs Y") cannot dominate purely by frequency. Distinct keywords (different rules) are unaffected.
+- **Boilerplate denoising** (`denoiseForScoring`) - real Jira tickets carry metadata sections (Logistics, Build/Release Pipelines, Repo, "Database Changes: None", Out of Scope, Risks, Open Questions) whose stray keywords otherwise hijack intent (a Release Pipeline line reading as DevOps; "no schema change" reading as a data migration). These sections are stripped before scoring so the engine reads the work statement; a safety net falls back to the full text if denoising removed too much. Complexity still uses the full text (a big ticket is still big work).
+
+| Detected dominant | Workflow shape |
 |---|---|
-| Bug/fix/crash/error | Input → Investigator → Fixer → Tester → Decision → Output |
-| UI + API keywords | Input → Planner → Parallel(Backend, Frontend) → Reviewer → Decision → Tester → Output |
-| UI only or API only | Input → Planner → Parallel(Researcher, Implementer) → Reviewer → Decision → Tester → Output |
-| Security keywords | Adds a Security Review agent before the main reviewer |
+| bugfix | Investigator → Fixer → (code tail) |
+| refactoring / data / devops / performance | analyzer/researcher → builder → (code tail) |
+| documentation | Researcher → Doc Writer → Doc Reviewer → Output (docs) |
+| test | Code Analyzer → Test Suite Writer → (code tail) |
+| **research** | Parallel(Codebase / Options / Tradeoff researchers) → Synthesizer → **Report** (read-only, never writes code) |
+| **review** | one or more read-only auditors (+ Security/Performance when signalled) → Report Builder → **Audit Report** (read-only) |
+| **analysis** | measure/forecast/estimate/cost work → Data Gatherer → Analyst → Report Writer → **Analysis Report** (read-only; never writes code). A bare "X vs Y" is a weak signal so a list of billable categories does not hijack to research |
+| UI only / UI + API | Design System Analyzer → UI Implementer, or Parallel(Backend, Frontend) |
+| security (additive) | adds a Security Review agent before the main reviewer |
 
-After generation, memory is auto-enabled if the workflow has parallel forks or 5+ agents. If the workflow name field is empty, `ensureWorkflowName()` auto-generates a memorable two-part name (e.g. `swift-falcon`) from built-in adjective/noun word lists so every workflow gets a unique memory path. Then `autoLayout()` arranges nodes cleanly.
+**Review loops where they earn their keep**: a **Skeptic** is wrapped on the Planner whenever one exists (standard/complex builds - doubt the plan early), and a **Verifier** is wrapped on the single primary builder for `complex` workflows (prove it late). Both are inlined re-points of `attachReviewLoop`'s core (no `batchUndo`, so they stay inside the single generate undo batch). Read-only research/review and documentation never get them.
+
+The code tail (review → decision → tester → output) is skipped for read-only (`selfContained`) and documentation shapes. After generation a toast reports the **detected intent** and flags a near-tie so the user can rephrase or pick a preset. Memory auto-enables for parallel forks or 5+ agents; `ensureWorkflowName()` assigns a two-part name (e.g. `swift-falcon`); `autoLayout()` arranges nodes.
+
+**Validation**: a property-based fuzz suite (`Auto Workflow fuzz`, ~290 cases) generates labeled synthetic requirements (random fill-ins, known intent) and asserts the detected shape, plus structural invariants that must hold for any input (one input/output, no orphan agents, no dangling edges, no blank prompts, read-only intents emit a report and contain no code-writing agent) and gibberish inputs for graceful fallback.
 
 ---
 
