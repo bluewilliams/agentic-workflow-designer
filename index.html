@@ -1010,7 +1010,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <h3>Under the Hood</h3>
 <p>Some things the designer handles for you automatically:</p>
 <ul>
-  <li><strong>Smart workflow detection</strong> - Auto Workflow infers an appropriate workflow shape from your requirements keywords.</li>
+  <li><strong>Smart workflow detection</strong> - Auto Workflow scores your requirements across 13 intent categories to build a bespoke shape: build, research (read-only spike), review (read-only audit), or analysis (measure / forecast cost). It tolerates plurals and verb forms, leads with the imperative verb (so "Review the service" isn't built as a feature), wraps a Skeptic on the plan and a Verifier on complex builds, and tells you what it detected so you can rephrase or pick a preset.</li>
   <li><strong>Acceptance-criteria extraction</strong> - bullet or numbered criteria in your requirements become Decision-gate conditions downstream.</li>
   <li><strong>Secret scanner</strong> - every input is checked for API keys, credentials, and connection strings before anything is copied to your clipboard.</li>
   <li><strong>Input validation</strong> - catches bare Jira keys, URL-only input without Atlassian MCP, and too few keywords to generate from.</li>
@@ -5029,6 +5029,26 @@ function generatePlanPrompt() {
   });
 }
 
+// Strip boilerplate / metadata sections (Logistics, CI / Release pipelines, repo, risks,
+// out-of-scope, observability, etc.) before keyword SCORING, so a real Jira ticket's
+// scaffolding does not hijack intent detection - e.g. "Release Pipeline" reading as DevOps,
+// or "Database Changes: None (no schema change)" reading as a data migration. Scoring sees
+// the work statement; complexity still uses the full text (a big ticket is still big work).
+function denoiseForScoring(text) {
+  const DROP = /^(logistics|repo(sitory)?|build\s+pipelines?|release\s+pipelines?|pipelines?|impacted\s+areas?|database\s+changes?|configuration\s+changes?|config\s+changes?|observability(\s+requirements)?|observable\s+business\s+behavior|risks?|open\s+questions?|out[\s-]of[\s-]scope|promises?\s+expected|non[\s-]?goals?|dependencies|attachments|references|links|labels|components?|fix\s+versions?|assignee|reporter|sprint|epic|story\s+points)\b\s*[:：]?/i;
+  const KEEP = /^(background|description|objective|narrative|summary|details?|acceptance\s+criteria|scenarios?|promises?\s+made|requirements?|tasks?|impact|user\s+story|context|problem|solution|goals?|notes?)\b\s*[:：]?/i;
+  const out = [];
+  let keep = true;
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    if (t && DROP.test(t)) { keep = false; continue; }
+    if (t && KEEP.test(t)) { keep = true; out.push(line); continue; }
+    if (keep) out.push(line);
+  }
+  const result = out.join('\n').trim();
+  // Safety net: if an unconventional ticket got mostly stripped, score the original instead.
+  return result.length >= Math.min(40, text.trim().length * 0.3) ? result : text;
+}
 function generateFromStory() {
   const story = $('storyInput').value.trim();
   if (!story) return;
@@ -5056,80 +5076,135 @@ function generateFromStory() {
   state.connectFrom = null;
   state.activePreset = null;
 
-  // ── Scoring engine: 10 categories with weighted keywords ──
+  // ── Scoring engine: 13 categories with weighted keywords ──
+  // Keywords tolerate common inflections (plurals, -ing/-ed) so "tests", "endpoints",
+  // "deploying", "migrations" score the same as their singular/base form. The two
+  // intent categories (research, review) lead with a strong "leading verb" rule so an
+  // imperative like "Review the X" / "Research whether Y" wins, while an incidental
+  // mid-sentence "compare"/"review" stays weak and does not hijack a build request.
   const CATEGORIES = {
     bugfix: [
-      [/\b(bug|crash|regression|not working|defect|hotfix)\b/gi, 3],
-      [/\b(broken|patch)\b/gi, 2], [/\bfix (the|a|an)\b/gi, 2],
-      [/\bfix\b/gi, 0.5], [/\bissue\b/gi, 0.5], [/\berror\b/gi, 1.5]
+      [/\b(bugs?|crash(es|ed|ing)?|regressions?|defects?|hotfix(es)?|not working)\b/gi, 3],
+      // Bug-report structure is a strong, reliable signal (no feature ticket has it) and
+      // outweighs domain words used descriptively (e.g. "the component renders X" = UI noise).
+      [/\b(steps to reproduce|recreation steps|reproduction steps|repro steps)\b/gi, 3],
+      [/\b(expected (results?|behaviou?r)|actual (results?|behaviou?r))\b/gi, 2],
+      [/\b(broken|patch(es|ed|ing)?)\b/gi, 2], [/\bfix(es|ed|ing)? (the|a|an)\b/gi, 2],
+      [/\bfix(es|ed|ing)?\b/gi, 0.5], [/\bissues?\b/gi, 0.5], [/\berrors?\b/gi, 1.5]
     ],
     ui: [
-      [/\b(component|button|form|modal|frontend)\b/gi, 3],
-      [/\b(dashboard|sidebar|navbar|toolbar|dropdown|tooltip|carousel|accordion)\b/gi, 3],
-      [/\b(page|screen|view|style|layout|responsive|css)\b/gi, 2],
-      [/\b(widget|panel|popover|menu|tab|card|icon)\b/gi, 2],
-      [/\b(display|render)\b/gi, 2],
-      [/\b(animation|transition|theme|dark mode|light mode)\b/gi, 1.5],
-      [/\b(header|footer)\b/gi, 1]
+      [/\b(components?|buttons?|forms?|modals?|frontend)\b/gi, 3],
+      [/\b(dashboards?|sidebars?|navbars?|toolbars?|dropdowns?|tooltips?|carousels?|accordions?)\b/gi, 3],
+      [/\b(pages?|screens?|views?|styles?|layouts?|responsive|css)\b/gi, 2],
+      [/\b(widgets?|panels?|popovers?|menus?|tabs?|cards?|icons?)\b/gi, 2],
+      [/\b(display(s|ed|ing)?|render(s|ed|ing)?)\b/gi, 2],
+      [/\b(animations?|transitions?|themes?|dark mode|light mode)\b/gi, 1.5],
+      [/\b(headers?|footers?)\b/gi, 1]
     ],
     api: [
-      [/\b(api|endpoint|rest|graphql|backend)\b/gi, 3],
-      [/\b(controller|route|database|query)\b/gi, 2],
-      [/\bserver\b/gi, 1.5], [/\bservice\b/gi, 1]
+      [/\b(apis?|endpoints?|rest|graphql|backend)\b/gi, 3],
+      [/\b(controllers?|routes?|databases?|quer(y|ies))\b/gi, 2],
+      [/\bservers?\b/gi, 1.5], [/\b(micro)?services?\b/gi, 1]
     ],
     refactoring: [
-      [/\b(refactor|technical debt|extract method|extract function|code smell)\b/gi, 3],
-      [/\b(restructure|simplify|consolidate|DRY|SOLID)\b/gi, 2],
-      [/\brename\b/gi, 2]
+      [/^(refactor(s|ed|ing)?|restructure(s|d)?|consolidat(e|es|ed|ing))\b/gi, 4],
+      [/\b(refactor(s|ed|ing)?|technical debt|extract method|extract function|code smells?)\b/gi, 3],
+      // Consolidation / DRY / dedup is a refactor even in an infra repo - intent over domain.
+      [/\b(consolidat(e|es|ed|ing|ion)|deduplicate|de-duplicate|single source of truth|behaviou?ral equivalence)\b/gi, 2],
+      [/\b(duplicate(s|d)?|duplication|restructure(s|d)?|simplify|DRY|SOLID)\b/gi, 2],
+      [/\brename(s|d|ing)?\b/gi, 2]
     ],
     documentation: [
-      [/\b(documentation|docs)\b/gi, 3],
+      [/^(document(s|ed|ing)?)\b/gi, 4],
+      [/\b(document(s|ed|ing|ation)?|docs?)\b/gi, 3],
       [/\b(readme|wiki|jsdoc|swagger|openapi|write docs)\b/gi, 3],
-      [/\bchangelog\b/gi, 2],
-      [/\bguide\b/gi, 1.5], [/\bcomment\b/gi, 1]
+      [/\bchangelogs?\b/gi, 2],
+      [/\bguides?\b/gi, 1.5], [/\bcomments?\b/gi, 1]
     ],
     devops: [
-      [/\b(deploy)\b/gi, 3],
-      [/\b(ci\/cd|pipeline|ci|cd)\b/gi, 3],
+      [/^(provision(s|ed|ing)?|deploy(s|ed|ing)?|set up|stand up|spin up)\b/gi, 4],
+      [/\b(deploy(s|ed|ing|ment|ments)?)\b/gi, 3],
+      [/\b(ci\/cd|pipelines?|ci|cd)\b/gi, 3],
       [/\b(docker|k8s|kubernetes|terraform|github actions)\b/gi, 3],
       [/\b(infrastructure|monitoring)\b/gi, 2],
-      [/\bconfig\b/gi, 1]
+      // Infrastructure / provisioning vocabulary (provision a DB instance, storage account, env config).
+      [/\b(provision(s|ed|ing)?|standalone instance|storage account|managed instance|access polic(y|ies))\b/gi, 2],
+      [/\b(connection string|environment (config|configuration|variables?)|stage and prod)\b/gi, 1.5],
+      [/\bconfig(s|ured|uration)?\b/gi, 1]
     ],
     performance: [
-      [/\b(performance|latency|memory leak|bottleneck|profiling|benchmark)\b/gi, 3],
-      [/\b(optimize|caching|bundle size|load time)\b/gi, 2],
+      [/^(optimiz(e|es|ed|ing)|speed up)\b/gi, 3],
+      [/\b(performance|latency|memory leaks?|bottlenecks?|profiling|benchmarks?)\b/gi, 3],
+      [/\b(optimiz(e|es|ed|ing|ation)|caching|bundle size|load time)\b/gi, 2],
       [/\bspeed up\b/gi, 2]
     ],
     data: [
-      [/\b(database migration|etl|import\/export data|alter table)\b/gi, 3],
-      [/\b(migration|schema|seed)\b/gi, 2]
+      [/\b(database migrations?|etl|alter table)\b/gi, 3],
+      [/\b(migrat(e|es|ed|ing|ion|ions)|schemas?|seed(s|ed|ing)?)\b/gi, 2]
     ],
     test: [
-      [/\b(coverage|e2e|unit test|integration test)\b/gi, 3],
-      [/\b(test|spec|qa)\b/gi, 2],
-      [/\bvalidate\b/gi, 1]
+      [/\b(coverage|e2e|unit tests?|integration tests?)\b/gi, 3],
+      [/\bwrite (unit |integration |e2e |automated )?tests?\b/gi, 4],
+      [/\b(tests?|testing|specs?|qa)\b/gi, 2],
+      [/\bvalidate(s|d)?\b/gi, 1]
     ],
     security: [
-      [/\b(security|encrypt|vulnerability|csrf|xss|injection)\b/gi, 3],
-      [/\b(auth|password|permission|credential)\b/gi, 2],
-      [/\b(session|login)\b/gi, 1], [/\b(role|token)\b/gi, 1.5]
+      [/\b(security|encrypt(s|ed|ion)?|vulnerabilit(y|ies)|csrf|xss|injections?)\b/gi, 3],
+      [/\b(auth|passwords?|permissions?|credentials?)\b/gi, 2],
+      [/\b(sessions?|login)\b/gi, 1], [/\b(roles?|tokens?)\b/gi, 1.5]
+    ],
+    research: [
+      [/^(research(es|ed|ing)?|evaluate|compare|investigate whether)\b/gi, 5],
+      [/\b(feasibility|tradeoffs?|trade-offs?|pros and cons|proof of concept|spike|poc)\b/gi, 3],
+      [/\bwhether to (use|adopt|build|choose|go with)\b/gi, 2.5],
+      [/\bshould (we|i) (use|adopt|choose|pick|go with)\b/gi, 2.5],
+      [/\bwhich (database|library|framework|approach|option|tool|stack)\b/gi, 2],
+      // A bare "X vs Y" is weak (often a list separator, not a decision); only a real
+      // comparison verb (leading rule) makes it dominate.
+      [/\b\w+\s+(vs\.?|versus)\s+\w+\b/gi, 1.5],
+      // Bare mid-sentence verbs stay weak so "a service that evaluates X" reads as a build.
+      [/\b(research|evaluate|evaluation)\b/gi, 1.5],
+      [/\balternatives?\b/gi, 1]
+    ],
+    analysis: [
+      [/^(measure|quantify|forecast|estimate)\b/gi, 4],
+      [/\b(cost (analysis|estimates?|forecast|impact|projections?)|usage (analysis|report|estimate)|capacity planning|forecast(ing)? (the )?(cost|costs|spend|usage)|estimate (the )?(cost|costs|usage|volume)|rough (cost )?estimate)\b/gi, 3],
+      [/\b(measure|quantify|forecast|estimate)\b/gi, 1.5],
+      [/\b(billable|cardinality|throughput|baseline)\b/gi, 1]
+    ],
+    review: [
+      [/^(review(s|ed|ing)?|audit(s|ed|ing)?|assess(es|ed|ing)?|inspect(s|ed|ing)?|critique)\b/gi, 5],
+      [/\b(code reviews?|pr reviews?|pull request reviews?)\b/gi, 3],
+      [/\b(review|audit) of\b/gi, 3],
+      // Bare mid-sentence "audit"/"review" stays weak so implementation features like
+      // "audit logging" / "audit trail" do not get mistaken for a request to audit.
+      [/\b(reviews?|audits?|assess(es|ed|ing|ment)?)\b/gi, 1.5],
+      [/\b(inspect(s|ed|ing)?|critique)\b/gi, 1.5],
+      [/\bfind (issues|problems|vulnerabilities|bugs)\b/gi, 2]
     ]
   };
 
-  // Score each category
+  // Score each category against the denoised text (boilerplate sections removed).
+  const scoringText = denoiseForScoring(story);
   const scores = {};
   for (const [cat, rules] of Object.entries(CATEGORIES)) {
     let score = 0;
     for (const [regex, weight] of rules) {
-      const matches = story.match(regex);
-      if (matches) score += weight * matches.length;
+      const matches = scoringText.match(regex);
+      // Cap each rule's contribution: a word repeated many times (e.g. "service" or
+      // "database" in a long ticket) should not dominate purely by repetition.
+      if (matches) score += weight * Math.min(matches.length, 3);
     }
     scores[cat] = score;
   }
 
-  // Find dominant category
-  const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  // Find dominant category. Ties break by a specificity priority (more-specialized
+  // intents win over generic build domains) instead of arbitrary object order.
+  const PRIORITY = { security: 9, research: 8, review: 8, analysis: 8, data: 7, performance: 7, devops: 6, documentation: 6, refactoring: 5, test: 5, bugfix: 4, ui: 3, api: 2 };
+  const sorted = Object.entries(scores).sort((a, b) => (b[1] - a[1]) || ((PRIORITY[b[0]] || 0) - (PRIORITY[a[0]] || 0)));
   const dominant = sorted[0][1] >= 2 ? sorted[0][0] : 'generic';
+  const runnerUp = sorted[1] || ['', 0];
+  const isReadOnlyIntent = (dominant === 'research' || dominant === 'review' || dominant === 'analysis');
 
   // Convenience booleans
   const hasUI = scores.ui >= 2;
@@ -5152,10 +5227,11 @@ function generateFromStory() {
   // ── Input node ──
   const inp = addNode('input', 0, 0, 'User Story', { source: 'jira', description: story.slice(0, 200) });
 
-  // ── Planning layer (conditional on complexity) ──
+  // ── Planning layer (skipped for read-only research/review intents) ──
   let entryNode = inp;
+  let plannerNode = null;
 
-  if (complexity !== 'simple') {
+  if (!isReadOnlyIntent && complexity !== 'simple') {
     const planner = addNode('agent', 0, 0, 'Planner', {
       agentType: 'planner', model: state.defaultModel,
       tools: ['Read', 'Grep', 'Glob', 'LSP', 'WebSearch'],
@@ -5164,9 +5240,10 @@ function generateFromStory() {
     });
     addConnection(inp.id, planner.id);
     entryNode = planner;
+    plannerNode = planner;
   }
 
-  if (complexity === 'complex') {
+  if (!isReadOnlyIntent && complexity === 'complex') {
     const arch = addNode('agent', 0, 0, 'Architect', {
       agentType: 'architect', model: state.defaultModel,
       tools: ['Read', 'Grep', 'Glob', 'LSP', 'WebSearch'],
@@ -5177,8 +5254,9 @@ function generateFromStory() {
     entryNode = arch;
   }
 
-  // ── Domain workflow (10 shapes, first match wins) ──
+  // ── Domain workflow (first match wins) ──
   let lastNodes = [];
+  let selfContained = false; // research/review build their own output and skip the code tail
   const isDocWorkflow = dominant === 'documentation';
 
   if (dominant === 'bugfix') {
@@ -5306,6 +5384,61 @@ function generateFromStory() {
     addConnection(analyzer.id, testSuiteWriter.id);
     lastNodes = [testSuiteWriter];
 
+  } else if (dominant === 'research') {
+    // Research/advisory spike: parallel investigation -> synthesize -> report. Read-only,
+    // never writes code. Mirrors the Parallel Research preset.
+    const fork = addNode('parallel', 0, 0, 'Research', { strategy: 'all', description: 'Investigate the question from multiple angles' });
+    addConnection(entryNode.id, fork.id);
+    const r1 = addNode('agent', 0, 0, 'Codebase Researcher', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'LSP'], prompt: PROMPTS.researcher, notes: '', maxTurns: 10 });
+    const r2 = addNode('agent', 0, 0, 'Options Researcher', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'WebSearch'], prompt: PROMPTS.researcher, notes: '', maxTurns: 10 });
+    const r3 = addNode('agent', 0, 0, 'Tradeoff Analyzer', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'LSP', 'WebSearch'], prompt: PROMPTS.researcher, notes: '', maxTurns: 10 });
+    addConnection(fork.id, r1.id); addConnection(fork.id, r2.id); addConnection(fork.id, r3.id);
+    const join = addNode('parallel', 0, 0, 'Synthesize', { strategy: 'all' });
+    addConnection(r1.id, join.id); addConnection(r2.id, join.id); addConnection(r3.id, join.id);
+    const synth = addNode('agent', 0, 0, 'Synthesizer', { agentType: 'writer', writingStyle: 'technical', model: state.defaultModel, tools: WRITER_TOOL_DEFAULTS.technical, prompt: PROMPTS.writerTechnical, notes: '', maxTurns: 10 });
+    addConnection(join.id, synth.id);
+    const output = addNode('output', 0, 0, 'Research Report', { deliverable: 'Findings, scored options, tradeoffs, and a recommendation', format: 'report' });
+    addConnection(synth.id, output.id);
+    selfContained = true;
+
+  } else if (dominant === 'analysis') {
+    // Measure / forecast / cost-estimate task: gather the data, analyze it, write the
+    // report. Read-only, produces a report - never writes code. Distinct from research
+    // (evaluate options) and review (audit code).
+    const gather = addNode('agent', 0, 0, 'Data Gatherer', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP', 'WebFetch'], prompt: PROMPTS.researcher, notes: '', maxTurns: 10 });
+    addConnection(entryNode.id, gather.id);
+    const analyst = addNode('agent', 0, 0, 'Analyst', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP'], prompt: PROMPTS.researcher, notes: '', maxTurns: 10 });
+    addConnection(gather.id, analyst.id);
+    const writer = addNode('agent', 0, 0, 'Report Writer', { agentType: 'writer', writingStyle: 'technical', model: state.defaultModel, tools: WRITER_TOOL_DEFAULTS.technical, prompt: PROMPTS.writerTechnical, notes: '', maxTurns: 10 });
+    addConnection(analyst.id, writer.id);
+    const output = addNode('output', 0, 0, 'Analysis Report', { deliverable: 'Quantified findings, methodology, and a forecast', format: 'report' });
+    addConnection(writer.id, output.id);
+    selfContained = true;
+
+  } else if (dominant === 'review') {
+    // Read-only audit: one or more reviewers -> report. Never writes or commits code.
+    const mkReviewer = (label, prompt, tools) => addNode('agent', 0, 0, label, { agentType: 'reviewer', model: state.defaultModel, tools: tools || ['Read', 'Grep', 'Glob', 'LSP'], prompt, notes: '', maxTurns: 8 });
+    const auditors = [mkReviewer('Quality Reviewer', PROMPTS.qualityAnalyst)];
+    if (hasSecurity) auditors.push(mkReviewer('Security Auditor', PROMPTS.securityAuditor));
+    if (scores.performance >= 2) auditors.push(mkReviewer('Performance Reviewer', PROMPTS.perfProfiler, ['Read', 'Grep', 'Glob', 'Bash', 'LSP']));
+    let upstream;
+    if (auditors.length === 1) {
+      addConnection(entryNode.id, auditors[0].id);
+      upstream = auditors[0];
+    } else {
+      const fork = addNode('parallel', 0, 0, 'Audit', { strategy: 'all' });
+      addConnection(entryNode.id, fork.id);
+      auditors.forEach(a => addConnection(fork.id, a.id));
+      const join = addNode('parallel', 0, 0, 'Aggregate', { strategy: 'all' });
+      auditors.forEach(a => addConnection(a.id, join.id));
+      upstream = join;
+    }
+    const reportBuilder = addNode('agent', 0, 0, 'Report Builder', { agentType: 'planner', model: state.defaultModel, tools: ['Read', 'Write'], prompt: PROMPTS.reportBuilder, notes: '', maxTurns: 5 });
+    addConnection(upstream.id, reportBuilder.id);
+    const output = addNode('output', 0, 0, 'Audit Report', { deliverable: 'Prioritized findings with severity, evidence, and recommendations', format: 'report' });
+    addConnection(reportBuilder.id, output.id);
+    selfContained = true;
+
   } else if (hasUI && hasAPI) {
     // Shape 7: Parallel(Backend, Frontend, [Test])
     const fork = addNode('parallel', 0, 0, 'Parallel Dev', { strategy: 'all', description: 'Backend and Frontend in parallel' });
@@ -5390,8 +5523,14 @@ function generateFromStory() {
     lastNodes = [implAgent];
   }
 
+  // The primary builder (for an optional Verifier) - only when there is a single
+  // implementation node, so we never try to wrap a parallel fork.
+  const primaryBuilder = (!selfContained && !isDocWorkflow && lastNodes.length === 1) ? lastNodes[0] : null;
+
   // ── Tail section ──
-  if (isDocWorkflow) {
+  if (selfContained) {
+    // research/review already built their reviewer/synthesizer and output node.
+  } else if (isDocWorkflow) {
     // Documentation: doc reviewer → output (no code review, no testing)
     const docReviewer = addNode('agent', 0, 0, 'Doc Reviewer', {
       agentType: 'reviewer', model: state.defaultModel,
@@ -5477,9 +5616,36 @@ function generateFromStory() {
     addConnection(tester.id, output.id);
   }
 
+  // ── Review loops (Skeptic / Verifier), added where they earn their keep ──
+  // Inlined re-point of attachReviewLoop's core (no batchUndo, so it stays inside the
+  // single generate undo batch): the target's outgoing edges become the decision's pass
+  // branch; a failure edge loops back to the target.
+  const wrapReview = (target, kind) => {
+    if (!target || !canAttachReviewLoop(target) || hasReviewLoop(target.id)) return;
+    const spec = REVIEW_LOOP_KINDS[kind];
+    const reviewedRole = target.config.agentType || 'general';
+    const outs = state.connections.filter(c => c.from === target.id);
+    const cfg = { agentType: kind, reviewLoopFor: target.id, reviewLoopKind: kind, tools: spec.tools.slice(), maxTurns: spec.maxTurns };
+    if (spec.useRoleLens) cfg.adversaryRole = reviewedRole;
+    const reviewer = addNode('agent', 0, 0, spec.labelPrefix + target.label, cfg);
+    const decision = addNode('decision', 0, 0, spec.decisionLabel, {
+      condition: spec.condition, yesLabel: spec.yesLabel, noLabel: spec.noLabel,
+      maxRevisions: 3, reviewLoopDecisionFor: target.id
+    });
+    const outIds = new Set(outs.map(c => c.id));
+    state.connections = state.connections.filter(c => !outIds.has(c.id));
+    addConnection(target.id, reviewer.id);
+    addConnection(reviewer.id, decision.id);
+    addConnection(decision.id, target.id, spec.noLabel);
+    outs.forEach(c => addConnection(decision.id, c.to, spec.yesLabel));
+  };
+  // Doubt early: a Skeptic on the Planner catches a wrong direction before any code is
+  // written (whenever a Planner exists - i.e. standard/complex builds).
+  if (plannerNode) wrapReview(plannerNode, 'adversary');
+  // Prove late: a Verifier on the implementation step for complex single-builder work.
+  if (complexity === 'complex' && primaryBuilder) wrapReview(primaryBuilder, 'verifier');
+
   // Auto-enable memory for complex generated workflows (parallel forks or 5+ agents).
-  // Note: generateFromStory always adds a decision gate for code workflows, so unlike
-  // presets we don't use hasDecision here -- it's not a complexity signal in this context.
   const hasParallel = state.nodes.some(n => n.type === 'parallel');
   const manyAgents = state.nodes.filter(n => n.type === 'agent').length >= 5;
   if (hasParallel || manyAgents) setMemoryEnabled(true);
@@ -5489,7 +5655,25 @@ function generateFromStory() {
   setMode('select');
   const agentCount = state.nodes.filter(n => n.type === 'agent').length;
   _undoBatch = false;
-  showToast('Generated workflow with ' + agentCount + ' agent' + (agentCount !== 1 ? 's' : ''), 3000);
+
+  // Transparency: tell the user what was detected, and flag a near-tie so they can correct.
+  const SHAPE_NAME = { bugfix: 'bug fix', ui: 'UI', api: 'API / backend', refactoring: 'refactor', documentation: 'documentation', devops: 'DevOps', performance: 'performance', data: 'data migration', test: 'tests', security: 'security', research: 'research spike', review: 'code review', analysis: 'cost / usage analysis', generic: 'feature build' };
+  // Report the ACTUAL shape, which for ui/api/security/generic is decided by booleans,
+  // not the raw dominant category (e.g. ui+api builds a full-stack feature, not "UI").
+  const DOMINANT_SHAPES = ['bugfix', 'refactoring', 'documentation', 'devops', 'performance', 'data', 'test', 'research', 'review', 'analysis'];
+  let detected;
+  if (DOMINANT_SHAPES.includes(dominant)) detected = SHAPE_NAME[dominant];
+  else if (hasUI && hasAPI) detected = 'full-stack feature';
+  else if (hasUI) detected = 'UI';
+  else if (dominant === 'security') detected = 'security';
+  else if (dominant === 'api') detected = 'API / backend';
+  else detected = 'feature build';
+  // A ui/api split resolves to full-stack by design, so it is not a real "close call".
+  const ambiguous = dominant !== 'generic' && !(hasUI && hasAPI) && runnerUp[1] >= 2 && (sorted[0][1] - runnerUp[1]) <= 1;
+  const runnerUpName = SHAPE_NAME[runnerUp[0]] || runnerUp[0];
+  const msg = 'Auto-detected: ' + detected + ' workflow (' + agentCount + ' agent' + (agentCount !== 1 ? 's' : '') + ')'
+    + (ambiguous ? ' - close call vs ' + runnerUpName + '; tweak the wording or pick a preset if that fits better.' : '. Not right? Rephrase or pick a preset.');
+  showToast(msg, ambiguous ? 5500 : 3500);
 }
 
 // ═══════════════════════════════════════════════════════════

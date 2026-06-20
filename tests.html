@@ -2588,6 +2588,278 @@ describe('Workflow Generation', () => {
   });
 });
 
+// ─── Auto Workflow fuzz: hundreds of synthetic requirements ─────────────────
+// Two kinds of checks: (1) LABELED templates - random fill-ins but a known intent,
+// so we can assert the detected shape; (2) structural INVARIANTS that must hold for
+// ANY input. Seeded RNG so a failure is reproducible.
+describe('Auto Workflow fuzz (property-based)', () => {
+  beforeEach(() => { resetState(); });
+
+  function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  const rng = mulberry32(0x5EED);
+  const pick = arr => arr[Math.floor(rng() * arr.length)];
+  const fill = tpl => tpl.replace(/\{(\w+)\}/g, (_, k) => pick(SLOTS[k]));
+
+  const SLOTS = {
+    subj: ['checkout flow', 'user onboarding', 'the billing module', 'the notifications feature', 'the search experience', 'account preferences', 'the inventory tracker', 'the loyalty program', 'the messaging feature', 'the export job'],
+    bug: ['bug', 'crash', 'regression', 'defect', 'hotfix'],
+    uiel: ['button', 'dropdown', 'modal', 'form', 'sidebar', 'navbar', 'tooltip', 'dashboard'],
+    tech: ['Kafka', 'RabbitMQ', 'Redis', 'Postgres', 'DynamoDB', 'S3', 'gRPC', 'Snowflake'],
+    dev: ['CI/CD pipeline', 'Docker container', 'Kubernetes deployment', 'a deployment pipeline', 'GitHub Actions setup'],
+  };
+
+  const CODE_WRITERS = ['Implementer', 'Fixer', 'Backend Dev', 'Frontend Dev', 'UI Implementer', 'Optimizer', 'Migration Engineer', 'Refactorer', 'DevOps Engineer', 'Test Suite Writer', 'Test Writer'];
+
+  function shapeOf(nodes) {
+    const labels = nodes.filter(n => n.type === 'agent').map(n => n.label);
+    const has = re => labels.some(l => re.test(l));
+    if (has(/^Investigator$/)) return 'bugfix';
+    if (has(/^Refactorer$/)) return 'refactoring';
+    if (has(/^Doc Writer$/)) return 'documentation';
+    if (has(/^DevOps Engineer$/)) return 'devops';
+    if (has(/^Profiler$/) || has(/^Optimizer$/)) return 'performance';
+    if (has(/^Migration Engineer$/)) return 'data';
+    if (has(/^Test Suite Writer$/)) return 'test';
+    if (has(/^Data Gatherer$/)) return 'analysis';
+    if (has(/^Synthesizer$/)) return 'research';
+    if (has(/^Report Builder$/) || has(/^Quality Reviewer$/)) return 'review';
+    if (has(/^Backend Dev$/) && has(/^Frontend Dev$/)) return 'fullstack';
+    if (has(/^UI Implementer$/)) return 'ui';
+    return 'generic';
+  }
+
+  // Invariants that must hold for EVERY generated workflow, whatever the input.
+  function assertStructural(nodes, conns) {
+    const inputs = nodes.filter(n => n.type === 'input');
+    const outputs = nodes.filter(n => n.type === 'output');
+    const agents = nodes.filter(n => n.type === 'agent');
+    expect(inputs.length).toBe(1);
+    expect(outputs.length).toBe(1);
+    expect(agents.length).toBeGreaterThan(0);
+    const ids = new Set(nodes.map(n => n.id));
+    conns.forEach(c => { expect(ids.has(c.from) && ids.has(c.to)).toBe(true); }); // no dangling edge
+    expect(conns.some(c => c.from === inputs[0].id)).toBe(true);  // input feeds something
+    expect(conns.some(c => c.to === outputs[0].id)).toBe(true);   // output is reached
+    agents.forEach(a => {
+      expect(conns.some(c => c.to === a.id)).toBe(true);                       // no orphan agent
+      expect((win.getEffectivePrompt(a) || '').length).toBeGreaterThan(0);     // never a blank prompt
+    });
+    expect(['code', 'commit', 'pr', 'report', 'docs'].includes(outputs[0].config.format)).toBe(true);
+  }
+
+  const INTENTS = [
+    { name: 'bugfix', expected: 'bugfix', tpls: ['Fix the {bug} in {subj}', 'Patch the {bug} affecting {subj}', '{subj} is crashing'] },
+    { name: 'refactoring', expected: 'refactoring', tpls: ['Refactor {subj} to reduce complexity', 'Restructure {subj} for clarity'] },
+    { name: 'documentation', expected: 'documentation', tpls: ['Document {subj}', 'Write the README for {subj}', 'Add docs for {subj}'] },
+    { name: 'devops', expected: 'devops', tpls: ['Set up a {dev} for {subj}', 'Deploy {subj} with Docker'] },
+    { name: 'performance', expected: 'performance', tpls: ['Optimize {subj} for latency', 'Speed up {subj}', 'Reduce latency in {subj}'] },
+    { name: 'data', expected: 'data', tpls: ['Migrate {subj} to a new schema', 'Write an ETL job for {subj}', 'Create a database migration for {subj}'] },
+    { name: 'test', expected: 'test', tpls: ['Write tests for {subj}', 'Add unit tests for {subj}', 'Improve test coverage for {subj}'] },
+    { name: 'research', expected: 'research', tpls: ['Research whether to use {tech} for {subj}', 'Compare {tech} versus {tech} for {subj}', 'Evaluate {tech} options for {subj}'] },
+    { name: 'review', expected: 'review', tpls: ['Review {subj} for quality issues', 'Audit {subj} for problems', 'Assess {subj} for risks'] },
+    { name: 'analysis', expected: 'analysis', tpls: ['Measure usage and forecast the monthly cost for {subj}', 'Estimate the cost of {subj}', 'Forecast spend for {subj} and document the methodology', 'Quantify the cost impact of {subj}'] },
+    { name: 'ui', expected: 'ui', tpls: ['Build a {uiel} for {subj}', 'Add a responsive {uiel} to {subj}'] },
+    { name: 'fullstack', expected: 'fullstack', tpls: ['Build a {uiel} and a REST API for {subj}', 'Create a {uiel} backed by a GraphQL endpoint for {subj}'] },
+  ];
+
+  const N = 22;
+  INTENTS.forEach(intent => {
+    describe(intent.name, () => {
+      for (let i = 0; i < N; i++) {
+        const input = fill(pick(intent.tpls));
+        it('#' + i + ': ' + input, () => {
+          resetState();
+          win.document.getElementById('storyInput').value = input;
+          win.generateFromStory();
+          const nodes = win.state.nodes, conns = win.state.connections;
+          assertStructural(nodes, conns);
+          expect(shapeOf(nodes)).toBe(intent.expected);
+          if (intent.expected === 'research' || intent.expected === 'review' || intent.expected === 'analysis') {
+            const out = nodes.find(n => n.type === 'output');
+            expect(out.config.format).toBe('report');
+            const writers = nodes.filter(n => n.type === 'agent').map(n => n.label).filter(l => CODE_WRITERS.includes(l));
+            expect(writers.length).toBe(0); // read-only: never writes code
+          }
+        });
+      }
+    });
+  });
+
+  // Tricky inputs that previously mis-fired: implementation features that happen to
+  // contain an intent word ("audit logging", "a service that evaluates X"), and intent
+  // requests whose subject contains strong domain nouns ("Research ... GraphQL API").
+  describe('tricky inputs (no false positives)', () => {
+    const TRAPS = [
+      ['Implement a billing system with full audit logging and compliance reporting', 'generic'],
+      ['Add an audit trail to the user service', 'generic'],
+      ['Build a page to compare subscription plans', 'ui'],
+      ['Write a service that evaluates loan applications', 'generic'],
+      ['Review the billing module for performance problems', 'review'],
+      ['Research whether to use GraphQL for the public API', 'research'],
+      ['Audit the payment service for security vulnerabilities', 'review'],
+      // "X vs Y" as a list separator in a build/feature must NOT route to research.
+      ['Build a settings page with a light vs dark mode and a compact vs comfortable layout', 'ui'],
+      ['Measure log and metric volume to forecast the monthly cost per service', 'analysis'],
+      // Consolidation / dedup is a refactor (intent over domain), no infra noise here.
+      ['Consolidate the duplicated validation logic across five modules into one shared helper, with behavioral equivalence and no functional changes', 'refactoring'],
+    ];
+    TRAPS.forEach(([input, expected], i) => {
+      it('#' + i + ' -> ' + expected + ': ' + input, () => {
+        resetState();
+        win.document.getElementById('storyInput').value = input;
+        win.generateFromStory();
+        assertStructural(win.state.nodes, win.state.connections);
+        expect(shapeOf(win.state.nodes)).toBe(expected);
+      });
+    });
+  });
+
+  // Fleshed-out, Jira-sized tickets (multi-paragraph + acceptance criteria) - check that
+  // realistic inputs land on a reasonable shape, pull review loops in for complex builds,
+  // feed acceptance criteria into the gate, and keep read-only intents read-only.
+  describe('realistic Jira-sized tickets', () => {
+    const T = {
+      fullstack: `Build the team workspaces feature end to end. Add REST API endpoints for workspace CRUD and membership plus database migrations. Add a frontend dashboard with a navbar switcher, a members table, and an invite modal following the design system, with role-based gating and auth.\n\nAcceptance criteria:\n- Owners can invite and remove members\n- Viewers have read-only access\n- Switching workspaces updates the active context`,
+      bug: `Customers are being charged twice intermittently on the checkout flow. We have had about a dozen reports this week. It happens when the payment confirmation request times out and the client retries the call. As a result the webhook handler processes the same event more than once. This is a high-severity production bug that affects revenue and customer trust. We suspect a missing idempotency key on the payment service. The regression appeared after the retry changes last sprint.\n\nAcceptance criteria:\n- Duplicate charges no longer occur under retry or timeout conditions\n- A regression test reproduces the double charge and passes after the fix\n- Existing successful single charges are unaffected`,
+      research: `Spike: evaluate options for our real-time notification delivery system at scale. Compare WebSockets versus Server-Sent Events versus a managed service. Consider cost and operational complexity.\n\nAcceptance criteria:\n- A recommendation with rationale\n- A scored comparison matrix\n\nResearch only, no implementation.`,
+      review: `Audit the new billing service for security, performance, and code quality before launch. It handles payment data and will be on the hot path. Produce a prioritized list of findings.\n\nAcceptance criteria:\n- Findings categorized by severity\n- A go or no-go recommendation\n\nRead-only review, do not change code.`,
+      data: `Migrate the legacy users table to the new normalized schema with zero downtime. Backfill existing data, dual-write during transition, then cut over.\n\nAcceptance criteria:\n- Migration is reversible\n- No downtime during rollout\n- All existing user data is preserved and validated`,
+      docs: `Document the public REST API for the v2 launch. Cover authentication, all endpoints with request and response examples, rate limits, and error codes. Generate an OpenAPI spec.\n\nAcceptance criteria:\n- Every public endpoint documented with examples\n- OpenAPI spec generated`,
+      // Bug-report structure (Recreation/Expected/Actual) must win over incidental UI words
+      // ("toolbar", "header", "renders") used descriptively in the bug prose.
+      // Infra provisioning: detected from body provisioning vocab even though the
+      // CI/Release-pipeline mentions (the usual DevOps tell) are stripped by denoise, and
+      // "database"/"service" repeated many times do not inflate API past the cap.
+      infra: `Background\nProvision a new standalone managed database instance and storage account for the location service. The original approach of adding a container to the shared managed instance is no longer viable, so we are standing up a net-new instance from scratch. Telemetry and monitoring on the shared instance will not carry over and must be re-established.\n\nLogistics\nBuild Pipeline: CI Build\nRelease Pipelines: Android, iOS, Desktop\n\nPromises Made\nA standalone database instance is provisioned for STAGE and PROD.\nA storage account is provisioned to support the instance.\nEnvironment configuration (the connection string) is set up for both environments.\nConnectivity from the service to the database is validated and basic smoke testing confirms the configuration works.`,
+      bugReport: `Background\nA feature gate is bypassed on one surface. The shipped fix gated the toolbar and the detail header, but two completed-list consumers were missed, so the entry point still shows.\n\nRecreation steps\nSet the flag false. Open the completed list and a completed item. Observe the entry point is still shown.\n\nExpected results\nWith the flag false, the entry point is hidden on the completed-list surface.\n\nActual results\nThe two consumers render the action unconditionally; the gate selector was not wired in.\n\nProposed fix\nWire the same gate selector into the two consumers and add unit tests, mirroring the active-surface tests.`,
+    };
+    const run = key => { resetState(); win.document.getElementById('storyInput').value = T[key]; win.generateFromStory(); return win.state.nodes; };
+    const labelsOf = ns => ns.filter(n => n.type === 'agent').map(n => n.label);
+    const decisionCond = ns => { const d = ns.find(n => n.type === 'decision'); return d ? d.config.condition : ''; };
+
+    it('full-stack feature -> parallel backend+frontend build with a Skeptic and AC gate', () => {
+      const ns = run('fullstack'); assertStructural(ns, win.state.connections);
+      expect(shapeOf(ns)).toBe('fullstack');
+      expect(labelsOf(ns).some(l => /Skeptic/.test(l))).toBe(true);
+      expect(decisionCond(ns)).toContain('invite and remove members');
+    });
+    it('production bug -> bugfix with Skeptic + Verifier and AC gate', () => {
+      const ns = run('bug'); assertStructural(ns, win.state.connections);
+      expect(shapeOf(ns)).toBe('bugfix');
+      const labels = labelsOf(ns);
+      expect(labels.some(l => /Skeptic/.test(l))).toBe(true);
+      expect(labels.some(l => /Verification/.test(l))).toBe(true);
+      expect(decisionCond(ns)).toContain('Duplicate charges');
+    });
+    it('research spike -> read-only research report, no code writers', () => {
+      const ns = run('research'); assertStructural(ns, win.state.connections);
+      expect(shapeOf(ns)).toBe('research');
+      expect(ns.find(n => n.type === 'output').config.format).toBe('report');
+      expect(labelsOf(ns).filter(l => CODE_WRITERS.includes(l)).length).toBe(0);
+    });
+    it('audit -> read-only review report with a Security Auditor', () => {
+      const ns = run('review'); assertStructural(ns, win.state.connections);
+      expect(shapeOf(ns)).toBe('review');
+      expect(ns.find(n => n.type === 'output').config.format).toBe('report');
+      expect(labelsOf(ns).some(l => /Security Auditor/.test(l))).toBe(true);
+      expect(labelsOf(ns).filter(l => CODE_WRITERS.includes(l)).length).toBe(0);
+    });
+    it('data migration -> Migration Engineer with reversibility AC in the gate', () => {
+      const ns = run('data'); assertStructural(ns, win.state.connections);
+      expect(shapeOf(ns)).toBe('data');
+      expect(decisionCond(ns)).toContain('reversible');
+    });
+    it('documentation -> docs output, no code-review gate', () => {
+      const ns = run('docs'); assertStructural(ns, win.state.connections);
+      expect(shapeOf(ns)).toBe('documentation');
+      expect(ns.find(n => n.type === 'output').config.format).toBe('docs');
+    });
+    it('bug-report structure wins over incidental UI words -> bugfix, not UI', () => {
+      const ns = run('bugReport'); assertStructural(ns, win.state.connections);
+      expect(shapeOf(ns)).toBe('bugfix');
+      expect(ns.find(n => n.type === 'output').config.format).toBe('code');
+    });
+    it('infra provisioning -> DevOps (provision vocab wins; "database"/"service" repetition capped)', () => {
+      const ns = run('infra'); assertStructural(ns, win.state.connections);
+      expect(shapeOf(ns)).toBe('devops');
+    });
+  });
+
+  // A real-Jira-shaped ticket carries metadata sections (Logistics, CI/Release pipelines,
+  // "Database Changes: None") whose stray keywords must NOT hijack the detected intent.
+  // Genericized (no real ticket content) but structured like one.
+  describe('boilerplate-heavy ticket does not hijack intent (denoise)', () => {
+    const TICKET = [
+      'Background',
+      'Users sometimes lose unsaved work when the app moves to the background and the OS suspends it. We want to flush pending work before suspension so nothing is lost.',
+      '',
+      'Objective',
+      'Drain the pending write queue before the app is allowed to suspend, and re-enable it on resume.',
+      '',
+      'Logistics',
+      'Repo: example_mobile_app',
+      'Build Pipeline: Mobile CI Build',
+      'Release Pipelines: Android Release Pipeline, iOS Release Pipeline, Desktop Release Pipeline',
+      '',
+      'Promises Made',
+      'Pending work is flushed before the app suspends.',
+      'The flush is allowed to finish if already running.',
+      '',
+      'Database Changes: None (no schema change; no migration).',
+      'Configuration Changes: new background-flush option keys; no migration.',
+      '',
+      'Acceptance Criteria',
+      'If the app is backgrounded with pending work, the flush runs before suspend.',
+      'The app still suspends if some items fail.',
+      '',
+      'Out of Scope',
+      'Fixing the upstream storage backgrounding issues.',
+      '',
+      'Risks',
+      'Misconfigured interval lets the OS kill the app. The flush never releases and drains the battery.',
+      '',
+      'Open Questions',
+      'Is there a maximum hold duration before forcing release?',
+    ].join('\n');
+
+    it('denoiseForScoring keeps the work statement and strips metadata sections', () => {
+      const d = win.denoiseForScoring(TICKET);
+      expect(d).toContain('Background');
+      expect(d).toContain('Acceptance Criteria');
+      expect(d).toNotContain('Release Pipeline');
+      expect(d).toNotContain('Build Pipeline');
+      expect(d).toNotContain('no schema change');   // "Database Changes: None" line dropped
+      expect(d).toNotContain('drains the battery');  // Risks section dropped
+    });
+    it('the ticket is NOT mis-detected as DevOps / data / research; it builds code', () => {
+      resetState();
+      win.document.getElementById('storyInput').value = TICKET;
+      win.generateFromStory();
+      const ns = win.state.nodes;
+      assertStructural(ns, win.state.connections);
+      const labels = ns.filter(n => n.type === 'agent').map(n => n.label);
+      expect(labels.some(l => /DevOps Engineer|Migration Engineer|Synthesizer|Quality Reviewer/.test(l))).toBe(false);
+      expect(ns.find(n => n.type === 'output').config.format).toBe('code');
+    });
+  });
+
+  // Pure gibberish: no expected shape, but structure must always be valid (graceful fallback).
+  describe('gibberish (structure only)', () => {
+    const WORDS = ['apple', 'river', 'tower', 'garden', 'planet', 'signal', 'harbor', 'meadow', 'lantern', 'compass', 'thunder', 'willow', 'pebble', 'orbit', 'canyon', 'feather', 'marble', 'ember', 'glacier', 'prairie'];
+    for (let i = 0; i < 40; i++) {
+      const len = 4 + Math.floor(rng() * 9);
+      const input = Array.from({ length: len }, () => pick(WORDS)).join(' ');
+      it('#' + i + ': ' + input.slice(0, 40), () => {
+        resetState();
+        win.document.getElementById('storyInput').value = input;
+        win.generateFromStory();
+        expect(win.state.nodes.length).toBeGreaterThan(0);
+        assertStructural(win.state.nodes, win.state.connections);
+      });
+    }
+  });
+});
+
 // ─── Suite 7: Preset Loading ─────────────────────────────
 describe('Preset Loading', () => {
   beforeEach(() => { resetState(); });
@@ -4509,7 +4781,7 @@ describe('Usability & Help', () => {
       win.showToast = (msg) => { toastMsg = msg; };
       win.generateFromStory();
       win.showToast = origToast;
-      expect(toastMsg).toContain('Generated workflow with');
+      expect(toastMsg).toContain('Auto-detected');
       expect(toastMsg).toContain('agent');
     });
   });

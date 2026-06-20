@@ -265,7 +265,7 @@ LSP is enabled by default on most agent presets. Code-analysis prompts in the Pr
 
 ## More Under the Hood
 
-- **Smart story detection** auto-generates an appropriate workflow shape from your requirements keywords
+- **Smart story detection** auto-generates a bespoke workflow shape from your requirements: a 13-category keyword engine (inflection-tolerant, so "tests"/"endpoints"/"migrations" all count) routes build, research (read-only spike → report), review (read-only audit → report), and analysis (measure/forecast cost → report) intents, leads with the imperative verb so "Review the service" isn't mistaken for a build, wraps a Skeptic on the plan and a Verifier on complex builds, and tells you what it detected so you can rephrase or pick a preset
 - **Acceptance criteria extraction** parses bullet/numbered criteria from requirements and uses them as decision gate conditions
 - **Decision gates** are embedded as success criteria in upstream agent prompts, with explicit reasoning requirements and configurable revision limits
 - **Multi-repository support** lets you specify multiple repos with branches; agents check out the right branch before starting
