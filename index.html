@@ -3592,10 +3592,12 @@ function updateConfig() {
     fields.innerHTML += configTextarea('Description', 'description', node.config.description, 'Input details...');
   } else if (node.type === 'output') {
     fields.innerHTML += configSelect('Format', 'format', node.config.format,
-      [{ value:'code', label:'Code Changes' },{ value:'pr', label:'Pull Request' },{ value:'report', label:'Report' },{ value:'docs', label:'Documentation' }]);
+      [{ value:'code', label:'Leave Uncommitted' },{ value:'commit', label:'Commit' },{ value:'pr', label:'Pull Request' },{ value:'report', label:'Report' },{ value:'docs', label:'Documentation' }]);
     fields.innerHTML += configInput('Deliverable', 'deliverable', node.config.deliverable);
-    if (node.config.format === 'pr') {
+    if (node.config.format === 'pr' || node.config.format === 'commit') {
       fields.innerHTML += configInput('Branch Name', 'branchName', node.config.branchName || '', 'text', 'e.g. feature/PRJ-6069-profile-redesign');
+    }
+    if (node.config.format === 'pr') {
       fields.innerHTML += configInput('Target Branch', 'targetBranch', node.config.targetBranch || '', 'text', 'e.g. main, develop (default: main)');
     }
   }
@@ -5981,11 +5983,36 @@ function uiContextBlock(heading) {
   const h = heading || '### UI Context';
   return [h, '', notes, ''];
 }
-// Delivery is driven by the Output node format: a "Pull Request" output means
-// commit + push + open a PR (prBlock); any other format (code, report, docs)
-// leaves changes uncommitted (noCommitBlock) - Report/Documentation never commit code.
+// Delivery is driven entirely by the Output node format. Code changes are produced
+// by the agents regardless of the output node; the format only decides what to DO at
+// the end. deliveryBlock dispatches by priority on multi-output: pr > commit > report
+// > docs > code. Pull Request and Commit commit + push (PR also opens a PR); Report
+// and Documentation produce their artifact and never commit; code (and no output node)
+// leave changes uncommitted for the director to review.
+function deliveryFormats() {
+  return state.nodes.filter(n => n.type === 'output').map(n => n.config.format);
+}
 function deliversPr() {
-  return state.nodes.some(n => n.type === 'output' && n.config.format === 'pr');
+  return deliveryFormats().includes('pr');
+}
+// Human-readable name of the active delivery mode (used by the SDK comment banner).
+function deliveryTitle() {
+  const fmts = deliveryFormats();
+  if (fmts.includes('pr')) return 'Pull Request Creation';
+  if (fmts.includes('commit')) return 'Commit';
+  if (fmts.includes('report')) return 'Report';
+  if (fmts.includes('docs')) return 'Documentation';
+  return 'Delivery';
+}
+// `level` is the markdown heading prefix ('###' or '##'); each block supplies its title.
+function deliveryBlock(level) {
+  const fmts = deliveryFormats();
+  const L = level || '###';
+  if (fmts.includes('pr')) return prBlock(L + ' Pull Request Creation');
+  if (fmts.includes('commit')) return commitBlock(L + ' Commit');
+  if (fmts.includes('report')) return reportBlock(L + ' Report');
+  if (fmts.includes('docs')) return docsBlock(L + ' Documentation');
+  return noCommitBlock(L + ' Delivery');
 }
 function prBlock(heading) {
   const outputs = state.nodes.filter(n => n.type === 'output' && n.config.format === 'pr');
@@ -6029,6 +6056,65 @@ function prBlock(heading) {
 function noCommitBlock(heading) {
   const h = heading || '### Delivery';
   return [ h, '', 'Do not commit, push, or open a PR. Leave all changes uncommitted on the current branch for the director to review and commit.', '' ];
+}
+function commitBlock(heading) {
+  const outputs = state.nodes.filter(n => n.type === 'output' && n.config.format === 'commit');
+  const h = heading || '### Commit';
+  const lines = [h, ''];
+  lines.push('**CRITICAL: NEVER commit or push directly to the target branch.** Always work on a feature branch.');
+  lines.push('');
+  const branchNames = outputs.map(o => o.config.branchName).filter(Boolean);
+  if (branchNames.length > 0) {
+    lines.push('**Feature branch**: `' + branchNames[0] + '`');
+  } else {
+    lines.push('**Feature branch**: Derive from the ticket ID in the requirements (e.g. `PRJ-6069` → `feature/PRJ-6069-short-description`). If no ticket ID, generate a descriptive branch name like `feature/short-description-of-changes`.');
+  }
+  lines.push('');
+  lines.push('**Steps:**');
+  lines.push('1. **Check the current branch** with `git branch --show-current`:');
+  if (branchNames.length > 0) {
+    lines.push('   - If current branch is `' + branchNames[0] + '` → use it as-is');
+    lines.push('   - If current branch is different → stash any uncommitted changes, then `git checkout ' + branchNames[0] + '` (or `git checkout -b ' + branchNames[0] + '` if it does not exist yet)');
+  } else {
+    lines.push('   - If on a feature branch whose name contains the ticket ID from the requirements → use it as-is');
+    lines.push('   - If on main/develop/master → create a feature branch: `git checkout -b feature/<ticket-id>-short-description`');
+  }
+  lines.push('2. Make all changes and commit on the feature branch with a clear, conventional commit message');
+  lines.push('3. Push the feature branch: `git push -u origin <feature-branch>`');
+  lines.push('4. **Do NOT open a pull request.** Stop after pushing and report the branch name and commit summary to the director.');
+  lines.push('');
+  return lines;
+}
+function reportBlock(heading) {
+  const outputs = state.nodes.filter(n => n.type === 'output' && n.config.format === 'report');
+  const h = heading || '### Report';
+  const deliverable = outputs.map(o => o.config.deliverable).filter(Boolean)[0];
+  const lines = [h, ''];
+  lines.push('**Deliverable: a written report.** ' + (deliverable || 'Summarize findings, analysis, and recommendations with evidence.'));
+  lines.push('');
+  lines.push('**Steps:**');
+  lines.push('1. Lead with the bottom line - open with a 2-3 sentence summary of the answer or recommendation, then the supporting detail under clear headings.');
+  lines.push('2. Ground every claim in specifics (file paths, line numbers, commands run, measured numbers), not vague assertions. Flag open questions and anything you did not cover. Keep it concise - no filler.');
+  lines.push('3. Write the report as a Markdown document and save it where the project keeps such documents, or present it inline if short.');
+  lines.push('4. If the work produced code changes, **leave them uncommitted on the current branch** for the director to review.');
+  lines.push('5. **Do NOT commit, push, or open a pull request** - not the code and not the report itself.');
+  lines.push('');
+  return lines;
+}
+function docsBlock(heading) {
+  const outputs = state.nodes.filter(n => n.type === 'output' && n.config.format === 'docs');
+  const h = heading || '### Documentation';
+  const deliverable = outputs.map(o => o.config.deliverable).filter(Boolean)[0];
+  const lines = [h, ''];
+  lines.push('**Deliverable: documentation.** ' + (deliverable || 'Document the change so the next reader can use and maintain it.'));
+  lines.push('');
+  lines.push('**Steps:**');
+  lines.push('1. Follow the project\'s existing documentation conventions - match the format, location, and structure of comparable docs already in the repo (README sections, a docs/ folder, doc comments, etc.).');
+  lines.push('2. Update the relevant existing doc in place rather than adding a new file, unless nothing covers this. Show, do not just tell - include usage examples or snippets where the project\'s docs do. Keep it concise - no filler.');
+  lines.push('3. If the work produced code changes, **leave them uncommitted on the current branch** for the director to review.');
+  lines.push('4. **Do NOT commit, push, or open a pull request** - not the code and not the documentation.');
+  lines.push('');
+  return lines;
 }
 function getAgentTypeName(id) { const a = AGENT_TYPES.find(t => t.id === id); return a ? a.name : 'General'; }
 function getDeps(nodeId) {
@@ -6096,7 +6182,7 @@ function genWorkflow() {
   if (_wfPlan) { p.push('### Workflow Context (starting guidance - adapt based on findings)'); p.push(''); p.push('The following context provides codebase-specific guidance from an initial analysis. Use it as a starting point, not a rigid constraint. If your research reveals better approaches, contradictory patterns, or additional considerations, update the approach accordingly and note what changed and why.'); p.push(''); p.push(_wfPlan); p.push(''); }
   appSourceBlock('### App Source').forEach(l => p.push(l));
   uiContextBlock('### UI Context').forEach(l => p.push(l));
-  (deliversPr() ? prBlock('### Pull Request Creation') : noCommitBlock('### Delivery')).forEach(l => p.push(l));
+  deliveryBlock('###').forEach(l => p.push(l));
   repoBlock('### Repositories').forEach(l => p.push(l));
   const _wfAtlUrls = getWorkflowAtlassianUrls();
   const _wfAtlT = atlassianTicketFetchHint(_wfAtlUrls);
@@ -6391,7 +6477,7 @@ function genSubAgents() {
     requirementsBlock(story, '## Requirements').forEach(l => promptLines.push(l));
     appSourceBlock('## App Source').forEach(l => promptLines.push(l));
     uiContextBlock('## UI Context').forEach(l => promptLines.push(l));
-    (deliversPr() ? prBlock('## Pull Request Creation') : noCommitBlock('## Delivery')).forEach(l => promptLines.push(l));
+    deliveryBlock('##').forEach(l => promptLines.push(l));
     repoBlock('## Repositories').forEach(l => promptLines.push(l));
 
     promptLines.push('## Output Format');
@@ -6535,7 +6621,7 @@ function genAgentTeams() {
   }
   appSourceBlock('## App Source').forEach(l => p.push(l));
   uiContextBlock('## UI Context').forEach(l => p.push(l));
-  (deliversPr() ? prBlock('## Pull Request Creation') : noCommitBlock('## Delivery')).forEach(l => p.push(l));
+  deliveryBlock('##').forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _atAtlUrls = getWorkflowAtlassianUrls();
   const _atAtlT = atlassianTicketFetchHint(_atAtlUrls);
@@ -6920,12 +7006,12 @@ function genAgentSDK() {
     p.push(`    ui_context = """${_sdkUiNotes}"""  # Styling preferences - Design System Analyzer will use these as constraints`);
     p.push('');
   }
-  const _sdkPrLines = deliversPr() ? prBlock() : noCommitBlock();
-  if (_sdkPrLines.length > 0) {
+  const _sdkDelivery = deliveryBlock('###');
+  if (_sdkDelivery.length > 0) {
     p.push('    # ' + '\u2500'.repeat(59));
-    p.push('    # ' + (deliversPr() ? 'PULL REQUEST CREATION' : 'DELIVERY'));
+    p.push('    # ' + deliveryTitle().toUpperCase());
     p.push('    # ' + '\u2500'.repeat(59));
-    _sdkPrLines.slice(2).forEach(l => { if (l) p.push('    # ' + l); else p.push('    #'); });
+    _sdkDelivery.slice(2).forEach(l => { if (l) p.push('    # ' + l); else p.push('    #'); });
     p.push('');
   }
   const _sdkRepos = getRepositories();
@@ -7039,7 +7125,7 @@ function genClaudePrompt() {
   }
   appSourceBlock('## App Source').forEach(l => p.push(l));
   uiContextBlock('## UI Context').forEach(l => p.push(l));
-  (deliversPr() ? prBlock('## Pull Request Creation') : noCommitBlock('## Delivery')).forEach(l => p.push(l));
+  deliveryBlock('##').forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _cpAtlUrls = getWorkflowAtlassianUrls();
   const _cpAtlT = atlassianTicketFetchHint(_cpAtlUrls);

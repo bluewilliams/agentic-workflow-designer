@@ -159,15 +159,18 @@ Generates Python code using the Anthropic Agent SDK patterns. Includes model fam
 ### 5. Claude.ai
 A conversational prompt suitable for Claude.ai, structured as a role-assignment prompt with the full workflow described in natural language.
 
-### Pull Request Creation (`prBlock()`)
-When any output node has `format: pr`, the `prBlock()` helper injects PR creation instructions into all 5 export formats. The block includes:
-- **Hard safety rule**: never commit or push directly to the target branch
-- **Branch name**: uses the user-provided name, or derives from ticket ID in requirements, or generates a descriptive name
-- **Target branch**: uses the user-provided value, or defaults to `main`
-- **Git provider detection**: parses `git remote -v` to determine GitHub/Bitbucket/GitLab and uses the appropriate CLI tool (`gh`, Atlassian MCP, `glab`)
-- **Graceful fallback**: if PR creation fails (auth, missing tool), pushes the branch and provides the user a URL to create the PR manually
+### Delivery (`deliveryBlock()`)
+Delivery is driven **purely by the Output node format** - there is no separate toggle. Code changes are produced by the agents regardless of the output node; the format only decides what happens to the work at the end. `deliveryBlock(level)` dispatches to one of five blocks, injected into all 5 export formats (the SDK renders it as `#` comments). On a multi-output workflow it picks by priority: `pr > commit > report > docs > code`.
 
-**Delivery is driven purely by the Output format** (there is no separate toggle - `deliversPr()` checks for a `format: pr` output). A **Pull Request** output runs `prBlock()` (commit + push + open PR); any other format runs `noCommitBlock()`, so agents leave changes uncommitted on the current branch for review - which means **Report** and **Documentation** outputs never commit code. All presets default to `format: 'code'`, so PR creation is strictly opt-in: select "Pull Request" from the Format dropdown and configure the branch fields.
+| Format | Label | Block | Behavior |
+|--------|-------|-------|----------|
+| `code` (default) | Leave Uncommitted | `noCommitBlock()` | Make code changes, commit nothing. Same as no output node. |
+| `commit` | Commit | `commitBlock()` | Feature branch, commit + push, **no PR**. Branch Name field. |
+| `pr` | Pull Request | `prBlock()` | Feature branch, commit + push, open PR. Branch Name + Target Branch fields. |
+| `report` | Report | `reportBlock()` | Produce a written report; leave any code uncommitted; never commit/push/PR. |
+| `docs` | Documentation | `docsBlock()` | Produce docs per project conventions; leave any code uncommitted; never commit/push/PR. |
+
+`prBlock()` (and `commitBlock()`) include a hard safety rule (never commit/push directly to the target branch), branch-name derivation (user value, else ticket ID, else descriptive), and - for PR only - target-branch defaulting to `main`, git provider detection via `git remote -v` (GitHub/Bitbucket/GitLab → `gh` / Atlassian MCP / `glab`), and a graceful fallback that pushes the branch and hands back a manual-PR URL if creation fails. `reportBlock()`/`docsBlock()` produce the artifact and explicitly leave both the code and the document uncommitted. All presets default to `format: 'code'` (or `report`/`docs` where a document is the deliverable); **no preset uses `pr`**, so commit/push/PR is strictly opt-in via the Format dropdown.
 
 ### Research / Advisory Mode (Parallel Research)
 The Parallel Research preset is mode-aware so research and advisory spikes do not inherit implementation framing. A spike produces a recommendation, not a build plan.
@@ -441,8 +444,8 @@ The help modal also opens via the `?` keyboard shortcut and closes with `Escape`
 | Topological sort for export ordering | Ensures agents are always exported in dependency order regardless of canvas position |
 | getEffectivePrompt 3-tier fallback | Ensures every export always contains real instructions even for blank-prompt nodes |
 | Memory preamble/postamble split | Read-before-task + write-after-task ordering maximizes compliance vs. a single appended block |
-| Safe-by-default output format | All presets use `format: 'code'` (local changes only). PR creation requires explicit opt-in to prevent agents from pushing code or creating branches without user intent |
-| `prBlock()` prompt injection | PR instructions are only injected when at least one output node has `format: pr`. Provider detection via `git remote -v` works for GitHub, Bitbucket, and GitLab with graceful fallback |
+| Safe-by-default output format | No preset uses `format: 'pr'` (or `commit`); presets deliver `code`/`report`/`docs` (local changes only). Commit/push/PR requires explicit opt-in to prevent agents from pushing code or creating branches without user intent |
+| `deliveryBlock()` dispatch | Commit/push instructions are only injected when an output node selects `commit` or `pr`; `report`/`docs`/`code` never commit. Provider detection via `git remote -v` works for GitHub, Bitbucket, and GitLab with graceful fallback |
 | TOON v1 for memory files | Compact notation reduces token usage in agent context while preserving structured state |
 | Memory auto-enable criteria | Parallel forks, decision loops, or 5+ agents. Simple linear chains stay off to avoid unnecessary overhead. `generateFromStory` excludes decision gates from criteria since it adds one to every code workflow by default |
 | localStorage for persistence | No server needed; keeps single-file portability; auto-save + named save + JSON export covers all sharing needs |
@@ -574,7 +577,7 @@ JavaScript:
   ├── EXPORT FORMAT SYSTEM
   │     ├── getFormatRecommendation()    # workflow shape analysis
   │     ├── updateFormatRec()            # recommendation banner rendering
-  │     ├── prBlock()          # PR creation prompt injection (when format=pr)
+  │     ├── deliveryBlock()    # dispatch by output format: code/commit/pr/report/docs
   │     ├── genWorkflow()      # Format 1: Workflow Markdown
   │     ├── genSubAgents()     # Format 2: Sub-Agent Task calls
   │     ├── genAgentTeams()    # Format 3: Agent Teams brief
