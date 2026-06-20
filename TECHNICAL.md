@@ -167,7 +167,7 @@ When any output node has `format: pr`, the `prBlock()` helper injects PR creatio
 - **Git provider detection**: parses `git remote -v` to determine GitHub/Bitbucket/GitLab and uses the appropriate CLI tool (`gh`, Atlassian MCP, `glab`)
 - **Graceful fallback**: if PR creation fails (auth, missing tool), pushes the branch and provides the user a URL to create the PR manually
 
-All presets default to `format: 'code'`. PR creation is strictly opt-in: users must select "Pull Request" from the Format dropdown and configure the branch fields.
+**Delivery is driven purely by the Output format** (there is no separate toggle - `deliversPr()` checks for a `format: pr` output). A **Pull Request** output runs `prBlock()` (commit + push + open PR); any other format runs `noCommitBlock()`, so agents leave changes uncommitted on the current branch for review - which means **Report** and **Documentation** outputs never commit code. All presets default to `format: 'code'`, so PR creation is strictly opt-in: select "Pull Request" from the Format dropdown and configure the branch fields.
 
 ### Research / Advisory Mode (Parallel Research)
 The Parallel Research preset is mode-aware so research and advisory spikes do not inherit implementation framing. A spike produces a recommendation, not a build plan.

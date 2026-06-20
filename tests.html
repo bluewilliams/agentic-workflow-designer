@@ -243,7 +243,6 @@ function resetState() {
   win.state.activePreset = null;
   win.state.mcpCodeSearch = true;  // app default is ON (index.html state init)
   win.state.mcpDatadog = false;    // app default is OFF (opt-in)
-  win.state.commitPr = false;      // app default is OFF (opt-in)
   win.state.rulesPaths = [];       // repo context paths default empty (or undefined in tests)
   win.state.productDocPaths = [];
   // Reset DOM inputs
@@ -1557,65 +1556,57 @@ describe('Datadog grounding gate', () => {
   });
 });
 
-// ─── Delivery: commit/PR toggle (default OFF) gates prBlock across all generators ───
-describe('Delivery: commitPr toggle gates the PR/commit block', () => {
+// ─── Delivery is driven by the Output node format (pr = commit+push+PR; else uncommitted) ───
+describe('Delivery is driven by the Output node format', () => {
   beforeEach(() => { resetState(); });
 
   const ON_MARK = 'NEVER commit or push directly to the target branch';
   const OFF_MARK = 'Leave all changes uncommitted on the current branch';
+  const generators = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genAgentSDK', 'genClaudePrompt'];
 
-  // Minimal input -> agent -> pr-format output workflow (prBlock only emits for pr outputs).
-  function prWorkflow() {
+  // Minimal input -> agent -> output workflow with the given output format.
+  function workflowWithOutput(format) {
     resetState();
     const input = win.addNode('input', 100, 200, 'Requirements');
     const agent = win.addNode('agent', 350, 200, 'Implementer', {});
-    const output = win.addNode('output', 600, 200, 'Done', { deliverable: 'PR', format: 'pr' });
+    const output = win.addNode('output', 600, 200, 'Done', { deliverable: 'Result', format });
     win.addConnection(input.id, agent.id);
     win.addConnection(agent.id, output.id);
   }
 
-  it('defaults to OFF (opt-in) on fresh state', () => {
-    resetState();
-    expect(win.state.commitPr).toBe(false);
-  });
-  it('DOM: commitPrToggle exists and defaults unchecked', () => {
-    const cb = win.document.getElementById('commitPrToggle');
-    expect(!!cb).toBe(true);
-    expect(cb.checked).toBe(false);
+  it('the Delivery toggle is gone (commitPr removed)', () => {
+    expect(win.document.getElementById('commitPrToggle')).toBe(null);
   });
 
-  const generators = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genAgentSDK', 'genClaudePrompt'];
   generators.forEach(gen => {
-    it(gen + ': OFF emits the no-commit line and not the PR block', () => {
-      prWorkflow();
-      win.state.commitPr = false;
-      const out = win[gen]();
-      expect(out).toNotContain(ON_MARK);
-      expect(out).toContain(OFF_MARK);
-    });
-    it(gen + ': ON emits the PR block and not the no-commit line', () => {
-      prWorkflow();
-      win.state.commitPr = true;
+    it(gen + ': a Pull Request output emits the PR block, not the no-commit line', () => {
+      workflowWithOutput('pr');
       const out = win[gen]();
       expect(out).toContain(ON_MARK);
       expect(out).toNotContain(OFF_MARK);
     });
+    it(gen + ': a Code Changes output leaves changes uncommitted, no PR block', () => {
+      workflowWithOutput('code');
+      const out = win[gen]();
+      expect(out).toContain(OFF_MARK);
+      expect(out).toNotContain(ON_MARK);
+    });
   });
 
-  it('savePrefs / restorePrefs round-trips commitPr', () => {
-    resetState();
-    localStorage.setItem('awd_prefs', JSON.stringify({ commitPr: true }));
-    win.restorePrefs();
-    expect(win.state.commitPr).toBe(true);
+  it('Report and Documentation outputs never emit the commit/PR block', () => {
+    ['report', 'docs'].forEach(format => {
+      workflowWithOutput(format);
+      const out = win.genWorkflow();
+      expect(out).toNotContain(ON_MARK);
+      expect(out).toContain(OFF_MARK);
+    });
   });
-  it('clearCanvas resets commitPr to false and unchecks the toggle', () => {
-    win.state.commitPr = true;
-    const cb = win.document.getElementById('commitPrToggle');
-    if (cb) cb.checked = true;
-    win.clearCanvas();
-    expect(win.state.commitPr).toBe(false);
-    const cb2 = win.document.getElementById('commitPrToggle');
-    if (cb2) expect(cb2.checked).toBe(false);
+
+  it('deliversPr() reflects whether any output is a Pull Request', () => {
+    workflowWithOutput('code');
+    expect(win.deliversPr()).toBe(false);
+    workflowWithOutput('pr');
+    expect(win.deliversPr()).toBe(true);
   });
 });
 
