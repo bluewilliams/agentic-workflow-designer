@@ -4464,6 +4464,16 @@ describe('Usability & Help', () => {
       expect(body.innerHTML).toContain('Multiple Repos');
       expect(body.innerHTML).toContain('github.com/bluewilliams/agentic-workflow-designer');
     });
+    it('groups sections with a jump-to table of contents', () => {
+      const body = win.document.querySelector('#helpOverlay .help-body');
+      const toc = body.querySelector('.help-toc');
+      expect(toc).toBeTruthy();
+      // every ToC link points at a group header that exists
+      const ids = [...toc.querySelectorAll('a')].map(a => (a.getAttribute('onclick').match(/'([^']+)'/) || [])[1]);
+      expect(ids.length).toBe(7);
+      ids.forEach(id => expect(win.document.getElementById(id)).toBeTruthy());
+      expect(typeof win.helpJump).toBe('function');
+    });
   });
 
   describe('story input validation hint', () => {

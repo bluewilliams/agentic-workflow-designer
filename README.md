@@ -117,7 +117,7 @@ When a list is non-empty, its hint is injected into all five export formats, ins
 
 Worth knowing for multi-repo workflows: Claude Code auto-loads `CLAUDE.md` and `.claude/rules/` only for the **directory the session launched in** (its tree). A second repository cloned elsewhere is outside that tree, so **its `CLAUDE.md` is not loaded automatically** - and subagents inherit the launch repo's rules rather than re-scanning new directories. So an agent working in repo B can silently miss repo B's rules.
 
-The generated multi-repo prompt handles this for you: it instructs each agent to **read every working repo's own `CLAUDE.md` / `CLAUDE.local.md` / `.claude/rules/` before changing it**, and your listed Rule Paths are resolved per-repo (which also covers files that never auto-load anywhere, like `CONVENTIONS.md` / `CONTRIBUTING.md`). For the cleanest setup, launch the session with each repo added and the memory flag set so the loading happens automatically:
+The generated multi-repo prompt handles this for you: it instructs each agent to **read every working repo's own `CLAUDE.md` / `CLAUDE.local.md` / `.claude/rules/` before changing it**, and your listed Rule Paths are resolved per-repo (which also covers files that never auto-load anywhere, like `CONVENTIONS.md` / `CONTRIBUTING.md`). So if you select three repos and list `.claude/rules` once, each repo's own rules are honored for changes made in that repo - you do not need a per-repo entry, and you do not need the environment variable below. It is an **optional** reliability boost that *also* makes Claude Code auto-load each added repo's `CLAUDE.md` at startup:
 
 ```bash
 CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 claude --add-dir ../repo-b ../repo-c
