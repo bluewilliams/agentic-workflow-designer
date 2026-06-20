@@ -152,7 +152,7 @@ The core building block. Every agent can be individually configured:
 - **Model** - Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 4.6, Haiku 4.5, Sonnet 4.5, Opus 4.5, plus 1M context variants for Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, and Sonnet 4.6. The default stays Opus 4.8; set a different default in the sidebar or override per-node as needed. Max plan users get 1M context by default. API and Pro users can select 1M variants for research-heavy or long-running agents where the extra context window makes a difference
 - **Tools** - Toggle individual tools on/off: Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP. Presets assign sensible defaults (e.g. Reviewers get read-only tools, Coders get everything)
 - **Agent Prompt** - Custom instructions. Leave blank to use the agent type's built-in template, or write your own
-- **Custom Notes** - Additional context injected into the generated prompt (constraints, implementation details)
+- **Agent Context** - Additional context injected into this agent's prompt section (constraints, implementation details). The workflow-wide counterpart is the **Workflow Context** field in the sidebar
 - **Max Turns** - Limits how many agentic turns the agent can take (default: 10)
 
 ### Decision
@@ -202,7 +202,7 @@ Two optional steps that dramatically improve output quality for complex tasks:
 
 **Generate Refine Prompt** generates a discovery interview. Paste it into Claude Code and it asks you about edge cases, UX decisions, tradeoffs, and constraints using the `AskUserQuestion` tool, then writes a refined spec to `.claude/specs/{workflow-name}.md`. Paste the result back into Requirements.
 
-**Generate Plan Prompt** generates a codebase analysis prompt. Claude explores your code (via a code-search MCP if available, for example Sourcebot, Sourcegraph, or Kilo Code, with a Glob/Grep/LSP fallback otherwise), identifies relevant files and patterns, and produces an implementation blueprint in `.claude/plans/{workflow-name}.md`. Paste the result into the Implementation Plan field so agents know HOW to build, not just WHAT to build.
+**Generate Plan Prompt** generates a codebase analysis prompt. Claude explores your code (via a code-search MCP if available, for example Sourcebot, Sourcegraph, or Kilo Code, with a Glob/Grep/LSP fallback otherwise), identifies relevant files and patterns, and produces an implementation blueprint in `.claude/plans/{workflow-name}.md`. Paste the result into the Workflow Context field so agents know HOW to build, not just WHAT to build.
 
 Both prompts tell Claude exactly what to do next, closing the loop back to the Workflow Designer.
 

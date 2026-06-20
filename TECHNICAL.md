@@ -99,7 +99,7 @@ Each Agent node has:
 - **Model**: Fable 5, Opus 4.8 (default), Opus 4.7, Opus 4.6, Sonnet 4.6, Sonnet 4.5, Opus 4.5, Haiku 4.5 (Fable 5 and the latest Opus/Sonnet also have [1M] variants)
 - **Tools**: Checkboxes for Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP
 - **Agent Prompt**: Freeform textarea. If left blank, falls back to `getEffectivePrompt()`
-- **Custom Notes**: Additional context injected into all export formats
+- **Agent Context** (per-node, was "Custom Notes"): additional context injected into this agent's prompt section across all export formats. The workflow-wide counterpart is the **Workflow Context** sidebar field (`getPlan()`, `id="planInput"`)
 - **Max Turns**: Integer cap on the agent's execution turns
 
 ### Review Loops (Skeptic + Verifier)
@@ -498,7 +498,7 @@ The `index.html` is internally organized into clearly delimited sections:
 CSS styles
 HTML structure
   ├── Sidebar: Workflow Name (+ New Workflow), Story Input (+ Generate Refine Prompt, validation hint),
-  │            Implementation Plan (+ Generate Plan Prompt), Default Model, Repositories,
+  │            Workflow Context (+ Generate Plan Prompt), Default Model, Repositories,
   │            Add Nodes, Presets, App Under Test (conditional), Saved Workflows, Tip, MCP Integrations, Memory, Node Config
   ├── Canvas: Toolbar (Select, Connect, Delete, Auto Layout, Fit, Zoom, Prompts, Help), SVG canvas, Empty state
   ├── Prompt Output: 5 format tabs, Copy button
@@ -608,7 +608,7 @@ JavaScript:
 - **Writer Agent Type**: config panel interactions, writing style switching, prompt/tool updates, export output
 - **Model Version Handling**: full model IDs and Claude Code aliases in all export formats
 - **MCP Integrations**: Atlassian/Sourcebot/custom MCP hint generation, toggle gating, export injection, persistence, New Workflow reset
-- **Implementation Plan**: Plan field persistence, serialization, export injection across formats
+- **Workflow Context**: Plan field (`planInput`) persistence, serialization, export injection across formats
 - **Requirements Refinement**: Refine prompt generation, Atlassian/Sourcebot MCP awareness, URL-only and Jira key blocking
 - **Plan Prompt Generation**: Plan prompt generation, Sourcebot guidance, Atlassian hints, URL-only blocking
 - **Cross-Feature Edge Cases**: Sourcebot tool name accuracy, plan injection, self-validation, 1M model aliases
