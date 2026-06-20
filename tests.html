@@ -2514,6 +2514,151 @@ describe('Export: genClaudePrompt', () => {
 });
 
 // ─── Suite 6: Workflow Generation ────────────────────────
+describe('Node config: Parallel Strategy join semantics', () => {
+  beforeEach(() => { resetState(); });
+  function forkWorkflow(strategy) {
+    const inp = win.addNode('input', 0, 0, 'Spec');
+    const fork = win.addNode('parallel', 0, 0, 'Fork', { strategy, description: '' });
+    const a1 = win.addNode('agent', 0, 0, 'A', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'a', maxTurns:5 });
+    const a2 = win.addNode('agent', 0, 0, 'B', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'b', maxTurns:5 });
+    const join = win.addNode('parallel', 0, 0, 'Join', { strategy });
+    win.addConnection(inp.id, fork.id); win.addConnection(fork.id, a1.id); win.addConnection(fork.id, a2.id);
+    win.addConnection(a1.id, join.id); win.addConnection(a2.id, join.id);
+  }
+  it('default (all) is byte-identical: no non-default phrasing leaks anywhere', () => {
+    forkWorkflow('all');
+    const all = [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genAgentSDK(), win.genClaudePrompt()].join('\n');
+    expect(all).toNotContain('First Complete');
+    expect(all).toNotContain('first useful result');
+    expect(all).toNotContain('FIRST_COMPLETED');
+  });
+  it('all -> genWorkflow still prints "(all)" and SDK still uses asyncio.gather', () => {
+    forkWorkflow('all');
+    expect(win.genWorkflow()).toContain('in parallel (all)');
+    expect(win.genAgentSDK()).toContain('asyncio.gather');
+  });
+  it('race -> every generator expresses race join semantics', () => {
+    forkWorkflow('race');
+    expect(win.genWorkflow()).toContain('take the first useful result');
+    expect(win.genSubAgents()).toContain('Race');
+    expect(win.genAgentTeams()).toContain('Race');
+    expect(win.genAgentSDK()).toContain('FIRST_COMPLETED');
+    expect(win.genAgentSDK()).toContain('_t.cancel()');
+    expect(win.genClaudePrompt()).toContain('take the first useful result');
+  });
+  it('first-complete (any) -> SDK uses asyncio.wait, prose says first to finish', () => {
+    forkWorkflow('any');
+    expect(win.genAgentSDK()).toContain('FIRST_COMPLETED');
+    expect(win.genAgentSDK()).toNotContain('asyncio.gather');
+    expect(win.genWorkflow()).toContain('first branch finishes');
+    expect(win.genSubAgents()).toContain('First Complete');
+    expect(win.genAgentTeams()).toContain('first teammate');
+  });
+});
+
+describe('Node config: Task nodes reach the prompt', () => {
+  beforeEach(() => { resetState(); });
+  const LABEL = 'Throttle abusive clients';
+  const DESC = 'Add token-bucket middleware to the API router';
+  const ACC = 'returns 429 after the configured threshold';
+  function base() {
+    const inp = win.addNode('input', 0, 0, 'Spec');
+    const ag = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addConnection(inp.id, ag.id);
+    return ag;
+  }
+  it('no task nodes -> no Tasks section / Done-when leaks (byte-identical baseline)', () => {
+    base();
+    const all = [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genAgentSDK(), win.genClaudePrompt()].join('\n');
+    expect(all).toNotContain('Done when:');
+    expect(all).toNotContain(DESC);
+    expect(win.genWorkflow()).toNotContain('### Tasks');
+    expect(win.genSubAgents()).toNotContain('## Tasks');
+  });
+  it('task with description + acceptance lands in every generator', () => {
+    const ag = base();
+    const t = win.addNode('task', 0, 0, LABEL, { description: DESC, acceptance: ACC });
+    win.addConnection(ag.id, t.id);
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genAgentSDK(), win.genClaudePrompt()].forEach(out => {
+      expect(out).toContain(LABEL);
+      expect(out).toContain(DESC);
+      expect(out).toContain('Done when:');
+      expect(out).toContain(ACC);
+    });
+  });
+  it('task without acceptance emits the task but no Done-when line', () => {
+    const ag = base();
+    const t = win.addNode('task', 0, 0, LABEL, { description: DESC, acceptance: '' });
+    win.addConnection(ag.id, t.id);
+    const wf = win.genWorkflow();
+    expect(wf).toContain(DESC);
+    expect(wf).toNotContain('Done when:');
+  });
+});
+
+describe('Node config: Input Source framing', () => {
+  beforeEach(() => { resetState(); });
+  function srcWorkflow(source) {
+    win.document.getElementById('storyInput').value = 'Add a rate limiter to the public API.';
+    const inp = win.addNode('input', 0, 0, 'Spec', { source });
+    const ag = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addConnection(inp.id, ag.id);
+  }
+  it('jira (default) emits no source-framing hint', () => {
+    srcWorkflow('jira');
+    const all = [win.genWorkflow(), win.genAgentTeams(), win.genClaudePrompt(), win.genAgentSDK()].join('\n');
+    expect(all).toNotContain('Treat the input as');
+  });
+  it('custom emits no source-framing hint', () => {
+    srcWorkflow('custom');
+    expect(win.genWorkflow()).toNotContain('Treat the input as');
+  });
+  it('prd emits the PRD framing across markdown + SDK generators', () => {
+    srcWorkflow('prd');
+    expect(win.genWorkflow()).toContain('product requirements document');
+    expect(win.genAgentTeams()).toContain('product requirements document');
+    expect(win.genClaudePrompt()).toContain('product requirements document');
+    expect(win.genAgentSDK()).toContain('product requirements document');
+  });
+  it('story emits the user-story framing', () => {
+    srcWorkflow('story');
+    expect(win.genWorkflow()).toContain('user story');
+  });
+  it('URL-only story suppresses the source hint in every generator (incl. SDK)', () => {
+    win.document.getElementById('storyInput').value = 'https://team.atlassian.net/browse/ABC-123';
+    const inp = win.addNode('input', 0, 0, 'Spec', { source:'prd' });
+    const ag = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addConnection(inp.id, ag.id);
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genAgentSDK(), win.genClaudePrompt()]
+      .forEach(out => expect(out).toNotContain('product requirements document'));
+    win.document.getElementById('storyInput').value = '';
+  });
+  it('empty story suppresses the source hint (incl. SDK)', () => {
+    const inp = win.addNode('input', 0, 0, 'Spec', { source:'prd' });
+    const ag = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addConnection(inp.id, ag.id);
+    [win.genWorkflow(), win.genAgentSDK()].forEach(out => expect(out).toNotContain('product requirements document'));
+  });
+});
+
+describe('Node config: round-trips through serialize/deserialize', () => {
+  beforeEach(() => { resetState(); });
+  it('strategy, source, and acceptance survive a serialize -> deserialize cycle', () => {
+    win.addNode('input', 0, 0, 'Spec', { source:'prd' });
+    win.addNode('parallel', 0, 0, 'Fork', { strategy:'race' });
+    win.addNode('task', 0, 0, 'T', { description:'d', acceptance:'done when X' });
+    const blob = JSON.parse(JSON.stringify(win.serializeWorkflow()));
+    resetState();
+    expect(win.deserializeWorkflow(blob)).toBe(true);
+    const nodes = win.serializeWorkflow().canvas.nodes;
+    expect(nodes.find(n => n.type==='input').config.source).toBe('prd');
+    expect(nodes.find(n => n.type==='parallel').config.strategy).toBe('race');
+    const t = nodes.find(n => n.type==='task');
+    expect(t.config.acceptance).toBe('done when X');
+    expect(t.config.description).toBe('d');
+  });
+});
+
 describe('Workflow Generation', () => {
   beforeEach(() => { resetState(); });
 
@@ -2639,6 +2784,8 @@ describe('Auto Workflow fuzz (property-based)', () => {
   };
 
   const CODE_WRITERS = ['Implementer', 'Fixer', 'Backend Dev', 'Frontend Dev', 'UI Implementer', 'Optimizer', 'Migration Engineer', 'Refactorer', 'DevOps Engineer', 'Test Suite Writer', 'Test Writer'];
+  // True feature-implementers (excludes Test Suite Writer / Test Writer, whose deliverable IS tests).
+  const IMPLEMENTERS = ['Implementer', 'Fixer', 'Backend Dev', 'Frontend Dev', 'UI Implementer', 'Optimizer', 'Migration Engineer', 'Refactorer', 'DevOps Engineer'];
 
   function shapeOf(nodes) {
     const labels = nodes.filter(n => n.type === 'agent').map(n => n.label);
@@ -2709,6 +2856,11 @@ describe('Auto Workflow fuzz (property-based)', () => {
             expect(out.config.format).toBe('report');
             const writers = nodes.filter(n => n.type === 'agent').map(n => n.label).filter(l => CODE_WRITERS.includes(l));
             expect(writers.length).toBe(0); // read-only: never writes code
+          } else if (intent.expected !== 'test' && intent.expected !== 'documentation') {
+            // Every build shape MUST contain a real implementer - a non-read-only,
+            // non-authoring task with no code-writer is the "no implementor" bug.
+            const impl = nodes.filter(n => n.type === 'agent').map(n => n.label).filter(l => IMPLEMENTERS.includes(l));
+            expect(impl.length).toBeGreaterThan(0);
           }
         });
       }
@@ -2891,6 +3043,50 @@ describe('Auto Workflow fuzz (property-based)', () => {
 });
 
 // ─── Suite 7: Preset Loading ─────────────────────────────
+describe('Auto Workflow: default-to-build guard (no silent read-only inference)', () => {
+  beforeEach(() => { resetState(); });
+  const IMPLEMENTERS = ['Implementer', 'Fixer', 'Backend Dev', 'Frontend Dev', 'UI Implementer', 'Optimizer', 'Migration Engineer', 'Refactorer', 'DevOps Engineer'];
+  function gen(text) {
+    win.document.getElementById('storyInput').value = text;
+    win.generateFromStory();
+    return win.state.nodes.filter(n => n.type === 'agent').map(n => n.label);
+  }
+  const hasImpl = labels => labels.some(l => IMPLEMENTERS.includes(l));
+
+  // Build tasks whose acceptance criteria are thick with test/doc vocabulary must
+  // still produce an implementer - they must not be hijacked into a read-only shape.
+  const BUILD_WITH_READONLY_VOCAB = [
+    'Make all three config options actually influence the generated output. The full test suite still passes, plus new tests proving each non-default value alters output and each default stays byte-identical.',
+    'Add a retry mechanism to the payment client with backoff. Acceptance: unit tests cover the backoff schedule, integration tests verify the retry path, and the full test suite passes.',
+    'Add a configurable rate limiter to the public API so abusive clients are throttled. Acceptance: unit and integration tests pass; 429 returned after the threshold.',
+    'Implement a new /health endpoint that reports service status. Document the endpoint in the API reference once it works.',
+  ];
+  BUILD_WITH_READONLY_VOCAB.forEach((text, i) => {
+    it('#' + i + ' build task keeps an implementer despite read-only vocabulary', () => {
+      const labels = gen(text);
+      expect(hasImpl(labels)).toBe(true);
+      expect(labels).toNotContain('Test Suite Writer');
+    });
+  });
+
+  // Genuine authoring / read-only requests are NOT demoted: the guard only fires
+  // when the read-only deliverable signal is absent or out-weighed by build signal.
+  it('genuine "write tests" stays a test-authoring workflow', () => {
+    const labels = gen('Write unit and integration tests for the checkout flow to raise coverage above 80 percent.');
+    expect(labels).toContain('Test Suite Writer');
+    expect(hasImpl(labels)).toBe(false);
+  });
+  it('genuine research spike stays read-only', () => {
+    const labels = gen('Evaluate options for real-time delivery and compare WebSockets versus SSE versus a managed service. Produce a recommendation. Research only, no implementation.');
+    expect(hasImpl(labels)).toBe(false);
+    expect(labels).toContain('Synthesizer');
+  });
+  it('genuine audit stays read-only', () => {
+    const labels = gen('Audit the new billing service for security and performance. Produce a prioritized list of findings. Read-only review, do not change code.');
+    expect(hasImpl(labels)).toBe(false);
+  });
+});
+
 describe('Preset Loading', () => {
   beforeEach(() => { resetState(); });
 

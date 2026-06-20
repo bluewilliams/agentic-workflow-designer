@@ -219,6 +219,14 @@ All generators use `topologicalSort()` to process nodes in dependency order. Eac
 - Downstream awareness so the agent knows who reads its output
 - The full Jira/user story as a `## Requirements` section
 
+### Node config that drives output
+Every node type's config reaches the generated prompt, and each option's default is byte-identical to prior output (new behavior fires only on a non-default value):
+- **Agent / Decision / Output** - fully emitted (roles+prompts, routing+revision caps, delivery via `deliveryBlock`)
+- **Parallel `strategy`** - `forkStrategyOf()` + `strategyJoinPhrase()` express join semantics in all five generators; `all` keeps today's wording, the SDK maps `any`/`race` to `asyncio.wait(FIRST_COMPLETED)` (race cancels pending)
+- **Task nodes** - `taskSectionLines()` / `taskSectionComments()` emit a Tasks section (label + description + `Done when:` from `acceptance`). Previously dropped entirely; no preset or Auto Workflow creates Task nodes, so existing output is unchanged
+- **Input `source`** - `inputSourceHint()` adds a one-line framing for `story`/`prd` only; `jira`/`custom` stay silent because the story box (and `requirementsBlock` URL handling) already carry requirements
+- Deliberately not emitted: Parallel `description`, Input `description` - their content is already carried globally, so emitting would duplicate it and break byte-identical output
+
 ### Repo Context Paths (three-tier context model)
 Two optional path lists let the user point agents at a repo's own rules and product docs. State: `state.rulesPaths` and `state.productDocPaths` (both `[]` by default). The sidebar UI mirrors the repository chip-list pattern: a text input + Add, per-chip remove, Clear-all, and one-click quick-add suggestion chips. The designer never reads the filesystem; it captures path strings and the agents do the reading.
 
@@ -349,10 +357,11 @@ Right-click a node to access: Duplicate, Add Branch (Parallel only), **Add skept
 A weighted-keyword scoring engine over **13 categories** builds a bespoke workflow shape (it does not pick a preset). Key properties:
 
 - **Inflection-tolerant matching** - keywords match common plurals and verb forms (`tests`, `endpoints`, `deploying`, `migrations`, `document`), so phrasing variants score the same as the base word.
-- **Intent vs domain** - two read-only intents, **research** (research/evaluate/compare/spike/"X vs Y"/"whether to use") and **review** (review/audit/assess/"code review"), lead with a strong leading-verb rule so an imperative like "Review the service" wins, while an incidental mid-sentence word ("audit logging", "a service that evaluates X") stays weak and does not hijack a build request.
+- **Intent vs domain** - read-only intents (**research**, **review**, **analysis**) score on strong leading-verb rules so an imperative like "Review the service" wins, while an incidental mid-sentence word ("audit logging", "a service that evaluates X") stays weak and does not hijack a build request. The default-to-build guard (below) is the backstop when scoring is ambiguous.
 - **Principled tie-breaking** - on equal scores a specificity `PRIORITY` map wins (security/research/review/data/performance over generic build domains) instead of object insertion order.
 - **Per-rule repetition cap** - each keyword rule contributes at most `weight x 3`, so a word repeated many times in a long ticket ("service"/"database" x8, a list of "X vs Y") cannot dominate purely by frequency. Distinct keywords (different rules) are unaffected.
 - **Boilerplate denoising** (`denoiseForScoring`) - real Jira tickets carry metadata sections (Logistics, Build/Release Pipelines, Repo, "Database Changes: None", Out of Scope, Risks, Open Questions) whose stray keywords otherwise hijack intent (a Release Pipeline line reading as DevOps; "no schema change" reading as a data migration). These sections are stripped before scoring so the engine reads the work statement; a safety net falls back to the full text if denoising removed too much. Complexity still uses the full text (a big ticket is still big work).
+- **Default-to-build guard** - the five non-coding shapes (research/review/analysis/test/documentation) produce no implementer, and most designer use is tangible build work, so a non-coding intent is kept ONLY when the task asks to *produce* a read-only deliverable (write tests/docs, a recommendation/comparison matrix, prioritized findings, a cost forecast). Requirements arrive in many formats and rarely declare intent up front, so this does **not** depend on position: deliverable markers are matched anywhere (ones in the first ~2-3 sentences weigh a little more), and weighed against build markers (implement/wire up/make-it-functional/fix/migrate). Because the costly error is a build task with no implementer, ties go to code. The guard is **demote-only** (`research`->build), so it can never push a build into a read-only shape. This is what stops a build task with test-heavy acceptance criteria ("the full test suite passes") from being mistaken for a test-authoring task. A fuzz invariant enforces it: every non-read-only, non-authoring shape must contain >=1 implementer.
 
 | Detected dominant | Workflow shape |
 |---|---|

@@ -5208,8 +5208,64 @@ function generateFromStory() {
   // intents win over generic build domains) instead of arbitrary object order.
   const PRIORITY = { security: 9, research: 8, review: 8, analysis: 8, data: 7, performance: 7, devops: 6, documentation: 6, refactoring: 5, test: 5, bugfix: 4, ui: 3, api: 2 };
   const sorted = Object.entries(scores).sort((a, b) => (b[1] - a[1]) || ((PRIORITY[b[0]] || 0) - (PRIORITY[a[0]] || 0)));
-  const dominant = sorted[0][1] >= 2 ? sorted[0][0] : 'generic';
+  let dominant = sorted[0][1] >= 2 ? sorted[0][0] : 'generic';
   const runnerUp = sorted[1] || ['', 0];
+
+  // ── Default-to-build guard ────────────────────────────────────────────────
+  // The non-coding shapes (research/review/analysis/test/documentation) produce no
+  // implementer. Requirements arrive in many formats and rarely declare intent up
+  // front, so we do not depend on position: we weigh what the task asks to PRODUCE
+  // (deliverable markers, found anywhere; ones in the first ~2-3 sentences weigh
+  // more) for read-only vs build. Because the costly error is a build task with no
+  // implementer, ties go to code. This guard only ever DEMOTES an already-winning
+  // non-coding intent to a build shape - it can never promote one into read-only.
+  const NON_CODING = new Set(['research', 'review', 'analysis', 'test', 'documentation']);
+  if (NON_CODING.has(dominant)) {
+    const head = scoringText.slice(0, 240).toLowerCase();
+    const lower = scoringText.toLowerCase();
+    const weigh = re => { const m = lower.match(re); return m ? (head.indexOf(m[0]) >= 0 ? 2 : 1) : 0; };
+    const READONLY_MARKERS = {
+      research: [/\b(recommendation|comparison matrix|trade-?offs?|feasibility|proof of concept|\bpoc\b|spike)\b/,
+                 /\bwhich (database|library|framework|approach|option|tool|stack|service|provider)\b/,
+                 /\b(evaluate|compare|investigate|research)\b[^.]{0,60}\b(options?|alternatives?|versus|vs\.?|whether)\b/,
+                 /\bwhether to (use|adopt|build|choose|go with|migrate)\b/,
+                 /\b(research|investigation|spike) only\b|\bno (implementation|code changes?)\b/],
+      review:   [/\b(audit|review|assess|inspect)\b[^.]{0,40}\bfor\b/,
+                 /\b(prioriti[sz]ed (list of )?findings|list of findings|go\/no-go|go or no-go)\b/,
+                 /\bread-only review\b|\bdo not (change|modify|touch) (the )?code\b/,
+                 /\b(code|pr|pull request) review\b/],
+      analysis: [/\b(forecast|estimate|quantify|measure|project)\b[^.]{0,50}\b(cost|costs|spend|usage|volume|capacity|throughput|impact)\b/,
+                 /\b(cost (analysis|estimate|estimates|forecast|projection|projections)|capacity planning|usage (analysis|report))\b/,
+                 /\bmethodology\b/],
+      test:     [/\b(write|add|create|expand|increase|improve|build out)\b[^.]{0,40}\b(unit |integration |e2e |regression )?(tests?|test coverage|coverage)\b/,
+                 /\b(a |the )?(test plan|test strategy)\b/],
+      documentation: [/\b(write|add|update|generate|produce|author)\b[^.]{0,40}\b(docs?|documentation|readme|guide|runbook|openapi|swagger|api reference|api docs)\b/,
+                 /\bdocument\b[^.]{0,40}\b(the|api|module|endpoints?|system|service|feature|process)\b/],
+    };
+    const BUILD_MARKERS = [
+      /\b(implement(s|ing|ed)?|build out|wire(s|d)? up|hook(s|ed)? up|add support for|integrat(e|es|ed|ing)|introduc(e|es|ed|ing)|develop(s|ed|ing)?|set up|stand up|provision(s|ed|ing)?)\b/,
+      /\bmake\b[^.]{0,40}\b(work|functional|configurable|pass)\b/,
+      // Concrete UI/API build artifacts only - deliberately omits generic nouns like
+      // "job"/"service"/"feature" that are usually the SUBJECT of a read-only task
+      // ("add docs for the export job"), not the thing being built.
+      /\b(add|create|build|wire)\b[^.]{0,40}\b(endpoint|api route|component|modal|middleware|migration|handler)\b/,
+      /\b(fix(es|ed|ing)?|patch(es|ed|ing)?|refactor\w*|migrat(e|es|ed|ing)|optimi[sz]\w+|consolidat\w+|dedupe\w*)\b/,
+    ];
+    const roStrength = (READONLY_MARKERS[dominant] || []).reduce((sum, re) => sum + weigh(re), 0);
+    const buildStrength = BUILD_MARKERS.reduce((sum, re) => {
+      const m = lower.match(re);
+      if (!m) return sum;
+      const idx = lower.indexOf(m[0]);
+      const before = lower.slice(Math.max(0, idx - 26), idx);
+      // a build verb framed by a read-only/negation context does not count as build
+      if (/\b(whether|should we|should i|evaluate|decide|consider|no|not|without|avoid|skip|before)\b\s*(to\s+)?$/.test(before)) return sum;
+      return sum + (head.indexOf(m[0]) >= 0 ? 2 : 1);
+    }, 0);
+    // Keep read-only ONLY if it asks to produce a read-only deliverable AND that
+    // signal is not out-weighed by build signal. Tie -> build (slant to code).
+    if (roStrength === 0 || buildStrength >= roStrength) dominant = 'generic';
+  }
+
   const isReadOnlyIntent = (dominant === 'research' || dominant === 'review' || dominant === 'analysis');
 
   // Convenience booleans
@@ -6303,7 +6359,8 @@ function requirementsBlock(story, heading) {
     const url = urls.length ? urls[0] : story;
     return [h, '', 'The requirements live in the ticket below, which the orchestrator resolved once up front. Work from the resolved spec in your brief (and the durable record, if any) - do not re-fetch the ticket. Source ticket (reference only, for a detail the brief did not carry): ' + url, ''];
   }
-  return [h, '', story, ''];
+  const _srcHint = inputSourceHint();
+  return _srcHint ? [h, '', _srcHint, '', story, ''] : [h, '', story, ''];
 }
 function getName() { return $('workflowName').value.trim(); }
 function getPlan() { return $('planInput') ? $('planInput').value.trim() : ''; }
@@ -6521,6 +6578,52 @@ function getDownstreamDecisions(nodeId) {
 // ═══════════════════════════════════════════════════════════
 // FORMAT 1: Workflow Prompt (structured markdown)
 // ═══════════════════════════════════════════════════════════
+function taskSectionLines(ordered, headingMarker) {
+  const tasks = ordered.filter(n => n.type === 'task');
+  if (!tasks.length) return [];
+  const lines = [`${headingMarker} Tasks`, ''];
+  tasks.forEach(t => {
+    const desc = (t.config.description || '').trim();
+    lines.push(desc ? `- **${t.label}**: ${desc}` : `- **${t.label}**`);
+    const acc = (t.config.acceptance || '').trim();
+    if (acc) lines.push(`  - Done when: ${acc}`);
+  });
+  lines.push('');
+  return lines;
+}
+
+function taskSectionComments(ordered) {
+  const tasks = ordered.filter(n => n.type === 'task');
+  if (!tasks.length) return [];
+  const lines = ['', '    # \u2500\u2500 Tasks \u2500\u2500'];
+  tasks.forEach(t => {
+    const desc = (t.config.description || '').trim();
+    lines.push(`    # ${t.label}${desc ? ': ' + desc : ''}`);
+    const acc = (t.config.acceptance || '').trim();
+    if (acc) lines.push(`    #   Done when: ${acc}`);
+  });
+  return lines;
+}
+
+function inputSourceHint() {
+  const inp = state.nodes.find(n => n.type === 'input');
+  const src = inp && inp.config && inp.config.source;
+  if (src === 'story') return 'Treat the input as a user story: derive concrete, testable requirements and acceptance criteria from it before building.';
+  if (src === 'prd') return 'Treat the input as a product requirements document (PRD): extract the specific engineering work it implies, and flag anything ambiguous as an open question.';
+  return '';
+}
+
+function strategyJoinPhrase(strategy) {
+  if (strategy === 'any') return 'proceed as soon as the first branch finishes; do not wait for the rest';
+  if (strategy === 'race') return 'take the first useful result and stop waiting on the others';
+  return 'wait for all branches to finish before continuing';
+}
+
+function forkStrategyOf(forkId) {
+  const f = state.nodes.find(n => n.id === forkId);
+  return (f && f.config && f.config.strategy) || 'all';
+}
+
 function genWorkflow() {
   const story = getStory(), name = getName();
   const ordered = topologicalSort();
@@ -6650,10 +6753,14 @@ function genWorkflow() {
     p.push('### Parallel Execution');
     parallels.forEach(par => {
       const targets = getDownstream(par.id);
-      p.push(`- **${par.label}**: Run [${targets.join(', ')}] in parallel (${par.config.strategy || 'wait for all'})`);
+      const strat = par.config.strategy;
+      const stratLabel = strat || 'wait for all';
+      const stratNote = (strat === 'any' || strat === 'race') ? ` - ${strategyJoinPhrase(strat)}` : '';
+      p.push(`- **${par.label}**: Run [${targets.join(', ')}] in parallel (${stratLabel}${stratNote})`);
     }); p.push('');
   }
 
+  taskSectionLines(ordered, '###').forEach(l => p.push(l));
   const flow = ordered.map(n => n.label);
   if (flow.length > 1) { p.push('### Execution Flow'); p.push(flow.join(' \u2192 ')); p.push(''); }
 
@@ -6867,6 +6974,9 @@ function genSubAgents() {
       p.push(`### Step ${stepNum}: Parallel - Launch Together`);
       p.push('');
       p.push('Send all of the following Task calls in a **single message** so they run concurrently:');
+      const _saStrat = forkStrategyOf(nodeToForkId[node.id]);
+      if (_saStrat === 'any') { p.push(''); p.push('**Join (First Complete)**: proceed with the first sub-agent to return; do not wait for the others.'); }
+      else if (_saStrat === 'race') { p.push(''); p.push('**Join (Race)**: take the first useful result and stop waiting on the rest.'); }
       p.push('');
       siblings.forEach(s => {
         const at = getAgentTypeName(s.config.agentType);
@@ -6934,6 +7044,7 @@ function genSubAgents() {
     });
   }
 
+  taskSectionLines(ordered, '##').forEach(l => p.push(l));
   return p.join('\n');
 }
 
@@ -7091,7 +7202,10 @@ function genAgentTeams() {
         buildTeammateBlock(s, '').forEach(line => p.push(line));
         p.push('');
       });
-      p.push('**Wait for ALL parallel teammates to complete before proceeding.** Collect and review all outputs.');
+      const _atStrat = forkStrategyOf(nodeToForkId[node.id]);
+      if (_atStrat === 'any') p.push('**Proceed when the first teammate finishes.** Continue with the first parallel teammate to complete; do not wait for the others.');
+      else if (_atStrat === 'race') p.push('**Race.** Take the first useful result from the parallel teammates and stop waiting on the rest.');
+      else p.push('**Wait for ALL parallel teammates to complete before proceeding.** Collect and review all outputs.');
       p.push('');
       i += siblings.length;
       stepNum++;
@@ -7160,6 +7274,7 @@ function genAgentTeams() {
     }
   }
 
+  taskSectionLines(ordered, '##').forEach(l => p.push(l));
   return p.join('\n');
 }
 
@@ -7350,6 +7465,10 @@ function genAgentSDK() {
   } else {
     p.push('    requirements = "Start the workflow"');
   }
+  // Only frame PASTED requirements text - not a URL reference or empty input -
+  // matching requirementsBlock's behavior in the other four generators.
+  const _sdkSrcHint = (story && !isUrlOnly(story)) ? inputSourceHint() : '';
+  if (_sdkSrcHint) p.push('    # Source guidance: ' + _sdkSrcHint);
   p.push('');
   const _sdkApp = getAppSource();
   if (_sdkApp) {
@@ -7410,8 +7529,15 @@ function genAgentSDK() {
         const vn = s.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
         p.push(`    ${vn}_task = asyncio.create_task(${vn}.run(context=${lastResultVar}))`);
       });
-      p.push(`    results = await asyncio.gather(${taskNames.join(', ')})`);
-      p.push(`    ${siblings.map((s, j) => s.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase() + '_result').join(', ')} = results`);
+      const _sdkStrat = forkStrategyOf(nodeToForkId[node.id]);
+      if (_sdkStrat === 'any' || _sdkStrat === 'race') {
+        p.push(`    done, pending = await asyncio.wait([${taskNames.join(', ')}], return_when=asyncio.FIRST_COMPLETED)`);
+        if (_sdkStrat === 'race') { p.push('    for _t in pending:'); p.push('        _t.cancel()'); }
+        p.push('    results = [t.result() for t in done]');
+      } else {
+        p.push(`    results = await asyncio.gather(${taskNames.join(', ')})`);
+        p.push(`    ${siblings.map((s, j) => s.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase() + '_result').join(', ')} = results`);
+      }
       lastResultVar = 'results';
       i += siblings.length;
     } else {
@@ -7444,6 +7570,7 @@ function genAgentSDK() {
     }
   }
 
+  taskSectionComments(ordered).forEach(l => p.push(l));
   return p.join('\n');
 }
 
@@ -7529,7 +7656,10 @@ function genClaudePrompt() {
         const siblings = agents.filter(a => nodeToForkId[a.id] === nodeToForkId[node.id]);
         p.push(`### Step ${stepNum}: Parallel Work`);
         p.push('');
-        p.push('Address all of the following perspectives together:');
+        const _cpStrat = forkStrategyOf(nodeToForkId[node.id]);
+        if (_cpStrat === 'any') p.push('Address these perspectives together; proceed with the first to reach a usable result rather than waiting for all.');
+        else if (_cpStrat === 'race') p.push('Address these perspectives together; take the first useful result and stop pursuing the rest.');
+        else p.push('Address all of the following perspectives together:');
         p.push('');
         siblings.forEach(s => {
           const sAt = getAgentTypeName(s.config.agentType);
@@ -7641,6 +7771,7 @@ function genClaudePrompt() {
     }
   }
 
+  taskSectionLines(ordered, '##').forEach(l => p.push(l));
   return p.join('\n');
 }
 
