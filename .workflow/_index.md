@@ -121,6 +121,11 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 ## in-app-help
 
+- record: .workflow/help-modal-feature-coverage.md
+- intent: cover features that had shipped without Help docs + Blue-requested additions. 3 NEW sections (Review Loops [Skeptic & Verifier - what/when/why], Delivery [output-node format model], Handoff [resume-package export]) + enriched Export Formats (real Workflow vs Sub-Agents vs Agent Teams blurb + rule-of-thumb), Recommended Integrations (+Claude in Chrome), and Canvas/Power-User tips
+- files: index.html (help-body: 22 h3 sections total - also added How the Prompts Work, Under the Hood, "Which prep step should I use?" [Refine vs Plan vs Clarify], "Multiple Repos & Rules Files" [+CLAUDE.md gotcha/env-var], flywheel framing in Ground), README.md (Refine & Plan: +Clarify cross-ref + rule-of-thumb), tests.html (help-sections assertion +Review Loops/Delivery/Handoff/Claude in Chrome/How the Prompts Work/Under the Hood/Which prep step/Multiple Repos + README footer URL)
+- status: current | date: 2026-06-19 | builds-on: .workflow/documentation-updates.md | note: 724/724; headless render confirms 20 sections in order; review-loops section answers Blue's "when/why they're powerful" (Skeptic=reason/inspect on high-stakes steps, Verifier=execute/prove on runnable outcomes, doubt-early-prove-late = defense in depth); "Under the Hood" mirrors only the AUTOMATIC behaviors (Things-You-Might-Not-Notice was already covered by Canvas Tips/Toolbar Features - not duplicated)
+
 - record: .workflow/documentation-updates.md
 - intent: refresh the in-app Help modal (the `?` button) to match the current feature set - four new h3 sections (Editing Agent Prompts, Durable Record, Ground in Prior Records, Clarify Requirements First), an input-aware Generate note, and fixing the stale "Shared Memory" wording to the real toggle names
 - files: index.html (.help-body div only - four new h3 sections + Quick Start and Power User Tips edits), tests.html (help-sections assertion extended for the four new headings)
