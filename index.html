@@ -862,8 +862,26 @@ svg.canvas{width:100%;height:100%;display:block}
 </ul>
 <p>A <strong>Reset</strong> control restores the pristine template (and the reset is undoable). <strong>Agent Context</strong> is a separate field: its contents are <strong>appended</strong> to the agent's prompt, not a replacement for it. Use the Agent Prompt to shape the role, and Agent Context to layer on extra constraints or implementation details.</p>
 
+<h3>Review Loops (Skeptic &amp; Verifier)</h3>
+<p>Right-click any <strong>Agent</strong> or <strong>Task</strong> node and pick <strong>Add skeptic review</strong> or <strong>Add verification</strong> to wrap a review-and-revise loop around that step in one undoable action:</p>
+<ul>
+  <li><strong>Skeptic</strong> tries to <em>refute</em> the work by inspection - a role-aware adversarial critic that only sends work back for material Critical/High defects, never nitpicks.</li>
+  <li><strong>Verifier</strong> <em>proves</em> the outcome meets the objective with evidence - it runs the code, calls the API, or drives a browser instead of just reading it.</li>
+</ul>
+<p><strong>When to use which.</strong> Reach for a <strong>Skeptic</strong> on high-stakes or expensive-to-undo steps where a confident-but-wrong output is costly: the plan (a wrong direction is the most expensive mistake to make), security-sensitive code, or anything subtle. Reach for a <strong>Verifier</strong> on any step with a runnable outcome - a built feature, an API integration, a UI, a data migration - placed late, right before delivery.</p>
+<p><strong>Why they're powerful.</strong> They are complementary: the Skeptic catches what reasoning can see (logic, design, security), the Verifier catches what only execution reveals (it reads fine - but does it actually run?). Together they give defense in depth - doubt early, prove late - which is exactly how a careful senior engineer works. One click drops in the whole reviewer + Decision gate + back-edge that routes failures back to the step to fix, with a bounded revision count so it retries and then stops rather than spinning. It reuses the same loop machinery the presets use, so it renders correctly in every export format. Right-click again to <strong>Remove</strong> it, or use the Decision node's <strong>send-back target</strong> dropdown to re-point the failure branch to a different node. The <strong>Delivery Swarm</strong> preset shows both in one flow.</p>
+
 <h3>Jira Integration</h3>
 <p>Paste a full Jira URL (not just the ticket key) and enable <strong>Atlassian MCP</strong> in the sidebar. The exported prompts will instruct agents to fetch ticket details at runtime. For URL-only input, you'll be asked to pick a workflow preset since there aren't enough keywords to auto-generate.</p>
+
+<h3>Multiple Repos &amp; Rules Files</h3>
+<p>Two sidebar sections give agents the right context across one or many repositories:</p>
+<ul>
+  <li><strong>Repositories</strong> - list each repo with its branch; the prompts tell agents to check out the right branch and pull before starting.</li>
+  <li><strong>Repo Context Paths</strong> - point agents at a repo's own rules and product docs so they honor more than the per-task spec. <strong>Rules / constitution</strong> paths (e.g. <code>.claude/rules</code>, <code>CONVENTIONS.md</code>) are binding constraints on <em>how</em> to build; <strong>Product docs</strong> (e.g. <code>docs/</code>, ADRs) are goals the work must not contradict. The lists are sticky - they persist across workflows in the same repo.</li>
+</ul>
+<p><strong>Multi-repo gotcha:</strong> Claude Code auto-loads <code>CLAUDE.md</code> and <code>.claude/rules/</code> only for the repo the session launched in, so a second repo's rules are silently missed. The generated multi-repo prompt handles this by telling each agent to read every working repo's own <code>CLAUDE.md</code> before changing it, and your Rule Paths are resolved per-repo. For the cleanest setup, launch the session with each repo added so their rules load automatically:</p>
+<div class="flow-diagram">CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 claude --add-dir ../repo-b ../repo-c</div>
 
 <h3>Durable Record</h3>
 <p>Two sidebar toggles control how a run persists its context:</p>
@@ -876,18 +894,56 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h3>Ground in Prior Records</h3>
 <p>The <strong>Ground in prior records</strong> toggle (on by default) is the read side. Before planning, the orchestrator scans <code>.workflow/_index.md</code> if it exists, opens only the records relevant to the files and capability the change touches (preferring current ones), and folds their decisions and gotchas into the plan. It is self-gating - a no-op on greenfield repos with no records yet. Producing a record is opt-in; benefiting from existing ones is automatic.</p>
+<p>Together, <strong>Keep a durable record</strong> (the write side) and <strong>Ground in prior records</strong> (the read side) form a flywheel: every run leaves behind its decisions, gotchas, and a tested spec, and the next run reads them before planning - so workflows in the same repo get sharper and stop repeating the same mistakes over time, with nobody curating anything by hand. The more you run, the better-grounded each new workflow starts.</p>
 
 <h3>Clarify Requirements First</h3>
 <p>The <strong>Clarify requirements first</strong> toggle (off by default) adds an in-flow clarification gate to the planning step - distinct from the <strong>Generate Refine Prompt</strong> flow above. When on, the planning step probes the requirements for material ambiguity, asks you a focused set of questions in one round, then folds the answers into the plan and the durable record. It degrades gracefully when run non-interactively (CI or an SDK pipeline): it records the open questions as assumptions and risks and proceeds rather than blocking.</p>
 
-<h3>Export Formats</h3>
+<h3>Which prep step should I use?</h3>
+<p>Three optional ways to sharpen a task - they solve different problems and can stack:</p>
 <ul>
-  <li><strong>Workflow</strong>: Single orchestration prompt for Claude Code. Best for most use cases.</li>
-  <li><strong>Sub-Agents</strong>: Delegation prompt using Claude Code's <code>/spawn</code> sub-agent pattern.</li>
-  <li><strong>Agent Teams</strong>: Multi-agent team coordination prompt. <em>Preview.</em></li>
-  <li><strong>Agent SDK</strong>: Python code using the Anthropic Agent SDK. Wire into your own pipeline.</li>
-  <li><strong>Claude.ai</strong>: Simplified prompt for use in Claude.ai (no CLI tools).</li>
+  <li><strong>Generate Refine Prompt</strong> - when the requirements themselves are rough. Claude interviews <em>you</em> about edge cases, UX, and tradeoffs, then writes a refined spec you paste back into Requirements. Sharpens the <em>what</em>.</li>
+  <li><strong>Generate Plan Prompt</strong> - when the requirements are solid but you want a codebase-aware approach. Claude explores your code and writes an implementation plan you paste into <strong>Workflow Context</strong>. Sharpens the <em>how</em>.</li>
+  <li><strong>Clarify requirements first</strong> (toggle) - the same kind of clarification as Refine, but built <em>into</em> the workflow's planning step instead of a separate up-front prompt. It asks one focused round of questions at runtime and folds the answers into the plan and the durable record. Best when you want a single self-contained prompt rather than a multi-step prep flow.</li>
 </ul>
+<p>For maximum quality on a big task, stack them: Refine to lock the spec, Plan to ground the approach, then build. For a lighter touch, just flip on Clarify. The three flow diagrams near the top walk through each step by step.</p>
+
+<h3>Handoff</h3>
+<p>The <strong>Handoff</strong> button under <strong>Saved Workflows</strong> downloads a single resume package (<code>.md</code>) so another engineer can pick up in-progress work: how to resume, the durable-record path, the ready-to-run prompt, and the full workflow definition. The live run state travels with your git branch and the durable record, not this file - so enable <strong>Keep a durable record</strong> before running for a truly resumable handoff.</p>
+
+<h3>How the Prompts Work</h3>
+<p>Whatever format you export, every agent's section is workflow-aware - it carries everything that agent needs to act, with no manual glue between steps:</p>
+<ul>
+  <li><strong>Role &amp; methodology</strong> - what the agent owns, as numbered steps with clear deliverables</li>
+  <li><strong>Tool awareness</strong> - which tools it should reach for</li>
+  <li><strong>Dependencies</strong> - the upstream output it consumes and the downstream consumers it must satisfy</li>
+  <li><strong>Success gates</strong> - the next decision's criteria baked into the agent's own prompt, so it self-checks before handing off</li>
+  <li><strong>Full requirements</strong> - the complete story/ticket, never truncated</li>
+  <li><strong>Memory read/write</strong> (when enabled) - recover from compaction at the start, persist progress and a handoff at the end</li>
+</ul>
+<p>Agents know their place in the pipeline and produce output the next one can act on immediately - no copy-pasting between steps.</p>
+
+<h3>Export Formats</h3>
+<p>The first three are different ways Claude Code can run the <em>same</em> workflow - pick by how you want the work executed:</p>
+<ul>
+  <li><strong>Workflow</strong>: one orchestration prompt that Claude Code runs in a <em>single session</em> - it adopts each role in turn and works through the steps in order (launching parallel Task calls only where marked). Simplest, and best for most cases.</li>
+  <li><strong>Sub-Agents</strong>: each step is delegated to its own sub-agent via the Task tool, in sequence (parallel steps launched concurrently). Every agent gets a <em>fresh, isolated context</em> - better for long or context-heavy workflows where you don't want one window holding everything.</li>
+  <li><strong>Agent Teams</strong>: agents run <em>concurrently as a team</em> and coordinate through a shared handoff file, instead of one orchestrator driving them in turn. Best for genuinely parallel work. <em>Preview.</em></li>
+  <li><strong>Agent SDK</strong>: Python using the Anthropic Agent SDK - wire the workflow into your own pipeline or automation.</li>
+  <li><strong>Claude.ai</strong>: a simplified conversational prompt for Claude.ai, with no CLI tools.</li>
+</ul>
+<p>Rule of thumb: start with <strong>Workflow</strong>; switch to <strong>Sub-Agents</strong> when context size or step isolation matters; reach for <strong>Agent Teams</strong> when steps are truly independent and benefit from running at the same time. The hint bar above the prompt nudges you toward Agent Teams when your workflow has parallel agents with several steps each.</p>
+
+<h3>Delivery (Output node format)</h3>
+<p>Agents make code changes whether or not you add an Output node; the node's <strong>Format</strong> decides what happens to the work at the end:</p>
+<ul>
+  <li><strong>Leave Uncommitted</strong> (default) - make the changes, commit nothing. Same as having no Output node.</li>
+  <li><strong>Commit</strong> - feature branch, commit + push, no PR.</li>
+  <li><strong>Pull Request</strong> - feature branch, commit + push, open a PR (git provider auto-detected: GitHub, Bitbucket, GitLab).</li>
+  <li><strong>Report</strong> - produce a written report; leave any code uncommitted.</li>
+  <li><strong>Documentation</strong> - produce docs in the project's conventions; leave any code uncommitted.</li>
+</ul>
+<p>Click the Output node to set it. No preset defaults to Pull Request - commit/push/PR is always an explicit choice.</p>
 
 <h3>Canvas Tips</h3>
 <ul>
@@ -897,9 +953,11 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>: Delete selected node or connection</li>
   <li><kbd>Alt+Drag</kbd>: Pan the canvas</li>
   <li><kbd>Scroll</kbd>: Zoom in/out</li>
-  <li><strong>Right-click</strong> a node for context menu (duplicate, disconnect, delete)</li>
+  <li><strong>Right-click</strong> a node for its context menu: add a <strong>Skeptic review</strong> or <strong>Verification</strong> loop, duplicate, disconnect, or delete</li>
   <li><strong>Auto Layout</strong> re-arranges nodes using the Sugiyama layered algorithm</li>
   <li><strong>Fit</strong> zooms to show all nodes</li>
+  <li><strong>Quick Patterns</strong> in the palette (Fork 2/3/4, Fan-Out) scaffold a parallel agent group in one click</li>
+  <li>You are not limited to presets - add any nodes from the palette and wire them up however you like; the generators handle the scaffolding</li>
 </ul>
 
 <h3>Toolbar Features</h3>
@@ -919,9 +977,21 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>These optional MCP servers and tools unlock better results from both workflows and prompt library prompts:</p>
 <ul>
   <li><strong>Atlassian MCP</strong>: built into Claude Code. Lets agents fetch Jira tickets and Confluence pages at runtime. Toggle on/off in the sidebar.</li>
+  <li><strong>Claude in Chrome</strong>: the Claude browser extension. Lets agents drive a real Chrome tab - open a PR and read its diff, navigate your running app, and confirm a UI actually renders and behaves as specified. Powers the Verifier's browser checks and the PR-review and UI prompts in the library.</li>
   <li><strong>Code search MCP</strong>: any cross-repo code-search server (for example <a href="https://sourcebot.dev" target="_blank" style="color:var(--accent);pointer-events:auto">Sourcebot</a>, Sourcegraph, or Kilo Code). Typically exposes tools to discover repos, browse trees, search code, and read files across all your repositories. None is required; toggle the hint on/off in the sidebar.</li>
   <li><strong>Datadog MCP</strong>: install with <code>curl -sSL https://coterm.datadoghq.com/mcp-cli/install.sh | bash</code>, then <code>datadog_mcp_cli login</code>, then <code>claude mcp add -s user datadog</code>. Enables the Observability prompts in the Prompt Library. Bug Fix workflows also use it automatically to check production logs and error context during investigation. Toggle it on in the sidebar to add a production-telemetry grounding hint to exported workflows.</li>
   <li><strong>LSP</strong>: install a language server for your stack (e.g. <code>typescript-language-server</code>, <code>pyright</code>, <code>gopls</code>). Gives agents go-to-definition and find-references for deeper code analysis.</li>
+</ul>
+
+<h3>Under the Hood</h3>
+<p>Some things the designer handles for you automatically:</p>
+<ul>
+  <li><strong>Smart workflow detection</strong> - Auto Workflow infers an appropriate workflow shape from your requirements keywords.</li>
+  <li><strong>Acceptance-criteria extraction</strong> - bullet or numbered criteria in your requirements become Decision-gate conditions downstream.</li>
+  <li><strong>Secret scanner</strong> - every input is checked for API keys, credentials, and connection strings before anything is copied to your clipboard.</li>
+  <li><strong>Input validation</strong> - catches bare Jira keys, URL-only input without Atlassian MCP, and too few keywords to generate from.</li>
+  <li><strong>Auto-naming</strong> - leave the name blank and you get a stable two-part name (e.g. <code>swift-falcon</code>), used for memory paths and file exports.</li>
+  <li><strong>Preset-aware placeholders</strong> - picking a preset retargets the Requirements box with a template for that workflow type.</li>
 </ul>
 
 <h3>Power User Tips</h3>
@@ -932,7 +1002,12 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Parallel</strong> groups run agents concurrently, great for independent tasks like "backend + frontend"</li>
   <li>Each agent's <strong>Agent Context</strong> field lets you add context that's included in that agent's prompt section</li>
   <li>Workflows auto-save to localStorage. Use <strong>Save</strong> / <strong>Load</strong> for named snapshots, or <strong>Export JSON</strong> to share with teammates</li>
+  <li>Right-click an Agent or Task node to wrap a <strong>Skeptic</strong> (refutes by inspection) or <strong>Verifier</strong> (proves it runs) review loop around it - see <strong>Review Loops</strong> above</li>
+  <li>An Output node's <strong>Format</strong> is the single delivery control (uncommitted / commit / PR / report / docs) - see <strong>Delivery</strong> above</li>
+  <li>The <strong>Delivery Swarm</strong> preset is the showcase to adapt: parallel discovery and build with a Skeptic on the plan and a Verifier on the integration</li>
 </ul>
+
+<p style="margin-top:18px;padding-top:12px;border-top:1px solid var(--border);color:var(--text3);font-size:12px">Want the full picture? The <a href="https://github.com/bluewilliams/agentic-workflow-designer#readme" target="_blank" style="color:var(--accent);pointer-events:auto">README on GitHub</a> covers the design philosophy, every preset and node type, the memory protocol, and the rest of what is under the hood.</p>
 
     </div>
   </div>

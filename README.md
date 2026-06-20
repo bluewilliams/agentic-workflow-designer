@@ -212,6 +212,8 @@ Two optional steps that dramatically improve output quality for complex tasks:
 
 Both prompts tell Claude exactly what to do next, closing the loop back to the Workflow Designer.
 
+A third option, the **Clarify requirements first** toggle (see [Memory Protocol](#memory-protocol)), does the same kind of clarification as Generate Refine Prompt but *inside* the workflow's planning step rather than as a separate up-front prompt. Rule of thumb: **Refine** sharpens the *what* (rough requirements to a spec), **Plan** sharpens the *how* (codebase-aware approach), and **Clarify** is the lighter in-flow version of Refine when you want a single self-contained prompt. They stack for a big task; flip on Clarify alone for a lighter touch.
+
 ## Prompt Library
 
 Click the **Prompts** button in the toolbar for a curated collection of high-impact prompts across code review, security, architecture, debugging, testing, documentation, planning, DevOps, data migrations, and more. These aren't one-liners. Each prompt encodes expert methodology: structured review checklists, multi-phase audit frameworks, systematic debugging approaches. They produce better results than asking from scratch.
