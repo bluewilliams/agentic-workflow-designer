@@ -686,14 +686,6 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
   </div>
 
-  <div class="sidebar-section">
-    <h3>Delivery</h3>
-    <label class="memory-toggle">
-      <input type="checkbox" id="commitPrToggle" onchange="toggleCommitPr()"/>
-      <span>Commit &amp; open a PR</span>
-    </label>
-    <p class="memory-help">Off (default): agents leave all changes uncommitted on the current branch for you to review and commit. On: agents work on a feature branch, commit, push, and open a PR.</p>
-  </div>
 
   <div class="sidebar-section config-panel" id="configPanel">
     <h3>Node Configuration</h3>
@@ -1440,7 +1432,6 @@ let state = {
   mcpAtlassian: true,
   mcpCodeSearch: true,
   mcpDatadog: false,
-  commitPr: false,
   consumeRecords: true,
   clarifyFirst: false,
   mcpCustom: '',
@@ -1922,7 +1913,6 @@ function toggleMcpDatadog() {
   updatePrompt();
   savePrefs();
 }
-function toggleCommitPr() { state.commitPr = $('commitPrToggle').checked; updatePrompt(); savePrefs(); }
 function toggleConsumeRecords() {
   state.consumeRecords = $('consumeRecordsToggle').checked;
   updatePrompt();
@@ -1986,7 +1976,6 @@ function savePrefs() {
       mcpAtlassian: state.mcpAtlassian,
       mcpCodeSearch: state.mcpCodeSearch,
       mcpDatadog: state.mcpDatadog,
-      commitPr: state.commitPr,
       consumeRecords: state.consumeRecords,
       clarifyFirst: state.clarifyFirst,
       mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : '',
@@ -2044,7 +2033,6 @@ function restorePrefs() {
       const cb = $('mcpDatadogToggle');
       if (cb) cb.checked = state.mcpDatadog;
     }
-    if (p.commitPr !== undefined) { state.commitPr = !!p.commitPr; const cb = $('commitPrToggle'); if (cb) cb.checked = state.commitPr; }
     if (p.consumeRecords !== undefined) {
       state.consumeRecords = !!p.consumeRecords;
       const cb = $('consumeRecordsToggle');
@@ -5720,14 +5708,12 @@ function clearCanvas(skipConfirm) {
   state.mcpAtlassian = true;
   state.mcpCodeSearch = true;
   state.mcpDatadog = false;
-  state.commitPr = false;
   state.consumeRecords = true;
   state.clarifyFirst = false;
   state.mcpCustom = '';
   const _matl = $('mcpAtlassianToggle'); if (_matl) _matl.checked = true;
   const _msb = $('mcpCodeSearchToggle'); if (_msb) _msb.checked = true;
   const _mdd = $('mcpDatadogToggle'); if (_mdd) _mdd.checked = false;
-  const _cpr = $('commitPrToggle'); if (_cpr) _cpr.checked = false;
   const _crt = $('consumeRecordsToggle'); if (_crt) _crt.checked = true;
   const _clt = $('clarifyFirstToggle'); if (_clt) _clt.checked = false;
   const _mcn = $('mcpCustomNotes'); if (_mcn) _mcn.value = '';
@@ -5995,6 +5981,12 @@ function uiContextBlock(heading) {
   const h = heading || '### UI Context';
   return [h, '', notes, ''];
 }
+// Delivery is driven by the Output node format: a "Pull Request" output means
+// commit + push + open a PR (prBlock); any other format (code, report, docs)
+// leaves changes uncommitted (noCommitBlock) - Report/Documentation never commit code.
+function deliversPr() {
+  return state.nodes.some(n => n.type === 'output' && n.config.format === 'pr');
+}
 function prBlock(heading) {
   const outputs = state.nodes.filter(n => n.type === 'output' && n.config.format === 'pr');
   if (outputs.length === 0) return [];
@@ -6104,7 +6096,7 @@ function genWorkflow() {
   if (_wfPlan) { p.push('### Workflow Context (starting guidance - adapt based on findings)'); p.push(''); p.push('The following context provides codebase-specific guidance from an initial analysis. Use it as a starting point, not a rigid constraint. If your research reveals better approaches, contradictory patterns, or additional considerations, update the approach accordingly and note what changed and why.'); p.push(''); p.push(_wfPlan); p.push(''); }
   appSourceBlock('### App Source').forEach(l => p.push(l));
   uiContextBlock('### UI Context').forEach(l => p.push(l));
-  (state.commitPr ? prBlock('### Pull Request Creation') : noCommitBlock('### Delivery')).forEach(l => p.push(l));
+  (deliversPr() ? prBlock('### Pull Request Creation') : noCommitBlock('### Delivery')).forEach(l => p.push(l));
   repoBlock('### Repositories').forEach(l => p.push(l));
   const _wfAtlUrls = getWorkflowAtlassianUrls();
   const _wfAtlT = atlassianTicketFetchHint(_wfAtlUrls);
@@ -6399,7 +6391,7 @@ function genSubAgents() {
     requirementsBlock(story, '## Requirements').forEach(l => promptLines.push(l));
     appSourceBlock('## App Source').forEach(l => promptLines.push(l));
     uiContextBlock('## UI Context').forEach(l => promptLines.push(l));
-    (state.commitPr ? prBlock('## Pull Request Creation') : noCommitBlock('## Delivery')).forEach(l => promptLines.push(l));
+    (deliversPr() ? prBlock('## Pull Request Creation') : noCommitBlock('## Delivery')).forEach(l => promptLines.push(l));
     repoBlock('## Repositories').forEach(l => promptLines.push(l));
 
     promptLines.push('## Output Format');
@@ -6543,7 +6535,7 @@ function genAgentTeams() {
   }
   appSourceBlock('## App Source').forEach(l => p.push(l));
   uiContextBlock('## UI Context').forEach(l => p.push(l));
-  (state.commitPr ? prBlock('## Pull Request Creation') : noCommitBlock('## Delivery')).forEach(l => p.push(l));
+  (deliversPr() ? prBlock('## Pull Request Creation') : noCommitBlock('## Delivery')).forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _atAtlUrls = getWorkflowAtlassianUrls();
   const _atAtlT = atlassianTicketFetchHint(_atAtlUrls);
@@ -6928,10 +6920,10 @@ function genAgentSDK() {
     p.push(`    ui_context = """${_sdkUiNotes}"""  # Styling preferences - Design System Analyzer will use these as constraints`);
     p.push('');
   }
-  const _sdkPrLines = state.commitPr ? prBlock() : noCommitBlock();
+  const _sdkPrLines = deliversPr() ? prBlock() : noCommitBlock();
   if (_sdkPrLines.length > 0) {
     p.push('    # ' + '\u2500'.repeat(59));
-    p.push('    # ' + (state.commitPr ? 'PULL REQUEST CREATION' : 'DELIVERY'));
+    p.push('    # ' + (deliversPr() ? 'PULL REQUEST CREATION' : 'DELIVERY'));
     p.push('    # ' + '\u2500'.repeat(59));
     _sdkPrLines.slice(2).forEach(l => { if (l) p.push('    # ' + l); else p.push('    #'); });
     p.push('');
@@ -7047,7 +7039,7 @@ function genClaudePrompt() {
   }
   appSourceBlock('## App Source').forEach(l => p.push(l));
   uiContextBlock('## UI Context').forEach(l => p.push(l));
-  (state.commitPr ? prBlock('## Pull Request Creation') : noCommitBlock('## Delivery')).forEach(l => p.push(l));
+  (deliversPr() ? prBlock('## Pull Request Creation') : noCommitBlock('## Delivery')).forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
   const _cpAtlUrls = getWorkflowAtlassianUrls();
   const _cpAtlT = atlassianTicketFetchHint(_cpAtlUrls);
