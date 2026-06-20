@@ -14,10 +14,10 @@ The Agentic Workflow Designer is a **visual, browser-based playground** that bri
 
 ### Core User Journey
 1. Paste a Jira ticket URL, user story, or requirements into the sidebar
-2. (Optional) Click **Refine Prompt** to interview with Claude and sharpen requirements
-3. Click **Generate** (or pick a preset, or build manually)
+2. (Optional) Click **Generate Refine Prompt** to interview with Claude and sharpen requirements
+3. Click **Auto Workflow** (or pick a preset, or build manually)
 4. The canvas populates with agent nodes connected in the right order
-5. (Optional) Click **Plan Prompt** to generate a codebase-aware implementation blueprint
+5. (Optional) Click **Generate Plan Prompt** to generate a codebase-aware implementation blueprint
 6. Optionally reconfigure each node (agent type, model, tools, custom prompt)
 7. Toggle **Memory Protocol** on/off as needed
 8. Select an output format tab and click **Copy**
@@ -94,13 +94,21 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 
 ### Agent Node Config
 Each Agent node has:
-- **Agent Type**: Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, Writer, General
+- **Agent Type**: Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, Writer, General, plus **Skeptic** and **Verifier** (the review-loop roles - see [Review Loops](#review-loops-skeptic--verifier)). 13 types total (`AGENT_TYPES`)
 - **Writing Style** (Writer only): Technical, User Guide, Business, API Reference, Runbook. Auto-configures tools and prompt template per style
 - **Model**: Fable 5, Opus 4.8 (default), Opus 4.7, Opus 4.6, Sonnet 4.6, Sonnet 4.5, Opus 4.5, Haiku 4.5 (Fable 5 and the latest Opus/Sonnet also have [1M] variants)
 - **Tools**: Checkboxes for Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP
 - **Agent Prompt**: Freeform textarea. If left blank, falls back to `getEffectivePrompt()`
 - **Custom Notes**: Additional context injected into all export formats
 - **Max Turns**: Integer cap on the agent's execution turns
+
+### Review Loops (Skeptic + Verifier)
+Two one-click context-menu actions attach a review-and-revise loop to any Agent or Task node, reusing the existing Decision/maxRevisions machinery (no new node type):
+
+- **Skeptic** (`agentType: 'adversary'`) - a refute-first critic with a role-aware lens (`ADVERSARY_LENSES`, keyed off the reviewed node's role) and a strict materiality bar: default PASS, NEEDS REVISION only for Critical/High material defects, never nitpicks. Resolved via `buildAdversaryPrompt(reviewedRole)`; `getEffectivePrompt`/`classifyAgentPrompt` special-case `adversary` (parallels the Writer/writingStyle case), with the lens carried in `config.adversaryRole`.
+- **Verifier** (`agentType: 'verifier'`) - proves the outcome meets the objective with evidence (run it, call the API, drive a browser, follow doc steps). One strong default prompt (`PROMPTS.verifier`, no lens); execution tools (Bash, WebFetch).
+
+Both share a kind-parameterized family (`REVIEW_LOOP_KINDS`): `attachReviewLoop(targetId, kind)` builds `target -> reviewer -> Decision`, with the Decision's no-branch (the back-edge) looping to the target and the yes-branch carrying the target's original downstream; `detachReviewLoop` reverses it; both are single-undo via `batchUndo`. Markers live on the nodes (`reviewLoopFor` + `reviewLoopKind` on the reviewer, `reviewLoopDecisionFor` on the Decision) and survive serialization, so detach + no-double-attach work after reload. Constraints: one loop per node; review nodes can't themselves host a loop (`canAttachReviewLoop` excludes `adversary`/`verifier`). The Decision's failure back-edge can be re-pointed to any work node via `setReviewLoopBackTarget` (a dropdown on the Decision config) - the edge is the single source of truth, so the generators, detach, and serialization all read it (no extra state). Demoed in the Feature Build (Skeptic on Planner), Documentation (Skeptic on Doc Writer), and UI Design (Verifier on UI Implementer) presets. Backward-compatible aliases (`attachAdversary`, etc.) delegate to the generic functions.
 
 ---
 
@@ -113,15 +121,15 @@ User-entered prompt
     → Agent type template (AGENT_TYPE_PROMPT_MAP → PROMPTS[key])
       → Smart generic fallback using node label
 ```
-For Writer agents, the writing style (stored in `node.config.writingStyle`) is resolved to a style-specific prompt key before falling back to the generic agent type map. This ensures exported prompts always contain real instructions, even if the user never touches the prompt field.
+For Writer agents, the writing style (stored in `node.config.writingStyle`) is resolved to a style-specific prompt key before falling back to the generic agent type map. This ensures exported prompts always contain real instructions, even if the user never touches the prompt field. A **Skeptic** (`adversary`) node resolves the same way via `buildAdversaryPrompt(node.config.adversaryRole)` (a parallel special-case); a **Verifier** (`verifier`) node resolves through the normal agent-type map to `PROMPTS.verifier` (no lens).
 
 ### `PROMPTS` Library
 30+ pre-written agent prompt templates covering:
 - **Planning/Architecture**: `planner`, `architect`
 - **Implementation**: `implementer`, `backend`, `frontend`
 - **Investigation/Fix**: `investigator` (Datadog-aware: checks production logs/errors when MCP available), `fixer`
-- **Review**: `reviewer`, `fullstackReviewer`, `codeAnalyzer`, `codeReviewer`, `improver`
-- **Testing/Validation**: `tester`, `bugTester`, `e2eTester`, `validator`
+- **Review**: `reviewer`, `fullstackReviewer`, `codeAnalyzer`, `codeReviewer`, `improver`, `adversary` (Skeptic: refute-first critic, role-aware lens, materiality bar)
+- **Testing/Validation**: `tester`, `bugTester`, `e2eTester`, `validator`, `verifier` (evidence-based outcome verification; one default prompt, no lens)
 - **Research**: `codebaseExplorer`, `docResearcher`, `patternAnalyzer`, `synthesizer`
 - **Audit**: `securityAuditor`, `qualityAnalyst`, `perfProfiler`, `archReviewer`, `reportBuilder`
 - **Test Automation (SET)**: `appExplorer`, `testPlanner`, `featureWriter`, `screenObjectWriter`, `stepDefWriter`, `testReviewer`
@@ -212,11 +220,13 @@ All generators use `topologicalSort()` to process nodes in dependency order. Eac
 Two optional path lists let the user point agents at a repo's own rules and product docs. State: `state.rulesPaths` and `state.productDocPaths` (both `[]` by default). The sidebar UI mirrors the repository chip-list pattern: a text input + Add, per-chip remove, Clear-all, and one-click quick-add suggestion chips. The designer never reads the filesystem; it captures path strings and the agents do the reading.
 
 These inputs realize a **three-tier context model** the prompts make explicit:
-1. **Constitution / rules** (`rulesPaths`) = how to build, binding. The repo CLAUDE.md is auto-loaded for free; these capture extra rule paths on top of it.
+1. **Constitution / rules** (`rulesPaths`) = how to build, binding. The launch repo's CLAUDE.md auto-loads for free; these capture extra rule paths on top of it. (Multi-repo caveat below: CLAUDE.md / `.claude/rules` auto-load ONLY for the launch directory.)
 2. **Product / architecture docs** (`productDocPaths`, PRD / ADR) = goals and direction the work must serve and not contradict; when a durable record is kept, snapshot the intent into its Why and scope.
 3. **Spec** = the task contract, already the existing requirements/seed input (no separate field).
 
 Two hint functions, `rulesPathsHint()` and `productDocsHint()`, sit next to `codeSearchHint()` / `consumeRecordsHint()` and are gated on a non-empty array (no separate toggle). They are injected at all five exporters mirroring the `_wfSb` pattern (`genWorkflow`, `genSubAgents`, `genAgentTeams`, `genClaudePrompt`, and the `genAgentSDK` comment variant). Each hint instructs: read only what is listed (no blind-hunt), directory-vs-file discovery (a directory: discover relevant files by common name; a file: read it directly), and multi-repo scoping (resolve each path within each in-scope repository; a repo's own context governs only that repo's work; never carry one repo's context into another's; a path absent in a repo is no-extra-context, not an error). Hint text is provider-neutral, hyphens only, no triple-backtick fences; the product-docs hint uses the lowercase phrase "durable record" to avoid colliding with durable-record gating.
+
+**Multi-repo CLAUDE.md (`repoBlock`)**: Claude Code auto-loads CLAUDE.md / `.claude/rules` only for the tree rooted at the launch directory (verified against the Claude Code docs); a second repo's rules are not loaded automatically, and non-fork subagents inherit the launch repo's loaded rules without re-scanning new directories. So the generated multi-repo block instructs each agent to read every working repo's `CLAUDE.md` / `CLAUDE.local.md` / `.claude/rules` before changing it, and to **scope rules per repo** - each repo's rules (including the launch repo's auto-loaded CLAUDE.md) govern only that repo's work, with conflicts resolved in favor of the repo being changed. It also surfaces the cleaner setup, `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 claude --add-dir <path>`, which auto-loads each added repo's CLAUDE.md. Note this is a behavioral scoping discipline, not hard isolation: the launch repo's CLAUDE.md stays in session context and a prompt cannot unload it.
 
 **Persistence and stickiness**: both lists persist to localStorage via `savePrefs` / `restorePrefs` (the `_restoring` guard already covers them; `restorePrefs` uses an `Array.isArray` guard so older blobs lacking these keys are tolerated). Unlike the MCP toggles, `clearCanvas` (New Workflow) deliberately does NOT reset these arrays - they are repo-level context that carries across workflows in the same repo, so only the Clear-all controls empty them. Different-paths-per-repo selection is a deliberate future extension; the flat lists apply to all in-scope repos and the hint scopes them per-repo.
 
@@ -327,7 +337,7 @@ Content adapts to `state.durableRecord`: when on, the resume steps lead with the
 - **Zoom Fit**: Scales viewport to show all nodes with 80px padding
 
 ### Context Menu
-Right-click a node to access: Duplicate, Add Branch (Parallel only), Disconnect All, Delete.
+Right-click a node to access: Duplicate, Add Branch (Parallel only), **Add skeptic review** / **Add verification** (Agent and Task nodes only; toggle to Remove when a loop is attached - see [Review Loops](#review-loops-skeptic--verifier)), Disconnect All, Delete.
 
 ---
 
@@ -370,8 +380,8 @@ After generation, memory is auto-enabled if the workflow has parallel forks or 5
 ## Input Validation
 
 The app validates user input at multiple points:
-- **Bare Jira keys** (e.g. `PROJ-123`): detected by `isJiraKeyOnly()` and shown an inline hint guiding users to paste the full URL. All three action buttons (Generate, Refine Prompt, Plan Prompt) block with a toast.
-- **URL-only input without Atlassian MCP**: Refine Prompt and Plan Prompt block with a toast since the prompt would contain a URL that agents cannot fetch.
+- **Bare Jira keys** (e.g. `PROJ-123`): detected by `isJiraKeyOnly()` and shown an inline hint guiding users to paste the full URL. All three action buttons (Auto Workflow, Generate Refine Prompt, Generate Plan Prompt) block with a toast.
+- **URL-only input without Atlassian MCP**: Generate Refine Prompt and Generate Plan Prompt block with a toast since the prompt would contain a URL that agents cannot fetch.
 - **URL-only input for Generate**: redirects to the preset picker since there are not enough keywords to auto-generate a workflow.
 - **Secret scanning**: `scanForSecrets()` checks all user inputs (requirements, plan, node prompts, notes) for API keys, AWS keys, GitHub/GitLab/Slack tokens, private keys, connection strings, and credential patterns before copying to clipboard. Shows a confirm dialog listing detected secret types.
 
@@ -400,7 +410,7 @@ Prompts that watch things for you over time. They run on a recurring interval, c
 
 The **?** toolbar button opens a help modal covering:
 - Quick Start guide
-- Refine Prompt and Plan Prompt flows with visual diagrams
+- Generate Refine Prompt and Generate Plan Prompt flows with visual diagrams
 - Full flow for power users (refine, plan, build, export)
 - Jira integration guidance
 - Export format descriptions
@@ -487,8 +497,8 @@ The `index.html` is internally organized into clearly delimited sections:
 ```
 CSS styles
 HTML structure
-  ├── Sidebar: Workflow Name (+ New Workflow), Story Input (+ Refine Prompt, validation hint),
-  │            Implementation Plan (+ Plan Prompt), Default Model, Repositories,
+  ├── Sidebar: Workflow Name (+ New Workflow), Story Input (+ Generate Refine Prompt, validation hint),
+  │            Implementation Plan (+ Generate Plan Prompt), Default Model, Repositories,
   │            Add Nodes, Presets, App Under Test (conditional), Saved Workflows, Tip, MCP Integrations, Memory, Node Config
   ├── Canvas: Toolbar (Select, Connect, Delete, Auto Layout, Fit, Zoom, Prompts, Help), SVG canvas, Empty state
   ├── Prompt Output: 5 format tabs, Copy button
@@ -497,7 +507,7 @@ HTML structure
   └── Prompt Input Popup: Collects user context before copying prompts that need it
 JavaScript:
   ├── STATE & CONSTANTS
-  │     ├── NODE_DEFAULTS, AGENT_TYPES (11 types), ALL_TOOLS, MODELS
+  │     ├── NODE_DEFAULTS, AGENT_TYPES (13 types), ALL_TOOLS, MODELS
   │     ├── WRITING_STYLES (5 styles), WRITER_TOOL_DEFAULTS (per-style tool sets)
   │     ├── Atlassian URL detection
   │     ├── AGENT_TYPE_PROMPT_MAP, capitalize(), getEffectivePrompt()

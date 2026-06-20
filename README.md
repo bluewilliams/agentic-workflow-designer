@@ -12,7 +12,7 @@ If you just want to get work done, this is the whole path:
 
 1. **Open it** - the [live link](https://bluewilliams.github.io/agentic-workflow-designer/), or `index.html` in any browser.
 2. **Paste your requirements** - a Jira URL, a user story, or a plain sentence describing the task, into the Requirements box.
-3. **Pick a preset** - click one that matches the work (Feature Build, Bug Fix, Documentation, ...). It drops a ready-made pipeline on the canvas. (Or click **Generate** to auto-build one from your text.)
+3. **Pick a preset** - click one that matches the work (Feature Build, Bug Fix, Documentation, ...). It drops a ready-made pipeline on the canvas. (Or click **Auto Workflow** to auto-build one from your text.)
 4. **Copy the prompt** - hit **Copy** on the **Sub-Agents** tab (the default for Claude Code). The banner above the tabs will point you to a different tab if your workflow fits one better.
 5. **Send it to Claude** - paste into Claude Code and let the agents run.
 
@@ -27,7 +27,7 @@ All data stays in your browser (localStorage). Nothing is sent anywhere. Your re
 ## What It Does
 
 1. **Paste your requirements** - a Jira URL, user story, task description, or any freeform text. Jira links are detected automatically and resolved via the Atlassian MCP server. Input validation catches bare ticket keys and guides you to paste the full URL
-2. **Refine & plan** (optional) - click **Refine Prompt** to have Claude interview you and sharpen vague requirements, then **Plan Prompt** to generate a codebase-aware implementation blueprint
+2. **Refine & plan** (optional) - click **Generate Refine Prompt** to have Claude interview you and sharpen vague requirements, then **Generate Plan Prompt** to generate a codebase-aware implementation blueprint
 3. **Build a workflow** - auto-generate from your input, choose from 14 curated presets, or build one manually from the node palette
 4. **Configure each agent** - model, tools, custom prompts (or use built-in templates), max turns
 5. **Copy the prompt** from 5 output formats optimized for different execution environments
@@ -200,9 +200,9 @@ A few guardrails keep the graph sane: one review loop per node, and review nodes
 
 Two optional steps that dramatically improve output quality for complex tasks:
 
-**Refine Prompt** generates a discovery interview. Paste it into Claude Code and it asks you about edge cases, UX decisions, tradeoffs, and constraints using the `AskUserQuestion` tool, then writes a refined spec to `.claude/specs/{workflow-name}.md`. Paste the result back into Requirements.
+**Generate Refine Prompt** generates a discovery interview. Paste it into Claude Code and it asks you about edge cases, UX decisions, tradeoffs, and constraints using the `AskUserQuestion` tool, then writes a refined spec to `.claude/specs/{workflow-name}.md`. Paste the result back into Requirements.
 
-**Plan Prompt** generates a codebase analysis prompt. Claude explores your code (via a code-search MCP if available, for example Sourcebot, Sourcegraph, or Kilo Code, with a Glob/Grep/LSP fallback otherwise), identifies relevant files and patterns, and produces an implementation blueprint in `.claude/plans/{workflow-name}.md`. Paste the result into the Implementation Plan field so agents know HOW to build, not just WHAT to build.
+**Generate Plan Prompt** generates a codebase analysis prompt. Claude explores your code (via a code-search MCP if available, for example Sourcebot, Sourcegraph, or Kilo Code, with a Glob/Grep/LSP fallback otherwise), identifies relevant files and patterns, and produces an implementation blueprint in `.claude/plans/{workflow-name}.md`. Paste the result into the Implementation Plan field so agents know HOW to build, not just WHAT to build.
 
 Both prompts tell Claude exactly what to do next, closing the loop back to the Workflow Designer.
 
