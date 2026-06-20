@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## input-source
+
+- record: .workflow/input-source-freeform-default-and-jira-depth.md
+- intent: simplify the Input Source selector to framing-only (Freeform default / User Story / PRD - dropped the two no-op options Jira Ticket + Custom) and route Jira into a richer AUTOMATIC, content-driven experience. Jira handling was never on the dropdown - an Atlassian URL (bare or inline) triggers atlassianTicketFetchHint; enriched that up-front resolution to pull description+acceptance criteria, parent epic, sub-tasks, blocking/linked issues, and recent comments so the orchestrator's ORIGINAL PLAN reflects the full picture
+- files: index.html (NODE_DEFAULTS input source jira->freeform; configSelect 4 opts->3; generateFromStory input->freeform; App Source preset custom->freeform; atlassianTicketFetchHint depth enrichment - pinned phrase `resolved ticket is the spec` preserved), tests.html (source-framing tests rewritten: freeform-default silent + legacy jira degrades silent; + Atlassian resolution-depth test), README.md + TECHNICAL.md (Input Source)
+- work-item: follow-on from node-config + input-source UX discussion | status: current | date: 2026-06-20 | builds-on: .workflow/node-config-options-drive-output.md | note: 1076/1076; bare-key auto-detection deliberately avoided (false-positives COVID-19/UTF-8 - keyed off Atlassian URLs); legacy jira/custom values degrade to silent (single user, no migration); probe-verified bare+inline URL deep resolution + clean plain text
+
 ## node-config-output
 
 - record: .workflow/node-config-options-drive-output.md
