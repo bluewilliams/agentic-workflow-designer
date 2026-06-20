@@ -412,15 +412,15 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-section">
     <h3>Requirements</h3>
-    <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Generate to auto-build a workflow from keywords." oninput="validateStoryInput()"></textarea>
+    <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Auto Workflow to auto-build a workflow from keywords." oninput="validateStoryInput()"></textarea>
     <div id="storyHint" class="input-hint"></div>
     <label class="memory-toggle" style="margin-top:6px">
       <input type="checkbox" id="clarifyFirstToggle" onchange="toggleClarifyFirst()"/>
       <span style="font-size:12px">Clarify requirements first <span style="color:var(--text3);font-weight:400">(agent asks you about ambiguity before planning)</span></span>
     </label>
     <div class="btn-row mt">
-      <button class="btn primary" id="generateBtn" onclick="generateFromStory()">Generate</button>
-      <button class="btn sm" id="refineBtn" onclick="generateRefinePrompt()">Refine Prompt</button>
+      <button class="btn primary" id="generateBtn" onclick="generateFromStory()">Auto Workflow</button>
+      <button class="btn sm" id="refineBtn" onclick="generateRefinePrompt()">Generate Refine Prompt</button>
     </div>
     <div id="urlPresetPicker" style="display:none;margin-top:8px;padding:10px;background:var(--surface2);border:1px solid var(--accent);border-radius:8px">
       <div style="font-size:11px;color:var(--text2);margin-bottom:8px;font-weight:600">Your input looks like a ticket URL. What type of work is it?</div>
@@ -434,16 +434,16 @@ svg.canvas{width:100%;height:100%;display:block}
         <button class="btn sm" onclick="dismissUrlPicker()" style="font-size:10px;opacity:.6">Dismiss</button>
       </div>
     </div>
-    <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5"><strong style="color:var(--text2)">Quick start</strong>: paste requirements above, pick a preset below, copy the prompt. <strong style="color:var(--text2)">Refine Prompt</strong> (optional): generates an interview prompt - run it in Claude Code, then paste the refined spec back into Requirements replacing the original.</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5"><strong style="color:var(--text2)">Quick start</strong>: paste requirements above, pick a preset below, copy the prompt. <strong style="color:var(--text2)">Generate Refine Prompt</strong> (optional): generates an interview prompt - run it in Claude Code, then paste the refined spec back into Requirements replacing the original.</div>
   </div>
 
   <div class="sidebar-section">
     <h3>Implementation Plan <span style="color:var(--text3);font-weight:400;font-size:11px">optional</span></h3>
     <textarea class="story-input" id="planInput" placeholder="Paste an implementation plan here to give agents codebase-specific context - file paths, patterns, architecture decisions.&#10;&#10;Used as a starting point, not a constraint. Agents adapt the plan based on what they discover during research." oninput="autoSaveWorkflow()" style="min-height:60px"></textarea>
     <div class="btn-row mt">
-      <button class="btn sm" onclick="generatePlanPrompt()">Plan Prompt</button>
+      <button class="btn sm" onclick="generatePlanPrompt()">Generate Plan Prompt</button>
     </div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5"><strong style="color:var(--text2)">Optional</strong>: click <strong style="color:var(--text2)">Plan Prompt</strong> to create a planning prompt - run it in Claude Code and paste the result into Implementation Plan. Best used after refining your requirements. Or paste a plan from <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">/plan</code> mode directly.</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5"><strong style="color:var(--text2)">Optional</strong>: click <strong style="color:var(--text2)">Generate Plan Prompt</strong> to create a planning prompt - run it in Claude Code and paste the result into Implementation Plan. Best used after refining your requirements. Or paste a plan from <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">/plan</code> mode directly.</div>
   </div>
 
   <div class="sidebar-section">
@@ -775,7 +775,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </svg>
     <div class="empty-state" id="emptyState">
       <div class="icon">&#x1F3D7;</div>
-      <p>Paste requirements and click <strong>Generate</strong>, <a href="#" onclick="event.preventDefault();document.querySelector('.preset-list').scrollIntoView({behavior:'smooth',block:'center'})" style="color:var(--accent);pointer-events:auto;text-decoration:underline">choose a preset</a>, or add nodes manually.</p>
+      <p>Paste requirements and click <strong>Auto Workflow</strong>, <a href="#" onclick="event.preventDefault();document.querySelector('.preset-list').scrollIntoView({behavior:'smooth',block:'center'})" style="color:var(--accent);pointer-events:auto;text-decoration:underline">choose a preset</a>, or add nodes manually.</p>
       <p style="margin-top:12px;font-size:11px;opacity:.7">
         <kbd>1</kbd> Select &nbsp; <kbd>2</kbd> Connect &nbsp; <kbd>3</kbd> Delete &nbsp; <kbd>Alt+Drag</kbd> Pan &nbsp; <kbd>Scroll</kbd> Zoom
       </p>
@@ -828,22 +828,22 @@ svg.canvas{width:100%;height:100%;display:block}
 <h3>Quick Start</h3>
 <ol>
   <li>Paste requirements into the <strong>Requirements</strong> field (or a Jira ticket URL)</li>
-  <li>Click <strong>Generate</strong> to auto-build a workflow from keywords, or pick a <strong>Preset</strong> below</li>
+  <li>Click <strong>Auto Workflow</strong> to auto-build a workflow from keywords, or pick a <strong>Preset</strong> below</li>
   <li>Customize nodes by clicking them: change agent types, models, prompts, and tools</li>
   <li>Pick an export format tab at the bottom, then <strong>Copy</strong> the prompt into Claude Code</li>
 </ol>
-<p><strong>Generate</strong> stays disabled until you've pasted enough prose to auto-pick a workflow - roughly a sentence (at least 6 words once any URL or ticket key is set aside). A bare Jira key (like <code>PROJ-42</code>) prompts you to paste the full URL; a ticket URL on its own opens a workflow-type picker. <strong>Refine Prompt</strong> is available as soon as the box isn't empty, and <strong>Plan Prompt</strong> isn't gated by the input validator (it checks itself at click time), so you can refine or plan before Generate lights up.</p>
+<p><strong>Auto Workflow</strong> stays disabled until you've pasted enough prose to auto-pick a workflow - roughly a sentence (at least 6 words once any URL or ticket key is set aside). A bare Jira key (like <code>PROJ-42</code>) prompts you to paste the full URL; a ticket URL on its own opens a workflow-type picker. <strong>Generate Refine Prompt</strong> is available as soon as the box isn't empty, and <strong>Generate Plan Prompt</strong> isn't gated by the input validator (it checks itself at click time), so you can refine or plan before Auto Workflow lights up.</p>
 
-<h3>Refine Prompt Flow</h3>
+<h3>Generate Refine Prompt Flow</h3>
 <p>Use this when your requirements are rough or incomplete and you want Claude to interview you before building.</p>
-<div class="flow-diagram">Paste requirements → click <strong>Refine Prompt</strong> → copy into Claude Code
+<div class="flow-diagram">Paste requirements → click <strong>Generate Refine Prompt</strong> → copy into Claude Code
 → Claude asks clarifying questions via interview
 → writes refined spec to .claude/specs/
-→ paste refined spec back into Requirements → Generate or pick preset</div>
+→ paste refined spec back into Requirements → Auto Workflow or pick preset</div>
 
-<h3>Plan Prompt Flow</h3>
+<h3>Generate Plan Prompt Flow</h3>
 <p>Use this after you have solid requirements and want Claude to analyze your codebase before implementing.</p>
-<div class="flow-diagram">Requirements ready → click <strong>Plan Prompt</strong> → copy into Claude Code
+<div class="flow-diagram">Requirements ready → click <strong>Generate Plan Prompt</strong> → copy into Claude Code
 → Claude explores your codebase (files, patterns, architecture)
 → writes implementation plan to .claude/plans/
 → paste plan into <strong>Implementation Plan</strong> field
@@ -851,8 +851,8 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h3>Full Flow (Power Users)</h3>
 <p>For maximum quality, chain all three steps:</p>
-<div class="flow-diagram">1. Paste rough requirements → <strong>Refine Prompt</strong> → interview → refined spec
-2. Paste refined spec → <strong>Plan Prompt</strong> → codebase analysis → implementation plan
+<div class="flow-diagram">1. Paste rough requirements → <strong>Generate Refine Prompt</strong> → interview → refined spec
+2. Paste refined spec → <strong>Generate Plan Prompt</strong> → codebase analysis → implementation plan
 3. Paste plan → build workflow → <strong>Copy</strong> prompt → execute in Claude Code</div>
 
 <h3>Editing Agent Prompts</h3>
@@ -880,7 +880,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>The <strong>Ground in prior records</strong> toggle (on by default) is the read side. Before planning, the orchestrator scans <code>.workflow/_index.md</code> if it exists, opens only the records relevant to the files and capability the change touches (preferring current ones), and folds their decisions and gotchas into the plan. It is self-gating - a no-op on greenfield repos with no records yet. Producing a record is opt-in; benefiting from existing ones is automatic.</p>
 
 <h3>Clarify Requirements First</h3>
-<p>The <strong>Clarify requirements first</strong> toggle (off by default) adds an in-flow clarification gate to the planning step - distinct from the <strong>Refine Prompt</strong> flow above. When on, the planning step probes the requirements for material ambiguity, asks you a focused set of questions in one round, then folds the answers into the plan and the durable record. It degrades gracefully when run non-interactively (CI or an SDK pipeline): it records the open questions as assumptions and risks and proceeds rather than blocking.</p>
+<p>The <strong>Clarify requirements first</strong> toggle (off by default) adds an in-flow clarification gate to the planning step - distinct from the <strong>Generate Refine Prompt</strong> flow above. When on, the planning step probes the requirements for material ambiguity, asks you a focused set of questions in one round, then folds the answers into the plan and the durable record. It degrades gracefully when run non-interactively (CI or an SDK pipeline): it records the open questions as assumptions and risks and proceeds rather than blocking.</p>
 
 <h3>Export Formats</h3>
 <ul>
@@ -4821,7 +4821,7 @@ function generateRefinePrompt() {
   lines.push('**Finally**, in your response to the user (NOT in the file), tell them:');
   lines.push('1. The refined spec has been saved to the file path above');
   lines.push('2. Open the file, copy its full contents, and paste them into the **Requirements** field of the Workflow Designer, replacing the original text');
-  lines.push('3. If they want a codebase-aware implementation plan, click **Plan Prompt** in the Workflow Designer next');
+  lines.push('3. If they want a codebase-aware implementation plan, click **Generate Plan Prompt** in the Workflow Designer next');
 
   const prompt = lines.join('\n');
   navigator.clipboard.writeText(prompt).then(() => {
@@ -4914,7 +4914,7 @@ function generatePlanPrompt() {
   lines.push('**Finally**, in your response to the user (NOT in the file), tell them:');
   lines.push('1. The implementation plan has been saved to the file path above');
   lines.push('2. Open the file, copy its full contents, and paste them into the **Implementation Plan** field of the Workflow Designer');
-  lines.push('3. Then pick a preset or click **Generate** to build the workflow, and copy the exported prompt to run the implementation');
+  lines.push('3. Then pick a preset or click **Auto Workflow** to build the workflow, and copy the exported prompt to run the implementation');
 
   const prompt = lines.join('\n');
   navigator.clipboard.writeText(prompt).then(() => {
@@ -5701,7 +5701,7 @@ function clearCanvas(skipConfirm) {
   state.connectFrom = null;
   state.activePreset = null;
   $('workflowName').value = '';
-  if ($('storyInput')) { $('storyInput').value = ''; $('storyInput').placeholder = 'Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.\n\nJira URL: paste a link and pick a workflow preset \u2014 the agent fetches ticket details at runtime via Atlassian MCP.\n\nRequirements: paste full text and click Generate to auto-build a workflow from keywords.'; }
+  if ($('storyInput')) { $('storyInput').value = ''; $('storyInput').placeholder = 'Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.\n\nJira URL: paste a link and pick a workflow preset \u2014 the agent fetches ticket details at runtime via Atlassian MCP.\n\nRequirements: paste full text and click Auto Workflow to auto-build a workflow from keywords.'; }
   state.repositories = [];
   renderRepoRows();
   if ($('appSourcePath')) $('appSourcePath').value = '';

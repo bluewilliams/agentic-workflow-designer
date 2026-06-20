@@ -93,6 +93,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (classifyAgentPrompt + agentPromptStatusBlock + updateConfig agent branch + configTextarea attrs param + PROMPTS.implementer), tests.html
 - status: superseded | superseded_by: .workflow/agent-prompt-edit-ux.md | date: 2026-06-13
 
+## ui-labels
+
+- record: .workflow/button-label-clarity.md
+- intent: relabel the three "generate" buttons for clarity - `Generate` -> **Auto Workflow** (in-app build, parallels Auto Layout), `Refine Prompt` -> **Generate Refine Prompt**, `Plan Prompt` -> **Generate Plan Prompt**. Two-tier read: Auto Workflow builds now vs the two Generate-___-Prompt helpers make a prompt to run elsewhere. Fixes "Plan Prompt looks like it acts on the Implementation Plan box"
+- files: index.html (3 button labels + helper texts + Help-modal "click X" refs, kept the flow-title h3s; one genClaudePrompt help line), README.md (4 refs); tests.html none (705/705)
+- status: current | date: 2026-06-19 | note: UI text only, no logic; browser-verified label fit
+
 ## in-app-help
 
 - record: .workflow/documentation-updates.md

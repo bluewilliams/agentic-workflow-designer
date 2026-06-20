@@ -4408,8 +4408,8 @@ describe('Usability & Help', () => {
     it('should contain key help sections', () => {
       const body = win.document.querySelector('#helpOverlay .help-body');
       expect(body.innerHTML).toContain('Quick Start');
-      expect(body.innerHTML).toContain('Refine Prompt Flow');
-      expect(body.innerHTML).toContain('Plan Prompt Flow');
+      expect(body.innerHTML).toContain('Generate Refine Prompt Flow');
+      expect(body.innerHTML).toContain('Generate Plan Prompt Flow');
       expect(body.innerHTML).toContain('Power User Tips');
       expect(body.innerHTML).toContain('Export Formats');
       expect(body.innerHTML).toContain('Editing Agent Prompts');
