@@ -93,6 +93,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (classifyAgentPrompt + agentPromptStatusBlock + updateConfig agent branch + configTextarea attrs param + PROMPTS.implementer), tests.html
 - status: superseded | superseded_by: .workflow/agent-prompt-edit-ux.md | date: 2026-06-13
 
+## delivery-commit-pr
+
+- record: .workflow/output-format-delivery-model.md
+- intent: make delivery (commit/push/PR/report/docs) a clean function of the Output node format, removing the separate Delivery toggle. PHASE 1 + PHASE 2 DONE (uncommitted), 721 tests. Delivery is fully format-driven via deliveryBlock(level) dispatch (priority pr>commit>report>docs>code). 5 formats: Leave Uncommitted (code, default, renamed from "Code Changes", value unchanged) | Commit (commit+push, no PR) | Pull Request | Report (writes a real report, never commits) | Documentation (writes real docs per project conventions, never commits). Branch Name shows for pr+commit, Target Branch for pr only. No preset uses pr; performance stays report.
+- files: index.html (deliveryBlock/deliveryFormats/deliveryTitle/commitBlock/reportBlock/docsBlock + format dropdown w/ commit + branch-field gating + 5 generator sites use deliveryBlock), tests.html (delivery suite = 5 generators x 5 formats matrix + dispatch/fallback/commit/deliversPr units), TECHNICAL.md (Delivery section + security table + file tree), README.md (Output section)
+- status: current | date: 2026-06-19 | note: code changes happen regardless of output node (no output -> leave uncommitted); a single Report output handles code+report (e.g. performance); KEY: keep Code Changes (== no-output default)
+
 ## ui-labels
 
 - record: .workflow/workflow-context-agent-context-rename.md

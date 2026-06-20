@@ -1556,13 +1556,26 @@ describe('Datadog grounding gate', () => {
   });
 });
 
-// ─── Delivery is driven by the Output node format (pr = commit+push+PR; else uncommitted) ───
+// ─── Delivery is driven by the Output node format (code | commit | pr | report | docs) ───
 describe('Delivery is driven by the Output node format', () => {
   beforeEach(() => { resetState(); });
 
-  const ON_MARK = 'NEVER commit or push directly to the target branch';
-  const OFF_MARK = 'Leave all changes uncommitted on the current branch';
+  const COMMITS = 'NEVER commit or push directly to the target branch'; // pr + commit
+  const UNCOMMITTED = 'Leave all changes uncommitted on the current branch'; // code / no output
+  const OPENS_PR = 'gh pr create'; // pr only
+  const NO_PR = 'Do NOT open a pull request'; // commit only
+  const NEVER_COMMITS = 'Do NOT commit, push, or open a pull request'; // report + docs
   const generators = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genAgentSDK', 'genClaudePrompt'];
+
+  // Per-format expectations applied across every generator. Each generator renders
+  // the delivery block (the SDK as # comments), so the substring checks hold for all.
+  const CASES = {
+    code:   { must: [UNCOMMITTED],                       mustNot: [COMMITS, OPENS_PR] },
+    commit: { must: [COMMITS, NO_PR],                    mustNot: [UNCOMMITTED, OPENS_PR] },
+    pr:     { must: [COMMITS, OPENS_PR],                 mustNot: [UNCOMMITTED, NO_PR] },
+    report: { must: ['Deliverable: a written report', NEVER_COMMITS], mustNot: [COMMITS, UNCOMMITTED, OPENS_PR] },
+    docs:   { must: ['Deliverable: documentation', NEVER_COMMITS],    mustNot: [COMMITS, UNCOMMITTED, OPENS_PR] },
+  };
 
   // Minimal input -> agent -> output workflow with the given output format.
   function workflowWithOutput(format) {
@@ -1579,27 +1592,40 @@ describe('Delivery is driven by the Output node format', () => {
   });
 
   generators.forEach(gen => {
-    it(gen + ': a Pull Request output emits the PR block, not the no-commit line', () => {
-      workflowWithOutput('pr');
-      const out = win[gen]();
-      expect(out).toContain(ON_MARK);
-      expect(out).toNotContain(OFF_MARK);
-    });
-    it(gen + ': a Code Changes output leaves changes uncommitted, no PR block', () => {
-      workflowWithOutput('code');
-      const out = win[gen]();
-      expect(out).toContain(OFF_MARK);
-      expect(out).toNotContain(ON_MARK);
+    Object.keys(CASES).forEach(format => {
+      it(gen + ': a ' + format + ' output renders the matching delivery instructions', () => {
+        workflowWithOutput(format);
+        const out = win[gen]();
+        CASES[format].must.forEach(m => expect(out).toContain(m));
+        CASES[format].mustNot.forEach(m => expect(out).toNotContain(m));
+      });
     });
   });
 
-  it('Report and Documentation outputs never emit the commit/PR block', () => {
-    ['report', 'docs'].forEach(format => {
-      workflowWithOutput(format);
-      const out = win.genWorkflow();
-      expect(out).toNotContain(ON_MARK);
-      expect(out).toContain(OFF_MARK);
-    });
+  it('deliveryBlock prioritizes pr > commit > report > docs > code on multi-output', () => {
+    resetState();
+    win.addNode('output', 100, 100, 'A', { deliverable: '', format: 'docs' });
+    win.addNode('output', 100, 200, 'B', { deliverable: '', format: 'report' });
+    expect(win.deliveryBlock('###')[0]).toBe('### Report'); // report beats docs
+    win.addNode('output', 100, 300, 'C', { deliverable: '', format: 'commit' });
+    expect(win.deliveryBlock('###')[0]).toBe('### Commit'); // commit beats report
+    win.addNode('output', 100, 400, 'D', { deliverable: '', format: 'pr' });
+    expect(win.deliveryBlock('###')[0]).toBe('### Pull Request Creation'); // pr beats all
+  });
+
+  it('deliveryBlock falls back to the uncommitted block with no output node', () => {
+    resetState();
+    const block = win.deliveryBlock('###').join('\n');
+    expect(block).toContain(UNCOMMITTED);
+    expect(win.deliveryTitle()).toBe('Delivery');
+  });
+
+  it('the Commit block commits and pushes but never opens a PR', () => {
+    workflowWithOutput('commit');
+    const block = win.commitBlock('### Commit').join('\n');
+    expect(block).toContain('git push -u origin');
+    expect(block).toContain(NO_PR);
+    expect(block).toNotContain(OPENS_PR);
   });
 
   it('deliversPr() reflects whether any output is a Pull Request', () => {

@@ -172,9 +172,14 @@ Splits the workflow into concurrent branches:
 - **Description** - Requirements text. Preset-specific placeholder templates guide you to provide the right information
 
 ### Output
-- **Format** - Code Changes, Pull Request, Report, or Documentation
-- **Deliverable** - Description of what's produced
-- **Branch Name / Target Branch** - Appear when format is Pull Request, with git provider auto-detection
+The Output node's **Format** is the single delivery control - it decides what happens to the work at the end. Code changes are produced either way (even with no output node, changes are left uncommitted for review); the format only chooses the finish:
+- **Leave Uncommitted** (default) - make the changes, commit nothing
+- **Commit** - feature branch, commit + push, no PR
+- **Pull Request** - feature branch, commit + push, open a PR (git provider auto-detected: GitHub, Bitbucket, GitLab)
+- **Report** - produce a written report; leave any code uncommitted
+- **Documentation** - produce docs following the project's conventions; leave any code uncommitted
+
+Other fields: **Deliverable** (what's produced), **Branch Name** (Commit and Pull Request), and **Target Branch** (Pull Request only). No preset defaults to Pull Request - commit/push/PR is always an explicit choice.
 
 ### Preset-Specific Settings
 
