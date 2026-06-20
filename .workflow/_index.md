@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## node-config-output
+
+- record: .workflow/node-config-options-drive-output.md
+- intent: make three inert node config controls drive the generated prompt - Parallel `strategy` (join semantics in all 5 generators; SDK maps any/race to asyncio.wait FIRST_COMPLETED, race cancels pending), Task nodes (were dropped wholesale; now a Tasks section with description + `Done when:` acceptance), Input `source` (story/prd add a one-line framing hint; jira/custom stay silent). Each option's default is byte-identical; new behavior fires only on a non-default value
+- files: index.html (helpers strategyJoinPhrase/forkStrategyOf/taskSectionLines/taskSectionComments/inputSourceHint; 5 strategy sites + 5 task-emission sites + 2 source-hint sites in requirementsBlock & genAgentSDK), tests.html (4 describe blocks / 12 tests), README.md + TECHNICAL.md (Task/Parallel/Input node config + "Node config that drives output")
+- status: current | date: 2026-06-20 | note: 1064/1064 (was 1052); no preset/Auto Workflow creates Task nodes or uses story/prd source, so all existing output is byte-identical (existing suite + new baseline tests confirm); Parallel/Input `description` deliberately NOT emitted (content already carried globally - would duplicate + regress); surfaced the separate Auto Workflow no-implementer gap (this task's own auto-generated workflow was discarded for having no builder)
+
 ## adversarial-review
 
 - record: .workflow/generic-adversarial-critic-agent-with-one-click-attach.md
@@ -15,6 +22,11 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - work-item: backlog #7 follow-on | status: current | date: 2026-06-19 | builds-on: .workflow/generic-adversarial-critic-agent-with-one-click-attach.md | note: 697/697 tests; independent reviews PASS (x2); verifier has NO lens (one strong default prompt, method self-selected per artifact); verifier gets Bash+WebFetch; one review loop per node; review nodes (Skeptic/Verifier) cannot be review targets; demoed in ui_component preset; ALSO includes the reroute feature (setReviewLoopBackTarget + a dropdown on the review-loop decision to re-point the failure back-edge to any work node, edge-only/no new state, canvas redraws live)
 
 ## auto-workflow-detection
+
+- record: .workflow/auto-workflow-default-to-build-guard.md
+- intent: a demote-only "default-to-build" guard in generateFromStory so a read-only/non-coding shape (research/review/analysis/test/documentation -> no implementer) is chosen ONLY when the task asks to PRODUCE a read-only deliverable; build tasks whose acceptance criteria are thick with test/doc vocabulary keep their implementer. Surfaced by dogfooding (the auto-generated workflow for the node-config task had no builder). Position-independent (deliverable markers match anywhere; first ~240 chars weigh more), slants to code on ties, can never promote build->read-only
+- files: index.html (generateFromStory: NON_CODING guard block w/ READONLY_MARKERS + BUILD_MARKERS + position-weighted strength + demote-to-generic; no CATEGORIES/PRIORITY/shape changes), tests.html (IMPLEMENTERS const; build-shape structural invariant in the fuzz labeled-intent loop; "default-to-build guard" suite +7), README.md + TECHNICAL.md (Workflow Generation guard, replaced stale "leads with the imperative verb")
+- work-item: follow-on from node-config dogfood | status: current | date: 2026-06-20 | builds-on: .workflow/auto-workflow-scoring-and-fuzz.md | note: 1071/1071 (was 1064); converged in 2 empirical iterations (dropped "job" build-noun false positive caught by fuzz; test markers tightened to authoring-only so "test suite passes" AC != test intent); demote-only => 289 fuzz read-only cases unchanged; key crux = test acceptance vocabulary is NOT a read-only signal, only "write/add tests" authoring is
 
 - record: .workflow/auto-workflow-scoring-and-fuzz.md
 - intent: ultrathink improvement of Auto Workflow (`generateFromStory`) intent detection + Skeptic/Verifier integration + a property-based fuzz harness. Keeps generating BESPOKE workflows (not preset-picking). Fixed verified mis-detections (plurals missed `\bword\b`; no research/review intents; review requests built code). Added: inflection-tolerant keywords; 2 new READ-ONLY intents research (spike->report) + review (audit->report) with leading-verb detection so an imperative wins but mid-sentence "audit logging"/"evaluates X" stays weak; PRIORITY tie-break; Skeptic-on-Planner (standard/complex) + Verifier-on-builder (complex, single builder) via inline wrapReview (no batchUndo); detection toast with near-tie warning; denoiseForScoring strips real-Jira boilerplate (Logistics/CI/Release-pipeline sections, "Database Changes: None") before scoring so a real ticket is not hijacked to DevOps/data

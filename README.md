@@ -164,12 +164,21 @@ A conditional gate that loops agents back for revisions when criteria aren't met
 
 Decision criteria are automatically embedded into upstream agent prompts so agents know what they're being evaluated against.
 
+### Task
+A unit of work (not an agent step). Both fields flow into the generated prompt:
+- **Description** - what the task does
+- **Acceptance Criteria** - when present, emitted as the task's explicit "Done when:" criteria
+
+Task nodes render as a **Tasks** section in every generator. Adding them changes nothing for workflows that have none (no preset uses Task nodes).
+
 ### Parallel Fork
-Splits the workflow into concurrent branches:
-- **Strategy** - Wait for All (default), First Complete, or Race
+Splits the workflow into concurrent branches. **Strategy** shapes the join semantics in every generator (the default reproduces today's output exactly; the other two only change output when chosen):
+- **Wait for All** (default) - collect every branch before continuing
+- **First Complete** - proceed with the first branch to finish (Agent SDK maps this to `asyncio.wait(..., FIRST_COMPLETED)`)
+- **Race** - take the first useful result and stop waiting on the rest
 
 ### Input
-- **Source** - Jira Ticket, User Story, PRD, or Custom
+- **Source** - Jira Ticket / Custom (neutral - the story box carries requirements), or **User Story** / **PRD**, which add a one-line framing hint telling agents how to read the input. The hint only appears for User Story and PRD
 - **Description** - Requirements text. Preset-specific placeholder templates guide you to provide the right information
 
 ### Output
@@ -265,7 +274,7 @@ LSP is enabled by default on most agent presets. Code-analysis prompts in the Pr
 
 ## More Under the Hood
 
-- **Smart story detection** auto-generates a bespoke workflow shape from your requirements: a 13-category keyword engine (inflection-tolerant, so "tests"/"endpoints"/"migrations" all count) routes build, research (read-only spike → report), review (read-only audit → report), and analysis (measure/forecast cost → report) intents, leads with the imperative verb so "Review the service" isn't mistaken for a build, wraps a Skeptic on the plan and a Verifier on complex builds, and tells you what it detected so you can rephrase or pick a preset
+- **Smart story detection** auto-generates a bespoke workflow shape from your requirements: a 13-category keyword engine (inflection-tolerant, so "tests"/"endpoints"/"migrations" all count) routes build, research (read-only spike → report), review (read-only audit → report), and analysis (measure/forecast cost → report) intents, defaults to building under ambiguity (a read-only research/review/test/docs shape is only chosen when the task asks to *produce* a read-only deliverable, so a build task with test-heavy acceptance criteria still gets an implementer), wraps a Skeptic on the plan and a Verifier on complex builds, and tells you what it detected so you can rephrase or pick a preset
 - **Acceptance criteria extraction** parses bullet/numbered criteria from requirements and uses them as decision gate conditions
 - **Decision gates** are embedded as success criteria in upstream agent prompts, with explicit reasoning requirements and configurable revision limits
 - **Multi-repository support** lets you specify multiple repos with branches; agents check out the right branch before starting
