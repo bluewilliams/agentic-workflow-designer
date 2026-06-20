@@ -6578,8 +6578,17 @@ function getDownstreamDecisions(nodeId) {
 // ═══════════════════════════════════════════════════════════
 // FORMAT 1: Workflow Prompt (structured markdown)
 // ═══════════════════════════════════════════════════════════
+// A Task earns a place in the generated prompt only when the user gave it
+// meaningful content: a description, acceptance criteria, or a deliberate (non-default)
+// label. A pristine dropped Task node contributes nothing - the node stays on the
+// canvas (connections/topology preserved), it just does not inject silent content.
+function taskHasContent(t) {
+  const label = (t.label || '').trim();
+  return !!((t.config.description || '').trim() || (t.config.acceptance || '').trim() || (label && label !== NODE_DEFAULTS.task.label));
+}
+
 function taskSectionLines(ordered, headingMarker) {
-  const tasks = ordered.filter(n => n.type === 'task');
+  const tasks = ordered.filter(n => n.type === 'task' && taskHasContent(n));
   if (!tasks.length) return [];
   const lines = [`${headingMarker} Tasks`, ''];
   tasks.forEach(t => {
@@ -6593,7 +6602,7 @@ function taskSectionLines(ordered, headingMarker) {
 }
 
 function taskSectionComments(ordered) {
-  const tasks = ordered.filter(n => n.type === 'task');
+  const tasks = ordered.filter(n => n.type === 'task' && taskHasContent(n));
   if (!tasks.length) return [];
   const lines = ['', '    # \u2500\u2500 Tasks \u2500\u2500'];
   tasks.forEach(t => {
