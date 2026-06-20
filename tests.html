@@ -707,6 +707,36 @@ describe('Persistence', () => {
       const cb = win.document.getElementById('memoryToggle');
       if (cb) expect(cb.checked).toBe(true);
     });
+    // Export/import, save/load, clone, autosave, and the handoff bundle ALL funnel through
+    // serialize -> deserialize. Confirm Skeptic/Verifier prompts (now baked into config.prompt)
+    // survive the round-trip and the generated output is byte-identical.
+    it('preserves Skeptic/Verifier config.prompt and generated output across a round-trip', () => {
+      win.loadPreset('delivery_swarm'); // has a Skeptic (Lead Planner) and a Verifier (Integrator)
+      win.document.getElementById('workflowName').value = 'roundtrip-test';
+      const sk0 = win.state.nodes.find(n => /Skeptic review/.test(n.label));
+      const vf0 = win.state.nodes.find(n => /Verification/.test(n.label));
+      expect((sk0.config.prompt || '').trim().length).toBeGreaterThan(0);
+      expect((vf0.config.prompt || '').trim().length).toBeGreaterThan(0);
+      const skPrompt = sk0.config.prompt, vfPrompt = vf0.config.prompt;
+      const genBefore = win.genWorkflow();
+      const subBefore = win.genSubAgents();
+      // JSON clone == what export/import, save/load, clone, autosave all do
+      const json = JSON.parse(JSON.stringify(win.serializeWorkflow()));
+      resetState();
+      expect(win.deserializeWorkflow(json)).toBe(true);
+      const sk1 = win.state.nodes.find(n => /Skeptic review/.test(n.label));
+      const vf1 = win.state.nodes.find(n => /Verification/.test(n.label));
+      expect(sk1.config.prompt).toBe(skPrompt);
+      expect(vf1.config.prompt).toBe(vfPrompt);
+      expect(win.getEffectivePrompt(sk1)).toBe(skPrompt);
+      expect(win.getEffectivePrompt(vf1)).toBe(vfPrompt);
+      expect(win.classifyAgentPrompt(sk1).state).toBe('template'); // not 'empty'
+      expect(win.classifyAgentPrompt(vf1).state).toBe('template');
+      expect(win.genWorkflow()).toBe(genBefore);     // generated output unchanged after round-trip
+      expect(win.genSubAgents()).toBe(subBefore);
+      // the Skeptic's actual prompt text rides along in the generated prompt
+      expect(win.genWorkflow()).toContain(skPrompt.split('\n')[0]);
+    });
   });
 
   describe('savePrefs / restorePrefs', () => {
@@ -5232,6 +5262,22 @@ describe('Usability & Help', () => {
       win.attachAdversary(target.id);
       const critic = attached(target.id);
       expect(win.canAttachAdversary(critic)).toBe(false);
+    });
+    it('bakes the role template into the attached Skeptic config.prompt (so the Agent Prompt field shows it)', () => {
+      const { target } = buildTargetWithDownstream();
+      win.attachAdversary(target.id);
+      const critic = attached(target.id);
+      expect((critic.config.prompt || '').trim().length).toBeGreaterThan(0);
+      expect(critic.config.prompt).toBe(win.buildAdversaryPrompt('coder'));
+      expect(win.classifyAgentPrompt(critic).state).toBe('template'); // not 'empty'
+    });
+    it('a preset Skeptic and Verifier both show their role template in config.prompt', () => {
+      win.loadPreset('feature');
+      const sk = win.state.nodes.find(n => /Skeptic review/.test(n.label));
+      expect(sk.config.prompt).toBe(win.buildAdversaryPrompt('planner'));
+      win.loadPreset('ui_component');
+      const vf = win.state.nodes.find(n => /Verification/.test(n.label));
+      expect(vf.config.prompt).toBe(win.PROMPTS.verifier);
     });
     it('should create critic + decision + revise loop on attach', () => {
       const { target, out } = buildTargetWithDownstream();
