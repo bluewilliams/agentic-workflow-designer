@@ -3313,6 +3313,12 @@ function addNode(type, x, y, label, config) {
   if (type === 'agent' && !(config && config.model)) {
     node.config.model = state.defaultModel;
   }
+  // Skeptic/Verifier nodes are created without an explicit prompt (resolved lazily). Bake the
+  // resolved role template into config.prompt so the Agent Prompt field shows it like every
+  // other generated agent - editable in place, or left as-is and extended via Agent Context.
+  if (type === 'agent' && (node.config.agentType === 'adversary' || node.config.agentType === 'verifier') && !(node.config.prompt && node.config.prompt.trim())) {
+    node.config.prompt = getEffectivePrompt(node);
+  }
   state.nodes.push(node);
   selectNode(node.id, true);
   render();
