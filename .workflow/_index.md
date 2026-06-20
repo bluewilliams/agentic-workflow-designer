@@ -14,6 +14,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (AGENT_TYPES Skeptic rename +verifier=13, AGENT_TYPE_PROMPT_MAP +verifier, PROMPTS.verifier, REVIEW_LOOP_KINDS + attachReviewLoop/detachReviewLoop/toggleReviewLoop/getReviewLoop/hasReviewLoop/canAttachReviewLoop + 5 back-compat aliases, ctxSkeptic+ctxVerifier + showContextMenu setReviewItem, feature+documentation preset markers/labels), tests.html (+16 tests: verifier role/prompt/family; length 12->13; Adversary->Skeptic; marker renames)
 - work-item: backlog #7 follow-on | status: current | date: 2026-06-19 | builds-on: .workflow/generic-adversarial-critic-agent-with-one-click-attach.md | note: 697/697 tests; independent reviews PASS (x2); verifier has NO lens (one strong default prompt, method self-selected per artifact); verifier gets Bash+WebFetch; one review loop per node; review nodes (Skeptic/Verifier) cannot be review targets; demoed in ui_component preset; ALSO includes the reroute feature (setReviewLoopBackTarget + a dropdown on the review-loop decision to re-point the failure back-edge to any work node, edge-only/no new state, canvas redraws live)
 
+## presets
+
+- record: .workflow/swarm-presets-review-and-delivery.md
+- intent: renamed the read-only "Agent Swarm" audit preset -> "Review Swarm" (key stays `swarm`), and added a new showcase preset "Delivery Swarm" (key `delivery_swarm`) - an intricate end-to-end build (20 nodes / 11 agents) that demonstrates the full toolkit in one flow: two parallel fan-outs (Discovery 3-way, Build backend+frontend), the Skeptic doubting the Lead Planner early, the Verifier proving the Integrator late, a final review gate, and tests. Output format `code` (Leave Uncommitted); no preset uses pr.
+- files: index.html (4 new house-style PROMPTS codebaseCartographer/requirementsAnalyst/priorArtResearcher/integrator; sidebar items rename+add; delivery_swarm builder; presetPlaceholders.delivery_swarm), tests.html (delivery_swarm count=11 + review-loop suite: Skeptic on planner, Verifier on integrator, 0 dangling, 4 parallel nodes), README.md + TECHNICAL.md preset rows
+- status: current | date: 2026-06-19 | note: 724/724; headless smoke clean (0 dangling, no blank prompts, all 5 generators render); reused the Skeptic/Verifier construction pattern from the feature + ui_component presets; naming open to Blue (he floated "Agent Swarm Review"); display labels are independent of the internal keys
+
 ## autosave-persistence
 
 - record: .workflow/autosave-toggle-sync.md
