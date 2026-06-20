@@ -12,6 +12,7 @@ Non-goals: emitting Parallel `description` or Input `description` (their content
 
 - **Parallel Strategy drives join semantics in all 5 generators.** GIVEN a fork, WHEN strategy is `all` THEN output is byte-identical to before (`genWorkflow` prints `(all)`, SDK uses `asyncio.gather`); WHEN `any` THEN proceed-on-first prose + SDK `asyncio.wait(FIRST_COMPLETED)`; WHEN `race` THEN first-useful-result prose + SDK `FIRST_COMPLETED` with `_t.cancel()` on pending. Verified by `Node config: Parallel Strategy join semantics`.
 - **Task nodes reach the prompt.** GIVEN a Task node with description (+ optional acceptance), WHEN any generator runs THEN a Tasks section lists the label, description, and `Done when: {acceptance}` (omitted when acceptance empty). GIVEN no Task nodes THEN no Tasks section (baseline byte-identical). Verified by `Node config: Task nodes reach the prompt`.
+- **Empty Task nodes contribute nothing.** GIVEN a Task with no description, no acceptance, and the default label, WHEN any generator runs THEN it is omitted from the Tasks section (the node stays on the canvas - connections/topology preserved - it just injects no silent content). A deliberate (non-default) label counts as intent and IS emitted. Verified by the empty-task / renamed-empty-task tests. `taskHasContent(t)` gates both helpers.
 - **Input Source frames the input softly.** GIVEN source `story` or `prd`, WHEN generating THEN a one-line framing hint appears; GIVEN `jira` or `custom` THEN no hint (the story box + `requirementsBlock` URL handling already carry requirements, so the default never assumes a wrong fetch). Verified by `Node config: Input Source framing`.
 - **Settings round-trip.** GIVEN strategy/source/acceptance set, WHEN serialize -> deserialize THEN all three survive. Verified by `Node config: round-trips through serialize/deserialize`.
 
@@ -43,11 +44,12 @@ Non-goals: emitting Parallel `description` or Input `description` (their content
 
 ## Verify
 
-`./run-tests.sh` -> `PASS: 1073/1073` (post-guard + SDK source-hint consistency fix; node-config portion was 1064). Headless probe confirmed all five generators emit the Tasks section, the `Done when:` acceptance, race join semantics, and the PRD hint on a workflow built with a Task node, a `race` fork, and a `prd` input source.
+`./run-tests.sh` -> `PASS: 1075/1075` (post-guard + SDK source-hint consistency + empty-task gating; node-config portion was 1064). Headless probe confirmed all five generators emit the Tasks section, the `Done when:` acceptance, race join semantics, and the PRD hint on a workflow built with a Task node, a `race` fork, and a `prd` input source.
 
 ## Gotchas / non-obvious
 
-- `genWorkflow`'s parallel line prints `(all)` today (not `wait for all`) because `config.strategy` defaults to the truthy `'all'`; byte-identical means keeping `(all)`.
+- An empty Task is omitted from the Tasks SECTION, but `genWorkflow`'s Execution Flow line still lists its label (the flow trace mirrors every canvas node - transparent topology, not injected instructions; intentionally left as-is for canvas/flow consistency).
+- - `genWorkflow`'s parallel line prints `(all)` today (not `wait for all`) because `config.strategy` defaults to the truthy `'all'`; byte-identical means keeping `(all)`.
 - `win.state` is unreadable from a raw iframe probe (functions close over it internally); pass a literal model string instead of `w.state.defaultModel`.
 - The Input source hint must be suppressed for URL-only AND empty stories. The markdown generators get this free (requirementsBlock's URL-only branch returns before the hint, and it returns `[]` for empty story), but genAgentSDK added the hint unconditionally - gated it on `story && !isUrlOnly(story)` so all five generators agree (caught by the pre-commit deep pass).
 

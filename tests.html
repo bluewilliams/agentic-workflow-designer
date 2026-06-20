@@ -2594,6 +2594,25 @@ describe('Node config: Task nodes reach the prompt', () => {
     expect(wf).toContain(DESC);
     expect(wf).toNotContain('Done when:');
   });
+  it('an untouched Task (default label, empty fields) contributes nothing but stays wired', () => {
+    const ag = base();
+    const t = win.addNode('task', 0, 0, 'Task', { description: '', acceptance: '' });
+    win.addConnection(ag.id, t.id);
+    expect(win.genWorkflow()).toNotContain('### Tasks');
+    [win.genSubAgents(), win.genAgentTeams(), win.genClaudePrompt()].forEach(out => expect(out).toNotContain('## Tasks'));
+    expect(win.genAgentSDK()).toNotContain('Tasks \u2500\u2500');
+    // the node and its connection remain in the graph
+    expect(win.state.nodes.some(n => n.id === t.id)).toBe(true);
+    expect(win.state.connections.some(c => c.to === t.id)).toBe(true);
+  });
+  it('a renamed Task with empty fields still contributes (label = intent)', () => {
+    const ag = base();
+    const t = win.addNode('task', 0, 0, 'Deploy to staging', { description: '', acceptance: '' });
+    win.addConnection(ag.id, t.id);
+    expect(win.genWorkflow()).toContain('### Tasks');
+    expect(win.genWorkflow()).toContain('Deploy to staging');
+    expect(win.genWorkflow()).toNotContain('Done when:');
+  });
 });
 
 describe('Node config: Input Source framing', () => {
