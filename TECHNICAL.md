@@ -214,7 +214,7 @@ When a preset is loaded and the requirements field is empty, the textarea placeh
 
 ### Topology Awareness in Exports
 All generators use `topologicalSort()` to process nodes in dependency order. Each agent's export block includes:
-- Input from upstream nodes (dependency context)
+- Input from upstream nodes (dependency context), tagged with each upstream agent's type via `getDepsWithType` - e.g. "Codebase Mapper (Researcher)" - so a downstream step knows the role behind each output it receives, not just the name
 - Success gate info if a Decision node follows it
 - Downstream awareness so the agent knows who reads its output
 - The full Jira/user story as a `## Requirements` section
