@@ -281,7 +281,7 @@ LSP is enabled by default on most agent presets. Code-analysis prompts in the Pr
 - **Pull Request creation** is an opt-in output format with git provider auto-detection (GitHub, Bitbucket, GitLab) and safety-first defaults
 - **Secret scanner** checks all user inputs for API keys, credentials, and connection strings before copying to clipboard
 - **Input validation** catches bare Jira ticket keys, URL-only input without Atlassian MCP, and insufficient keywords for generation
-- **Workflow-aware prompts** include upstream dependencies, downstream consumers, and the full requirements in every agent's instructions
+- **Workflow-aware prompts** include upstream dependencies (each tagged with the producing agent's type, e.g. "Mapper (Researcher)", so a step knows the role behind each input), downstream consumers, and the full requirements in every agent's instructions
 - **Persistent preferences** for default model, memory toggle, MCP settings, output format, repositories, and prompt library favorites carry across sessions automatically
 
 ## Things You Might Not Notice

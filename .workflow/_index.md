@@ -2,6 +2,20 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## handoff-context-reliability
+
+- record: .workflow/handoff-context-reliability.md
+- intent: two multi-input-handoff reliability fixes from the audit dogfood - (1) genericize PROMPTS.reportBuilder so it is reviewer-count agnostic (drop hardcoded security/quality/performance/architecture dimensions; conditional per-area breakdown only "where multiple reviewers covered distinct areas"); (2) tag dependency-reference lines with the upstream agent TYPE via new getDepsWithType ("Label (Type)") so a downstream step knows the ROLE behind each output, not just the name - applies to ALL steps, not just reviewers
+- files: index.html (getDeps refactor -> getDepNodes + getDeps[unchanged] + getDepsWithType; 7 display-site swaps; PROMPTS.reportBuilder), tests.html (+3 tests), README.md/TECHNICAL.md
+- status: current | date: 2026-06-21 | builds-on: .workflow/audit-of-generated-prompt-machinery.md | note: 1080/1080; getDeps contract unchanged (validation untouched); static conditional clause chosen over dynamic generation (cannot degrade the swarm - its inputs ARE the dimensions); genAgentSDK unaffected (no markdown dep lines; removal candidate)
+
+## generated-prompt-audit
+
+- record: .workflow/audit-of-generated-prompt-machinery.md
+- intent: read-only audit of the five generators' toggle/feature wiring parity, durable-record cadence, and cross-generator consistency - run as an EXECUTION-dogfood (an Auto Workflow generated workflow, orchestrated end-to-end to surface gaps in the designer's own generated prompts). Deliverable: .workflow/audit-of-generated-prompt-machinery-report.md
+- files: index.html (5 generators + shared hint helpers), tests.html (parity suites); NO code changed (read-only)
+- status: current | date: 2026-06-21 | note: audit result = 4 prose generators in lockstep, genAgentSDK the sole divergence (10 helpers inline + 4 missing toggle injections + degraded durable-record cadence; NEW: consume-records SDK comment already drifted, untested). Confirms backlog #2 (cadence) + #4 (SDK gaps). Workflow-gaps found by running it: generic role-task vs the actual ask, LSP steps on a single-file app, Report-Builder swarm-template on a 1-reviewer workflow, durable-record protocol does not fit a read-only audit, no dead-step recovery guidance (Step 2 agent died on an API error; orchestrator recovered from this record)
+
 ## input-source
 
 - record: .workflow/input-source-freeform-default-and-jira-depth.md

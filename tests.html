@@ -2678,6 +2678,35 @@ describe('Node config: round-trips through serialize/deserialize', () => {
   });
 });
 
+describe('Dependency references carry upstream agent type', () => {
+  beforeEach(() => { resetState(); });
+  it('downstream agent dependency lines include the upstream Label (Type)', () => {
+    const i = win.addNode('input', 0, 0, 'Spec');
+    const a = win.addNode('agent', 0, 0, 'Codebase Mapper', { agentType:'researcher', model:'opus-4.6', tools:['Read'], prompt:'map', maxTurns:8 });
+    const b = win.addNode('agent', 0, 0, 'Synthesizer', { agentType:'writer', model:'opus-4.6', tools:['Read','Write'], prompt:'synth', maxTurns:8 });
+    win.addConnection(i.id, a.id); win.addConnection(a.id, b.id);
+    const TAG = 'Codebase Mapper (Researcher)';
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genClaudePrompt()]
+      .forEach(out => expect(out).toContain(TAG));
+  });
+  it('applies to any downstream step (not just reviewers) - e.g. an Implementer fed by a Planner', () => {
+    const i = win.addNode('input', 0, 0, 'Spec');
+    const pl = win.addNode('agent', 0, 0, 'Lead Planner', { agentType:'planner', model:'opus-4.6', tools:['Read'], prompt:'plan', maxTurns:5 });
+    const im = win.addNode('agent', 0, 0, 'Implementer', { agentType:'coder', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'build', maxTurns:10 });
+    win.addConnection(i.id, pl.id); win.addConnection(pl.id, im.id);
+    expect(win.genSubAgents()).toContain('Lead Planner (Planner)');
+  });
+});
+
+describe('Report Builder prompt is reviewer-count agnostic', () => {
+  it('drops the hardcoded swarm dimensions and uses a conditional per-area clause', () => {
+    expect(win.PROMPTS.reportBuilder).toNotContain('security, quality, performance');
+    expect(win.PROMPTS.reportBuilder).toNotContain('per dimension (security');
+    expect(win.PROMPTS.reportBuilder).toContain('where multiple reviewers covered distinct areas');
+    expect(win.PROMPTS.reportBuilder).toContain('every upstream reviewer');
+  });
+});
+
 describe('Workflow Generation', () => {
   beforeEach(() => { resetState(); });
 
