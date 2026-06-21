@@ -6276,14 +6276,26 @@ describe('Prompt Panel Resize', () => {
 // ═══════════════════════════════════════════════════════════
 // Suite: Atlassian two-block model (ticket-fetch + general) - scenario matrix
 // ═══════════════════════════════════════════════════════════
-describe('Atlassian ticket resolution depth (plan-time leverage)', () => {
-  it('the up-front resolution pulls deeper Jira context for the original plan', () => {
+describe('Atlassian ticket resolution (comprehensive read; wider context is agency)', () => {
+  it('requires a comprehensive read of the input ticket (incl. comments + attachments), not forced wider work', () => {
     const out = win.atlassianTicketFetchHint(['https://foo.atlassian.net/browse/TEST-1']);
-    expect(out).toContain('resolved ticket is the spec'); // pinned phrase preserved
+    expect(out).toContain('resolved ticket is the spec'); // original core preserved verbatim
+    // required: comprehensive read of the INPUT ticket
     expect(out).toContain('acceptance criteria');
-    expect(out).toContain('parent epic');
-    expect(out).toContain('sub-tasks');
     expect(out).toContain('comments');
+    expect(out).toContain('attachments');
+    expect(out).toContain('follow any links'); // agency to follow helpful links (ticket or requirements)
+    expect(out).toContain('sharpen the plan'); // the orchestrator (plan-maker) also has dig-deeper agency
+    // neither a forced deep-pull nor a scope mandate - that wording is gone; wider-context agency lives in atlassianGeneralHint
+    expect(out).toNotContain('do not pick up sibling');
+    expect(out).toNotContain('full agency to dig deeper');
+  });
+  it('atlassianGeneralHint still carries the optional dig-deeper agency (Confluence + linked issues)', () => {
+    win.state.mcpAtlassian = true;
+    const gen = win.atlassianGeneralHint();
+    expect(gen).toContain('Confluence');
+    expect(gen).toContain('linked or duplicate issues');
+    expect(gen).toContain('use your judgment');
   });
 });
 
