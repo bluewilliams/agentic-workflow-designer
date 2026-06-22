@@ -1279,7 +1279,8 @@ describe('Durable Record: protocol content', () => {
   it('v2.5: the finalize step writes the breadcrumb entry (action-trigger + on-completion)', () => {
     const proto = win.genDurableRecordProtocol();
     expect(proto).toContain('synthesizing agent -> write the Outcome, write or update this record');
-    expect(proto).toContain('breadcrumb index (see Durable Record Index). Add the Contents index');
+    expect(proto).toContain('breadcrumb index (see Durable Record Index)');
+    expect(proto).toContain('Add the Contents index');
   });
   it('v2.5: breadcrumb example stays provider-neutral (PRJ keys, no real ticket keys)', () => {
     const proto = win.genDurableRecordProtocol();
@@ -1352,6 +1353,23 @@ describe('Durable Record: protocol content', () => {
     const proto = win.genDurableRecordProtocol();
     expect(proto).toContain('durable anchor');
     expect(proto).toContain('soften line-number references to durable anchors');
+  });
+  it('v3.1: completion gate makes the skipped behaviors checkable (anchors, distill, Recent log)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('no bare line numbers remain');
+    expect(proto).toContain('no transient or paste-ready scaffolding remains');
+    expect(proto).toContain('prepended to the chronological `.workflow/_timeline.md`');
+  });
+  it('v3.1: finalize distills transient scaffolding into the durable sections', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('distill any transient implementation scaffolding');
+  });
+  it('v3.1: a sibling _timeline.md gives chronological lookup without diluting the grep index (3-tier)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('sibling `.workflow/_timeline.md`');
+    expect(proto).toContain('never pruned');
+    expect(proto).toContain('three-tier lookup');
+    expect(proto).toContain('FIRST entry directly under that header');
   });
   it('v2.7: Surface area is marked provisional until grounded', () => {
     const proto = win.genDurableRecordProtocol();
