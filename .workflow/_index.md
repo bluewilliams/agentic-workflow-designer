@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## durable-record-cadence
+
+- record: .workflow/durable-record-transcribe-handoff.md
+- intent: lighter half of backlog #2 - make the orchestrator's per-step durable-record update a TRANSCRIPTION (each step asked to end its report with DONE: items + STATUS: one-line; orchestrator transcribes) rather than a re-derivation. Single additive bullet in genDurableRecordProtocol KEEP CURRENT; gated on Keep Durable Record (off = absent); Ground-in-Prior-Records unaffected
+- files: index.html (recordHandoffHint() helper + 6 per-agent injections [genWorkflow x2, genSubAgents, genAgentTeams, genClaudePrompt x2] + reconciled KEEP CURRENT bullet in genDurableRecordProtocol), tests.html (recordHandoffHint bridged; v2.4 + v2.5)
+- status: current | date: 2026-06-21 | builds-on: .workflow/durable-record-per-step-cadence.md | note: 1083/1083; FULLER agent-side version - the reliable actor (each agent) emits DONE/STATUS via one reused gated fragment, orchestrator transcribes (reconciled from the orchestrator-only half). Injected via the step-hint pattern (not the postamble, which is only 2 generators). Gated on durableRecord (off=absent, tested); SDK not wired (no step-hint pattern + removal candidate). Heavier interleaved per-step beats (backlog #2 option A) still queued as fallback, to be validated by a build-task dogfood
+
 ## handoff-context-reliability
 
 - record: .workflow/handoff-context-reliability.md
