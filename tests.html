@@ -1335,6 +1335,24 @@ describe('Durable Record: protocol content', () => {
     expect(proto).toContain('Fold in any READ-ONLY steps');
     expect(proto).toContain('.workflow/_index.md');
   });
+  it('v3.0: finalize is framed as make-it-best (additive + distill), not just compress', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('the BEST it can be for a future reader');
+    expect(proto).toContain('Adding durable context here is as valid as');
+    expect(proto).toContain('distilling rather than deleting');
+  });
+  it('v3.0: finalize is mandatory and gated on completion (never left in progress)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('Finalize is MANDATORY');
+    expect(proto).toContain('never be left in an in-progress state');
+    expect(proto).toContain('Completion gate');
+    expect(proto).toContain('A half-finalized record is a failure');
+  });
+  it('v3.0: surface area and finalize prefer durable anchors over line numbers', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('durable anchor');
+    expect(proto).toContain('soften line-number references to durable anchors');
+  });
   it('v2.7: Surface area is marked provisional until grounded', () => {
     const proto = win.genDurableRecordProtocol();
     expect(proto).toContain('provisional until the grounding');

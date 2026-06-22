@@ -14,6 +14,8 @@ Parked items with the real-run evidence behind them, so the dedicated passes sta
 
 **Caution**: the hard part is the dynamic scaling - small tasks must stay a flat checklist or every small record bloats. Drive this off a real large task so the scaling is tuned against reality.
 
+**Unified design (2026-06-21)**: #1 and #2 are the same problem from two ends. Full cross-type model (the return-once constraint, per-type cadence table, Levels 0-3, item-granularity principle) is in `.workflow/granular-checkpointing-design.md`. Deferred pending a build-task dogfood that validates Level 0 and gives real data to tune Level 2.
+
 ## 2. Durable-record per-step cadence: structural fix
 
 **Status update (2026-06-16)**: partially addressed. The KEEP CURRENT bullet now explicitly requires ticking EACH checklist item per step (covering one Implementer finishing many items, tick-now-not-at-finalize) - see .workflow/cadence-granularity-and-clarify-sensitivity.md. The STRUCTURAL options below remain open if that prose sharpening still proves insufficient on the next cold run.
@@ -26,7 +28,7 @@ Parked items with the real-run evidence behind them, so the dedicated passes sta
 
 **Design options**:
 - Interleave an explicit "### Update the record" beat into the generated Execution Plan after each `### Step N`, so the orchestrator steps through it rather than relying on discipline.
-- ~~And/or have each sub-agent's handoff emit "checklist items I completed + new status" so the orchestrator just transcribes it~~ DONE 2026-06-21 (.workflow/durable-record-transcribe-handoff.md), fuller agent-side version: each agent emits DONE/STATUS via a reused gated `recordHandoffHint()` (injected per-agent across the 4 prose generators), and the orchestrator transcribes - the reliable actor produces the data. REMAINING: the heavier interleaved-beats option above, only if a build-task cold run still shows the cadence slipping.
+- ~~And/or have each sub-agent's handoff emit "checklist items I completed + new status" so the orchestrator just transcribes it~~ DONE 2026-06-21 (.workflow/durable-record-transcribe-handoff.md), fuller agent-side version: each agent emits DONE/STATUS via a reused gated `recordHandoffHint()` (injected per-agent across the 4 prose generators), and the orchestrator transcribes - the reliable actor produces the data. REMAINING: the heavier interleaved-beats option above, only if a build-task cold run still shows the cadence slipping. See the unified cross-type design in `.workflow/granular-checkpointing-design.md` - the interleave is only the orchestrator/Claude.ai half; the SDK needs a STRUCTURAL in-code write, and true sub-task survival needs decomposition (Level 2) since sub-agents return only once.
 
 ## 3. Clarify gate sensitivity (optional prompt-tuning)
 
