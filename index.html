@@ -1296,6 +1296,14 @@ function datadogGroundingHint() {
 // drives the node-config display). Toggle is the single source of truth for Datadog
 // guidance - no Datadog text is hardcoded in any agent template. Returns '' when not applicable.
 const DATADOG_STEP_ROLES = new Set(['planner', 'architect', 'researcher', 'debugger', 'tester']);
+function recordHandoffHint() {
+  // Durable-record per-step cadence (write side): each step reports transcribe-ready
+  // lines so the orchestrator copies them into the record rather than re-deriving.
+  // Gated on the durable-record toggle (no record = no checklist to feed); reused
+  // verbatim across every agent, injected per-step like the other gated step hints.
+  if (!state.durableRecord) return '';
+  return '**Durable record handoff:** end your report with two lines so the orchestrator can transcribe them into the record (it does not re-derive) - `DONE:` the work items you completed, and `STATUS:` a one-line current-state.';
+}
 function datadogStepHint(node) {
   if (!state.mcpDatadog) return '';
   if (!node || !node.config || !DATADOG_STEP_ROLES.has(node.config.agentType)) return '';
@@ -2892,6 +2900,7 @@ function genDurableRecordProtocol(fmt) {
   p.push('- Keep it CURRENT as work progresses. Overwrite the state / next-action section each update (do not just append to it) so that at any moment it is enough for another engineer or agent to resume. Append to the decisions and checklist sections as they grow.');
   p.push('### KEEP CURRENT (the orchestrator runs this after EVERY step, before spawning the next - enforced)');
   p.push('This beat is enforced, not optional: it is what makes an interrupted run resumable, which matters most on large multi-step workflows. Do NOT batch all record-writing to the end - if the run is interrupted between steps, a record that was never updated cannot tell anyone where to continue. After each step returns and before you spawn the next one:');
+  p.push('- **Transcribe, do not re-derive (the reliable path).** Each step is instructed (in its own handoff) to end its report with two lines - DONE: the work items it completed, and STATUS: a one-line current-state. The record update below is then a TRANSCRIPTION of those - tick the checklist items that match its DONE line and overwrite Current state from its STATUS line - not a reconstruction. If a step omits them, fall back to reading its Files Changed / verification.');
   p.push('- Overwrite the "Current state / next action" section so it names the last step completed and the single next action - a cold reader, or a fresh agent resuming after a crash, must be able to continue from this line alone.');
   p.push('- Tick EACH Task checklist item that step completed - read the step\'s handoff (its Files Changed / Completed / verification) and tick every item it finished, INCLUDING when one step (for example an Implementer) completes several items at once; tick them all now, do not batch them to finalize. Add any new tasks it revealed, and if the handoff shows work not yet on the list, add it as an already-done item and tick it. An interrupted run must show exactly which items are done and which remain.');
   p.push('- Fold that step\'s durable output into the right section by action: a decision -> Approach and decisions; a file created or changed -> Surface area; a build or test run -> Verify (real result); a new behavior or scenario -> Requirements; a forward-looking risk -> Risks; a non-obvious edge -> Gotchas.');
@@ -6717,6 +6726,7 @@ function genWorkflow() {
           p.push(`  - Instructions: ${getEffectivePrompt(s)}`);
           const _ddS = datadogStepHint(s); if (_ddS) p.push('  ' + _ddS);
           const _csS = codeSearchStepHint(s); if (_csS) p.push('  ' + _csS);
+          const _rhS = recordHandoffHint(); if (_rhS) p.push('  ' + _rhS);
           if (s.config.notes && s.config.notes.trim()) p.push(`  - Context: ${s.config.notes.trim()}`);
           p.push('');
         });
@@ -6730,6 +6740,7 @@ function genWorkflow() {
         p.push(`- Instructions: ${getEffectivePrompt(node)}`);
         const _ddN = datadogStepHint(node); if (_ddN) p.push('- ' + _ddN);
         const _csN = codeSearchStepHint(node); if (_csN) p.push('- ' + _csN);
+        const _rhN = recordHandoffHint(); if (_rhN) p.push('- ' + _rhN);
         if (node.config.notes && node.config.notes.trim()) p.push(`- Additional context: ${node.config.notes.trim()}`);
         if (node.config.maxTurns) p.push(`- Max turns: ${node.config.maxTurns}`);
         if (deps.length > 0) p.push(`- Depends on: ${deps.join(', ')}`);
@@ -6926,6 +6937,7 @@ function genSubAgents() {
     promptLines.push(getEffectivePrompt(node));
     const _ddSa = datadogStepHint(node); if (_ddSa) { promptLines.push(''); promptLines.push(_ddSa); }
     const _csSa = codeSearchStepHint(node); if (_csSa) { promptLines.push(''); promptLines.push(_csSa); }
+    const _rhSa = recordHandoffHint(); if (_rhSa) { promptLines.push(''); promptLines.push(_rhSa); }
     promptLines.push('');
 
     if (node.config.notes && node.config.notes.trim()) {
@@ -7173,6 +7185,7 @@ function genAgentTeams() {
     effectivePrompt.split('\n').forEach(line => lines.push(`${pre}  ${line}`));
     const _ddAt = datadogStepHint(node); if (_ddAt) lines.push(`${pre}  ${_ddAt}`);
     const _csAt = codeSearchStepHint(node); if (_csAt) lines.push(`${pre}  ${_csAt}`);
+    const _rhAt = recordHandoffHint(); if (_rhAt) lines.push(`${pre}  ${_rhAt}`);
     lines.push('');
 
     if (node.config.notes && node.config.notes.trim()) {
@@ -7688,6 +7701,7 @@ function genClaudePrompt() {
           p.push(getEffectivePrompt(s));
           const _ddCpS = datadogStepHint(s); if (_ddCpS) p.push(_ddCpS);
           const _csCpS = codeSearchStepHint(s); if (_csCpS) p.push(_csCpS);
+          const _rhCpS = recordHandoffHint(); if (_rhCpS) p.push(_rhCpS);
           p.push('');
           if (s.config.notes && s.config.notes.trim()) {
             p.push(`Additional context: ${s.config.notes.trim()}`);
@@ -7714,6 +7728,7 @@ function genClaudePrompt() {
         p.push(getEffectivePrompt(node));
         const _ddCpN = datadogStepHint(node); if (_ddCpN) p.push(_ddCpN);
         const _csCpN = codeSearchStepHint(node); if (_csCpN) p.push(_csCpN);
+        const _rhCpN = recordHandoffHint(); if (_rhCpN) p.push(_rhCpN);
         p.push('');
         if (node.config.notes && node.config.notes.trim()) {
           p.push(`**Additional context**: ${node.config.notes.trim()}`);

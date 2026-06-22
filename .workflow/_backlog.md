@@ -18,13 +18,15 @@ Parked items with the real-run evidence behind them, so the dedicated passes sta
 
 **Status update (2026-06-16)**: partially addressed. The KEEP CURRENT bullet now explicitly requires ticking EACH checklist item per step (covering one Implementer finishing many items, tick-now-not-at-finalize) - see .workflow/cadence-granularity-and-clarify-sensitivity.md. The STRUCTURAL options below remain open if that prose sharpening still proves insufficient on the next cold run.
 
+**Status update (2026-06-21)**: RE-CONFIRMED still open by the read-only audit dogfood. New evidence: genAgentSDK's durable record uses `genDurableRecordComment`, which dropped the per-step cadence beat ENTIRELY (one prose clause). DECISION: start with the transcribe-ready-handoff option below (lighter, best reliability-per-word); only reach for the interleaved "### Update the record" beats if a cold run still slips. GATING: the transcribe-handoff lives inside `genDurableRecordProtocol`, so it fires only when Keep Durable Record is on (no record = no checklist to transcribe); Ground-in-Prior-Records (read side) is unaffected. VALIDATE with a build-task dogfood - the read-only audit cannot exercise the implement -> record-tick cadence.
+
 **What**: make the per-step record update STRUCTURAL, not just prose. The enforced "KEEP CURRENT (after EVERY step)" section now in genDurableRecordProtocol is necessary but NOT sufficient.
 
 **Why / evidence (a real cold run)**: the run's prompt DID contain the KEEP CURRENT text, and the cold executor still skipped it - it created the record at kickoff, updated it once after the Planner (substantive fold-in), then lapsed: Status stuck at "(planning)", checklist all unticked, Current state frozen at post-Planner, even at the Reviewer. A cold orchestrator does the substantive fold-ins but skips the mechanical bookkeeping (status bump, checklist ticks) between spawns.
 
 **Design options**:
 - Interleave an explicit "### Update the record" beat into the generated Execution Plan after each `### Step N`, so the orchestrator steps through it rather than relying on discipline.
-- And/or have each sub-agent's handoff emit "checklist items I completed + new status" so the orchestrator just transcribes it instead of deciding to.
+- ~~And/or have each sub-agent's handoff emit "checklist items I completed + new status" so the orchestrator just transcribes it~~ DONE 2026-06-21 (.workflow/durable-record-transcribe-handoff.md), fuller agent-side version: each agent emits DONE/STATUS via a reused gated `recordHandoffHint()` (injected per-agent across the 4 prose generators), and the orchestrator transcribes - the reliable actor produces the data. REMAINING: the heavier interleaved-beats option above, only if a build-task cold run still shows the cadence slipping.
 
 ## 3. Clarify gate sensitivity (optional prompt-tuning)
 
