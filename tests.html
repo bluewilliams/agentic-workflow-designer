@@ -4556,6 +4556,14 @@ describe('Repo context paths', () => {
       expect(hint).toNotContain('–');
       expect(hint).toNotContain('```');
     });
+    it('product-docs hint: a README entry reads root + area-local README, skips vendor dirs, as context not direction', () => {
+      win.state.productDocPaths = ['README.md'];
+      const hint = win.productDocsHint();
+      expect(hint).toContain('root README');
+      expect(hint).toContain('area or package your change touches');
+      expect(hint).toContain('node_modules');
+      expect(hint).toContain('context, not binding direction');
+    });
     it('both hints carry the per-repo scoping / no-cross-apply language (within each in-scope repository)', () => {
       win.state.rulesPaths = ['.claude/rules'];
       win.state.productDocPaths = ['docs/'];
