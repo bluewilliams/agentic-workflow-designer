@@ -108,6 +108,11 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 ## durable-record-protocol
 
+- record: .workflow/write-a-design-overview-of-the-durable-record-system.md
+- intent: documentation-only design overview of the durable-record system for a new maintainer - a new TECHNICAL.md subsection covering the four parts (the per-record durable record, `_index.md` relevance lens, `_timeline.md` recency lens, the generated `genDurableRecordProtocol` write-side + `consumeRecordsHint` read-side), the three-tier lookup (timeline -> index -> record), and the six design decisions with their recorded rationale + rejected alternatives (separate timeline file, finalize completion gate, three-tier grounding, transcribe-vs-re-derive, finalize compression, write-index-at-finalize-as-projection). No code change
+- files: TECHNICAL.md ("### Durable Record System: Design Overview" under "## Memory Protocol", after the existing "### Durable Record (committable artifact)" reference)
+- status: current | date: 2026-06-23 | note: grounded in the durable-record-protocol + consume-prior-records + durable-record-cadence records; Planner -> Researcher (all claims source-verified, zero corrections) -> Doc Writer -> Skeptic (PASS); complements the existing terse wiring reference rather than duplicating it; describes the timeline MECHANISM (the live `_timeline.md` has one dated entry, introduced 2026-06-23)
+
 - record: .workflow/provenance-captures-workflow-shape.md
 - intent: enrich the durable record's "Built with (provenance)" line to capture the workflow SHAPE (ordered roles + topology: decision gates/revision caps, parallel forks, Skeptic/Verifier review loops incl. attach points + reroute targets), the notable non-default config (models, significant tool grants, turn limits), and the run context (toggles/MCPs/repo-context) - capped to shape-and-knobs, NOT a full dump (the exported .json/Handoff carry the verbatim pipeline). Answers "should the durable doc include the workflow spec" = yes, as compact provenance
 - files: index.html (genDurableRecordProtocol Built-with bullet ~2771; prose-only, protected phrases preserved), tests.html (+1 provenance-shape test)
