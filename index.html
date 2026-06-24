@@ -500,6 +500,7 @@ svg.canvas{width:100%;height:100%;display:block}
       </div>
       <div class="path-chips" id="productDocPathChips"></div>
       <div class="path-suggest">
+        <button onclick="addProductDocPath('README.md')">README.md</button>
         <button onclick="addProductDocPath('docs/')">docs/</button>
         <button onclick="addProductDocPath('ARCHITECTURE.md')">ARCHITECTURE.md</button>
         <button onclick="addProductDocPath('docs/adr/')">docs/adr/</button>
@@ -1215,6 +1216,8 @@ function productDocsHint() {
   r.push(list);
   r.push('>');
   r.push('> For each entry: if it is a directory, discover the relevant docs inside it by common name and read those; if it is a single file, read it directly. A path that points at nothing is simply no-extra-context, not an error.');
+  r.push('>');
+  r.push('> For a `README.md` entry: read the repository root README for project context, and also the README local to the area or package your change touches (a monorepo often keeps the real local context there). Treat these as context, not binding direction, and skip READMEs under dependency, vendor, or build directories (for example `node_modules`, `vendor`, `dist`, `build`) - they are third-party or generated noise, not product docs.');
   r.push('>');
   r.push('> Snapshot the relevant intent: when you are maintaining a durable record, capture the goals and direction these docs imply into the durable record\'s Why and scope, so later steps inherit the product intent without re-reading.');
   r.push('>');
