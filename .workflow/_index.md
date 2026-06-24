@@ -77,6 +77,11 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 ## consume-prior-records
 
+- record: .workflow/make-ground-in-prior-records-use-the-full-three-tier-lookup.md
+- intent: teach the READ-side grounding guidance the full three-tier lookup - consumeRecordsHint (shared, inherited by all four prose exporters) gains one bullet naming `_timeline.md` (recency, newest-first) + `_index.md` (relevance) and stating the order timeline -> index -> record, judgment-framed ("when recency matters": regression, onboarding, resuming), with `_index.md` still the default entry; the drifted genAgentSDK inline `#`-comment variant brought to parity. Closes the read/write asymmetry where `_timeline.md` was written but never consulted. Write side (genDurableRecordProtocol) untouched.
+- files: index.html (consumeRecordsHint timeline bullet + genAgentSDK consume comment), README.md, TECHNICAL.md, tests.html (+8 tests: three-tier order/wording, judgment framing, recency use-cases, all-four-prose-exporter presence, SDK parity, OFF absence, no-fence hygiene)
+- status: current | date: 2026-06-23 | builds-on: .workflow/agent-sdk-ground-in-prior-records-gap.md | note: 1095/1095 green; gated on consumeRecords (OFF unchanged); OFF-absence tests also disable durableRecord since the write side emits `_timeline.md` independently. First record to also seed `.workflow/_timeline.md`.
+
 - record: .workflow/agent-sdk-ground-in-prior-records-gap.md
 - intent: give genAgentSDK the consume-records (ground-in-prior-records) guidance it lacked - a gated inline Python-comment banner mirroring the SDK's existing mcpAtlassian/mcpCodeSearch blocks; closes the read/write asymmetry the toggle-wiring audit surfaced (SDK wrote records but never grounded in them)
 - files: index.html (genAgentSDK consumeRecords banner ~6557-6568), tests.html ("Export: genAgentSDK" suite +4)

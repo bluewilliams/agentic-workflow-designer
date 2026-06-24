@@ -1255,6 +1255,7 @@ function consumeRecordsHint(fmt) {
   if (!state.consumeRecords) return null;
   const r = [];
   r.push('> **Ground in prior committed records (if any).** The orchestrator (the top-level agent that drives this workflow and spawns its steps - ' + orchestratorIdentity(fmt) + ', even when there is no named Planner step) does this once before the work begins, and folds what it finds into the brief it gives the steps so they inherit it without re-reading.');
+  r.push('> - Two breadcrumbs sit alongside the records and form a three-tier lookup: `.workflow/_timeline.md` (when something changed) leads to `.workflow/_index.md` (what it touches) leads to the durable record (the full detail). Use them by strength. `_index.md` is the relevance lens, "what touches X", and is the default entry point: match it by the files, symbols, and capability your change touches (next bullet). When recency matters, also scan `_timeline.md` first - it is newest-first, one line per change - and open what its top entries point at. That is a judgment call, not a required step every run: reach for the timeline when chasing a recent regression, orienting or onboarding onto an unfamiliar area, or resuming work that was paused, where what changed lately is the fastest way in. When recency is irrelevant, skip straight to the index.');
   r.push('> - If a record index exists at `.workflow/_index.md` in a repository in scope, scan it first (a cheap one-line-per-record breadcrumb). Match entries by the files and capability your change touches; prefer entries marked `status: current`. If the index is large, do NOT read it whole - `Grep` it for the file names, symbols, and capability slug your change touches and read only the matching entries, so your context stays bounded no matter how many entries the index holds. Then open ONLY the matched records and carry their decisions, gotchas, surface-area map, and requirements into your plan.');
   r.push('> - Do not read every record, and do not follow a record\'s cross-repository `siblings` link unless a matched entry shows a real dependency on that repository - never follow links transitively.');
   r.push('> - If your change will modify or replace a behavior a current record defines, reconcile your plan against that record and plan to supersede it at finalize (set `supersedes` on the new entry and flip the old entry to `superseded`).');
@@ -7393,13 +7394,19 @@ function genAgentSDK() {
   if (state.consumeRecords) {
     p.push('# ── Ground in prior committed records (if any) ───────────────────────────────');
     p.push('# Before the first step, the orchestrator grounds in prior committed records and');
-    p.push('# folds what it finds into the brief it hands the steps. If a record index exists');
-    p.push('# at .workflow/_index.md in a repo in scope, scan it first (one line per record),');
-    p.push('# match entries by the files and capability this change touches, and prefer those');
-    p.push('# marked status: current. Open ONLY the matched records - do not read them all -');
-    p.push('# and carry their decisions, gotchas, surface-area map, and requirements into the');
-    p.push('# plan. If no index exists or nothing matches, this is a no-op - proceed normally');
-    p.push('# (it adds nothing to greenfield work).');
+    p.push('# folds what it finds into the brief it hands the steps. Two breadcrumbs form a');
+    p.push('# three-tier lookup: .workflow/_timeline.md (when something changed) leads to');
+    p.push('# .workflow/_index.md (what it touches) leads to the durable record (full detail).');
+    p.push('# The index is the relevance lens and the default entry point: if it exists in a');
+    p.push('# repo in scope, scan it first (one line per record), match entries by the files and');
+    p.push('# capability this change touches, and prefer those marked status: current. When');
+    p.push('# recency matters, also scan _timeline.md first (newest-first, one line per change)');
+    p.push('# and open what its top entries point at - a judgment call, not a forced every-run');
+    p.push('# step: reach for it when chasing a recent regression, orienting or onboarding onto');
+    p.push('# an unfamiliar area, or resuming paused work. Open ONLY the matched records - do');
+    p.push('# not read them all - and carry their decisions, gotchas, surface-area map, and');
+    p.push('# requirements into the plan. If no index exists or nothing matches, this is a');
+    p.push('# no-op - proceed normally (it adds nothing to greenfield work).');
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }

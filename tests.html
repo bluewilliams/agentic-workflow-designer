@@ -1431,9 +1431,10 @@ describe('Durable Record: exporter injection', () => {
     withMemAndDurable();
     expect(win.genWorkflow()).toContain('Durable Record Index (breadcrumb)');
     win.state.durableRecord = false;
-    win.state.consumeRecords = false; // _index.md is emitted by BOTH the breadcrumb section and the consume hint; turn both off for full absence
+    win.state.consumeRecords = false; // _index.md/_timeline.md are emitted by BOTH the write-side protocol and the consume hint; turn both off for full absence
     expect(win.genWorkflow()).toNotContain('Durable Record Index');
     expect(win.genWorkflow()).toNotContain('_index.md');
+    expect(win.genWorkflow()).toNotContain('_timeline.md');
   });
 });
 
@@ -1498,6 +1499,43 @@ describe('Consume prior records (read side)', () => {
     win.state.durableRecord = false;
     win.state.consumeRecords = true;
     expect(win.genWorkflow()).toContain('Ground in prior committed records');
+  });
+  it('hint names both lenses and states the three-tier order (timeline -> index -> record)', () => {
+    win.state.consumeRecords = true;
+    const h = win.consumeRecordsHint();
+    expect(h).toContain('_timeline.md');
+    expect(h).toContain('_index.md');
+    expect(h).toContain('three-tier lookup');
+    // order: timeline (when) leads to index (what touches) leads to the record (detail)
+    expect(h.indexOf('_timeline.md') < h.indexOf('_index.md')).toBe(true);
+  });
+  it('the three-tier timeline guidance reaches all four prose exporters full output (not just the banner)', () => {
+    buildTestWorkflow('linear');
+    win.state.consumeRecords = true;
+    ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt'].forEach((fn) => {
+      const out = win[fn]();
+      expect(out).toContain('.workflow/_timeline.md');
+      expect(out).toContain('three-tier lookup');
+      expect(out.indexOf('.workflow/_timeline.md') < out.indexOf('.workflow/_index.md')).toBe(true);
+    });
+  });
+  it('frames the timeline read as judgment (when recency matters), not a forced every-run step', () => {
+    win.state.consumeRecords = true;
+    const h = win.consumeRecordsHint();
+    expect(h).toContain('When recency matters');
+    expect(h).toContain('judgment call');
+  });
+  it('names several recency use cases (regression, onboarding, resuming), not only bugs', () => {
+    win.state.consumeRecords = true;
+    const h = win.consumeRecordsHint();
+    expect(h).toContain('regression');
+    expect(h).toContain('onboarding');
+    expect(h).toContain('resuming');
+  });
+  it('hint carries no triple-backtick fence (single-backtick code spans only)', () => {
+    win.state.consumeRecords = true;
+    const h = win.consumeRecordsHint();
+    expect(h).toNotContain('```');
   });
 });
 
@@ -2516,15 +2554,30 @@ describe('Export: genAgentSDK', () => {
     const out = win.genAgentSDK();
     expect(out).toContain('Ground in prior committed records (if any)');
     expect(out).toContain('.workflow/_index.md');
+    expect(out).toContain('.workflow/_timeline.md');
     expect(out).toContain('adds nothing to greenfield work');
     expect(out).toNotContain('—'); // em dash
     expect(out).toNotContain('–'); // en dash
   });
+  it('SDK consume comment reaches three-tier parity', () => {
+    buildTestWorkflow('linear');
+    win.state.consumeRecords = true;
+    const out = win.genAgentSDK();
+    expect(out).toContain('_timeline.md');
+    expect(out).toContain('_index.md');
+    expect(out).toContain('three-tier lookup');
+    // order: timeline (when) leads to index (what) leads to record (detail)
+    expect(out.indexOf('_timeline.md') < out.indexOf('_index.md')).toBe(true);
+    // a recency use-case token is named (not bug-only)
+    expect(out).toContain('regression');
+  });
   it('omits the consumeRecords grounding banner when the toggle is off', () => {
     buildTestWorkflow('linear');
     win.state.consumeRecords = false;
+    win.state.durableRecord = false; // _timeline.md also emitted write-side; off for full absence
     const out = win.genAgentSDK();
     expect(out).toNotContain('Ground in prior committed records (if any)');
+    expect(out).toNotContain('_timeline.md');
   });
   it('uses a comment banner not the prose blockquote (no prose-hint leak)', () => {
     buildTestWorkflow('linear');
