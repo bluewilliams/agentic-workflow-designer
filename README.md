@@ -239,6 +239,8 @@ Click the **Prompts** button in the toolbar for a curated collection of high-imp
 
 Prompts that need context (like "what file to analyze") show an input popup before copying so the prompt is ready to paste with no editing. Star your favorites and they float to the top.
 
+**Add your own.** Click **+ Add your own** to save a custom prompt (title, optional description, prompt body); it lands in a **My Prompts** category with Edit/Delete on each card. Custom prompts live in your browser (localStorage) - nothing is uploaded. **Export mine** downloads them as JSON and **Import** reads one back, so you can back them up or share a pack with a teammate (import dedupes by title, so re-importing an updated pack overwrites in place). The file format is `{ "format": "awd-custom-prompts", "version": 1, "prompts": [ { "title": "...", "desc": "...", "prompt": "..." } ] }`; import also accepts a bare array of those prompt objects.
+
 ### Live Monitors
 
 The Prompt Library includes a dedicated **Live Monitors** category with prompts that watch things for you over time, leveraging state across iterations to do things a single run can't:
