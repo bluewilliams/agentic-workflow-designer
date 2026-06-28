@@ -841,6 +841,8 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h2 id="hg-start">Getting Started</h2>
 
+<p>It is one HTML file and everything stays in your browser, so click around without worry - it auto-saves on every change, and there is an Undo.</p>
+
 <h3>Quick Start</h3>
 <ol>
   <li>Paste requirements into the <strong>Requirements</strong> field (or a Jira ticket URL)</li>
@@ -881,6 +883,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <div class="flow-diagram">1. Paste rough requirements → <strong>Generate Refine Prompt</strong> → interview → refined spec
 2. Paste refined spec → <strong>Generate Plan Prompt</strong> → codebase analysis → implementation plan
 3. Paste plan → build workflow → <strong>Copy</strong> prompt → execute in Claude Code</div>
+<p>Most tasks need none of this. It is the belt-and-suspenders path, here for the genuinely gnarly ones.</p>
 
 <h3>Clarify Requirements First</h3>
 <p>The <strong>Clarify requirements first</strong> toggle (off by default) adds an in-flow clarification gate to the planning step - distinct from the <strong>Generate Refine Prompt</strong> step (see <strong>Which prep step should I use?</strong> above for how they differ). When on, the planning step probes the requirements for material ambiguity, asks you a focused set of questions in one round, then folds the answers into the plan and the durable record. It degrades gracefully when run non-interactively (CI or an SDK pipeline): it records the open questions as assumptions and risks and proceeds rather than blocking.</p>
@@ -914,7 +917,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><kbd>Alt+Drag</kbd>: Pan the canvas</li>
   <li><kbd>Scroll</kbd>: Zoom in/out</li>
   <li><strong>Right-click</strong> a node for its context menu: add a <strong>Skeptic review</strong> or <strong>Verification</strong> loop, duplicate, disconnect, or delete</li>
-  <li><strong>Auto Layout</strong> re-arranges nodes using the Sugiyama layered algorithm</li>
+  <li><strong>Auto Layout</strong> re-arranges nodes using the Sugiyama layered algorithm (a respectable-sounding name for "untangle the arrows so you can read it")</li>
   <li><strong>Fit</strong> zooms to show all nodes</li>
   <li><strong>Quick Patterns</strong> in the palette (Fork 2/3/4, Fan-Out) scaffold a parallel agent group in one click</li>
   <li>You are not limited to presets - add any nodes from the palette and wire them up however you like; the generators handle the scaffolding</li>
