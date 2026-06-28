@@ -4,7 +4,9 @@ Turn any Jira ticket, user story, or task description into a production-quality 
 
 Design multi-agent pipelines visually, configure each agent's role, model, and tools, then export optimized prompts ready to paste into Claude Code, Claude.ai, or the Anthropic Agent SDK.
 
-**[Try it live](https://bluewilliams.github.io/agentic-workflow-designer/)** - zero install, runs entirely in-browser.
+**[Try it live](https://bluewilliams.github.io/agentic-workflow-designer/)** - zero install, runs entirely in-browser. No account, no paywall, no "request access."
+
+![Agentic Workflow Designer - visually design a multi-agent workflow with parallel execution and review loops, then export ready-to-run prompts](docs/screenshot.png)
 
 ## Quick Start
 
@@ -22,7 +24,7 @@ That is the core loop. Everything below is optional polish - tweaking agents, ad
 
 Single HTML file. No frameworks, no build step, no server, no dependencies, no drama. Open it in a browser and it works. Deploy it to GitHub Pages and it works. Send it to a colleague and it works.
 
-All data stays in your browser (localStorage). Nothing is sent anywhere. Your requirements, prompts, and workflows never leave your machine unless you copy them yourself.
+All data stays in your browser (localStorage). Nothing is sent anywhere. Your requirements, prompts, and workflows never leave your machine unless you copy them yourself. No telemetry, no analytics, no server to phone home to even if it wanted to.
 
 ## What It Does
 
@@ -132,6 +134,8 @@ CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 claude --add-dir ../repo-b ../rep
 `--add-dir` grants file access to the extra repos; the env var makes their `CLAUDE.md` load at startup (and thus propagate to subagents). The explicit per-repo read in the prompt is the fallback that works no matter how the session was launched.
 
 ## Built-in Presets
+
+Fourteen ready-made pipelines. Each one is a strong opinion you can override.
 
 - **Feature Build** - Planner > (Skeptic reviews the plan) > Implementer > Reviewer > Decision gate > Tester
 - **Bug Fix** - Investigator > Fixer > Tester > Verification gate
@@ -326,7 +330,7 @@ Your default model, memory toggle, output format tab, app source path/branch, an
 
 Open `tests.html` in any browser. That's it. Zero dependencies, zero build step. Tests load `index.html` in a hidden iframe and exercise everything: utilities, state management, persistence, memory protocol, all 5 prompt output generators, workflow generation, preset loading, format recommendations, input validation, the prompt library, and more. Green/red results render instantly.
 
-**CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3. No npm, no Jest, no Webpack. Use `--verbose` for failure details. Exit code 0 = all pass.
+**CLI runner**: `./run-tests.sh` runs headlessly via Chrome + Python 3. No npm, no Jest, no Webpack, no `node_modules` the size of a small moon. Use `--verbose` for failure details. Exit code 0 = all pass.
 
 ## Getting Started
 
