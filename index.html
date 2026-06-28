@@ -8085,28 +8085,84 @@ function openSpecRecordSections(node) {
   }
   return OPENSPEC_RECORD_SECTIONS[openSpecRoleGroup(node)] || OPENSPEC_RECORD_SECTIONS.general;
 }
+function openSpecSafeHint(text) {
+  // Hints live inside HTML comments in the template; keep arbitrary prompt text from closing them.
+  return String(text || '').replace(/--+>/g, '->').replace(/\s+/g, ' ').trim();
+}
+function openSpecMission(node) {
+  // A one-line "what this step is for", taken from the agent's prompt (or a task's description):
+  // its lead paragraph, whitespace-collapsed and length-capped. Our preset prompts open with a clean
+  // 1-2 sentence mission, so this is crisp for them; it degrades gracefully for custom prompts
+  // (skips a markdown heading / list lead, truncates a long one at a sentence or word boundary).
+  if (!node) return '';
+  let txt = node.type === 'task' ? (node.config && node.config.description) : getEffectivePrompt(node);
+  txt = String(txt || '').trim();
+  if (!txt) return '';
+  let lead = txt.split(/\n\s*\n/)[0].replace(/\s+/g, ' ').trim();
+  if (/^[#>|*\d]/.test(lead) || /^-\s/.test(lead)) return ''; // custom prompt that doesn't lead with prose
+  const CAP = 200;
+  if (lead.length > CAP) {
+    const cut = lead.slice(0, CAP);
+    const dot = cut.lastIndexOf('. ');
+    lead = dot > 80 ? cut.slice(0, dot + 1) : cut.slice(0, cut.lastIndexOf(' ')) + '...';
+  }
+  return openSpecSafeHint(lead);
+}
+function openSpecHandoffContract(node) {
+  // Parse the agent's OWN output contract from its prompt: the "- **Field**: description" bullets that
+  // follow an "End your response with:" marker (the consistent format our role prompts use). Returns
+  // [{h, hint}] so the template body mirrors exactly what the agent is told to produce - which makes
+  // every agent's record distinct (two researchers have different contracts) and tightly aligned with
+  // the work. Returns [] for verdict-style prompts (skeptic/verifier use a different format) and custom
+  // prompts with no contract, so the caller falls back to the curated role-group sections.
+  if (!node || node.type === 'task') return [];
+  const txt = getEffectivePrompt(node);
+  const m = /end your response with:?/i.exec(txt);
+  if (!m) return [];
+  const after = txt.slice(m.index + m[0].length);
+  const re = /(?:^|\n)\s*[-*]\s*\*\*(.+?)\*\*\s*:?[ \t]*([^\n]*)/g;
+  const out = [];
+  let mm;
+  while ((mm = re.exec(after)) !== null && out.length < 8) {
+    const h = mm[1].trim();
+    if (h) out.push({ h: h, hint: openSpecSafeHint(mm[2].replace(/^[-:\s]+/, '')) });
+  }
+  return out;
+}
 function openSpecTemplate(artifact) {
-  // The step's output-doc SKELETON (OpenSpec copies it as the starting doc; the agent fills it in as
-  // the step runs, guided by the schema instruction). Scaffolds the designer's handoff/durable-record
-  // structure - and, crucially, what only the designer knows: this step's PLACE in the graph, the GATE
-  // its output must clear, and the REPOS in scope. That node-specific context is what a generic OpenSpec
-  // schema can't produce. Plain markdown headings + one-line comment hints, matching OpenSpec's idiom.
+  // The step's output-doc SKELETON (OpenSpec copies it as the starting doc; the agent fills it in as the
+  // step runs, guided by the schema instruction). It maximizes what only the designer knows: a header
+  // with the step's ROLE, its PLACE in the graph, and its MISSION; a body that mirrors the agent's OWN
+  // output contract (parsed from its prompt) so no two agents look alike and the record scaffolds exactly
+  // what the step must produce; plus GATE readiness and multi-repo scope. Falls back to curated role-group
+  // sections when no contract is parseable (verdict-style or custom prompts). Plain markdown + comment hints.
   const label = artifact.label || 'Step';
-  const role = artifact.role || '';
+  const role = artifact.role || 'Step';
   const node = artifact.node;
-  const lines = ['# ' + label, '',
-    '<!-- ' + (role ? role + ' step. ' : '') + 'This file is this step\'s record of work, produced as the',
-    '     step runs. Structure from the Agentic Workflow Designer (handoff format). -->'];
-  // Place in the workflow - stated from the graph so the record stands on its own.
+  const lines = ['# ' + label, ''];
+  // Header: role - position - mission (all from structured data; the mission degrades gracefully).
   const dep = (artifact.dependsOn && artifact.dependsOn.length) ? artifact.dependsOn.join(', ') : 'the workflow input';
   const feed = (artifact.feeds && artifact.feeds.length) ? artifact.feeds.join(', ') : 'the final deliverable';
-  lines.push('', 'Place in the workflow: builds on ' + dep + '; output consumed by ' + feed + '.');
-  const section = (h, hint) => { lines.push('', '## ' + h); if (hint) lines.push('<!-- ' + hint + ' -->'); };
-  section('Summary', 'What this step accomplished - as much detail as the work warrants (a multi-repo epic step will be longer than a one-line fix).');
-  openSpecRecordSections(node).forEach(s => {
-    if (s.checklist) { lines.push('', '## ' + s.h); s.items.forEach(it => lines.push('- [ ] ' + it)); }
-    else section(s.h, s.hint);
-  });
+  lines.push('> **' + role + '**: builds on ' + dep + ', feeds ' + feed);
+  const mission = openSpecMission(node);
+  if (mission) lines.push('> ' + mission);
+  const section = (h, hint) => { lines.push('', '## ' + h); if (hint) lines.push('<!-- ' + openSpecSafeHint(hint) + ' -->'); };
+  section('Summary', 'What you set out to do and what you accomplished (brief for a small step; fuller for a multi-repo epic).');
+
+  // Body: the agent's own contract (distinct per agent) when we can parse it; else role-group sections.
+  let usedContract = false;
+  if (node && node.type === 'task') {
+    const crit = String((node.config && node.config.acceptance) || '').split('\n')
+      .map(l => l.replace(/^\s*[-*]\s*\[.?\]\s*|^\s*[-*]\s*|^\s*\d+[.)]\s*/, '').trim()).filter(Boolean);
+    lines.push('', '## Acceptance Criteria');
+    (crit.length ? crit : ['<!-- the criteria this task must satisfy -->']).forEach(c => lines.push('- [ ] ' + c));
+    section('Outcome', 'What was produced, and whether the criteria are met.');
+  } else {
+    const contract = openSpecHandoffContract(node);
+    if (contract.length) { usedContract = true; contract.forEach(c => section(c.h, c.hint)); }
+    else openSpecRecordSections(node).forEach(s => section(s.h, s.hint));
+  }
+
   // Multi-repo: build/test steps get a per-repo checklist so each repo's work is recorded explicitly.
   const group = openSpecRoleGroup(node);
   const repos = (state.repositories || []).map(r => r && r.path).filter(Boolean);
@@ -8117,7 +8173,8 @@ function openSpecTemplate(artifact) {
   // Gate readiness: if a decision gates this step's output, give it a slot to record meeting the gate.
   const gates = (node ? getDownstreamDecisions(node.id) : []).map(d => (d.config && (d.config.condition || d.label)) || 'the gate');
   if (gates.length) section('Gate readiness', 'Confirm this meets the gate' + (gates.length > 1 ? 's' : '') + ' ' + gates.map(g => '"' + g + '"').join(', ') + ' before handing off.');
-  section('Handoff - what the next step needs', 'Outputs, context, and open questions the next step must know to continue.');
+  // Handoff pointer - only when the body was NOT the contract (the contract fields ARE the handoff).
+  if (!usedContract) section('Handoff - what ' + feed + ' needs', 'The outputs, context, and open questions ' + feed + ' must have to continue.');
   return lines.join('\n') + '\n';
 }
 function buildOpenSpecSchema() {

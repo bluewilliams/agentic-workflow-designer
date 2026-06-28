@@ -6702,7 +6702,7 @@ describe('OpenSpec schema export', () => {
     expect(builder).toContain('## Summary');
     expect(builder).toContain('## Files Changed');
     expect(builder).toContain('## How to Verify');
-    expect(builder).toContain('## Handoff - what the next step needs');
+    expect(builder).toContain('## Handoff - what');
     const critic = tpl('critic.md');
     expect(critic).toContain('## Verdict');
     expect(critic).toContain('## Blocking Issues (Critical/High)');
@@ -6748,13 +6748,37 @@ describe('OpenSpec schema export', () => {
     expect(tpl('ops-runbook.md')).toContain('## Audience & Scope');
     expect(tpl('tech-writer.md')).toContain('## Sources');
   });
+  it('template body mirrors the agent own handoff contract (distinct, not role-generic)', () => {
+    resetState();
+    const prompt = 'Find what already exists so the team reuses instead of reinventing.\n\n## Handoff Summary\nEnd your response with:\n- **Reuse**: Existing code to build on (file:line)\n- **Idioms**: The established pattern here\n- **Gaps**: What must be built new';
+    win.addNode('agent', 100, 100, 'Prior-Art Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','WebSearch'], prompt, maxTurns:5 });
+    const s = win.buildOpenSpecSchema();
+    const tpl = (s.templates.find(t => t.file === 'prior-art-researcher.md') || {}).content || '';
+    expect(tpl).toContain('## Reuse');
+    expect(tpl).toContain('## Idioms');
+    expect(tpl).toContain('## Gaps');
+    expect(tpl).toContain('Existing code to build on (file:line)'); // hint from the contract
+    expect(tpl).toContain('Find what already exists');               // mission line in the header
+    expect(tpl).toNotContain('## Findings');                         // role-group proxy not used when a real contract exists
+  });
+  it('two same-type agents get distinct templates from their own contracts', () => {
+    resetState();
+    win.addNode('agent', 100, 100, 'Mapper', { agentType:'researcher', model:'opus-4.6', tools:['Read'], prompt:'Map the codebase.\n\nEnd your response with:\n- **Touch Points**: files to modify\n- **Call Paths**: how code is reached', maxTurns:5 });
+    win.addNode('agent', 300, 100, 'Scout', { agentType:'researcher', model:'opus-4.6', tools:['Read'], prompt:'Find prior art.\n\nEnd your response with:\n- **Reuse**: existing code\n- **Avoid**: anti-patterns', maxTurns:5 });
+    const s = win.buildOpenSpecSchema();
+    const mapper = (s.templates.find(t => t.file === 'mapper.md') || {}).content || '';
+    const scout = (s.templates.find(t => t.file === 'scout.md') || {}).content || '';
+    expect(mapper).toContain('## Touch Points');
+    expect(scout).toContain('## Reuse');
+    expect(mapper).toNotContain('## Reuse'); // genuinely different despite both being researchers
+  });
   it('templates encode graph position, gates, and multi-repo scope (designer-derived)', () => {
     buildTestWorkflow('decision'); // input -> Implementer -> Reviewer -> Decision(gate) -> Tester -> output
     win.state.repositories = [{ path:'repoA', branch:'main' }, { path:'repoB', branch:'main' }];
     const s = win.buildOpenSpecSchema();
     const tpl = name => (s.templates.find(t => t.file === name) || {}).content || '';
     const impl = tpl('implementer.md');
-    expect(impl).toContain('Place in the workflow:');
+    expect(impl).toContain('builds on');
     expect(impl).toContain('Reviewer');          // its output feeds the Reviewer
     expect(impl).toContain('## Repositories');    // coder = build group + multi-repo
     expect(impl).toContain('- [ ] repoA');
