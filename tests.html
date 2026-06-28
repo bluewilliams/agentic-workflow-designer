@@ -1129,6 +1129,13 @@ describe('Durable Record: protocol content', () => {
     // ...and explicitly NOT the workflow/agent step names.
     expect(proto).toContain("NOT the workflow's agent or step names");
   });
+  it('Task checklist and Spec quality check are explicit markdown checkboxes at a reasonable grain', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('markdown checkbox list');  // both sections framed as checkbox lists
+    expect(proto).toContain('- [ ]');                   // unchecked checkbox syntax
+    expect(proto).toContain('- [x]');                   // checked checkbox syntax
+    expect(proto).toContain('reasonable grain');        // granularity guidance for the task breakdown
+  });
   it('v2.1: has a durable Built-with provenance item (committed, not transient progress)', () => {
     win.document.getElementById('workflowName').value = 'Demo';
     const proto = win.genDurableRecordProtocol();
