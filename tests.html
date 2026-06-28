@@ -1221,7 +1221,7 @@ describe('Durable Record: protocol content', () => {
     expect(proto).toContain('measurable, technology-agnostic outcomes');
     // Explicitly distinct from Requirements (behaviors) and Verify (the real run).
     expect(proto).toContain('distinct from the Requirements (the behaviors) and from Verify');
-    // Readable by a non-technical stakeholder = 's "abstract from domain SME" angle.
+    // Readable by a non-technical stakeholder = the "abstract from domain SME" angle.
     expect(proto).toContain('a reader who does not know the code can still tell whether the change succeeded');
   });
   it('v2.4: has a Spec quality check self-validation gate (borrowed from spec-kit)', () => {
@@ -6611,6 +6611,272 @@ describe('Atlassian two-block scenario matrix', () => {
   });
 });
 
+// OpenSpec schema export - REMOVABLE: delete this whole describe to drop the feature's tests.
+describe('OpenSpec schema export', () => {
+  // order-independent: pull an artifact's block by id
+  function artBlock(yaml, id) { return ('\n' + yaml).split('\n  - id: ').find(b => b.startsWith(id + '\n')) || ''; }
+  it('linear workflow maps agent nodes to artifacts (id <- label, instruction <- prompt)', () => {
+    buildTestWorkflow('linear');
+    win.document.getElementById('workflowName').value = 'My Flow';
+    const s = win.buildOpenSpecSchema();
+    expect(s.name).toContain('schema');
+    expect(s.schemaYaml).toContain('- id: planner');
+    expect(s.schemaYaml).toContain('- id: implementer');
+    expect(s.schemaYaml).toContain('Plan it.');
+    expect(s.schemaYaml).toContain('Build it.');
+    expect(artBlock(s.schemaYaml, 'implementer')).toContain('- planner'); // edge -> requires
+  });
+  it('work nodes (agent/task) become artifacts; input/output excluded', () => {
+    buildTestWorkflow('linear'); // 2 agents, 1 input, 1 output, no tasks
+    const s = win.buildOpenSpecSchema();
+    expect((s.schemaYaml.match(/^  - id: /gm) || []).length).toBe(2);
+    expect(s.schemaYaml).toNotContain('- id: requirements');
+    expect(s.schemaYaml).toNotContain('- id: done');
+  });
+  it('task nodes become artifacts (description + acceptance) and wire into requires', () => {
+    resetState();
+    const p = win.addNode('agent', 100, 100, 'Planner', { agentType:'planner', model:'opus-4.6', tools:['Read'], prompt:'Plan it.', maxTurns:5 });
+    const t = win.addNode('task', 350, 100, 'Migrate DB', { description:'Run the schema migration.', acceptance:'All tables migrated; no data loss.' });
+    win.addConnection(p.id, t.id);
+    const s = win.buildOpenSpecSchema();
+    expect(s.schemaYaml).toContain('- id: migrate-db');
+    const blk = artBlock(s.schemaYaml, 'migrate-db');
+    expect(blk).toContain('Run the schema migration.');
+    expect(blk).toContain('Acceptance criteria:');
+    expect(blk).toContain('All tables migrated; no data loss.');
+    expect(blk).toContain('- planner'); // requires the upstream agent
+    expect(s.templates.map(x => x.file).sort().join(',')).toBe('migrate-db.md,planner.md');
+  });
+  it('apply block lists deliverables from output nodes (format-aware)', () => {
+    buildTestWorkflow('linear'); // output 'Done' format:code, deliverable:'Tested code'
+    const s = win.buildOpenSpecSchema();
+    expect(s.schemaYaml).toContain('Deliverables:');
+    expect(s.schemaYaml).toContain('Tested code');
+    expect(s.schemaYaml).toContain('uncommitted'); // code-format phrasing
+  });
+  it('apply block describes a PR deliverable with branch and target', () => {
+    resetState();
+    const a = win.addNode('agent', 100, 100, 'Coder', { agentType:'coder', model:'opus-4.6', tools:['Write'], prompt:'Do it.', maxTurns:5 });
+    const o = win.addNode('output', 350, 100, 'Ship', { format:'pr', deliverable:'Feature', branchName:'feature/x', targetBranch:'develop' });
+    win.addConnection(a.id, o.id);
+    const s = win.buildOpenSpecSchema();
+    expect(s.schemaYaml).toContain('open a pull request');
+    expect(s.schemaYaml).toContain('feature/x');
+    expect(s.schemaYaml).toContain('develop');
+  });
+  it('surfaces input source guidance and input detail into the description', () => {
+    resetState();
+    const inp = win.addNode('input', 50, 100, 'Ticket', { source:'story', description:'As a user I want X.' });
+    const ag = win.addNode('agent', 300, 100, 'Coder', { agentType:'coder', model:'opus-4.6', tools:['Write'], prompt:'Do it.', maxTurns:5 });
+    win.addConnection(inp.id, ag.id);
+    const s = win.buildOpenSpecSchema();
+    const descLine = s.schemaYaml.split('\n').find(l => l.startsWith('description: '));
+    expect(descLine).toContain('user story');          // from inputSourceHint
+    expect(descLine).toContain('As a user I want X.');  // input node detail
+  });
+  it('parallel any/race join is described in the branch instructions (requires-DAG cannot)', () => {
+    buildTestWorkflow('parallel');
+    win.state.nodes.find(n => n.type === 'parallel').config.strategy = 'any';
+    const s = win.buildOpenSpecSchema();
+    const be = artBlock(s.schemaYaml, 'backend');
+    expect(be).toContain('Runs in parallel');
+    expect(be).toContain('first branch'); // strategyJoinPhrase('any')
+  });
+  it('schema.yaml is human-readable: blank lines between artifacts and apply, meta at the end', () => {
+    buildTestWorkflow('linear');
+    const s = win.buildOpenSpecSchema();
+    expect(s.schemaYaml).toContain('\n\n  - id: implementer'); // blank line before 2nd artifact
+    expect(s.schemaYaml).toContain('\n\napply:');               // blank line before apply
+    const lines = s.schemaYaml.replace(/\n+$/, '').split('\n');
+    expect(lines[lines.length - 1].startsWith('# awd:meta ')).toBe(true); // meta is last
+  });
+  it('templates scaffold role-aware handoff/record structure', () => {
+    resetState();
+    win.addNode('agent', 100, 100, 'Builder', { agentType:'coder', model:'opus-4.6', tools:['Write'], prompt:'x', maxTurns:5 });
+    win.addNode('agent', 350, 100, 'Critic', { agentType:'adversary', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addNode('agent', 600, 100, 'Architect', { agentType:'planner', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addNode('task', 850, 100, 'Cutover', { description:'Do the cutover.', acceptance:'Zero downtime\nRollback tested' });
+    const s = win.buildOpenSpecSchema();
+    const tpl = name => (s.templates.find(t => t.file === name) || {}).content || '';
+    const builder = tpl('builder.md');
+    expect(builder).toContain('## Summary');
+    expect(builder).toContain('## Files Changed');
+    expect(builder).toContain('## How to Verify');
+    expect(builder).toContain('## Handoff - what the next step needs');
+    const critic = tpl('critic.md');
+    expect(critic).toContain('## Verdict');
+    expect(critic).toContain('## Blocking Issues (Critical/High)');
+    expect(tpl('architect.md')).toContain('## Plan');
+    const cut = tpl('cutover.md');
+    expect(cut).toContain('## Acceptance Criteria');
+    expect(cut).toContain('- [ ] Zero downtime');
+    expect(cut).toContain('- [ ] Rollback tested');
+  });
+  it('forwards Repo Context Paths (rules + product docs) into instructions and apply', () => {
+    resetState();
+    win.state.rulesPaths = ['.claude/rules', 'CONVENTIONS.md'];
+    win.state.productDocPaths = ['docs/', 'ARCHITECTURE.md'];
+    win.addNode('agent', 100, 100, 'Coder', { agentType:'coder', model:'opus-4.6', tools:['Write'], prompt:'Do it.', maxTurns:5 });
+    const s = win.buildOpenSpecSchema();
+    expect(s.schemaYaml).toContain('Repo context to read and honor');
+    expect(s.schemaYaml).toContain('Rules / constitution (BINDING');
+    expect(s.schemaYaml).toContain('.claude/rules');
+    expect(s.schemaYaml).toContain('CONVENTIONS.md');
+    expect(s.schemaYaml).toContain('Product / architecture docs');
+    expect(s.schemaYaml).toContain('ARCHITECTURE.md');
+    // present in both an artifact instruction and the apply block
+    expect((s.schemaYaml.match(/Repo context to read and honor/g) || []).length >= 2).toBe(true);
+  });
+  it('omits the repo-context block entirely when no context paths are set', () => {
+    resetState();
+    win.state.rulesPaths = []; win.state.productDocPaths = [];
+    win.addNode('agent', 100, 100, 'Coder', { agentType:'coder', model:'opus-4.6', tools:['Write'], prompt:'Do it.', maxTurns:5 });
+    expect(win.buildOpenSpecSchema().schemaYaml).toNotContain('Repo context to read and honor');
+  });
+  it('documentation roles get a docs record skeleton (full role coverage, no general fallback)', () => {
+    resetState();
+    win.addNode('agent', 100, 100, 'API Docs', { agentType:'api', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addNode('agent', 350, 100, 'Ops Runbook', { agentType:'runbook', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addNode('agent', 600, 100, 'Tech Writer', { agentType:'technical', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    const s = win.buildOpenSpecSchema();
+    const tpl = name => (s.templates.find(t => t.file === name) || {}).content || '';
+    const api = tpl('api-docs.md');
+    expect(api).toContain('## Deliverable');
+    expect(api).toContain('## Audience & Scope');
+    expect(api).toContain('## Sources');
+    expect(api).toNotContain('## Key Decisions'); // not the bare general skeleton
+    expect(tpl('ops-runbook.md')).toContain('## Audience & Scope');
+    expect(tpl('tech-writer.md')).toContain('## Sources');
+  });
+  it('templates encode graph position, gates, and multi-repo scope (designer-derived)', () => {
+    buildTestWorkflow('decision'); // input -> Implementer -> Reviewer -> Decision(gate) -> Tester -> output
+    win.state.repositories = [{ path:'repoA', branch:'main' }, { path:'repoB', branch:'main' }];
+    const s = win.buildOpenSpecSchema();
+    const tpl = name => (s.templates.find(t => t.file === name) || {}).content || '';
+    const impl = tpl('implementer.md');
+    expect(impl).toContain('Place in the workflow:');
+    expect(impl).toContain('Reviewer');          // its output feeds the Reviewer
+    expect(impl).toContain('## Repositories');    // coder = build group + multi-repo
+    expect(impl).toContain('- [ ] repoA');
+    expect(impl).toContain('- [ ] repoB');
+    const rev = tpl('reviewer.md');
+    expect(rev).toContain('## Gate readiness');   // Reviewer's output is gated by the decision
+    expect(rev).toContain('All checks pass');     // the gate condition
+    expect(rev).toNotContain('## Repositories');  // review group is not build/test
+  });
+  it('awd:meta carries the exporter Repo Context Paths (Option 1: self-contained shared schema)', () => {
+    resetState();
+    win.state.rulesPaths = ['.claude/rules']; win.state.productDocPaths = ['docs/'];
+    win.addNode('agent', 100, 100, 'Coder', { agentType:'coder', model:'opus-4.6', tools:['Write'], prompt:'x', maxTurns:5 });
+    const meta = win.openSpecExtractMeta(win.buildOpenSpecSchema().schemaYaml);
+    expect(meta.rulesPaths.join(',')).toBe('.claude/rules');
+    expect(meta.productDocPaths.join(',')).toBe('docs/');
+    win.state.rulesPaths = []; win.state.productDocPaths = [];
+  });
+  it('import adopts context paths only when the importing user has none (no clobber)', () => {
+    resetState();
+    win.state.rulesPaths = []; win.state.productDocPaths = [];
+    const adopted = win.openSpecAdoptContextPaths({ rulesPaths:['CONVENTIONS.md'], productDocPaths:['ARCHITECTURE.md'] });
+    expect(adopted).toBe(2);
+    expect(win.state.rulesPaths.join(',')).toBe('CONVENTIONS.md');
+    expect(win.state.productDocPaths.join(',')).toBe('ARCHITECTURE.md');
+    // user already has their own -> keep, do not clobber
+    win.state.rulesPaths = ['MY_RULES.md']; win.state.productDocPaths = [];
+    const a2 = win.openSpecAdoptContextPaths({ rulesPaths:['THEIRS.md'], productDocPaths:[] });
+    expect(a2).toBe(0);
+    expect(win.state.rulesPaths.join(',')).toBe('MY_RULES.md');
+    win.state.rulesPaths = []; win.state.productDocPaths = [];
+  });
+  it('openSpecZip emits a valid ZIP container (PK signature, store method)', () => {
+    const bytes = win.openSpecZip([{ path:'a/schema.yaml', content:'name: x\n' }, { path:'a/templates/p.md', content:'# P\n' }]);
+    expect(bytes[0]).toBe(0x50); expect(bytes[1]).toBe(0x4b); // 'PK'
+    expect(bytes[2]).toBe(0x03); expect(bytes[3]).toBe(0x04); // local file header
+    expect(bytes.length > 40).toBe(true);
+  });
+  it('emits one template per artifact plus an apply block', () => {
+    buildTestWorkflow('linear');
+    const s = win.buildOpenSpecSchema();
+    expect(s.templates.length).toBe(2);
+    expect(s.templates.map(t => t.file).sort().join(',')).toBe('implementer.md,planner.md');
+    expect(s.schemaYaml).toContain('apply:');
+    expect(s.schemaYaml).toContain('tracks: ');
+  });
+  it('review-loop (decision) does NOT create cyclic requires - back-edge dropped (DAG-safe)', () => {
+    buildTestWorkflow('decision');
+    const s = win.buildOpenSpecSchema();
+    expect(artBlock(s.schemaYaml, 'implementer')).toContain('requires: []'); // no upstream agent
+    expect(artBlock(s.schemaYaml, 'reviewer')).toContain('- implementer');   // forward edge kept
+    expect(artBlock(s.schemaYaml, 'implementer')).toNotContain('- reviewer'); // back-edge NOT a dep
+  });
+  it('parallel fan-out: the join requires both branch agents', () => {
+    buildTestWorkflow('parallel');
+    const s = win.buildOpenSpecSchema();
+    const rev = artBlock(s.schemaYaml, 'reviewer');
+    expect(rev).toContain('- backend');
+    expect(rev).toContain('- frontend');
+  });
+  it('carries the awd:meta comment with the FULL workflow JSON (ignored by openspec validate)', () => {
+    buildTestWorkflow('linear');
+    const s = win.buildOpenSpecSchema();
+    const metaLine = s.schemaYaml.split('\n').find(l => l.startsWith('# awd:meta '));
+    expect(metaLine).toBeTruthy();
+    const meta = JSON.parse(metaLine.replace('# awd:meta ', ''));
+    expect(meta.format).toBe('agentic-workflow-designer');
+    expect(meta.canvas.nodes.length >= 1).toBe(true);
+    const planner = meta.canvas.nodes.find(n => n.label === 'Planner');
+    expect(planner.config.model).toBe('opus-4.6');
+  });
+  it('Phase 1 round-trip: export -> awd:meta -> deserialize restores the workflow losslessly', () => {
+    buildTestWorkflow('parallel');
+    win.document.getElementById('workflowName').value = 'RT';
+    const before = win.serializeWorkflow();
+    const meta = win.openSpecExtractMeta(win.buildOpenSpecSchema().schemaYaml);
+    expect(meta).toBeTruthy();
+    win.deserializeWorkflow(meta);
+    const after = win.serializeWorkflow();
+    expect(after.canvas.nodes.length).toBe(before.canvas.nodes.length);
+    expect(after.canvas.connections.length).toBe(before.canvas.connections.length);
+    const be = after.canvas.nodes.find(n => n.label === 'Backend');
+    expect(be.config.prompt).toBe('Backend work.');
+  });
+  it('openSpecExtractMeta returns the workflow for our schema, null for a foreign one', () => {
+    buildTestWorkflow('linear');
+    expect(win.openSpecExtractMeta(win.buildOpenSpecSchema().schemaYaml).format).toBe('agentic-workflow-designer');
+    expect(win.openSpecExtractMeta('name: foo\nversion: 1\nartifacts: []\n')).toBe(null);
+  });
+  it('instruction includes the Additional-Notes / Agent-Context field, not just the core prompt', () => {
+    resetState();
+    win.addNode('agent', 100, 100, 'Noted', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'Core prompt here.', notes:'Extra agent context that must survive.', maxTurns:5 });
+    const s = win.buildOpenSpecSchema();
+    expect(s.schemaYaml).toContain('Core prompt here.');
+    expect(s.schemaYaml).toContain('Extra agent context that must survive.');
+  });
+  it('instruction forwards node config (role/model/tools/turns) and gate/loop behavior', () => {
+    buildTestWorkflow('decision');
+    const s = win.buildOpenSpecSchema();
+    const rev = artBlock(s.schemaYaml, 'reviewer');
+    expect(rev).toContain('Role:');
+    expect(rev).toContain('Model:');
+    expect(rev).toContain('Tools:');
+    expect(rev).toContain('Max turns:');
+    expect(rev).toContain('Gate');
+    expect(rev).toContain('Revise');
+  });
+  it('instruction is a literal block scalar - special chars do not break YAML', () => {
+    resetState();
+    win.addNode('agent', 100, 100, 'Tricky', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'Use a colon: a # hash and "quotes".', maxTurns:5 });
+    const s = win.buildOpenSpecSchema();
+    expect(s.schemaYaml).toContain('instruction: |');
+    expect(s.schemaYaml).toContain('Use a colon: a # hash and "quotes".');
+  });
+  it('empty workflow yields a valid placeholder schema (no crash)', () => {
+    resetState();
+    const s = win.buildOpenSpecSchema();
+    expect(s.schemaYaml).toContain('- id: step');
+    expect(s.templates.length).toBe(1);
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
@@ -6620,7 +6886,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

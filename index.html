@@ -625,14 +625,20 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section">
-    <h3>Saved Workflows</h3>
+    <h3>Workflow Management</h3>
     <div class="btn-row">
       <button class="btn sm primary" onclick="saveWorkflow()">Save</button>
       <button class="btn sm" onclick="duplicateWorkflow()">Clone</button>
-      <button class="btn sm" onclick="exportWorkflowFile()" title="Download just the workflow definition (.json) to reuse or share. Re-open it with Import.">Export</button>
+      <div class="export-dd" style="position:relative;display:inline-flex">
+        <button class="btn sm" id="exportMenuBtn" aria-haspopup="true" aria-expanded="false" onclick="toggleExportMenu(event)" title="Download the workflow as a file - Workflow JSON or OpenSpec schema.">Export &#9662;</button>
+        <div class="export-menu" id="exportMenu" role="menu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:60;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,0.4);min-width:210px;padding:4px">
+          <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportWorkflowFile();closeExportMenu()" title="Download just the workflow definition (.json) to reuse or share. Re-open it with Import.">Workflow JSON</button>
+          <button class="btn sm" id="openspecExportBtn" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportOpenSpecSchema();closeExportMenu()" title="Download as an OpenSpec custom schema (.zip of schema.yaml + templates). Unzip at your repo root and run: openspec schema validate &lt;name&gt;. Re-import the schema.yaml here to edit it visually.">OpenSpec schema</button>
+        </div>
+      </div>
       <button class="btn sm" onclick="exportHandoffFile()" title="Download a resume package (.md) to hand in-progress work to another engineer: how to resume, the durable record path, the ready-to-run prompt, and the workflow definition. The live state travels with your git branch, not this file.">Handoff</button>
       <label class="btn sm" style="margin:0">Import
-        <input type="file" accept=".json" style="display:none" onchange="importWorkflowFile(event)">
+        <input type="file" accept=".json,.yaml,.yml,.md" style="display:none" onchange="importWorkflowFile(event)">
       </label>
     </div>
     <div class="saved-workflows-list" id="savedWorkflowList">
@@ -692,7 +698,7 @@ svg.canvas{width:100%;height:100%;display:block}
         <div id="artifactPathField" style="display:none;margin-top:8px">
           <span class="memory-path-label">Artifact Path</span>
           <input type="text" id="artifactPathInput" class="memory-path" oninput="onArtifactPathInput()" placeholder=".workflow/untitled.md" style="width:100%;box-sizing:border-box;border:1px solid var(--surface2);background:var(--surface);color:var(--text);font-family:inherit"/>
-          <p class="memory-hint">Tip: use <strong>Handoff</strong> under Saved Workflows to export a resume package for another engineer.</p>
+          <p class="memory-hint">Tip: use <strong>Handoff</strong> under Workflow Management to export a resume package for another engineer.</p>
         </div>
       </div>
     </div>
@@ -919,7 +925,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Undo / Redo</strong> buttons (or keyboard shortcuts) let you reverse adding, deleting, connecting, disconnecting, and dragging nodes. 50-step history.</li>
   <li><strong>Validation indicator</strong> shows a green check or amber warning count. Click it to see issues like disconnected nodes, empty prompts, or incomplete decision gates.</li>
   <li><strong>Token estimate</strong> appears next to the Copy button showing the approximate size of the generated prompt.</li>
-  <li><strong>Clone</strong> button in Saved Workflows duplicates the current workflow under a new name for creating variants.</li>
+  <li><strong>Clone</strong> button in Workflow Management duplicates the current workflow under a new name for creating variants.</li>
 </ul>
 
 <h2 id="hg-context">Give Agents Context</h2>
@@ -973,6 +979,11 @@ svg.canvas{width:100%;height:100%;display:block}
 </ul>
 <p>Click the Output node to set it. No preset defaults to Pull Request - commit/push/PR is always an explicit choice.</p>
 
+<h3>OpenSpec export</h3>
+<p>The <strong>Export</strong> menu (under Workflow Management) offers an <strong>OpenSpec schema</strong> option that downloads your workflow as an OpenSpec custom schema for the <code>openspec</code> CLI - a <code>.zip</code> holding <code>schema.yaml</code> plus one template per step. Unzip it at your repo root (it lands under <code>openspec/schemas/&lt;name&gt;/</code>) and run <code>openspec schema validate &lt;name&gt;</code> to use it in an OpenSpec run.</p>
+<p>It maps each agent and task step to an OpenSpec artifact and carries across what the designer knows: each step's role, model, tools, and turn limits; decision gates and review loops; parallel join strategy; the input framing; the final deliverable; and your Repo Context Paths. Every step also gets a role-aware record template - a Backend step records files changed and how to verify, a Skeptic records its verdict and blocking issues - so each step leaves a clean handoff.</p>
+<p>It round-trips: re-import the <code>schema.yaml</code> with <strong>Import</strong> to edit the workflow visually and re-export. OpenSpec governs the document/spec flow; per-step model and turn limits ride along as guidance, since OpenSpec has no native slot to enforce them.</p>
+
 <h2 id="hg-memory">Memory, Records &amp; Handoff</h2>
 
 <h3>Durable Record</h3>
@@ -989,7 +1000,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>Together, <strong>Keep a durable record</strong> (the write side) and <strong>Ground in prior records</strong> (the read side) form a flywheel: every run leaves behind its decisions, gotchas, and a tested spec, and the next run reads them before planning - so workflows in the same repo get sharper and stop repeating the same mistakes over time, with nobody curating anything by hand. The more you run, the better-grounded each new workflow starts.</p>
 
 <h3>Handoff</h3>
-<p>The <strong>Handoff</strong> button under <strong>Saved Workflows</strong> downloads a single resume package (<code>.md</code>) so another engineer can pick up in-progress work: how to resume, the durable-record path, the ready-to-run prompt, and the full workflow definition. The live run state travels with your git branch and the durable record, not this file - so enable <strong>Keep a durable record</strong> before running for a truly resumable handoff.</p>
+<p>The <strong>Handoff</strong> button under <strong>Workflow Management</strong> downloads a single resume package (<code>.md</code>) so another engineer can pick up in-progress work: how to resume, the durable-record path, the ready-to-run prompt, and the full workflow definition. The live run state travels with your git branch and the durable record, not this file - so enable <strong>Keep a durable record</strong> before running for a truly resumable handoff.</p>
 
 <h2 id="hg-more">More</h2>
 
@@ -2542,8 +2553,30 @@ function importWorkflowFile(event) {
   if (file.size > 10 * 1024 * 1024) { showToast('File too large (max 10MB)'); return; }
   const reader = new FileReader();
   reader.onload = function(e) {
+    const text = e.target.result;
+    // OpenSpec round-trip import: a schema.yaml or our .md bundle carrying the
+    // awd:meta side-channel rehydrates losslessly through the existing deserializeWorkflow.
+    const meta = openSpecExtractMeta(text);
+    if (meta) {
+      const vt = Object.keys(NODE_DEFAULTS);
+      if (!meta.canvas.nodes.every(n => vt.includes(n.type))) { showToast('Unknown node types in embedded workflow'); return; }
+      if (deserializeWorkflow(meta)) {
+        const adopted = openSpecAdoptContextPaths(meta);
+        showToast('Imported from OpenSpec schema: ' + (meta.name || 'workflow') + (adopted ? ' (+' + adopted + ' repo context path' + (adopted !== 1 ? 's' : '') + ')' : ''));
+      } else { showToast('Failed to import workflow'); }
+      return;
+    }
+    if (/\.zip$/i.test(file.name || '')) {
+      // Our OpenSpec export is a .zip; the re-importable file is the schema.yaml inside it.
+      showToast('That is the zipped OpenSpec export - unzip it and import the schema.yaml inside to edit it here.');
+      return;
+    }
+    if (/\.(ya?ml|md)$/i.test(file.name || '')) {
+      showToast('This OpenSpec schema has no embedded designer metadata - importing foreign schemas is not supported yet.');
+      return;
+    }
     try {
-      const data = JSON.parse(e.target.result);
+      const data = JSON.parse(text);
       if (data.format !== 'agentic-workflow-designer') { showToast('Not a valid workflow file'); return; }
       if (!data.canvas || !data.canvas.nodes) { showToast('Invalid workflow data'); return; }
       const validTypes = Object.keys(NODE_DEFAULTS);
@@ -2640,6 +2673,23 @@ function genHandoffBundle() {
 }
 
 // Download the handoff bundle as a single Markdown file.
+// Export dropdown (Workflow Management): toggles the Export menu (Workflow JSON / OpenSpec schema).
+function toggleExportMenu(e) {
+  if (e) e.stopPropagation();
+  const m = $('exportMenu'), b = $('exportMenuBtn');
+  const open = !m || m.style.display === 'none' || !m.style.display;
+  if (m) m.style.display = open ? 'block' : 'none';
+  if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function closeExportMenu() {
+  const m = $('exportMenu'), b = $('exportMenuBtn');
+  if (m) m.style.display = 'none';
+  if (b) b.setAttribute('aria-expanded', 'false');
+}
+document.addEventListener('click', function(e) {
+  if (!(e.target.closest && e.target.closest('.export-dd'))) closeExportMenu();
+});
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeExportMenu(); });
 function exportHandoffFile() {
   if (state.nodes.length === 0) { showToast('Add nodes before exporting a handoff'); return; }
   const md = genHandoffBundle();
@@ -7824,6 +7874,409 @@ function genClaudePrompt() {
   taskSectionLines(ordered, '##').forEach(l => p.push(l));
   return p.join('\n');
 }
+
+// === OpenSpec schema export - REMOVABLE ===
+// To remove: delete this block, the "OpenSpec schema" menu item (id=openspecExportBtn) in the Export dropdown,
+// and the tests.html "OpenSpec schema export" describe. Nothing in core or the 5 generators
+// references any of it. Maps a designer workflow -> an OpenSpec (@fission-ai/openspec) custom
+// schema: one artifact per WORK node (agent or task; id<-label, instruction<-prompt/spec,
+// requires<-upstream-work edges), a template per artifact, plus an apply block. To keep
+// what-you-see-is-what-you-get parity with the generated prompts, per-node config (role, model,
+// tools, max turns), decision gate/loop behavior, parallel join strategy, the input source, and
+// the output deliverable are all forwarded as readable instruction/description text (OpenSpec has
+// no native slot for most of it - a runtime honors what it can). The exact workflow also rides in
+// a `# awd:meta` COMMENT (ignored by `openspec schema validate`) so designer->schema->designer
+// round-trips are lossless. Export is a real .zip of the openspec/schemas/<name>/ tree so it drops
+// straight into a repo. Reuses core read-only helpers (getName, getEffectivePrompt, inputSourceHint,
+// strategyJoinPhrase, getDownstreamDecisions, topologicalSort, serializeWorkflow); core is untouched.
+function openSpecSlug(text) {
+  let s = slugify(String(text || '')).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+  return s || 'step';
+}
+function openSpecYamlBlock(text, indent) {
+  // Literal block scalar (|): preserves arbitrary content (colons, quotes, #) with no escaping -
+  // every line indented by `indent`. Strips leading/trailing blank lines so indentation is set
+  // by a real line. Returns '""' for empty.
+  const pad = ' '.repeat(indent);
+  const lines = String(text == null ? '' : text).replace(/\r\n/g, '\n').replace(/\t/g, '  ').split('\n');
+  while (lines.length && lines[0].trim() === '') lines.shift();
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+  if (lines.length === 0) return '""';
+  return '|\n' + lines.map(l => l.trim().length ? pad + l.replace(/\s+$/, '') : '').join('\n');
+}
+function openSpecParallelJoinNote(node) {
+  // If this node is a branch of a parallel fork whose join is NOT wait-for-all, describe the join
+  // in words. OpenSpec's requires-DAG can only express wait-for-all (every dep must exist), so the
+  // any/race intent would otherwise be silently lost. Reuses core strategyJoinPhrase for parity.
+  const forks = state.connections.filter(c => c.to === node.id)
+    .map(c => state.nodes.find(n => n.id === c.from))
+    .filter(n => n && n.type === 'parallel');
+  for (const fork of forks) {
+    const strat = (fork.config && fork.config.strategy) || 'all';
+    if (strat === 'any' || strat === 'race') {
+      const siblings = state.connections.filter(c => c.from === fork.id && c.to !== node.id)
+        .map(c => (state.nodes.find(n => n.id === c.to) || {}).label).filter(Boolean);
+      return 'Runs in parallel' + (siblings.length ? ' with ' + siblings.join(', ') : '')
+        + '; ' + strategyJoinPhrase(strat) + '.';
+    }
+  }
+  return '';
+}
+function openSpecStepIntent(node) {
+  // The designer's per-node config + flow behavior, forwarded as readable INTENT (a runtime honors
+  // what it can; OpenSpec has no native slot for model/tools/turns or cycles). Agent nodes carry
+  // role/model/tools/turns; any work node can carry downstream gate/loop behavior and a parallel
+  // join note. Returns '' when there is nothing to say (e.g. a plain task with no gate).
+  const c = node.config || {};
+  const lines = [];
+  if (node.type === 'agent') {
+    lines.push('- Role: ' + getAgentTypeName(c.agentType));
+    if (c.model) lines.push('- Model: ' + c.model);
+    if (c.tools && c.tools.length) lines.push('- Tools: ' + c.tools.join(', '));
+    if (c.maxTurns) lines.push('- Max turns: ' + c.maxTurns);
+  }
+  getDownstreamDecisions(node.id).forEach(d => {
+    const dc = d.config || {}, yes = dc.yesLabel || 'Pass', no = dc.noLabel || 'Fail';
+    const back = state.connections.filter(cn => cn.from === d.id && cn.label === no)
+      .map(cn => (state.nodes.find(n => n.id === cn.to) || {}).label).filter(Boolean);
+    lines.push('- Gate "' + (dc.condition || d.label) + '": on ' + yes + ', proceed; on ' + no + ', '
+      + (back.length ? 'loop back to ' + back.join('/') : 'revise')
+      + ' (up to ' + (dc.maxRevisions || 3) + ' revisions).');
+  });
+  const join = openSpecParallelJoinNote(node);
+  if (join) lines.push('- ' + join);
+  if (!lines.length) return '';
+  return 'Intended execution parameters (a runtime honors what it can):\n' + lines.join('\n');
+}
+function openSpecContextBlock() {
+  // The designer's Repo Context Paths, forwarded so an openspec run reads+honors the same context the
+  // generated prompts do. OpenSpec has no shared preamble, so this rides in EACH artifact instruction
+  // (kept compact - the full prompt-style guidance would bloat the schema if repeated per-step).
+  const rules = (state.rulesPaths || []).filter(Boolean);
+  const docs = (state.productDocPaths || []).filter(Boolean);
+  if (!rules.length && !docs.length) return '';
+  const lines = ['Repo context to read and honor (resolve each path in each repo in scope; read only what is listed):'];
+  if (rules.length) lines.push('- Rules / constitution (BINDING - follow them): ' + rules.join(', '));
+  if (docs.length) lines.push('- Product / architecture docs (serve, do not contradict): ' + docs.join(', '));
+  return lines.join('\n');
+}
+function openSpecInstruction(node) {
+  // The complete instruction body for one artifact: the step's prompt/spec, any extra context, the
+  // repo context paths to honor, and the intended execution parameters. Agent nodes use their
+  // (possibly derived) prompt + Agent Context; task nodes use their description + acceptance criteria.
+  const c = node.config || {};
+  let body;
+  if (node.type === 'task') {
+    body = (c.description && c.description.trim()) ? c.description.trim() : (node.label || 'Task');
+    if (c.acceptance && c.acceptance.trim()) body += '\n\nAcceptance criteria:\n' + c.acceptance.trim();
+  } else {
+    body = getEffectivePrompt(node);
+    if (c.notes && c.notes.trim()) body += '\n\nAdditional context:\n' + c.notes.trim();
+  }
+  const ctx = openSpecContextBlock();
+  if (ctx) body += '\n\n' + ctx;
+  const intent = openSpecStepIntent(node);
+  if (intent) body += '\n\n' + intent;
+  return body;
+}
+function openSpecOutputLine(node) {
+  // One readable deliverable line for an output node, reflecting its format + branch config, so the
+  // final intent (PR/commit/report/docs + branch/target) survives into the apply step.
+  const c = node.config || {};
+  const what = (c.deliverable && c.deliverable.trim()) ? c.deliverable.trim() : (node.label || 'Deliverable');
+  const branch = (c.branchName && c.branchName.trim()) ? c.branchName.trim() : '';
+  const target = (c.targetBranch && c.targetBranch.trim()) ? c.targetBranch.trim() : 'main';
+  switch (c.format) {
+    case 'pr': return what + ': open a pull request' + (branch ? ' from branch ' + branch : '') + ' targeting ' + target + '.';
+    case 'commit': return what + ': commit the changes' + (branch ? ' on branch ' + branch : '') + '.';
+    case 'report': return what + ': produce a written report (no code changes).';
+    case 'docs': return what + ': produce documentation.';
+    case 'code':
+    default: return what + ': leave the changes uncommitted in the working tree for review.';
+  }
+}
+function openSpecUpstreamWork(nodeId) {
+  // Upstream WORK nodes (agent or task) feeding nodeId, resolved THROUGH parallel/decision routers;
+  // input/output are not dependencies. Mirrors core getDepNodes but also counts task nodes (which
+  // become artifacts here) so the requires-DAG connects task steps too. Local to this block so core
+  // getDepNodes - which the 5 generators rely on - stays untouched.
+  const out = [];
+  const seen = new Set([nodeId]);
+  const seenIds = new Set();
+  (function walk(id) {
+    state.connections.filter(c => c.to === id).forEach(c => {
+      if (seen.has(c.from)) return;
+      seen.add(c.from);
+      const from = state.nodes.find(n => n.id === c.from);
+      if (!from) return;
+      if (from.type === 'agent' || from.type === 'task') {
+        if (!seenIds.has(from.id)) { seenIds.add(from.id); out.push(from); }
+      } else if (from.type === 'parallel' || from.type === 'decision') {
+        walk(from.id);
+      }
+    });
+  })(nodeId);
+  return out;
+}
+function openSpecExtractMeta(text) {
+  // Pull the awd:meta side-channel (the full workflow JSON) from a schema.yaml.
+  // Returns the importable workflow object (deserializeWorkflow shape), or null for a foreign schema.
+  const line = String(text || '').split('\n').find(l => l.trim().startsWith('# awd:meta '));
+  if (!line) return null;
+  try {
+    const data = JSON.parse(line.trim().slice('# awd:meta '.length));
+    if (data && data.format === 'agentic-workflow-designer' && data.canvas && data.canvas.nodes) return data;
+  } catch (e) {}
+  return null;
+}
+function openSpecAdoptContextPaths(meta) {
+  // A shared schema carries the exporter's Repo Context Paths in awd:meta. On import, ADOPT them only
+  // if THIS user has none set, so a shared schema is self-contained for a new teammate - but never
+  // clobber an existing user's own (global, sticky) config. Reuses addRulesPath/addProductDocPath so
+  // chips, persistence, and the prompt refresh stay consistent. Returns how many paths were adopted.
+  let adopted = 0;
+  if (meta && Array.isArray(meta.rulesPaths) && meta.rulesPaths.length && !(state.rulesPaths || []).length) {
+    meta.rulesPaths.forEach(p => addRulesPath(p)); adopted += meta.rulesPaths.length;
+  }
+  if (meta && Array.isArray(meta.productDocPaths) && meta.productDocPaths.length && !(state.productDocPaths || []).length) {
+    meta.productDocPaths.forEach(p => addProductDocPath(p)); adopted += meta.productDocPaths.length;
+  }
+  return adopted;
+}
+// Role -> which record-section set its output doc should scaffold. Maps the designer's agent types
+// onto the handoff/durable-record structure so each step leaves a clean, role-appropriate record.
+const OPENSPEC_ROLE_GROUP = {
+  planner: 'plan', architect: 'plan',
+  coder: 'build', backend: 'build', frontend: 'build', debugger: 'build',
+  reviewer: 'review', adversary: 'skeptic', verifier: 'verify',
+  tester: 'test', researcher: 'research',
+  // documentation/content roles (incl. the writing-style-flavored types) -> the docs skeleton
+  writer: 'docs', technical: 'docs', userguide: 'docs', business: 'docs', api: 'docs', runbook: 'docs'
+};
+// The role-specific middle sections of a step's record (Summary + Handoff are added universally).
+// The skeptic set mirrors the VERDICT contract in buildAdversaryPrompt so the record matches the work.
+const OPENSPEC_RECORD_SECTIONS = {
+  plan: [ { h: 'Plan', hint: 'The approach and the concrete steps.' }, { h: 'Key Decisions', hint: 'Important choices and the reasoning.' }, { h: 'Risks & Open Questions', hint: 'What could go wrong; anything still unresolved.' } ],
+  build: [ { h: 'Files Changed', hint: 'path - what changed and why' }, { h: 'Key Decisions', hint: 'Important choices and the reasoning.' }, { h: 'How to Verify', hint: 'Exact commands/checks the next step can run to confirm this works.' } ],
+  review: [ { h: 'Findings', hint: 'Issues found, tagged by severity (Critical/High/Medium/Low).' }, { h: 'Verdict', hint: 'PASS, or the concrete changes required.' } ],
+  skeptic: [ { h: 'Verdict', hint: 'PASS / NEEDS REVISION' }, { h: 'Blocking Issues (Critical/High)', hint: 'Each: location, severity, and the concrete fix required.' }, { h: 'Non-blocking Notes (Medium/Low)', hint: 'For awareness, no action forced.' } ],
+  verify: [ { h: 'Verification', hint: 'What was checked against the acceptance criteria.' }, { h: 'Result', hint: 'Verified / Not verified, with evidence.' } ],
+  test: [ { h: 'Tests', hint: 'Tests added or run.' }, { h: 'Results', hint: 'Pass/fail, and any failures to address.' } ],
+  research: [ { h: 'Findings', hint: 'What was learned, grounded in real sources.' }, { h: 'Sources', hint: 'Files, docs, references consulted.' }, { h: 'Recommendation', hint: 'The recommended path and why.' } ],
+  docs: [ { h: 'Deliverable', hint: 'The document produced, or where it lives.' }, { h: 'Audience & Scope', hint: 'Who this is for and what it covers.' }, { h: 'Sources', hint: 'Code, specs, or systems this is grounded in - keep it accurate.' } ],
+  general: [ { h: 'Key Decisions', hint: 'Important choices and the reasoning.' } ]
+};
+function openSpecRoleGroup(node) {
+  // The record-section group for a node: tasks -> 'task', agents -> their agent-type group, else 'general'.
+  if (!node) return 'general';
+  if (node.type === 'task') return 'task';
+  return OPENSPEC_ROLE_GROUP[node.config && node.config.agentType] || 'general';
+}
+function openSpecRecordSections(node) {
+  // The middle (role-specific) sections for a node's record doc. Tasks get an acceptance checklist
+  // (prefilled from their criteria); agents are grouped by agent type; unknown -> a general set.
+  if (node && node.type === 'task') {
+    const crit = String((node.config && node.config.acceptance) || '').split('\n')
+      .map(l => l.replace(/^\s*[-*]\s*\[.?\]\s*|^\s*[-*]\s*|^\s*\d+[.)]\s*/, '').trim()).filter(Boolean);
+    return [
+      { h: 'Acceptance Criteria', checklist: true, items: crit.length ? crit : ['<!-- the criteria this task must satisfy -->'] },
+      { h: 'Outcome', hint: 'What was produced, and whether the criteria are met.' }
+    ];
+  }
+  return OPENSPEC_RECORD_SECTIONS[openSpecRoleGroup(node)] || OPENSPEC_RECORD_SECTIONS.general;
+}
+function openSpecTemplate(artifact) {
+  // The step's output-doc SKELETON (OpenSpec copies it as the starting doc; the agent fills it in as
+  // the step runs, guided by the schema instruction). Scaffolds the designer's handoff/durable-record
+  // structure - and, crucially, what only the designer knows: this step's PLACE in the graph, the GATE
+  // its output must clear, and the REPOS in scope. That node-specific context is what a generic OpenSpec
+  // schema can't produce. Plain markdown headings + one-line comment hints, matching OpenSpec's idiom.
+  const label = artifact.label || 'Step';
+  const role = artifact.role || '';
+  const node = artifact.node;
+  const lines = ['# ' + label, '',
+    '<!-- ' + (role ? role + ' step. ' : '') + 'This file is this step\'s record of work, produced as the',
+    '     step runs. Structure from the Agentic Workflow Designer (handoff format). -->'];
+  // Place in the workflow - stated from the graph so the record stands on its own.
+  const dep = (artifact.dependsOn && artifact.dependsOn.length) ? artifact.dependsOn.join(', ') : 'the workflow input';
+  const feed = (artifact.feeds && artifact.feeds.length) ? artifact.feeds.join(', ') : 'the final deliverable';
+  lines.push('', 'Place in the workflow: builds on ' + dep + '; output consumed by ' + feed + '.');
+  const section = (h, hint) => { lines.push('', '## ' + h); if (hint) lines.push('<!-- ' + hint + ' -->'); };
+  section('Summary', 'What this step accomplished - as much detail as the work warrants (a multi-repo epic step will be longer than a one-line fix).');
+  openSpecRecordSections(node).forEach(s => {
+    if (s.checklist) { lines.push('', '## ' + s.h); s.items.forEach(it => lines.push('- [ ] ' + it)); }
+    else section(s.h, s.hint);
+  });
+  // Multi-repo: build/test steps get a per-repo checklist so each repo's work is recorded explicitly.
+  const group = openSpecRoleGroup(node);
+  const repos = (state.repositories || []).map(r => r && r.path).filter(Boolean);
+  if (repos.length >= 2 && (group === 'build' || group === 'test')) {
+    lines.push('', '## Repositories', '<!-- This workflow spans multiple repos; record what changed in each. -->');
+    repos.forEach(r => lines.push('- [ ] ' + r));
+  }
+  // Gate readiness: if a decision gates this step's output, give it a slot to record meeting the gate.
+  const gates = (node ? getDownstreamDecisions(node.id) : []).map(d => (d.config && (d.config.condition || d.label)) || 'the gate');
+  if (gates.length) section('Gate readiness', 'Confirm this meets the gate' + (gates.length > 1 ? 's' : '') + ' ' + gates.map(g => '"' + g + '"').join(', ') + ' before handing off.');
+  section('Handoff - what the next step needs', 'Outputs, context, and open questions the next step must know to continue.');
+  return lines.join('\n') + '\n';
+}
+function buildOpenSpecSchema() {
+  // Pure + testable. Returns { name, schemaYaml, templates:[{file, content}] }.
+  const ordered = topologicalSort();
+  const work = ordered.filter(n => n.type === 'agent' || n.type === 'task');
+  const posIdx = new Map(ordered.map((n, i) => [n.id, i]));
+  const nm = openSpecSlug(getName() || 'workflow');
+  const wfName = nm.endsWith('-schema') ? nm : nm + '-schema';
+  const labelOf = n => n.label || (n.type === 'agent' ? getAgentTypeName(n.config.agentType) : 'Task');
+  const used = new Set();
+  const idOf = {};
+  work.forEach(a => {
+    let base = openSpecSlug(labelOf(a)), id = base, i = 2;
+    while (used.has(id)) { id = base + '-' + i; i++; }
+    used.add(id); idOf[a.id] = id;
+  });
+  const artifacts = work.map(a => ({
+    id: idOf[a.id],
+    label: labelOf(a),
+    role: a.type === 'task' ? 'Task' : getAgentTypeName(a.config.agentType),
+    instruction: openSpecInstruction(a),
+    node: a,
+    // requires = upstream work deps EARLIER in topo order -> drops review-loop back-edges (DAG-safe)
+    requires: [...new Set(openSpecUpstreamWork(a.id)
+      .filter(d => idOf[d.id] && posIdx.get(d.id) < posIdx.get(a.id))
+      .map(d => idOf[d.id]))]
+  }));
+  const arts = artifacts.length ? artifacts : [{ id: 'step', label: 'Step', role: '', instruction: 'Describe and perform the work for this step.', requires: [] }];
+
+  // Top-level description: workflow summary + input-source guidance + any input node detail, so the
+  // starting input the designer shows is reflected in the schema (OpenSpec has no input artifact).
+  let desc = 'Generated from the "' + (getName() || 'workflow') + '" workflow in the Agentic Workflow Designer. Each step records its work as a doc; the change is implemented at apply.';
+  const inputHint = inputSourceHint();
+  if (inputHint) desc += ' ' + inputHint;
+  const inputDetails = state.nodes
+    .filter(n => n.type === 'input' && n.config && n.config.description && n.config.description.trim())
+    .map(n => n.config.description.trim().replace(/\s+/g, ' '));
+  if (inputDetails.length) desc += ' Input: ' + inputDetails.join(' ');
+
+  const L = [];
+  L.push('# OpenSpec schema generated by the Agentic Workflow Designer.');
+  L.push('# Save as openspec/schemas/' + wfName + '/schema.yaml plus the templates/ files,');
+  L.push('# then run: openspec schema validate ' + wfName);
+  L.push('');
+  L.push('name: ' + wfName);
+  L.push('version: 1');
+  L.push('description: ' + JSON.stringify(desc));
+  L.push('artifacts:');
+  arts.forEach((a, i) => {
+    if (i > 0) L.push('');   // blank line between artifacts for readability
+    L.push('  - id: ' + a.id);
+    L.push('    generates: ' + a.id + '.md');
+    L.push('    description: ' + JSON.stringify((a.role ? a.role + ': ' : '') + a.label));
+    L.push('    template: ' + a.id + '.md');
+    const instr = (a.instruction || '') + '\n\nRecord the outcome of this step in ' + a.id + '.md.';
+    L.push('    instruction: ' + openSpecYamlBlock(instr, 6));
+    if (!a.requires.length) L.push('    requires: []');
+    else { L.push('    requires:'); a.requires.forEach(r => L.push('      - ' + r)); }
+  });
+
+  // apply: the final implementation step, enriched with the output nodes' deliverable intent.
+  const lastId = arts[arts.length - 1].id;
+  let applyInstr = 'Execute the change described by the artifacts above, in order. Each step\'s artifact is both its instructions and its record of work.';
+  const outputs = state.nodes.filter(n => n.type === 'output');
+  if (outputs.length) applyInstr += '\n\nDeliverables:\n' + outputs.map(o => '- ' + openSpecOutputLine(o)).join('\n');
+  const applyCtx = openSpecContextBlock();
+  if (applyCtx) applyInstr += '\n\n' + applyCtx;
+  L.push('');
+  L.push('apply:');
+  L.push('  requires:');
+  L.push('    - ' + lastId);
+  L.push('  tracks: ' + lastId + '.md');
+  L.push('  instruction: ' + openSpecYamlBlock(applyInstr, 4));
+
+  // Lossless round-trip side-channel, kept at the BOTTOM so the human-readable schema leads. Embeds
+  // the FULL workflow (same shape Export-JSON/Import use) in a comment OpenSpec ignores; import reads
+  // this and reuses the existing deserializeWorkflow - no YAML parsing, no parallel deserializer.
+  // (Prompts appear here and in the instructions; the duplication buys a robust, DRY round-trip.)
+  L.push('');
+  L.push('# Round-trip metadata for the Agentic Workflow Designer (ignored by openspec validate).');
+  L.push('# Re-import this file into the designer to edit the workflow visually.');
+  L.push('# awd:meta ' + JSON.stringify({ format: 'agentic-workflow-designer', version: 1, rulesPaths: state.rulesPaths || [], productDocPaths: state.productDocPaths || [], ...serializeWorkflow() }));
+
+  // Graph position for each artifact's record (task-inclusive, straight off the requires we built).
+  const idLabel = {};
+  arts.forEach(a => { idLabel[a.id] = a.label; });
+  arts.forEach(a => {
+    a.dependsOn = (a.requires || []).map(r => idLabel[r]).filter(Boolean);
+    a.feeds = arts.filter(b => (b.requires || []).includes(a.id)).map(b => b.label);
+  });
+  const templates = arts.map(a => ({ file: a.id + '.md', content: openSpecTemplate(a) }));
+  return { name: wfName, schemaYaml: L.join('\n') + '\n', templates };
+}
+function openSpecCrc32(bytes) {
+  // Standard CRC-32 (poly 0xEDB88320), computed inline so the ZIP writer needs no dependency.
+  let crc = -1;
+  for (let i = 0; i < bytes.length; i++) {
+    crc ^= bytes[i];
+    for (let j = 0; j < 8; j++) crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
+  }
+  return (crc ^ -1) >>> 0;
+}
+function openSpecZip(files) {
+  // Minimal store-only (no compression) ZIP writer - dependency-free. files: [{ path, content }]
+  // -> Uint8Array. Enough to package the openspec/schemas/<name>/ tree as one download that unzips
+  // straight into a repo. Entries are stamped with the current local time. zipTime/zipDate are the
+  // ZIP file format's standard packed 16-bit timestamp fields (the spec historically calls these
+  // "MS-DOS time/date" - it is a cross-platform file-format detail, NOT OS-specific; every unzip on
+  // macOS/Linux/Windows reads them the same). The ZIP epoch is 1980, so the year is encoded year-1980.
+  const enc = new TextEncoder();
+  const now = new Date();
+  const zipTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xffff;
+  const zipDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xffff;
+  const chunks = [], central = [];
+  let offset = 0;
+  const u16 = n => [n & 0xff, (n >>> 8) & 0xff];
+  const u32 = n => [n & 0xff, (n >>> 8) & 0xff, (n >>> 16) & 0xff, (n >>> 24) & 0xff];
+  files.forEach(f => {
+    const name = enc.encode(f.path), data = enc.encode(f.content), crc = openSpecCrc32(data);
+    const local = new Uint8Array([].concat(
+      u32(0x04034b50), u16(20), u16(0), u16(0), u16(zipTime), u16(zipDate),
+      u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0)));
+    chunks.push(local, name, data);
+    central.push({ name, crc, size: data.length, offset });
+    offset += local.length + name.length + data.length;
+  });
+  const cstart = offset;
+  central.forEach(c => {
+    const rec = new Uint8Array([].concat(
+      u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(zipTime), u16(zipDate),
+      u32(c.crc), u32(c.size), u32(c.size),
+      u16(c.name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(c.offset)));
+    chunks.push(rec, c.name);
+    offset += rec.length + c.name.length;
+  });
+  chunks.push(new Uint8Array([].concat(
+    u32(0x06054b50), u16(0), u16(0), u16(central.length), u16(central.length),
+    u32(offset - cstart), u32(cstart), u16(0))));
+  let total = 0; chunks.forEach(c => total += c.length);
+  const out = new Uint8Array(total);
+  let p = 0; chunks.forEach(c => { out.set(c, p); p += c.length; });
+  return out;
+}
+function exportOpenSpecSchema() {
+  if (state.nodes.length === 0) { showToast('Add nodes before exporting'); return; }
+  const s = buildOpenSpecSchema();
+  const base = 'openspec/schemas/' + s.name + '/';
+  const files = [{ path: base + 'schema.yaml', content: s.schemaYaml }]
+    .concat(s.templates.map(t => ({ path: base + 'templates/' + t.file, content: t.content })));
+  const blob = new Blob([openSpecZip(files)], { type: 'application/zip' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = s.name + '.zip';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Exported OpenSpec schema: ' + s.name + '.zip');
+}
+// === end OpenSpec schema export ===
 
 function topologicalSort() {
   const adj = {};

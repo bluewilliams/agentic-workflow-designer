@@ -243,6 +243,41 @@ Two hint functions, `rulesPathsHint()` and `productDocsHint()`, sit next to `cod
 
 ---
 
+## OpenSpec Schema Export
+
+An additive, fully removable bridge from the visual designer to OpenSpec (`@fission-ai/openspec`): export a workflow as an OpenSpec custom schema and re-import it losslessly. The designer is the visual authoring layer OpenSpec lacks. All code lives in one marked block in `index.html` (`// === OpenSpec schema export - REMOVABLE ===`) plus the `openspecExportBtn` menu item (under the Export dropdown) and one `importWorkflowFile` branch. The five generators and `getDepNodes` are untouched; the block reuses core read-only helpers (`getEffectivePrompt`, `inputSourceHint`, `strategyJoinPhrase`, `getDownstreamDecisions`) so its wording matches the generated prompts and cannot drift. Removing the block + button + the `tests.html` describe drops the feature cleanly.
+
+### Output (a real `.zip`)
+A `.zip` of the `openspec/schemas/<name>/` tree - `schema.yaml` plus one `templates/<id>.md` per step - so the download unzips straight into a repo and validates as-is. A lone `.yaml` is not enough: `openspec schema validate` requires every artifact's `template:` file to exist on disk (verified vs CLI 1.4.1). The archive is written by `openSpecZip`, a dependency-free store-only (no compression) writer with an inline CRC-32. Entries are stamped with the real local time via the ZIP format's packed date/time fields (`zipTime` / `zipDate` - a cross-platform file-format detail, not OS-specific; the format historically calls these "MS-DOS time/date").
+
+### Mapping model
+- Each WORK node (agent or task) becomes one artifact: `id` <- deduped slug(label), `generates`/`template` <- `<id>.md`, `instruction` <- built body, `requires` <- upstream work edges. Input / output / parallel / decision are routers, not artifacts.
+- `requires` is OpenSpec's strict acyclic DAG. `openSpecUpstreamWork` resolves upstream work THROUGH parallel/decision routers and is task-inclusive - it mirrors core `getDepNodes` without modifying it (core stays agent-only by contract). Review-loop back-edges are dropped (only deps earlier in topo order are kept) so the graph is acyclic; the loop behavior survives as instruction prose.
+- `apply` is the final step: it `requires`/`tracks` the last artifact and its instruction lists the output nodes' deliverables.
+
+### WYSIWYG forwarding (designer -> schema)
+Everything the designer shows reaches the schema, at the right altitude:
+- agent prompt (incl. writer-style + skeptic-derived, via `getEffectivePrompt`) -> artifact `instruction`; Agent Context (`config.notes`) -> "Additional context"
+- role / model / tools / max turns -> instruction "Intended execution parameters" (INTENT)
+- decision gate + revise loop -> instruction gate line (INTENT)
+- parallel `any`/`race` -> branch instruction prose (reuses `strategyJoinPhrase`); `all` is implicit in `requires`
+- input source + detail -> top-level `description` (reuses `inputSourceHint`)
+- output format / branch / target -> `apply` deliverable line (`openSpecOutputLine`)
+- Repo Context Paths (rules = BINDING, product docs = serve) -> a compact "Repo context to read and honor" block in every instruction and `apply` (`openSpecContextBlock`); per-instruction because OpenSpec has no shared preamble
+- task acceptance criteria -> template checklist (+ instruction)
+
+Forwarding is **intent, not enforcement**: OpenSpec has no native slot for model/tools/maxTurns. Behavioral guidance (role, tools, loop, context) transfers as text the agent reads and can act on; harness controls (model, max turns) are documentation on a vanilla run.
+
+### Templates: role-aware record skeletons
+Each `templates/<id>.md` is the skeleton of that step's record (not an empty stub), scaffolding the designer's handoff/durable-record discipline so every step leaves a clean handoff. Universal Summary + Handoff, with role-specific middle sections via `OPENSPEC_ROLE_GROUP` -> `OPENSPEC_RECORD_SECTIONS` (build: Files Changed / How to Verify; plan: Plan / Risks; review: Findings / Verdict; skeptic: the PASS/NEEDS-REVISION verdict contract mirroring `buildAdversaryPrompt`; verify; test; research; docs: Deliverable / Audience / Sources; task: acceptance checklist). All 18 agent types map; `general` is the deliberate catch-all and any unmapped type degrades to it safely. Each template also encodes node-specific context only the designer knows: graph position ("builds on X; output consumed by Y"), a per-repo checklist on build/test steps when 2+ repositories are configured, and a gate-readiness section keyed to the actual downstream condition.
+
+### Lossless round-trip (`awd:meta`)
+The full `serializeWorkflow()` JSON rides in a `# awd:meta {json}` COMMENT at the bottom of `schema.yaml` (ignored by `openspec validate`). On import, `importWorkflowFile` extracts that one line and reuses the existing `deserializeWorkflow` - no YAML parser, no parallel deserializer. Re-export is byte-identical modulo the meta line. Re-import accepts the `schema.yaml` (matched by `awd:meta`, any extension); the `.zip` itself is guarded with an "unzip and import the schema.yaml" message. The exporter's Repo Context Paths are carried in the meta too; on import they are adopted only if the importing user has none set (so a shared schema is self-contained), and never overwrite an existing user's own global config (`openSpecAdoptContextPaths`).
+
+The exhaustive design record - every requirement with its test, rejected alternatives, and the headless CLI-validation method - lives at `.workflow/openspec-schema-export-and-roundtrip.md`.
+
+---
+
 ## Memory Protocol
 
 ### Overview
@@ -521,6 +556,8 @@ The help modal also opens via the `?` keyboard shortcut and closes with `Escape`
 - **Decision routing in exports is informational**: Most exports describe decision gates as prompt instructions. The Sub-Agents format includes explicit routing, but the Agent SDK still requires manual conditional logic
 - **Memory is prompt-only**: No deterministic pre-compaction hook exists; agents rely on frequent writes and breadcrumb detection
 - **localStorage only**: Persistence is browser-local; clearing browser data deletes saved workflows
+- **OpenSpec import is designer-schemas only**: Re-import works on schemas this tool exported (they carry an `awd:meta` comment). A foreign or hand-written OpenSpec schema would need a YAML-subset parser to import (deferred)
+- **OpenSpec per-step controls are advisory**: model / tools / max-turns forward into the schema as intent; OpenSpec has no native slot to enforce them (a runtime honors what it can)
 
 ### High-Value Future Features
 1. **Undo/Redo for config fields**: Extend undo to cover text edits in agent prompts and config fields (currently structural only)
@@ -554,7 +591,7 @@ CSS styles
 HTML structure
   ├── Sidebar: Workflow Name (+ New Workflow), Story Input (+ Generate Refine Prompt, validation hint),
   │            Workflow Context (+ Generate Plan Prompt), Default Model, Repositories,
-  │            Add Nodes, Presets, App Under Test (conditional), Saved Workflows, Tip, MCP Integrations, Memory, Node Config
+  │            Add Nodes, Presets, App Under Test (conditional), Workflow Management, Tip, MCP Integrations, Memory, Node Config
   ├── Canvas: Toolbar (Select, Connect, Delete, Auto Layout, Fit, Zoom, Prompts, Help), SVG canvas, Empty state
   ├── Prompt Output: 5 format tabs, Copy button
   ├── Help Modal: Quick start, flows, output formats, shortcuts, power user tips

@@ -49,6 +49,12 @@ The bottom panel generates a ready-to-copy prompt tailored to your execution env
 
 Not sure which to pick? The app tells you. A recommendation banner above the tabs analyzes your workflow shape and suggests the best fit. Simple 1-2 agent workflows get pointed to Claude.ai, parallel pipelines to Sub-Agents, and larger teams to Agent Teams. Click the suggestion to switch.
 
+## OpenSpec Export
+
+Beyond prompts, the **Export** menu's **OpenSpec schema** option exports your workflow as an OpenSpec custom schema (for the `@fission-ai/openspec` CLI) - a `.zip` with `schema.yaml` plus a template per step. Unzip it at your repo root and run `openspec schema validate <name>` to drive an OpenSpec run with the exact pipeline you designed.
+
+It carries across everything the designer knows - each step's role/model/tools/turns, decision gates and review loops, parallel join strategy, the deliverable, and your Repo Context Paths - and gives every step a role-aware record template (a Backend step records files changed and how to verify; a Skeptic records its verdict). Re-import the `schema.yaml` to edit it visually and re-export. The designer is the visual authoring layer OpenSpec doesn't have. OpenSpec governs the spec/document flow; per-step model and turn limits forward as guidance, since it has no native slot to enforce them.
+
 ## Memory Protocol
 
 Toggle **Enable workflow memory** in the sidebar to inject a compaction-resilient memory system into exported prompts. When enabled:
@@ -294,7 +300,7 @@ LSP is enabled by default on most agent presets. Code-analysis prompts in the Pr
 - **Undo/Redo**: Toolbar buttons or `Ctrl+Z` / `Cmd+Z` to undo, `Ctrl+Shift+Z` / `Cmd+Shift+Z` to redo. Covers adding, deleting, connecting, disconnecting, and dragging nodes. 50-step history.
 - **Workflow validation**: A health indicator in the toolbar shows a green check or amber warning count. Click it to see issues like disconnected nodes, empty prompts, or incomplete decision gates. Catches problems before you copy the prompt.
 - **Token estimate**: The approximate token count of the generated prompt appears next to the Copy button so you can gauge cost and context usage.
-- **Clone workflow**: Click **Clone** in the Saved Workflows section to duplicate the current workflow under a new name. Useful for creating variants without losing the original.
+- **Clone workflow**: Click **Clone** in the Workflow Management section to duplicate the current workflow under a new name. Useful for creating variants without losing the original.
 - **Prompt Library search**: Type in the search box to filter prompts by title or description across all categories.
 - **Keyboard shortcuts**: `1` `2` `3` for Select/Connect/Delete modes, `?` for help, `Delete` to remove selected, `Alt+Drag` to pan, `Ctrl+Z` to undo.
 - **Zoom to fit**: Click **Fit** in the toolbar to auto-zoom so all nodes are visible.
@@ -311,7 +317,7 @@ Workflows persist automatically. Your canvas is auto-saved on every change and r
 Click **Save** in the sidebar to save the current workflow by name. Saved workflows appear in a list. Click to load, click × to delete. Same-name saves overwrite the previous version.
 
 ### Export / Import
-Click **Export .json** to download the workflow as a portable file. Click **Import** to load a `.json` file from a colleague or another browser. All data stays local (localStorage). Nothing is sent to a server.
+Click **Export .json** to download the workflow as a portable file. Click **Import** to load a `.json` file from a colleague or another browser - or an OpenSpec `schema.yaml` exported from here, for round-trip editing. All data stays local (localStorage). Nothing is sent to a server.
 
 ### Preferences
 Your default model, memory toggle, output format tab, app source path/branch, and repositories are remembered automatically. No explicit save needed. Just change a setting and it persists across sessions.
