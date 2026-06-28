@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## custom-prompts-library
+
+- record: .workflow/custom-prompts-library.md
+- intent: make the Prompt Library user-extensible - add/edit/delete your own prompts (localStorage `awd_custom_prompts`), shown under a "My Prompts" category with a CUSTOM badge + Edit/Delete, plus JSON export/import for backup and sharing (dedupe-by-title). Integrates through ONE seam, effectivePromptLib(), which returns the exact PROMPT_LIBRARY reference when there are no custom prompts (inert until used) and appends custom LAST so the index-based render/copy/favorite plumbing keeps stable built-in indices; user title/desc escaped; works with search + favorites + the input popup for free; local-first (no network).
+- files: index.html (core seam effectivePromptLib() + 9 PROMPT_LIBRARY->effectivePromptLib() swaps in render/copy/favorite + buildPromptCard custom branch + guarded toolbar; REMOVABLE block: getCustomPrompts/saveCustomPrompts/newCustomPromptId/rerenderPromptLib/open|close|saveCustomPromptForm/deleteCustomPrompt/exportCustomPrompts/mergeImportedPrompts/importCustomPromptsFile + #customPromptOverlay form), tests.html ("Custom Prompts (Prompt Library)" describe, 7 tests, + win-bridge), README + help modal (Prompt Library section)
+- status: current | date: 2026-06-28 | note: 1131/1131; localStorage only (no fetch/XHR). Export format {format:'awd-custom-prompts',version:1,prompts:[{id,title,desc,prompt}]}; import also accepts a bare array and dedupes by title (update-in-place). effectivePromptLib() === PROMPT_LIBRARY when empty (tested identity) so behavior is byte-identical until used; degrades to PROMPT_LIBRARY if the block is removed. Search + favorites verified with custom prompts present.
+
 ## openspec-schema-export
 
 - record: .workflow/openspec-schema-export-and-roundtrip.md

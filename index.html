@@ -1009,6 +1009,7 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h3>Prompt Library</h3>
 <p>Click the <strong>Prompts</strong> button in the toolbar for a library of ready-to-use prompts. Use the search box to filter by title or description. Star your favorites and they float to the top. Prompts that need your input (like a file path or bug description) show a popup before copying so the prompt is ready to paste.</p>
+<p><strong>Add your own.</strong> Use <strong>+ Add your own</strong> to save a custom prompt - it gets a <strong>My Prompts</strong> category with Edit/Delete on each card. Custom prompts are stored in your browser only. <strong>Export mine</strong> and <strong>Import</strong> move them as a JSON file for backup or sharing with a teammate; import merges by title.</p>
 <p>Prompts that benefit from cross-repo search or Jira/Confluence context include guidance for using those tools when available.</p>
 <p>The <strong>Live Monitors</strong> category contains prompts that watch things for you over time: CI builds, PR reviews, deploys, incidents. They run on a recurring interval, track changes across iterations, and self-terminate when done (build goes green, PR merges, service recovers).</p>
 
@@ -1062,6 +1063,21 @@ svg.canvas{width:100%;height:100%;display:block}
     <div class="plib-input-actions">
       <button class="btn sm" onclick="closePlibInput()">Cancel</button>
       <button class="btn sm primary" onclick="confirmPlibInput()">Copy Prompt</button>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Prompt Form (Prompt Library) -->
+<div class="plib-input-overlay" id="customPromptOverlay" onclick="if(event.target===this)closeCustomPromptForm()">
+  <div class="plib-input-modal">
+    <h3 id="customPromptFormTitle">Add prompt</h3>
+    <div class="plib-input-desc">Saved in your browser (localStorage). Export to back up or share with a teammate. Title and prompt are required.</div>
+    <input type="text" id="customPromptTitle" placeholder="Title" style="width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+    <input type="text" id="customPromptDesc" placeholder="Short description (optional)" style="width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+    <textarea id="customPromptBody" placeholder="The prompt text Claude should receive..." style="min-height:160px"></textarea>
+    <div class="plib-input-actions">
+      <button class="btn sm" onclick="closeCustomPromptForm()">Cancel</button>
+      <button class="btn sm primary" onclick="saveCustomPromptForm()">Save</button>
     </div>
   </div>
 </div>
@@ -4208,8 +4224,16 @@ let _plibPending = null;
 function getWritingStyleDirective() {
   return '\n\n---\n**If your output includes any user-facing text, documentation, descriptions, comments, or written content:**\n- Do not use em dashes. Use hyphens, commas, periods, or rewrite the sentence instead.\n- Write in a natural, human tone. Avoid overly formal or robotic language.\n- Use emojis sparingly if at all.\n- Prefer short, direct sentences over long compound ones.';
 }
+function effectivePromptLib() {
+  // The library the UI renders: the built-in PROMPT_LIBRARY plus the user's own prompts, appended as
+  // a "My Prompts" category. Returns the EXACT PROMPT_LIBRARY reference when there are no custom
+  // prompts, so behavior is byte-identical to before until one exists (built-in indices never shift -
+  // custom is always last). Degrades to PROMPT_LIBRARY if the custom-prompts block is removed.
+  const custom = (typeof getCustomPrompts === 'function') ? getCustomPrompts() : [];
+  return custom.length ? PROMPT_LIBRARY.concat([{ category: 'My Prompts', custom: true, prompts: custom }]) : PROMPT_LIBRARY;
+}
 function copyLibPrompt(idx, catIdx) {
-  const p = PROMPT_LIBRARY[catIdx].prompts[idx];
+  const p = effectivePromptLib()[catIdx].prompts[idx];
   if (p.input) {
     // Show input popup to collect user's context before copying
     _plibPending = { idx, catIdx };
@@ -4231,7 +4255,7 @@ function closePlibInput() {
 }
 function confirmPlibInput() {
   if (!_plibPending) return;
-  const p = PROMPT_LIBRARY[_plibPending.catIdx].prompts[_plibPending.idx];
+  const p = effectivePromptLib()[_plibPending.catIdx].prompts[_plibPending.idx];
   const userInput = $('plibInputText').value.trim();
   if (!userInput && !p.input.optional) {
     showToast('Enter your input before copying');
@@ -4248,7 +4272,7 @@ function confirmPlibInput() {
   closePlibInput();
 }
 function toggleFavorite(catIdx, promptIdx) {
-  const cat = PROMPT_LIBRARY[catIdx];
+  const cat = effectivePromptLib()[catIdx];
   const key = cat.category.replace(/<[^>]+>/g, '').trim() + ':' + cat.prompts[promptIdx].title;
   if (!state.plibFavs) state.plibFavs = [];
   const idx = state.plibFavs.indexOf(key);
@@ -4293,19 +4317,37 @@ function filterPromptLib(query) {
   }
 }
 function buildPromptCard(p, pi, ci) {
-  const catName = PROMPT_LIBRARY[ci].category.replace(/<[^>]+>/g, '').trim();
+  const cat = effectivePromptLib()[ci];
+  const catName = cat.category.replace(/<[^>]+>/g, '').trim();
   const isFav = (state.plibFavs || []).includes(catName + ':' + p.title);
+  const isCustom = !!cat.custom;
+  // Built-in titles/descs are trusted text; user-authored ones are escaped so a stray < or " cannot break the card.
+  const title = isCustom ? escHtml(p.title) : p.title;
+  const desc = isCustom ? escHtml(p.desc || '') : (p.desc || '');
   const card = document.createElement('div');
   card.className = 'plib-card';
-  card.innerHTML = '<button class="plib-fav' + (isFav ? ' on' : '') + '" onclick="toggleFavorite(' + ci + ',' + pi + ')" title="' + (isFav ? 'Remove from favorites' : 'Add to favorites') + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
-    + '<div class="plib-card-body"><div class="plib-card-title">' + p.title + '</div><div class="plib-card-desc">' + p.desc + '</div></div>'
+  const badge = isCustom ? ' <span style="font-size:9px;font-weight:600;color:var(--accent);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;margin-left:6px;vertical-align:middle">CUSTOM</span>' : '';
+  let html = '<button class="plib-fav' + (isFav ? ' on' : '') + '" onclick="toggleFavorite(' + ci + ',' + pi + ')" title="' + (isFav ? 'Remove from favorites' : 'Add to favorites') + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
+    + '<div class="plib-card-body"><div class="plib-card-title">' + title + badge + '</div><div class="plib-card-desc">' + desc + '</div></div>'
     + '<button class="plib-copy" onclick="copyLibPrompt(' + pi + ',' + ci + ')">Copy</button>';
+  if (isCustom) {
+    html += '<button class="btn sm" style="margin-left:6px" onclick="openCustomPromptForm(\'' + p.id + '\')" title="Edit this prompt">Edit</button>'
+      + '<button class="btn sm" style="margin-left:6px" onclick="deleteCustomPrompt(\'' + p.id + '\')" title="Delete this prompt">Delete</button>';
+  }
+  card.innerHTML = html;
   return card;
 }
 function renderPromptLib() {
   const body = $('promptLibBody');
   body.innerHTML = '<input type="text" class="plib-search" id="plibSearch" placeholder="Search prompts..." oninput="filterPromptLib(this.value)">'
     + '<p style="margin-bottom:12px;color:var(--text3)">High-impact prompts for common tasks. Click Copy and paste into Claude Code. Prompts that need context will ask for your input first. Star prompts to add them to your favorites.</p>';
+  if (typeof openCustomPromptForm === 'function') {
+    body.innerHTML += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">'
+      + '<button class="btn sm primary" onclick="openCustomPromptForm()">+ Add your own</button>'
+      + '<button class="btn sm" onclick="exportCustomPrompts()">Export mine</button>'
+      + '<label class="btn sm" style="margin:0;cursor:pointer">Import<input type="file" accept=".json,application/json" style="display:none" onchange="importCustomPromptsFile(event)"></label>'
+      + '</div>';
+  }
   // Render favorites section if any
   const favs = state.plibFavs || [];
   if (favs.length > 0) {
@@ -4323,18 +4365,18 @@ function renderPromptLib() {
       if (sepIdx === -1) return;
       const catName = key.slice(0, sepIdx);
       const promptTitle = key.slice(sepIdx + 1);
-      const ci = PROMPT_LIBRARY.findIndex(c => c.category.replace(/<[^>]+>/g, '').trim() === catName);
+      const ci = effectivePromptLib().findIndex(c => c.category.replace(/<[^>]+>/g, '').trim() === catName);
       if (ci === -1) return;
-      const pi = PROMPT_LIBRARY[ci].prompts.findIndex(p => p.title === promptTitle);
+      const pi = effectivePromptLib()[ci].prompts.findIndex(p => p.title === promptTitle);
       if (pi === -1) return;
-      favItems.appendChild(buildPromptCard(PROMPT_LIBRARY[ci].prompts[pi], pi, ci));
+      favItems.appendChild(buildPromptCard(effectivePromptLib()[ci].prompts[pi], pi, ci));
     });
     favDiv.appendChild(favBtn);
     favDiv.appendChild(favItems);
     body.appendChild(favDiv);
   }
   // Render categories
-  PROMPT_LIBRARY.forEach((cat, ci) => {
+  effectivePromptLib().forEach((cat, ci) => {
     const catDiv = document.createElement('div');
     catDiv.className = 'plib-category';
     const btn = document.createElement('button');
@@ -4361,12 +4403,115 @@ function renderPromptLib() {
     body.appendChild(catDiv);
   });
   // Restore saved expanded state, or open first category by default
-  const firstCatName = PROMPT_LIBRARY[0].category.replace(/<[^>]+>/g, '').trim();
+  const firstCatName = effectivePromptLib()[0].category.replace(/<[^>]+>/g, '').trim();
   const openCats = state.plibOpen || [firstCatName];
   body.querySelectorAll('.plib-cat-btn[data-cat]').forEach(b => {
     if (openCats.includes(b.dataset.cat)) b.click();
   });
 }
+// === Custom prompts (user-authored library entries) - REMOVABLE ===
+// Lets users add/edit/delete their own prompts (stored in localStorage under awd_custom_prompts),
+// shown under a "My Prompts" category, and export/import them as JSON for backup and sharing. The
+// ONLY integration seam is effectivePromptLib(); with no custom prompts it returns PROMPT_LIBRARY
+// unchanged, so the feature is inert until used. To remove: delete this block, the #customPromptOverlay
+// markup, and the isCustom branch in buildPromptCard; the toolbar and effectivePromptLib() degrade on their own.
+const CUSTOM_PROMPTS_KEY = 'awd_custom_prompts';
+function getCustomPrompts() {
+  try { const a = JSON.parse(localStorage.getItem(CUSTOM_PROMPTS_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
+function saveCustomPrompts(arr) { localStorage.setItem(CUSTOM_PROMPTS_KEY, JSON.stringify(Array.isArray(arr) ? arr : [])); }
+function newCustomPromptId() { return 'cp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+// Re-render the open library while preserving the search box (mirrors toggleFavorite's behavior).
+function rerenderPromptLib() {
+  const overlay = $('promptLibOverlay'); if (!overlay) return;
+  const searchEl = $('plibSearch'); const q = searchEl ? searchEl.value : '';
+  overlay.dataset.rendered = ''; renderPromptLib();
+  const ns = $('plibSearch'); if (ns && q) { ns.value = q; filterPromptLib(q); }
+}
+let _customPromptEditId = null;
+function openCustomPromptForm(id) {
+  _customPromptEditId = id || null;
+  const existing = id ? getCustomPrompts().find(p => p.id === id) : null;
+  $('customPromptFormTitle').textContent = existing ? 'Edit prompt' : 'Add prompt';
+  $('customPromptTitle').value = existing ? existing.title : '';
+  $('customPromptDesc').value = existing ? (existing.desc || '') : '';
+  $('customPromptBody').value = existing ? existing.prompt : '';
+  $('customPromptOverlay').classList.add('show');
+  setTimeout(() => $('customPromptTitle').focus(), 50);
+}
+function closeCustomPromptForm() { $('customPromptOverlay').classList.remove('show'); _customPromptEditId = null; }
+function saveCustomPromptForm() {
+  const title = $('customPromptTitle').value.trim();
+  const desc = $('customPromptDesc').value.trim();
+  const prompt = $('customPromptBody').value.trim();
+  if (!title || !prompt) { showToast('Title and prompt are both required'); return; }
+  const arr = getCustomPrompts();
+  if (_customPromptEditId) {
+    const p = arr.find(x => x.id === _customPromptEditId);
+    if (p) { p.title = title; p.desc = desc; p.prompt = prompt; }
+  } else {
+    arr.push({ id: newCustomPromptId(), title: title, desc: desc, prompt: prompt });
+  }
+  const editing = !!_customPromptEditId;
+  saveCustomPrompts(arr);
+  closeCustomPromptForm();
+  rerenderPromptLib();
+  showToast(editing ? 'Prompt updated' : 'Prompt added to your library');
+}
+function deleteCustomPrompt(id) {
+  const arr = getCustomPrompts();
+  const p = arr.find(x => x.id === id);
+  if (!p) return;
+  if (!confirm('Delete "' + p.title + '"? This cannot be undone.')) return;
+  saveCustomPrompts(arr.filter(x => x.id !== id));
+  rerenderPromptLib();
+  showToast('Prompt deleted');
+}
+function exportCustomPrompts() {
+  const arr = getCustomPrompts();
+  if (!arr.length) { showToast('No custom prompts to export yet'); return; }
+  const blob = new Blob([JSON.stringify({ format: 'awd-custom-prompts', version: 1, prompts: arr }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'awd-custom-prompts.json'; a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Exported ' + arr.length + ' prompt' + (arr.length !== 1 ? 's' : ''));
+}
+// Merge imported prompts into storage (dedupe by title - same title updates in place). Accepts either a
+// bare array or an { prompts: [...] } envelope. Returns the count merged, or -1 on unrecognized data.
+function mergeImportedPrompts(data) {
+  const incoming = Array.isArray(data) ? data : (data && Array.isArray(data.prompts) ? data.prompts : null);
+  if (!incoming) return -1;
+  const arr = getCustomPrompts();
+  let n = 0;
+  incoming.forEach(raw => {
+    if (!raw || typeof raw.title !== 'string' || typeof raw.prompt !== 'string') return;
+    const title = raw.title.trim();
+    const prompt = raw.prompt;
+    if (!title || !prompt.trim()) return;
+    const desc = (typeof raw.desc === 'string') ? raw.desc.trim() : '';
+    const existing = arr.find(x => x.title === title);
+    if (existing) { existing.desc = desc; existing.prompt = prompt; }
+    else { arr.push({ id: newCustomPromptId(), title: title, desc: desc, prompt: prompt }); }
+    n++;
+  });
+  saveCustomPrompts(arr);
+  return n;
+}
+function importCustomPromptsFile(event) {
+  const file = event.target.files[0]; event.target.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    let data; try { data = JSON.parse(e.target.result); } catch (err) { showToast('Invalid JSON file'); return; }
+    const n = mergeImportedPrompts(data);
+    if (n < 0) { showToast('Not a custom-prompts file'); return; }
+    rerenderPromptLib();
+    showToast('Imported ' + n + ' prompt' + (n !== 1 ? 's' : ''));
+  };
+  reader.readAsText(file);
+}
+// === end Custom prompts ===
 const PROMPT_LIBRARY = [
   { category: 'Code Quality', prompts: [
     { title: 'Bug Hunter Review',

@@ -6901,6 +6901,59 @@ describe('OpenSpec schema export', () => {
   });
 });
 
+// Custom prompts (Prompt Library) - REMOVABLE: delete this describe to drop the feature's tests.
+describe('Custom Prompts (Prompt Library)', () => {
+  beforeEach(() => { win.saveCustomPrompts([]); });
+  it('effectivePromptLib returns the exact PROMPT_LIBRARY when there are no custom prompts (inert until used)', () => {
+    expect(win.effectivePromptLib()).toBe(win.PROMPT_LIBRARY); // identity: zero behavior change when unused
+  });
+  it('effectivePromptLib appends a My Prompts category when custom prompts exist', () => {
+    win.saveCustomPrompts([{ id:'cp1', title:'My Thing', desc:'d', prompt:'p' }]);
+    const lib = win.effectivePromptLib();
+    expect(lib.length).toBe(win.PROMPT_LIBRARY.length + 1);
+    const last = lib[lib.length - 1];
+    expect(last.category).toBe('My Prompts');
+    expect(last.custom).toBe(true);
+    expect(last.prompts.length).toBe(1);
+    expect(last.prompts[0].title).toBe('My Thing');
+  });
+  it('built-in indices are unchanged when custom prompts exist (custom is appended last)', () => {
+    win.saveCustomPrompts([{ id:'cp1', title:'X', desc:'', prompt:'p' }]);
+    expect(win.effectivePromptLib()[0]).toBe(win.PROMPT_LIBRARY[0]);
+  });
+  it('mergeImportedPrompts adds new and dedupes by title (same title updates in place)', () => {
+    expect(win.mergeImportedPrompts([{ title:'A', prompt:'1' }])).toBe(1);
+    expect(win.getCustomPrompts().length).toBe(1);
+    const n = win.mergeImportedPrompts([{ title:'A', prompt:'2' }, { title:'B', prompt:'3' }]);
+    expect(n).toBe(2);
+    const arr = win.getCustomPrompts();
+    expect(arr.length).toBe(2); // A updated, B added
+    expect(arr.find(p => p.title === 'A').prompt).toBe('2');
+  });
+  it('mergeImportedPrompts accepts an { prompts: [...] } envelope and rejects bad data / blank entries', () => {
+    expect(win.mergeImportedPrompts({ prompts: [{ title:'C', prompt:'x' }] })).toBe(1);
+    expect(win.mergeImportedPrompts({ nope: true })).toBe(-1);
+    expect(win.mergeImportedPrompts([{ title:'', prompt:'x' }, { title:'D' }])).toBe(0); // blank title + missing prompt skipped
+  });
+  it('a custom card gets Edit/Delete + a CUSTOM badge, and escapes user title (no raw HTML)', () => {
+    win.saveCustomPrompts([{ id:'cp9', title:'<b>X</b>', desc:'d', prompt:'p' }]);
+    const lib = win.effectivePromptLib();
+    const ci = lib.length - 1;
+    const html = win.buildPromptCard(lib[ci].prompts[0], 0, ci).innerHTML;
+    expect(html).toContain("openCustomPromptForm('cp9')");
+    expect(html).toContain("deleteCustomPrompt('cp9')");
+    expect(html).toContain('CUSTOM');
+    expect(html).toContain('&lt;b&gt;');        // escaped
+    expect(html).toNotContain('<b>X</b>');       // not injected raw
+  });
+  it('a built-in card is unchanged (no Edit/Delete, no badge)', () => {
+    const html = win.buildPromptCard(win.PROMPT_LIBRARY[0].prompts[0], 0, 0).innerHTML;
+    expect(html).toNotContain('openCustomPromptForm');
+    expect(html).toNotContain('CUSTOM');
+    win.saveCustomPrompts([]);
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
@@ -6910,7 +6963,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
