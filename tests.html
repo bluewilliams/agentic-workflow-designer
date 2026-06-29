@@ -5418,6 +5418,45 @@ describe('Usability & Help', () => {
       const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Strategy & Analysis');
       expect(cat.prompts.length >= 3).toBe(true);
     });
+    it('should have a Loops category with three distinct loop variants', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Loops');
+      expect(!!cat).toBe(true);
+      const titles = cat.prompts.map(p => p.title);
+      expect(cat.prompts.length).toBe(3);
+      expect(titles).toContain('Converge to a Metric');
+      expect(titles).toContain('Best-of-N (explore, keep the best)');
+      expect(titles).toContain('Critique and Refine (no metric)');
+    });
+    it('each Loops prompt seeds the objective via the input popup and gates before looping', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Loops');
+      cat.prompts.forEach(p => {
+        expect(p.input.find).toBe('[your objective]');
+        // the find token lives in the BODY (not the stripped "> Your input" preamble) so replacement targets it
+        expect(p.prompt).toContain('Objective: [your objective]');
+        // every variant validates completeness before iterating, and exits honestly
+        expect(p.prompt).toContain('Step 0 - Validate before looping');
+        expect(p.prompt).toContain('STOP and ask');
+      });
+    });
+    it('Converge loop carries the metric-loop safeguards (sacred measurement, cap, stall, honest exit)', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Loops');
+      const p = cat.prompts.find(x => x.title === 'Converge to a Metric').prompt;
+      expect(p).toContain('MEASUREMENT COMMAND');
+      expect(p).toContain('are sacred');             // anti reward-hacking
+      expect(p).toContain('MAX ITERATIONS');          // hard cap
+      expect(p).toContain('Stall rule');              // no-progress stop
+      expect(p).toContain('MET or NOT MET');          // honest exit
+    });
+    it('Loops input replacement targets the body objective and strips the preamble (end-to-end)', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Loops');
+      const p = cat.prompts[0];
+      // mirror confirmPlibInput: replace the find token, then strip the "> Your input ... > Example:" preamble
+      let text = p.prompt.replace(p.input.find, 'GET THE SUITE GREEN');
+      text = text.replace(/^> \*\*Your input\*\*.*?\n> Example:.*?\n\n/s, '');
+      expect(text).toContain('GET THE SUITE GREEN');
+      expect(text).toNotContain('[your objective]');   // no leftover placeholder
+      expect(text.startsWith('> **Your input**')).toBe(false); // preamble removed
+    });
     it('should have OWASP and Secrets prompts in Security', () => {
       const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Security');
       expect(cat.prompts.find(p => p.title === 'OWASP Top 10 Audit').prompt.length > 200).toBe(true);
