@@ -986,6 +986,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>The <strong>Export</strong> menu (under Workflow Management) offers an <strong>OpenSpec schema</strong> option that downloads your workflow as an OpenSpec custom schema for the <code>openspec</code> CLI - a <code>.zip</code> holding <code>schema.yaml</code> plus one template per step. Unzip it at your repo root (it lands under <code>openspec/schemas/&lt;name&gt;/</code>) and run <code>openspec schema validate &lt;name&gt;</code> to use it in an OpenSpec run.</p>
 <p>It maps each agent and task step to an OpenSpec artifact and carries across what the designer knows: each step's role, model, tools, and turn limits; decision gates and review loops; parallel join strategy; the input framing; the final deliverable; and your Repo Context Paths. Every step also gets a role-aware record template - a Backend step records files changed and how to verify, a Skeptic records its verdict and blocking issues - so each step leaves a clean handoff.</p>
 <p>It round-trips: re-import the <code>schema.yaml</code> with <strong>Import</strong> to edit the workflow visually and re-export. OpenSpec governs the document/spec flow; per-step model and turn limits ride along as guidance, since OpenSpec has no native slot to enforce them.</p>
+<p>One thing to know: the <strong>Keep a durable record</strong> toggle does <em>not</em> flow into this export. That toggle drives the prompt outputs, where an agent maintains the single <code>.workflow/{slug}.md</code> flywheel doc. OpenSpec works one-document-per-step, so a schema run leaves the per-step record templates above instead - the OpenSpec-native way to capture the same handoff. You get clean per-step records either way; you just will not get the single consolidated <code>.workflow</code> doc from an OpenSpec run.</p>
 
 <h2 id="hg-memory">Memory, Records &amp; Handoff</h2>
 
@@ -8479,7 +8480,17 @@ function exportOpenSpecSchema() {
   a.download = s.name + '.zip';
   a.click();
   URL.revokeObjectURL(a.href);
-  showToast('Exported OpenSpec schema: ' + s.name + '.zip');
+  showToast(openSpecExportToast(s.name, state.durableRecord), state.durableRecord ? 7000 : undefined);
+}
+function openSpecExportToast(name, durable) {
+  // Pure + testable: the success-toast message for an OpenSpec export. The durable-record toggle drives
+  // the prompt outputs, not this export - OpenSpec produces one record per step (the role-aware templates),
+  // never the single .workflow flywheel doc. When the toggle is on, append a one-line note so a user who
+  // enabled it is not surprised by what the schema run leaves behind; otherwise the plain success message.
+  const base = 'Exported OpenSpec schema: ' + name + '.zip';
+  return durable
+    ? base + ' - note: this uses OpenSpec\'s per-step records, not the single .workflow durable record (that lives in the prompt outputs).'
+    : base;
 }
 // === end OpenSpec schema export ===
 
