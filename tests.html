@@ -2559,10 +2559,11 @@ describe('Export: genAgentSDK', () => {
     buildTestWorkflow('linear');
     win.state.consumeRecords = true;
     const out = win.genAgentSDK();
+    const flat = out.replace(/\n#\s*/g, ' '); // unwrap # comment continuation for phrase checks
     expect(out).toContain('Ground in prior committed records (if any)');
     expect(out).toContain('.workflow/_index.md');
     expect(out).toContain('.workflow/_timeline.md');
-    expect(out).toContain('adds nothing to greenfield work');
+    expect(flat).toContain('adds nothing to greenfield work');
     expect(out).toNotContain('—'); // em dash
     expect(out).toNotContain('–'); // en dash
   });
@@ -2570,13 +2571,25 @@ describe('Export: genAgentSDK', () => {
     buildTestWorkflow('linear');
     win.state.consumeRecords = true;
     const out = win.genAgentSDK();
+    const flat = out.replace(/\n#\s*/g, ' ');
     expect(out).toContain('_timeline.md');
     expect(out).toContain('_index.md');
-    expect(out).toContain('three-tier lookup');
+    expect(flat).toContain('three-tier lookup');
     // order: timeline (when) leads to index (what) leads to record (detail)
     expect(out.indexOf('_timeline.md') < out.indexOf('_index.md')).toBe(true);
     // a recency use-case token is named (not bug-only)
     expect(out).toContain('regression');
+  });
+  it('SDK grounding renders the shared protocol incl. supersede + siblings (consolidation parity)', () => {
+    buildTestWorkflow('linear');
+    win.state.consumeRecords = true;
+    const out = win.genAgentSDK();
+    const flat = out.replace(/\n#\s*/g, ' ');
+    // these two steps were absent from the SDK's old bespoke copy; consolidation onto the shared source adds them
+    expect(flat).toContain('plan to supersede it at finalize');
+    expect(flat).toContain('never follow links transitively');
+    // shared scanIndex wording present, with backticks stripped for plain comments
+    expect(flat).toContain('prefer entries marked status: current');
   });
   it('omits the consumeRecords grounding banner when the toggle is off', () => {
     buildTestWorkflow('linear');
@@ -6917,6 +6930,52 @@ describe('OpenSpec schema export', () => {
     expect(msg).toContain('per-step records'); // sets expectations: durable record stays in the prompt outputs
     expect(msg).toContain('.workflow durable record');
   });
+  // Cross-tool grounding (backlog #9): an OpenSpec run reads our .workflow/ records when the toggle is on.
+  it('openSpecGroundingBlock: empty when "Ground in prior records" is off, points at the index when on', () => {
+    const saved = win.state.consumeRecords;
+    win.state.consumeRecords = false;
+    expect(win.openSpecGroundingBlock()).toBe('');
+    win.state.consumeRecords = true;
+    const g = win.openSpecGroundingBlock();
+    expect(g).toContain('.workflow/_index.md');
+    expect(g).toContain('.workflow/_timeline.md');
+    expect(g).toContain('proceed normally'); // self-gating on greenfield
+    win.state.consumeRecords = saved;
+  });
+  it('grounding rides on the FIRST artifact only when the toggle is on', () => {
+    const saved = win.state.consumeRecords;
+    win.state.consumeRecords = true;
+    buildTestWorkflow('linear'); // planner -> implementer; planner is the entry step
+    const s = win.buildOpenSpecSchema();
+    expect(artBlock(s.schemaYaml, 'planner')).toContain('Ground in prior records first');
+    expect(artBlock(s.schemaYaml, 'implementer')).toNotContain('Ground in prior records first');
+    win.state.consumeRecords = saved;
+  });
+  it('no grounding text in the schema when the toggle is off', () => {
+    const saved = win.state.consumeRecords;
+    win.state.consumeRecords = false;
+    buildTestWorkflow('linear');
+    const s = win.buildOpenSpecSchema();
+    expect(s.schemaYaml).toNotContain('Ground in prior records first');
+    win.state.consumeRecords = saved;
+  });
+  it('the 3-tier lookup protocol is shared by the prompt read-side and the OpenSpec export (DRY, framing differs)', () => {
+    const saved = win.state.consumeRecords;
+    win.state.consumeRecords = true;
+    const s = win.groundingLookupSteps();
+    const hint = win.consumeRecordsHint();      // prompt outputs
+    const ospec = win.openSpecGroundingBlock();  // OpenSpec export
+    // Same canonical steps in both, proving reuse rather than copy-paste.
+    expect(hint).toContain(s.scanIndex);
+    expect(ospec).toContain(s.scanIndex);
+    expect(ospec).toContain(s.tiers);
+    // Framing differs by format: prompt side blockquotes each step; the schema does not.
+    expect(hint).toContain('> - ' + s.tiers);
+    expect(ospec).toNotContain('> -');
+    // OpenSpec uses the read-relevant subset (no write-side supersede step).
+    expect(ospec).toNotContain(s.supersede);
+    win.state.consumeRecords = saved;
+  });
 });
 
 // Custom prompts (Prompt Library) - REMOVABLE: delete this describe to drop the feature's tests.
@@ -6981,7 +7040,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

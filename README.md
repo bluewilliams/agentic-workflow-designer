@@ -57,6 +57,8 @@ Beyond prompts, the **Export** menu's **OpenSpec schema** option exports your wo
 
 It carries across everything the designer knows - each step's role/model/tools/turns, decision gates and review loops, parallel join strategy, the deliverable, and your Repo Context Paths - and gives every step a role-aware record template (a Backend step records files changed and how to verify; a Skeptic records its verdict). Re-import the `schema.yaml` to edit it visually and re-export. The designer is the visual authoring layer OpenSpec doesn't have. OpenSpec governs the spec/document flow; per-step model and turn limits forward as guidance, since it has no native slot to enforce them.
 
+The two record toggles split cleanly here. **Ground in prior records** (the read side) flows in: when it's on, the first step is told to scan `.workflow/_index.md` before working, so a schema run inherits the decisions and gotchas your prompt-run workflows recorded (self-gating - nothing on a repo with no records). **Keep a durable record** (the write side) does not flow in: OpenSpec writes one document per step, so a run leaves those per-step records rather than the single `.workflow` flywheel doc. You get clean per-step records either way.
+
 ## Memory Protocol
 
 Toggle **Enable workflow memory** in the sidebar to inject a compaction-resilient memory system into exported prompts. When enabled:
