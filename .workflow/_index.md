@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## loop-prompt-library
+
+- record: .workflow/loop-prompt-library-variants.md
+- intent: add a "Loops" category to the Prompt Library with three fill-the-blanks loop builders - Converge to a Metric (measurable target, hill-climb), Best-of-N (explore diverse candidates, score, keep best), Critique and Refine (judgment-gated by an adversarial critic, no metric). Chosen on the measurable-vs-judgment x refine-vs-explore axes so they are genuinely distinct, not copy-paste. Each seeds its objective via the input popup (`input.find` = `[your objective]`, token in the body not the stripped preamble) and enforces the remaining fields with a hard Step 0 "validate before looping, else STOP and ask" gate - the forcing function the single-field input UI cannot provide (the agent judges quality, e.g. is the criterion measurable, not mere presence). Variant anti-failure rules: Converge = sacred measurement + cap + stall + honest MET/NOT MET exit; Best-of-N = real diversity + honest identical scoring + disqualify-on-invariant + auditable scoreboard; Critique = concrete quality bar + adversarial/independent critic + "no blocking issues" stop (not perfection).
+- files: index.html (new `{ category: 'Loops', prompts: [3] }` in PROMPT_LIBRARY between Code Quality and Code Generation; pure curated content, no code change), tests.html ("new prompt categories" describe +4 tests incl. end-to-end replace/strip mirroring confirmPlibInput)
+- status: current | date: 2026-06-28 | note: 1143/1143 (+4). Additive only - count tests are `>=`, copy-button-per-card auto-scales. Single-field input limitation handled by seeding the objective via the popup + Step 0 agent-enforced completeness for the rest. Deferred: a visual "Goal Loop" preset (MAX_ITERATIONS -> maxRevisions, measurement -> gate condition) and multi-field input UI. Critique-Refine is the single-prompt form of the shipped generic adversary/critic + review-loop.
+
 ## custom-prompts-library
 
 - record: .workflow/custom-prompts-library.md
