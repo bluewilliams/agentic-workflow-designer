@@ -986,7 +986,11 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>The <strong>Export</strong> menu (under Workflow Management) offers an <strong>OpenSpec schema</strong> option that downloads your workflow as an OpenSpec custom schema for the <code>openspec</code> CLI - a <code>.zip</code> holding <code>schema.yaml</code> plus one template per step. Unzip it at your repo root (it lands under <code>openspec/schemas/&lt;name&gt;/</code>) and run <code>openspec schema validate &lt;name&gt;</code> to use it in an OpenSpec run.</p>
 <p>It maps each agent and task step to an OpenSpec artifact and carries across what the designer knows: each step's role, model, tools, and turn limits; decision gates and review loops; parallel join strategy; the input framing; the final deliverable; and your Repo Context Paths. Every step also gets a role-aware record template - a Backend step records files changed and how to verify, a Skeptic records its verdict and blocking issues - so each step leaves a clean handoff.</p>
 <p>It round-trips: re-import the <code>schema.yaml</code> with <strong>Import</strong> to edit the workflow visually and re-export. OpenSpec governs the document/spec flow; per-step model and turn limits ride along as guidance, since OpenSpec has no native slot to enforce them.</p>
-<p>One thing to know: the <strong>Keep a durable record</strong> toggle does <em>not</em> flow into this export. That toggle drives the prompt outputs, where an agent maintains the single <code>.workflow/{slug}.md</code> flywheel doc. OpenSpec works one-document-per-step, so a schema run leaves the per-step record templates above instead - the OpenSpec-native way to capture the same handoff. You get clean per-step records either way; you just will not get the single consolidated <code>.workflow</code> doc from an OpenSpec run.</p>
+<p>The two record toggles split cleanly here - one read side flows in, one write side does not:</p>
+<ul>
+  <li><strong>Ground in prior records</strong> (read side) <em>does</em> flow in. When it is on, the first step's instruction tells the OpenSpec run to scan <code>.workflow/_index.md</code> (and <code>.workflow/_timeline.md</code>) before it works, so a schema run inherits the decisions and gotchas that your prompt-run workflows left behind. It is self-gating - on a repo with no records it adds nothing.</li>
+  <li><strong>Keep a durable record</strong> (write side) does <em>not</em> flow in. That toggle drives the prompt outputs, where an agent maintains the single <code>.workflow/{slug}.md</code> flywheel doc. OpenSpec works one-document-per-step, so a schema run leaves the per-step record templates above instead - the OpenSpec-native way to capture the same handoff. You get clean per-step records either way; you just will not get the single consolidated <code>.workflow</code> doc from an OpenSpec run.</li>
+</ul>
 
 <h2 id="hg-memory">Memory, Records &amp; Handoff</h2>
 
@@ -1285,15 +1289,42 @@ function executionModelDirective(fmt) {
   };
   return m[fmt] || m.prompt;
 }
+function groundingLookupSteps() {
+  // The canonical THREE-TIER read-side lookup (timeline -> index -> record), as plain step strings with
+  // NO prefix or framing, so each caller renders them in its own voice. SINGLE SOURCE OF TRUTH for the
+  // grounding protocol: consumeRecordsHint (the prompt outputs) renders every step with a '> - ' blockquote
+  // + orchestrator lead; openSpecGroundingBlock (the OpenSpec export) renders the read-relevant subset as
+  // plain instruction bullets. Edit the protocol here and both paths update. The strings are kept verbatim
+  // from the original consumeRecordsHint so the prompt outputs stay byte-identical.
+  return {
+    tiers: 'Two breadcrumbs sit alongside the records and form a three-tier lookup: `.workflow/_timeline.md` (when things changed) and `.workflow/_index.md` (what a change touches), both leading to the durable record (the full detail). `_index.md` is the default entry; scan it as described next. When recency matters - a recent regression, onboarding onto an unfamiliar area, or resuming paused work - also scan `_timeline.md` first (newest-first, one line per change) and open what its top entries point at. That is a judgment call, not every run; when recency is irrelevant, skip straight to the index.',
+    scanIndex: 'If a record index exists at `.workflow/_index.md` in a repository in scope, scan it first (a cheap one-line-per-record breadcrumb). Match entries by the files and capability your change touches; prefer entries marked `status: current`. If the index is large, do NOT read it whole - `Grep` it for the file names, symbols, and capability slug your change touches and read only the matching entries, so your context stays bounded no matter how many entries the index holds. Then open ONLY the matched records and carry their decisions, gotchas, surface-area map, and requirements into your plan.',
+    noTransitive: 'Do not read every record, and do not follow a record\'s cross-repository `siblings` link unless a matched entry shows a real dependency on that repository - never follow links transitively.',
+    supersede: 'If your change will modify or replace a behavior a current record defines, reconcile your plan against that record and plan to supersede it at finalize (set `supersedes` on the new entry and flip the old entry to `superseded`).',
+    greenfield: 'If no index exists or no entry matches, proceed normally - this adds nothing to greenfield work.'
+  };
+}
+function wrapComment(text, width) {
+  // Word-wrap plain prose into '# '-prefixed comment lines no wider than `width`, without splitting a
+  // token. Lets the SDK exporter render the shared protocol prose (groundingLookupSteps) as fixed-width
+  // comment lines matching its surrounding banners. Returns an array of lines.
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  words.forEach(w => {
+    const candidate = line ? line + ' ' + w : w;
+    if (line && ('# ' + candidate).length > width) { lines.push('# ' + line); line = w; }
+    else line = candidate;
+  });
+  if (line) lines.push('# ' + line);
+  return lines;
+}
 function consumeRecordsHint(fmt) {
   if (!state.consumeRecords) return null;
+  const s = groundingLookupSteps();
   const r = [];
   r.push('> **Ground in prior committed records (if any).** The orchestrator (the top-level agent that drives this workflow and spawns its steps - ' + orchestratorIdentity(fmt) + ', even when there is no named Planner step) does this once before the work begins, and folds what it finds into the brief it gives the steps so they inherit it without re-reading.');
-  r.push('> - Two breadcrumbs sit alongside the records and form a three-tier lookup: `.workflow/_timeline.md` (when things changed) and `.workflow/_index.md` (what a change touches), both leading to the durable record (the full detail). `_index.md` is the default entry; scan it as described next. When recency matters - a recent regression, onboarding onto an unfamiliar area, or resuming paused work - also scan `_timeline.md` first (newest-first, one line per change) and open what its top entries point at. That is a judgment call, not every run; when recency is irrelevant, skip straight to the index.');
-  r.push('> - If a record index exists at `.workflow/_index.md` in a repository in scope, scan it first (a cheap one-line-per-record breadcrumb). Match entries by the files and capability your change touches; prefer entries marked `status: current`. If the index is large, do NOT read it whole - `Grep` it for the file names, symbols, and capability slug your change touches and read only the matching entries, so your context stays bounded no matter how many entries the index holds. Then open ONLY the matched records and carry their decisions, gotchas, surface-area map, and requirements into your plan.');
-  r.push('> - Do not read every record, and do not follow a record\'s cross-repository `siblings` link unless a matched entry shows a real dependency on that repository - never follow links transitively.');
-  r.push('> - If your change will modify or replace a behavior a current record defines, reconcile your plan against that record and plan to supersede it at finalize (set `supersedes` on the new entry and flip the old entry to `superseded`).');
-  r.push('> - If no index exists or no entry matches, proceed normally - this adds nothing to greenfield work.');
+  [s.tiers, s.scanIndex, s.noTransitive, s.supersede, s.greenfield].forEach(step => r.push('> - ' + step));
   return r.join('\n');
 }
 
@@ -7596,19 +7627,13 @@ function genAgentSDK() {
   if (state.consumeRecords) {
     p.push('# ── Ground in prior committed records (if any) ───────────────────────────────');
     p.push('# Before the first step, the orchestrator grounds in prior committed records and');
-    p.push('# folds what it finds into the brief it hands the steps. Two breadcrumbs form a');
-    p.push('# three-tier lookup: .workflow/_timeline.md (when something changed) leads to');
-    p.push('# .workflow/_index.md (what it touches) leads to the durable record (full detail).');
-    p.push('# The index is the relevance lens and the default entry point: if it exists in a');
-    p.push('# repo in scope, scan it first (one line per record), match entries by the files and');
-    p.push('# capability this change touches, and prefer those marked status: current. When');
-    p.push('# recency matters, also scan _timeline.md first (newest-first, one line per change)');
-    p.push('# and open what its top entries point at - a judgment call, not a forced every-run');
-    p.push('# step: reach for it when chasing a recent regression, orienting or onboarding onto');
-    p.push('# an unfamiliar area, or resuming paused work. Open ONLY the matched records - do');
-    p.push('# not read them all - and carry their decisions, gotchas, surface-area map, and');
-    p.push('# requirements into the plan. If no index exists or nothing matches, this is a');
-    p.push('# no-op - proceed normally (it adds nothing to greenfield work).');
+    p.push('# folds what it finds into the brief it hands the steps:');
+    // Render the SHARED three-tier protocol (groundingLookupSteps) as wrapped # comments - same source
+    // the prompt outputs and the OpenSpec export use, so the protocol stays DRY. Backticks stripped (no
+    // markdown in Python comments). Full step set (the SDK runs the whole workflow, like the prompt side).
+    const gls = groundingLookupSteps();
+    [gls.tiers, gls.scanIndex, gls.noTransitive, gls.supersede, gls.greenfield]
+      .forEach(step => wrapComment(step.replace(/`/g, ''), 79).forEach(l => p.push(l)));
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
@@ -8109,6 +8134,21 @@ function openSpecContextBlock() {
   if (docs.length) lines.push('- Product / architecture docs (serve, do not contradict): ' + docs.join(', '));
   return lines.join('\n');
 }
+function openSpecGroundingBlock() {
+  // Read-side cross-tool grounding: when "Ground in prior records" is on, tell the run to consult the
+  // designer's durable-record index BEFORE this step's work, so an OpenSpec run benefits from the
+  // .workflow/ records our prompt-run workflows leave behind. Self-gating (no index / no match -> no-op),
+  // so it is harmless on greenfield repos. Caller rides this on the FIRST artifact only (the entry step);
+  // downstream steps inherit through requires. Renders the SHARED canonical three-tier protocol
+  // (groundingLookupSteps) as plain instruction bullets - same source the prompt outputs use, so the
+  // protocol stays DRY; the read-relevant subset only (skips the write-side supersede step and the
+  // multi-repo siblings step - an OpenSpec run reads to inform its work, it does not maintain our index).
+  if (!state.consumeRecords) return '';
+  const s = groundingLookupSteps();
+  return ['Ground in prior records first (if any), before doing this step\'s work:']
+    .concat([s.tiers, s.scanIndex, s.greenfield].map(step => '- ' + step))
+    .join('\n');
+}
 function openSpecInstruction(node) {
   // The complete instruction body for one artifact: the step's prompt/spec, any extra context, the
   // repo context paths to honor, and the intended execution parameters. Agent nodes use their
@@ -8373,13 +8413,18 @@ function buildOpenSpecSchema() {
   L.push('version: 1');
   L.push('description: ' + JSON.stringify(desc));
   L.push('artifacts:');
+  // Read-side grounding rides on the FIRST artifact only (the entry step); downstream steps inherit
+  // it through requires. Gated on "Ground in prior records" (empty string when off). See backlog #9.
+  const grounding = openSpecGroundingBlock();
   arts.forEach((a, i) => {
     if (i > 0) L.push('');   // blank line between artifacts for readability
     L.push('  - id: ' + a.id);
     L.push('    generates: ' + a.id + '.md');
     L.push('    description: ' + JSON.stringify((a.role ? a.role + ': ' : '') + a.label));
     L.push('    template: ' + a.id + '.md');
-    const instr = (a.instruction || '') + '\n\nRecord the outcome of this step in ' + a.id + '.md.';
+    const base = a.instruction || '';
+    const grounded = (i === 0 && grounding) ? grounding + '\n\n' + base : base;
+    const instr = grounded + '\n\nRecord the outcome of this step in ' + a.id + '.md.';
     L.push('    instruction: ' + openSpecYamlBlock(instr, 6));
     if (!a.requires.length) L.push('    requires: []');
     else { L.push('    requires:'); a.requires.forEach(r => L.push('      - ' + r)); }
