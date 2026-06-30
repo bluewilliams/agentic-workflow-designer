@@ -1109,7 +1109,7 @@ svg.canvas{width:100%;height:100%;display:block}
     <label class="ca-label">Version (optional)</label>
     <input type="text" id="customAgentVersion" placeholder="e.g. 1.0.0" class="ca-input">
     <div style="display:flex;gap:10px">
-      <div style="flex:1"><label class="ca-label">Agent Type</label><select id="customAgentType" class="ca-input"></select></div>
+      <div style="flex:1"><label class="ca-label">Agent Type</label><select id="customAgentType" class="ca-input" onchange="onAgentFormTypeChange()"></select></div>
       <div style="flex:1"><label class="ca-label">Model</label><select id="customAgentModel" class="ca-input"></select></div>
     </div>
     <label class="ca-label">Max Turns</label>
@@ -4677,6 +4677,21 @@ function normalizeAgentConfig(c) {
     maxTurns: typeof c.maxTurns === 'number' ? c.maxTurns : 10
   };
 }
+// Apply the side effects of choosing an agent type to a CONFIG object (mutates + returns it). Node-
+// independent so the preset form can reuse the same behavior the node panel has: for 'writer' set a
+// default writingStyle and swap tools to that style's defaults; if the prompt is currently blank, fill
+// it from the role template. `currentPromptText` is the live field value (so an already-typed prompt is
+// never overwritten); `label` feeds the general-type fallback. getEffectivePrompt reads only config+label.
+function applyAgentTypeChange(config, newType, currentPromptText, label) {
+  config.agentType = newType;
+  if (newType === 'writer') {
+    config.writingStyle = config.writingStyle || 'technical';
+    if (WRITER_TOOL_DEFAULTS[config.writingStyle]) config.tools = [...WRITER_TOOL_DEFAULTS[config.writingStyle]];
+  }
+  const cur = (currentPromptText != null ? currentPromptText : config.prompt) || '';
+  if (!cur.trim()) config.prompt = getEffectivePrompt({ config: config, label: label || '' });
+  return config;
+}
 let _agentFormCtx = null; // { editId, baseConfig }
 function saveSelectedAgentPreset() {
   const node = state.nodes.find(n => n.id === state.selectedId);
@@ -4694,11 +4709,33 @@ function openAgentForm(id, node) {
   $('customAgentType').innerHTML = AGENT_TYPES.map(a => '<option value="' + a.id + '"' + (a.id === base.agentType ? ' selected' : '') + '>' + a.name + '</option>').join('');
   $('customAgentModel').innerHTML = MODELS.map(m => '<option value="' + m.value + '"' + (m.value === base.model ? ' selected' : '') + '>' + m.label + '</option>').join('');
   $('customAgentMaxTurns').value = base.maxTurns || 10;
-  $('customAgentTools').innerHTML = ALL_TOOLS.map(t => '<button type="button" class="tool-tag' + ((base.tools || []).includes(t) ? ' active' : '') + '" onclick="this.classList.toggle(\'active\')">' + t + '</button>').join('');
+  renderAgentFormTools(base.tools);
   $('customAgentPrompt').value = base.prompt || '';
   $('customAgentNotes').value = base.notes || '';
   $('customAgentOverlay').classList.add('show');
   setTimeout(() => $('customAgentName').focus(), 50);
+}
+// Render the tool toggle-chips into the form (shared by openAgentForm and the type-change handler).
+function renderAgentFormTools(tools) {
+  const el = $('customAgentTools'); if (!el) return;
+  el.innerHTML = ALL_TOOLS.map(t => '<button type="button" class="tool-tag' + ((tools || []).includes(t) ? ' active' : '') + '" onclick="this.classList.toggle(\'active\')">' + t + '</button>').join('');
+}
+// Form Agent Type change: mirror the node panel - fill a blank prompt from the role template, and for
+// 'writer' swap the tools to that style's defaults. Operates on the LIVE form state so typed edits stick.
+function onAgentFormTypeChange() {
+  const newType = $('customAgentType').value;
+  const cfg = {
+    agentType: newType,
+    writingStyle: (_agentFormCtx && _agentFormCtx.baseConfig && _agentFormCtx.baseConfig.writingStyle) || undefined,
+    tools: [...$('customAgentTools').querySelectorAll('.tool-tag.active')].map(b => b.textContent),
+    prompt: $('customAgentPrompt').value,
+    notes: $('customAgentNotes').value
+  };
+  applyAgentTypeChange(cfg, newType, $('customAgentPrompt').value, $('customAgentName').value.trim());
+  $('customAgentPrompt').value = cfg.prompt || '';
+  renderAgentFormTools(cfg.tools);
+  // preserve any derived writingStyle so Save keeps it (Save spreads over baseConfig)
+  if (_agentFormCtx) _agentFormCtx.baseConfig = Object.assign({}, _agentFormCtx.baseConfig, { writingStyle: cfg.writingStyle });
 }
 function closeAgentForm() { $('customAgentOverlay').classList.remove('show'); _agentFormCtx = null; }
 function saveAgentForm() {
