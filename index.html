@@ -8487,15 +8487,22 @@ function buildOpenSpecSchema() {
 
   // apply: the final implementation step, enriched with the output nodes' deliverable intent.
   const lastId = arts[arts.length - 1].id;
-  let applyInstr = 'Execute the change described by the artifacts above, in order. Each step\'s artifact is both its instructions and its record of work.';
   const outputs = state.nodes.filter(n => n.type === 'output');
+  // apply.requires = the work artifacts that actually feed the output node(s), resolved THROUGH parallel/
+  // decision routers (same helper the artifacts use). This makes the terminal gate faithful - a divergent
+  // apply (one that depends on a mid-chain step, not the last one) is preserved and round-trips - instead
+  // of always assuming the last artifact. Falls back to the last artifact when no output node is wired.
+  let applyReqs = [...new Set(outputs.flatMap(o => openSpecUpstreamWork(o.id))
+    .map(d => idOf[d.id]).filter(Boolean))];
+  if (!applyReqs.length) applyReqs = [lastId];
+  let applyInstr = 'Execute the change described by the artifacts above, in order. Each step\'s artifact is both its instructions and its record of work.';
   if (outputs.length) applyInstr += '\n\nDeliverables:\n' + outputs.map(o => '- ' + openSpecOutputLine(o)).join('\n');
   const applyCtx = openSpecContextBlock();
   if (applyCtx) applyInstr += '\n\n' + applyCtx;
   L.push('');
   L.push('apply:');
   L.push('  requires:');
-  L.push('    - ' + lastId);
+  applyReqs.forEach(r => L.push('    - ' + r));
   L.push('  tracks: ' + lastId + '.md');
   L.push('  instruction: ' + openSpecYamlBlock(applyInstr, 4));
 
