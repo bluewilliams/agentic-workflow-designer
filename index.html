@@ -2623,7 +2623,14 @@ function importWorkflowFile(event) {
       return;
     }
     if (/\.(ya?ml|md)$/i.test(file.name || '')) {
-      showToast('This OpenSpec schema has no embedded designer metadata - importing foreign schemas is not supported yet.');
+      // Foreign OpenSpec schema (no awd:meta): best-effort reconstruction for viewing/editing.
+      const wf = (typeof openSpecImportForeign === 'function') ? openSpecImportForeign(text) : null;
+      if (wf && deserializeWorkflow(wf)) {
+        const n = wf.canvas.nodes.length;
+        showToast('Imported foreign OpenSpec schema: ' + (wf.name || 'workflow') + ' (' + n + ' node' + (n !== 1 ? 's' : '') + ') - best-effort view; agent roles, models, and positions are defaults you can adjust');
+      } else {
+        showToast('Could not read this as an OpenSpec schema (no embedded designer metadata, and the YAML had no artifacts to import).');
+      }
       return;
     }
     try {
@@ -3291,8 +3298,11 @@ function renderConnections() {
 
     const pts = getConnectionPoints(from, to, conn.fromPort);
     const isBack = (pts.x2 + 20) < pts.x1; // target is left of source = back-edge visually
+    // A forward edge that would cut straight through an intervening node (a skip/bypass edge on a row)
+    // arcs above instead, so it stays readable - the forward counterpart to the back-edge arc-below.
+    const arc = !isBack && connectionObstructed(pts.x1, pts.y1, pts.x2, pts.y2, from.id, to.id);
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    const d = bezierPath(pts.x1, pts.y1, pts.x2, pts.y2, isBack);
+    const d = bezierPath(pts.x1, pts.y1, pts.x2, pts.y2, isBack, arc);
     path.setAttribute('d', d);
     path.setAttribute('class', `connection${state.selectedId === conn.id ? ' selected' : ''}${isBack ? ' back-edge' : ''}`);
     path.setAttribute('marker-end', state.selectedId === conn.id ? 'url(#arrowhead-accent)' : 'url(#arrowhead)');
@@ -3301,7 +3311,7 @@ function renderConnections() {
 
     // Label
     if (conn.label) {
-      const mid = bezierMidpoint(pts.x1, pts.y1, pts.x2, pts.y2, isBack);
+      const mid = bezierMidpoint(pts.x1, pts.y1, pts.x2, pts.y2, isBack, arc);
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       text.setAttribute('x', mid.x);
       text.setAttribute('y', mid.y - 8);
@@ -3325,7 +3335,7 @@ function getConnectionPoints(from, to, fromPort) {
   };
 }
 
-function bezierPath(x1, y1, x2, y2, isBackEdge) {
+function bezierPath(x1, y1, x2, y2, isBackEdge, arc) {
   const dx = Math.abs(x2 - x1);
   if (isBackEdge && x2 < x1) {
     // Back-edge: arc below the main chain so the line doesn't cut through intermediate nodes
@@ -3334,11 +3344,33 @@ function bezierPath(x1, y1, x2, y2, isBackEdge) {
     const midY = Math.max(y1, y2) + drop;
     return `M${x1},${y1} C${x1 + cpx},${midY} ${x2 - cpx},${midY} ${x2},${y2}`;
   }
+  if (arc) {
+    // Forward skip/bypass edge that would otherwise pass through an intervening node: arc ABOVE the row
+    // so it clears them (the forward counterpart to the back-edge arc-below).
+    const lift = Math.max(80, dx * 0.12);
+    const cpx = Math.max(60, dx * 0.3);
+    const midY = Math.min(y1, y2) - lift;
+    return `M${x1},${y1} C${x1 + cpx},${midY} ${x2 - cpx},${midY} ${x2},${y2}`;
+  }
   const cp = Math.max(50, dx * 0.4);
   return `M${x1},${y1} C${x1 + cp},${y1} ${x2 - cp},${y2} ${x2},${y2}`;
 }
+function connectionObstructed(x1, y1, x2, y2, fromId, toId) {
+  // True when a forward edge would visually cross some OTHER node's box: a node sits horizontally
+  // between the endpoints and its vertical extent overlaps the (near-horizontal) edge band. Used to
+  // arc such edges clear instead of cutting through (e.g. a skip edge on a single-row chain).
+  if (x2 <= x1) return false;
+  const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+  const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+  return state.nodes.some(n => {
+    if (n.id === fromId || n.id === toId) return false;
+    const overlapX = (n.x + n.w) > (minX + 8) && n.x < (maxX - 8);
+    const overlapY = (n.y + n.h) >= (minY - 6) && n.y <= (maxY + 6);
+    return overlapX && overlapY;
+  });
+}
 
-function bezierMidpoint(x1, y1, x2, y2, isBackEdge) {
+function bezierMidpoint(x1, y1, x2, y2, isBackEdge, arc) {
   const dx = Math.abs(x2 - x1);
   const t = 0.5;
   const mt = 1 - t;
@@ -3346,6 +3378,15 @@ function bezierMidpoint(x1, y1, x2, y2, isBackEdge) {
     const drop = Math.max(80, dx * 0.15);
     const cpx = Math.max(60, dx * 0.3);
     const midY = Math.max(y1, y2) + drop;
+    return {
+      x: mt*mt*mt*x1 + 3*mt*mt*t*(x1+cpx) + 3*mt*t*t*(x2-cpx) + t*t*t*x2,
+      y: mt*mt*mt*y1 + 3*mt*mt*t*midY + 3*mt*t*t*midY + t*t*t*y2
+    };
+  }
+  if (arc) {
+    const lift = Math.max(80, dx * 0.12);
+    const cpx = Math.max(60, dx * 0.3);
+    const midY = Math.min(y1, y2) - lift;
     return {
       x: mt*mt*mt*x1 + 3*mt*mt*t*(x1+cpx) + 3*mt*t*t*(x2-cpx) + t*t*t*x2,
       y: mt*mt*mt*y1 + 3*mt*mt*t*midY + 3*mt*t*t*midY + t*t*t*y2
@@ -8552,6 +8593,180 @@ function openSpecExportToast(name, durable) {
     : base;
 }
 // === end OpenSpec schema export ===
+
+// === OpenSpec foreign-schema import (view a schema NOT created here) - REMOVABLE ===
+// Reconstructs a visual workflow from a hand-written or third-party OpenSpec schema.yaml (one with no
+// awd:meta round-trip comment). The inverse of buildOpenSpecSchema: artifacts -> agent nodes,
+// requires -> connections, apply -> an output node. Lossy by nature - a plain schema carries no
+// designer fields (node positions, agent type, model/tools), so those default and are editable after.
+// Self-contained + pure (no DOM); importWorkflowFile calls it behind a typeof guard so removing this
+// block degrades cleanly to "foreign import not supported". Delete the whole block to drop the feature.
+function openSpecParseYaml(text) {
+  // Minimal YAML-SUBSET parser scoped to the OpenSpec schema.yaml shape: top-level scalars, the
+  // artifacts list (maps), the apply map, requires lists (inline [] or block), and block scalars
+  // (| or >) for instruction. NOT a general YAML parser - it handles the block-style conventions
+  // OpenSpec and our exporter emit (double/single-quoted or plain scalars, # comments). Returns a
+  // plain object; the caller decides whether it is a usable schema.
+  const lines = String(text == null ? '' : text).replace(/\r\n/g, '\n').replace(/\t/g, '  ').split('\n');
+  let i = 0;
+  const indentOf = s => s.length - s.replace(/^ +/, '').length;
+  const isBlank = s => s.trim() === '';
+  const isComment = s => s.trim().startsWith('#');
+  function parseScalar(s) {
+    s = s.trim();
+    if (s === '') return '';
+    if (s === '[]') return [];
+    if (s === '{}') return {};
+    if (s === '~' || s === 'null') return null;
+    if (s === 'true') return true;
+    if (s === 'false') return false;
+    if (/^".*"$/.test(s)) { try { return JSON.parse(s); } catch (e) { return s.slice(1, -1); } }
+    if (/^'.*'$/.test(s)) return s.slice(1, -1).replace(/''/g, "'");
+    const noComment = s.replace(/\s+#.*$/, '').trim(); // drop a trailing inline comment on a plain scalar
+    if (/^-?\d+$/.test(noComment)) return parseInt(noComment, 10);
+    return noComment;
+  }
+  const isBlockIndicator = v => /^[|>][+-]?$/.test(v.trim());
+  function readBlock(parentIndent) {
+    const buf = []; let blockIndent = null;
+    while (i < lines.length) {
+      const ln = lines[i];
+      if (isBlank(ln)) { buf.push(''); i++; continue; }
+      const ind = indentOf(ln);
+      if (ind <= parentIndent) break;
+      if (blockIndent === null) blockIndent = ind;
+      buf.push(ln.slice(Math.min(blockIndent, ind)));
+      i++;
+    }
+    while (buf.length && buf[buf.length - 1] === '') buf.pop();
+    return buf.join('\n');
+  }
+  function readValue(val, atIndent) {
+    if (isBlockIndicator(val)) return readBlock(atIndent);
+    if (val.trim() === '') {
+      const save = i;
+      while (i < lines.length && (isBlank(lines[i]) || isComment(lines[i]))) i++;
+      if (i < lines.length) {
+        const nind = indentOf(lines[i]);
+        if (nind > atIndent) return lines[i].slice(nind).startsWith('- ') ? parseList(nind) : parseMap(nind);
+      }
+      i = save;
+      return '';
+    }
+    return parseScalar(val);
+  }
+  function parseMap(mapIndent) {
+    const obj = {};
+    while (i < lines.length) {
+      if (isBlank(lines[i]) || isComment(lines[i])) { i++; continue; }
+      const ind = indentOf(lines[i]);
+      if (ind < mapIndent) break;
+      if (ind > mapIndent) { i++; continue; }
+      const body = lines[i].slice(ind);
+      if (body.startsWith('- ')) break;
+      const m = body.match(/^([A-Za-z0-9_]+):\s?(.*)$/);
+      if (!m) { i++; continue; }
+      i++;
+      obj[m[1]] = readValue(m[2], mapIndent);
+    }
+    return obj;
+  }
+  function parseList(listIndent) {
+    const arr = [];
+    while (i < lines.length) {
+      if (isBlank(lines[i]) || isComment(lines[i])) { i++; continue; }
+      const ind = indentOf(lines[i]);
+      if (ind < listIndent) break;
+      if (ind > listIndent) { i++; continue; }
+      const body = lines[i].slice(ind);
+      if (!body.startsWith('- ')) break;
+      const rest = body.slice(2);
+      i++;
+      const km = rest.match(/^([A-Za-z0-9_]+):\s?(.*)$/);
+      if (km) {
+        const item = {};
+        item[km[1]] = readValue(km[2], listIndent + 2);
+        const more = parseMap(listIndent + 2);
+        for (const k in more) item[k] = more[k];
+        arr.push(item);
+      } else {
+        arr.push(parseScalar(rest));
+      }
+    }
+    return arr;
+  }
+  return parseMap(0);
+}
+function openSpecSchemaToWorkflow(parsed) {
+  // Map a parsed OpenSpec schema -> a deserializeWorkflow-shaped object. Returns null if it is not a
+  // schema (no artifacts with ids). Layered left-to-right layout by longest-path depth so the graph is
+  // immediately readable; the user can re-run Auto Layout or edit freely.
+  if (!parsed || !Array.isArray(parsed.artifacts)) return null;
+  const arts = parsed.artifacts.filter(a => a && typeof a.id === 'string' && a.id.trim());
+  if (!arts.length) return null;
+  const byId = {};
+  arts.forEach(a => { if (!(a.id in byId)) byId[a.id] = a; });
+  const depthCache = {};
+  function depth(id, seen) {
+    if (depthCache[id] !== undefined) return depthCache[id];
+    seen = seen || {};
+    if (seen[id]) return 0; // cycle guard (real OpenSpec forbids cycles; be defensive on foreign input)
+    seen[id] = true;
+    const reqs = (byId[id] && Array.isArray(byId[id].requires) ? byId[id].requires : []).filter(r => byId[r]);
+    let d = 0;
+    reqs.forEach(r => { d = Math.max(d, 1 + depth(r, Object.assign({}, seen))); });
+    return (depthCache[id] = d);
+  }
+  const COLW = 280, ROWH = 110, X0 = 80, Y0 = 80;
+  const perDepth = {};
+  let seq = 1;
+  const nodes = [];
+  const idMap = {};
+  const humanize = s => s.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
+  arts.forEach(a => {
+    const d = depth(a.id);
+    const row = (perDepth[d] = (perDepth[d] || 0)); perDepth[d]++;
+    const id = 'n' + (seq++);
+    idMap[a.id] = id;
+    const instruction = typeof a.instruction === 'string' ? a.instruction : '';
+    const desc = typeof a.description === 'string' ? a.description : '';
+    nodes.push({
+      id: id, type: 'agent', label: humanize(a.id) || a.id, x: X0 + d * COLW, y: Y0 + row * ROWH, w: 200, h: 64,
+      config: { agentType: 'general', model: state.defaultModel || 'opus-4.8',
+        tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LSP'],
+        prompt: instruction || desc, notes: (instruction && desc) ? desc : '', maxTurns: 10 }
+    });
+  });
+  const connections = [];
+  const edge = (from, to) => connections.push({ id: 'c' + (seq++), from: from, to: to, label: '', fromPort: 'right' });
+  arts.forEach(a => (Array.isArray(a.requires) ? a.requires : []).forEach(r => { if (idMap[r] && idMap[a.id]) edge(idMap[r], idMap[a.id]); }));
+  const apply = parsed.apply;
+  if (apply) {
+    const maxD = Math.max(0, ...arts.map(a => depth(a.id)));
+    const row = (perDepth[maxD + 1] = (perDepth[maxD + 1] || 0)); perDepth[maxD + 1]++;
+    const outId = 'n' + (seq++);
+    const applyInstr = typeof apply.instruction === 'string' ? apply.instruction : '';
+    nodes.push({ id: outId, type: 'output', label: 'Apply', x: X0 + (maxD + 1) * COLW, y: Y0 + row * ROWH, w: 180, h: 52,
+      config: { deliverable: applyInstr ? applyInstr.split('\n')[0].slice(0, 120) : 'Apply the change', format: 'code', targetBranch: '', branchName: '' } });
+    const applyReqs = (Array.isArray(apply.requires) ? apply.requires : []).filter(r => idMap[r]);
+    const feeders = applyReqs.length ? applyReqs
+      : arts.filter(a => !arts.some(b => (Array.isArray(b.requires) ? b.requires : []).includes(a.id))).map(a => a.id); // leaves
+    feeders.forEach(r => { if (idMap[r]) edge(idMap[r], outId); });
+  }
+  return {
+    version: 1,
+    name: (typeof parsed.name === 'string' && parsed.name.trim()) ? parsed.name : 'Imported OpenSpec schema',
+    canvas: { nodes: nodes, connections: connections, nextId: seq, pan: { x: 0, y: 0 }, zoom: 1 }
+  };
+}
+function openSpecImportForeign(text) {
+  // Pure orchestrator: foreign schema.yaml text -> deserializeWorkflow-shaped object, or null if the
+  // text does not parse as an OpenSpec schema. Lossy (no designer fields in a plain schema).
+  let parsed;
+  try { parsed = openSpecParseYaml(text); } catch (e) { return null; }
+  return openSpecSchemaToWorkflow(parsed);
+}
+// === end OpenSpec foreign-schema import ===
 
 function topologicalSort() {
   const adj = {};

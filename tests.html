@@ -7017,6 +7017,119 @@ describe('OpenSpec schema export', () => {
   });
 });
 
+// OpenSpec foreign-schema import - REMOVABLE: delete this describe to drop the feature's tests.
+describe('OpenSpec foreign-schema import', () => {
+  const FOREIGN = [
+    'name: legacy-pipeline',
+    'version: 2',
+    'description: "A hand written schema"',
+    'artifacts:',
+    '  - id: research',
+    '    generates: research.md',
+    '    description: "Investigate the area"',
+    '    template: research.md',
+    '    instruction: |',
+    '      Do the research.',
+    '      Cite sources.',
+    '    requires: []',
+    '  - id: build',
+    '    generates: build.md',
+    '    description: "Implement"',
+    '    template: build.md',
+    '    instruction: |',
+    '      Build it based on the research.',
+    '    requires:',
+    '      - research',
+    'apply:',
+    '  requires:',
+    '    - build',
+    '  instruction: |',
+    '    Ship it.',
+    ''
+  ].join('\n');
+
+  it('parses the OpenSpec schema shape (scalars, list of maps, block scalars, requires list)', () => {
+    const p = win.openSpecParseYaml(FOREIGN);
+    expect(p.name).toBe('legacy-pipeline');
+    expect(p.version).toBe(2);
+    expect(p.artifacts.length).toBe(2);
+    expect(p.artifacts[0].id).toBe('research');
+    expect(p.artifacts[0].requires.length).toBe(0);          // inline []
+    expect(p.artifacts[1].requires[0]).toBe('research');      // block list
+    expect(p.artifacts[0].instruction).toContain('Do the research.');
+    expect(p.artifacts[0].instruction).toContain('Cite sources.'); // multi-line block scalar preserved
+    expect(p.apply.requires[0]).toBe('build');
+  });
+  it('maps artifacts -> agent nodes, requires -> edges, apply -> output node', () => {
+    const wf = win.openSpecImportForeign(FOREIGN);
+    expect(wf.name).toBe('legacy-pipeline');
+    const agents = wf.canvas.nodes.filter(n => n.type === 'agent');
+    const outputs = wf.canvas.nodes.filter(n => n.type === 'output');
+    expect(agents.length).toBe(2);
+    expect(outputs.length).toBe(1);                            // apply -> one output
+    // instruction becomes the agent prompt; agent type defaults to general
+    const research = agents.find(n => n.label === 'Research');
+    expect(research.config.prompt).toContain('Do the research.');
+    expect(research.config.agentType).toBe('general');
+    // research (root) is left of build (depth 1)
+    const build = agents.find(n => n.label === 'Build');
+    expect(build.x > research.x).toBe(true);
+    // edges: research->build, and build->apply output
+    expect(wf.canvas.connections.length).toBe(2);
+  });
+  it('skips a requires reference to a missing artifact (no crash, no dangling edge)', () => {
+    const yaml = ['name: x', 'version: 1', 'artifacts:',
+      '  - id: a', '    generates: a.md', '    description: ""', '    template: a.md',
+      '    requires:', '      - ghost', ''].join('\n');
+    const wf = win.openSpecImportForeign(yaml);
+    expect(wf.canvas.nodes.length).toBe(1);
+    expect(wf.canvas.connections.length).toBe(0);              // ghost dependency dropped
+  });
+  it('returns null for YAML that is not an OpenSpec schema (no artifacts)', () => {
+    expect(win.openSpecImportForeign('name: nope\nversion: 1\n')).toBe(null);
+    expect(win.openSpecImportForeign('just: some\nrandom: yaml\n')).toBe(null);
+  });
+  it('round-trips structurally from our own exporter once awd:meta is stripped (foreign path)', () => {
+    buildTestWorkflow('linear'); // input -> planner -> implementer -> output
+    const yaml = win.buildOpenSpecSchema().schemaYaml.split('\n').filter(l => !l.trim().startsWith('# awd:meta ')).join('\n');
+    expect(win.openSpecExtractMeta(yaml)).toBe(null);          // confirm we are exercising the FOREIGN path
+    const wf = win.openSpecImportForeign(yaml);
+    const agents = wf.canvas.nodes.filter(n => n.type === 'agent');
+    const outputs = wf.canvas.nodes.filter(n => n.type === 'output');
+    expect(agents.length).toBe(2);                             // planner + implementer
+    expect(outputs.length).toBe(1);                            // apply
+    expect(wf.canvas.connections.length).toBe(2);             // planner->implementer, implementer->apply
+  });
+  it('the parsed workflow loads cleanly via deserializeWorkflow (valid node types)', () => {
+    const wf = win.openSpecImportForeign(FOREIGN);
+    expect(win.deserializeWorkflow(wf)).toBe(true);
+    expect(win.state.nodes.length).toBe(3);
+  });
+  it('a forward skip edge over an intervening node is detected and arced clear', () => {
+    // three nodes on one row; an edge from the first to the third passes through the middle one
+    win.state.nodes = [
+      { id: 'a', type: 'agent', x: 0,   y: 100, w: 200, h: 64, config: {} },
+      { id: 'b', type: 'agent', x: 300, y: 100, w: 200, h: 64, config: {} },
+      { id: 'c', type: 'agent', x: 600, y: 100, w: 200, h: 64, config: {} }
+    ];
+    // a -> c (skips b): obstructed; a -> b (adjacent): not
+    expect(win.connectionObstructed(200, 132, 600, 132, 'a', 'c')).toBe(true);
+    expect(win.connectionObstructed(200, 132, 300, 132, 'a', 'b')).toBe(false);
+    // from/to nodes themselves never count as obstacles
+    expect(win.connectionObstructed(200, 132, 800, 132, 'a', 'c')).toBe(true); // b is between
+    // back/zero-length forward guard: only forward edges can be obstructed
+    expect(win.connectionObstructed(600, 132, 200, 132, 'c', 'a')).toBe(false);
+  });
+  it('bezierPath arcs an obstructed forward edge above the row (distinct from the flat path)', () => {
+    const flat = win.bezierPath(0, 100, 800, 100, false, false);
+    const arced = win.bezierPath(0, 100, 800, 100, false, true);
+    expect(arced === flat).toBe(false);
+    // lift = max(80, 800*0.12=96) -> midY = 100 - 96 = 4; control points sit above the row
+    expect(arced).toContain(',4 ');
+    expect(arced).toContain('800,100'); // endpoints unchanged
+  });
+});
+
 // Custom prompts (Prompt Library) - REMOVABLE: delete this describe to drop the feature's tests.
 describe('Custom Prompts (Prompt Library)', () => {
   beforeEach(() => { win.saveCustomPrompts([]); });
@@ -7079,7 +7192,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
