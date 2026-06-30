@@ -7367,6 +7367,57 @@ describe('Custom Agents (Agent Library)', () => {
     expect(active).toContain('Write');
     win.saveCustomAgents([]);
   });
+  it('favorites are a separate user-owned id list (survive independently of the agent object)', () => {
+    win.saveAgentFavs([]);
+    win.saveCustomAgents([{ id: 'org:p/a', name: 'Org Agent', source: 'org', pack: 'p', version: '1', updated: 'x', config: { agentType: 'general' } }]);
+    win.toggleAgentFav('org:p/a');                       // can favorite an ORG agent
+    expect(win.getAgentFavs()).toContain('org:p/a');
+    // re-importing the org pack must NOT wipe the favorite (favorite lives outside the agent)
+    win.mergeImportedAgents({ source: 'org', pack: 'p', agents: [{ name: 'Org Agent', version: '1', config: { agentType: 'general' } }] });
+    expect(win.getAgentFavs()).toContain('org:p/a');
+    win.toggleAgentFav('org:p/a');                        // toggle off
+    expect(win.getAgentFavs()).toNotContain('org:p/a');
+    win.saveCustomAgents([]); win.saveAgentFavs([]);
+  });
+  it('renderAgentPalette shows only favorited agents and hides the section when none', () => {
+    win.saveAgentFavs([]);
+    win.saveCustomAgents([
+      { id: 'user:fav', name: 'Pinned Agent', source: 'user', pack: '', version: '1', updated: 'x', config: { agentType: 'backend', model: 'opus-4.8' } },
+      { id: 'user:nofav', name: 'Unpinned Agent', source: 'user', pack: '', version: '1', updated: 'x', config: { agentType: 'general', model: 'opus-4.8' } }
+    ]);
+    win.renderAgentPalette();
+    expect(win.document.getElementById('customAgentPalette').innerHTML).toBe(''); // nothing favorited -> hidden
+    win.saveAgentFavs(['user:fav']);
+    win.renderAgentPalette();
+    const html = win.document.getElementById('customAgentPalette').innerHTML;
+    expect(html).toContain('Custom Agents');     // the section header
+    expect(html).toContain('Pinned Agent');       // favorited one shows
+    expect(html).toNotContain('Unpinned Agent');  // non-favorited does not
+    expect(html).toContain("instantiateAgent('user:fav')"); // click-to-add wired
+    win.saveCustomAgents([]); win.saveAgentFavs([]);
+  });
+  it('deleting an agent drops its favorite and palette entry', () => {
+    win.saveCustomAgents([{ id: 'user:gone', name: 'Gone', source: 'user', pack: '', version: '1', updated: 'x', config: { agentType: 'general', model: 'opus-4.8' } }]);
+    win.saveAgentFavs(['user:gone']);
+    win.saveCustomAgents([]);                      // simulate deletion of the agent
+    win.saveAgentFavs(win.getAgentFavs().filter(f => f !== 'user:gone')); // deleteCustomAgent does this
+    win.renderAgentPalette();
+    expect(win.document.getElementById('customAgentPalette').innerHTML).toBe('');
+    win.saveAgentFavs([]);
+  });
+  it('an agent card shows a pin/star toggle reflecting favorite state', () => {
+    win.saveAgentFavs([]);
+    const a = { id: 'user:s', name: 'Star Me', source: 'user', pack: '', version: '1', updated: 'x', config: { agentType: 'general', model: 'opus-4.8' } };
+    win.saveCustomAgents([a]);
+    win.renderAgentLib();
+    let html = win.document.getElementById('agentLibBody').innerHTML;
+    expect(html).toContain("toggleAgentFav('user:s')"); // pin control present
+    win.saveAgentFavs(['user:s']);
+    win.renderAgentLib();
+    html = win.document.getElementById('agentLibBody').innerHTML;
+    expect(html).toContain('plib-fav on');               // shows as pinned
+    win.saveCustomAgents([]); win.saveAgentFavs([]);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -7378,7 +7429,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
