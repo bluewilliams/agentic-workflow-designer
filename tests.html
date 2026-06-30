@@ -6713,6 +6713,32 @@ describe('OpenSpec schema export', () => {
     expect(s.schemaYaml).toContain('Tested code');
     expect(s.schemaYaml).toContain('uncommitted'); // code-format phrasing
   });
+  it('apply.requires reflects the output node connections, not just the last topo step', () => {
+    resetState();
+    const p = win.addNode('agent', 100, 100, 'Planner', { agentType:'planner', prompt:'p' });
+    const impl = win.addNode('agent', 350, 100, 'Implementer', { agentType:'coder', prompt:'i' });
+    const val = win.addNode('agent', 600, 100, 'Validate', { agentType:'verifier', prompt:'v' });
+    const out = win.addNode('output', 850, 100, 'Done', { format:'pr' });
+    win.addConnection(p.id, impl.id);
+    win.addConnection(impl.id, val.id);
+    win.addConnection(impl.id, out.id); // output depends on implementer, NOT the last step (validate)
+    const apply = win.buildOpenSpecSchema().schemaYaml.split('\napply:')[1];
+    expect(apply).toContain('- implementer'); // gated on what actually feeds the output
+    expect(apply).toNotContain('- validate'); // not just the last topo artifact
+  });
+  it('a divergent foreign apply (gated on a mid-chain step) round-trips through import + re-export', () => {
+    const yaml = [
+      'name: divergent', 'version: 1', 'artifacts:',
+      '  - id: research', '    generates: research.md', '    description: ""', '    template: research.md', '    requires: []',
+      '  - id: build', '    generates: build.md', '    description: ""', '    template: build.md', '    requires:', '      - research',
+      '  - id: verify', '    generates: verify.md', '    description: ""', '    template: verify.md', '    requires:', '      - build',
+      'apply:', '  requires:', '    - build', ''
+    ].join('\n');
+    win.deserializeWorkflow(win.openSpecImportForeign(yaml)); // apply gated on build (mid-chain), not verify
+    const apply = win.buildOpenSpecSchema().schemaYaml.split('\napply:')[1];
+    expect(apply).toContain('- build');     // mid-chain terminal preserved on re-export
+    expect(apply).toNotContain('- verify'); // not rewritten to the last step
+  });
   it('apply block describes a PR deliverable with branch and target', () => {
     resetState();
     const a = win.addNode('agent', 100, 100, 'Coder', { agentType:'coder', model:'opus-4.6', tools:['Write'], prompt:'Do it.', maxTurns:5 });
