@@ -4,7 +4,7 @@ Branch: main. Status: current.
 
 ## Why and scope
 
-`buildOpenSpecSchema` always emits an `apply:` block (OpenSpec's terminal phase), but it hardcoded `apply.requires` to the LAST artifact in topological order. That is wrong whenever the terminal actually depends on a non-last step: a designer workflow whose output node hangs off a mid-chain agent, or a foreign schema (e.g. REDACTED's) whose `apply.requires: [review]` gates on a mid-chain step while the chain continues to `validate`. On re-export, such intent was silently rewritten to "the last step." This derives `apply.requires` from the work artifacts that actually feed the output node(s), so the terminal gate is faithful and round-trips.
+`buildOpenSpecSchema` always emits an `apply:` block (OpenSpec's terminal phase), but it hardcoded `apply.requires` to the LAST artifact in topological order. That is wrong whenever the terminal actually depends on a non-last step: a designer workflow whose output node hangs off a mid-chain agent, or a foreign schema whose `apply.requires: [review]` gates on a mid-chain step while the chain continues to a later step. On re-export, such intent was silently rewritten to "the last step." This derives `apply.requires` from the work artifacts that actually feed the output node(s), so the terminal gate is faithful and round-trips.
 
 The output node's CONFIG already flowed into `apply.instruction` (format -> deliverable line: commit/PR/report/docs). This change only corrects `apply.requires` (which steps gate apply). No new node, no new config, no change to our format - `apply` remains an OpenSpec-format concept the exporter generates from our output node.
 
@@ -52,7 +52,7 @@ Non-goals: changing `tracks` (still the last artifact's doc - a separate concern
 
 ## Outcome
 
-`apply.requires` now mirrors what actually feeds the output node, so a terminal that depends on a mid-chain step (a designer fork-to-output, or a foreign schema like REDACTED's apply<-review) is exported and round-tripped faithfully instead of being rewritten to the last step. Closes the foreign round-trip loop for the apply gate. Common linear workflows are unchanged.
+`apply.requires` now mirrors what actually feeds the output node, so a terminal that depends on a mid-chain step (a designer fork-to-output, or a foreign schema whose apply gates on a mid-chain review) is exported and round-tripped faithfully instead of being rewritten to the last step. Closes the foreign round-trip loop for the apply gate. Common linear workflows are unchanged.
 
 ## Built with (provenance)
 

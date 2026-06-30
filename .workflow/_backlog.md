@@ -132,3 +132,27 @@ Parked items with the real-run evidence behind them, so the dedicated passes sta
 - Supersession: a breadcrumb-only entry has no full record to diff against, so the supersede/siblings machinery is weaker for OpenSpec-authored entries. Acceptable - they are still discoverable and current-flagged.
 
 **Size**: medium. It is one more gated artifact in the schema + reusing the existing index/timeline format text + a test that the breadcrumb artifact appears (gated) and carries the format. The real work is prose precision (so the emitted line is grep-compatible) and a small read-side allowance for non-`.workflow/` record links. Build AFTER #9 (done) since the read-side must exist to consume what #10 writes.
+
+## 11. Purpose-built portable agents (an Agent Library) - DONE (2026-06-30)
+
+**Status (2026-06-30): DONE.** Shipped via the dogfood workflow (Planner->Implementer->Tester->Skeptic). Save an agent node as a named/versioned/shareable preset (localStorage `awd_custom_agents`), source-partitioned (user/org/builtin) with namespaced ids (org import can never clobber user agents), version-aware merge, export/import packs, instantiate onto canvas. Its OWN toolbar "Agents" button + modal (NOT nested in the Prompt Library - decided 2026-06-30 after the nested layout stacked two near-identical toolbars; a "Library"+tabs option was considered, separate button chosen). 10 tests, 1163/1163. Record: `.workflow/portable-agents-library.md`. Open scope questions resolved: per-source packs; OWN button+modal; config-only v1 (no rules/product-doc paths yet).
+
+**What**: let users save a configured agent node as a named, reusable, shareable "agent" and drop it into any workflow pre-wired - e.g. a "WebAPI-endpoints agent" that already knows the org's conventions/standards. The agent-node analog of the custom-prompts library we shipped.
+
+**Why / framing (Blue, 2026-06-30)**: encode org conventions once, reuse everywhere. Highest-leverage building block for composing workflows. Orthogonal to OpenSpec - a portable agent just produces a richer artifact `instruction` on export, so no format work needed.
+
+**Converged design decisions (from the conversation):**
+- **Extend the core agent node, do NOT add a new node type.** A portable agent = a saved snapshot of the agent node's config (agentType, model, tools, prompt, notes, maxTurns, ideally Repo Context Paths). Instantiating one creates a normal agent node, pre-filled. Future-proof: new agent config fields are captured automatically via the same serialization.
+- **Reuse the custom-prompts infrastructure**: localStorage + export/import JSON + add/edit/delete + the inert-until-used seam + a REMOVABLE block. Same proven pattern.
+- **Source partitioning (bake into v1, painful to retrofit):** each saved agent carries a `source` = `user` | `org` | `builtin` (+ a pack name). Display grouped by source ("My Agents" / "Org: <pack>" / built-in).
+- **Non-clobbering, partitioned merge:** importing an org pack only touches the `org` group - it can NEVER overwrite the user's personal agents. Dedup happens WITHIN a source by a NAMESPACED id (e.g. `org:platform/webapi-agent` vs `user:my-thing`), so cross-source name collisions coexist. Re-importing an updated org pack updates-in-place within the org group (idempotent), like `mergeImportedPrompts` but partitioned.
+
+**Open scope questions (resolve before building):**
+- Export: bundle user+org together, or always per-source packs (an "agent pack" with a declared source)?
+- UI: a dedicated "Agents" tab/panel, or extend the Prompt Library UI with an Agents section?
+- Does saving capture Repo Context Paths too, or just node config?
+- Later harmonization: custom PROMPTS could adopt the same source-partitioning (currently one "My Prompts" group, dedup-by-title globally) - defer, design agents right first.
+
+**Decided NOT to do (related, 2026-06-30):** ditch OpenSpec `scripts/` folder support - it is a convention (helper `.mjs` referenced from instructions), NOT part of the OpenSpec format; import already preserves the references via instruction text; managing the files does not fit a single-file browser app. Also decided NOT to infer input nodes (or synthesize decision/parallel/task) on foreign import - unlike `apply` (a real named block -> output node), input has no OpenSpec counterpart, so inferring one fabricates a node from the top-level `description` and risks round-trip drift; the `requires` DAG already shows fan-out/fan-in faithfully as edges.
+
+**Size**: medium. Mirrors the custom-prompts feature (CRUD + localStorage + export/import + removable block + tests) plus the source-partitioning logic (namespaced ids, per-source merge, grouped display) and an "instantiate onto canvas" action. Additive, removable, low-risk - same family as custom prompts.

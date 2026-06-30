@@ -10,6 +10,8 @@ It is intentionally LOSSY: a plain schema carries no designer-only fields (node 
 
 Non-goals: a full general-purpose YAML parser (scoped to the OpenSpec schema.yaml shape OpenSpec and our exporter emit); preserving artifact ids on a later re-export (re-export regenerates ids from labels via openSpecSlug - best-effort, accepted); importing the per-step template bodies as anything other than defaults.
 
+Decided NOT to infer an input node (or synthesize decision/parallel/task) on import (2026-06-30): unlike `apply` (a real named block in the OpenSpec format -> mapped to an output node), input has no OpenSpec counterpart, so inferring one would fabricate a node from the top-level `description` (a summary, not input) and risk round-trip drift (our exporter folds input nodes back into `description`). The `requires` DAG already conveys fan-out/fan-in faithfully as edges, and root artifacts with no incoming edge render fine. Principle: extract what the format actually contains, do not invent. A purely cosmetic "Start" marker is possible later but must not be a real input node that round-trips.
+
 ## Requirements
 
 - R1 - A dependency-free YAML-subset parser handles the OpenSpec schema shape: top-level scalars, the `artifacts` list of maps, the `apply` map, `requires` (inline `[]` or block list), block scalars (`|`/`>`) for `instruction`, and `#` comments; quoted (double/single) and plain scalars. [test: "parses the OpenSpec schema shape ..."]
