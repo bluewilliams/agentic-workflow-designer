@@ -7209,6 +7209,136 @@ describe('Custom Prompts (Prompt Library)', () => {
   });
 });
 
+// Custom agents (Agent Library) - REMOVABLE: delete this describe to drop the feature's tests.
+describe('Custom Agents (Agent Library)', () => {
+  beforeEach(() => { win.saveCustomAgents([]); });
+  const cfg = { agentType: 'backend', model: 'opus-4.8', tools: ['Read', 'Write'], prompt: 'Do API work.', notes: 'conventions', maxTurns: 8 };
+
+  it('newAgentId namespaces by source (cross-source collision is impossible)', () => {
+    expect(win.newAgentId('user', 'WebAPI Agent')).toBe('user:webapi-agent');
+    expect(win.newAgentId('org', 'WebAPI Agent', 'Platform')).toBe('org:platform/webapi-agent');
+    // same name, different source -> different ids -> cannot clobber each other
+    expect(win.newAgentId('user', 'X') === win.newAgentId('org', 'X', 'p')).toBe(false);
+  });
+  it('compareAgentVersions does dotted-number ordering; blank is lowest', () => {
+    expect(win.compareAgentVersions('1.2.0', '1.1.9')).toBe(1);
+    expect(win.compareAgentVersions('1.0', '1.0.0')).toBe(0);
+    expect(win.compareAgentVersions('', '0.0.1')).toBe(-1);
+  });
+  it('inert until used: no saved agents -> Agent Library shows only the toolbar + hint', () => {
+    expect(win.getCustomAgents().length).toBe(0);
+    const h = win.renderAgentLibrary();
+    expect(h).toContain('Save selected agent');
+    expect(h).toContain('No saved agents yet');
+    expect(h).toNotContain('Add to canvas'); // no agent cards
+  });
+  it('importing an org pack NEVER clobbers the user\'s own agents (source-partitioned)', () => {
+    win.saveCustomAgents([{ id: 'user:my-agent', name: 'My Agent', source: 'user', pack: '', version: '1.0.0', updated: 'x', config: cfg }]);
+    const r = win.mergeImportedAgents({ format: 'awd-agent-pack', version: 1, source: 'org', pack: 'platform', agents: [{ name: 'WebAPI', version: '1.0.0', config: cfg }] });
+    expect(r.added).toBe(1);
+    const all = win.getCustomAgents();
+    expect(all.length).toBe(2);
+    expect(all.some(a => a.id === 'user:my-agent' && a.source === 'user')).toBe(true);   // untouched
+    expect(all.some(a => a.id === 'org:platform/webapi' && a.source === 'org')).toBe(true);
+  });
+  it('an org pack that spoofs a user: id is re-namespaced to org (cannot overwrite a user agent)', () => {
+    win.saveCustomAgents([{ id: 'user:victim', name: 'Victim', source: 'user', pack: '', version: '9.9.9', updated: 'x', config: cfg }]);
+    win.mergeImportedAgents({ source: 'org', pack: 'evil', agents: [{ id: 'user:victim', name: 'Victim', version: '1.0.0', config: { prompt: 'pwned' } }] });
+    const victim = win.getCustomAgents().find(a => a.id === 'user:victim');
+    expect(victim.config.prompt).toBe('Do API work.'); // user agent unchanged
+    expect(victim.version).toBe('9.9.9');
+    expect(win.getCustomAgents().some(a => a.id === 'org:evil/victim')).toBe(true); // spoof landed in org namespace
+  });
+  it('version-aware merge: higher updates, equal/lower is a no-op', () => {
+    win.saveCustomAgents([{ id: 'org:p/a', name: 'A', source: 'org', pack: 'p', version: '1.0.0', updated: 'x', config: cfg }]);
+    let r = win.mergeImportedAgents({ source: 'org', pack: 'p', agents: [{ name: 'A', version: '1.0.0', config: { prompt: 'same-ver' } }] });
+    expect(r.skipped).toBe(1);
+    expect(win.getCustomAgents()[0].config.prompt).toBe('Do API work.'); // equal version -> not changed
+    r = win.mergeImportedAgents({ source: 'org', pack: 'p', agents: [{ name: 'A', version: '2.0.0', config: { prompt: 'newer' } }] });
+    expect(r.updated).toBe(1);
+    expect(win.getCustomAgents()[0].config.prompt).toBe('newer'); // higher version -> updated
+  });
+  it('instantiateAgent adds a normal agent node with the saved config (no new node type)', () => {
+    resetState();
+    win.saveCustomAgents([{ id: 'user:api', name: 'API Agent', source: 'user', pack: '', version: '1', updated: 'x', config: cfg }]);
+    const before = win.state.nodes.length;
+    win.instantiateAgent('user:api');
+    expect(win.state.nodes.length).toBe(before + 1);
+    const node = win.state.nodes[win.state.nodes.length - 1];
+    expect(node.type).toBe('agent');
+    expect(node.label).toBe('API Agent');
+    expect(node.config.agentType).toBe('backend');
+    expect(node.config.prompt).toBe('Do API work.');
+    win.saveCustomAgents([]);
+  });
+  it('export/import round-trips a user pack', () => {
+    win.saveCustomAgents([{ id: 'user:a', name: 'A', source: 'user', pack: '', version: '1.0.0', updated: 'x', config: cfg }]);
+    const pack = { format: 'awd-agent-pack', version: 1, source: 'user', agents: win.getCustomAgents() };
+    win.saveCustomAgents([]); // wipe, then re-import the exported pack
+    const r = win.mergeImportedAgents(pack);
+    expect(r.added).toBe(1);
+    expect(win.getCustomAgents()[0].name).toBe('A');
+    win.saveCustomAgents([]);
+  });
+  it('mergeImportedAgents returns null for non-pack data', () => {
+    expect(win.mergeImportedAgents({ nope: true })).toBe(null);
+    win.saveCustomAgents([]);
+  });
+  it('the Agent Library renders into its OWN modal body (separate from the Prompt Library)', () => {
+    win.saveCustomAgents([{ id: 'user:api', name: 'API Agent', source: 'user', pack: '', version: '1.0.0', updated: 'x', config: cfg }]);
+    win.renderAgentLib();
+    const agentHtml = win.document.getElementById('agentLibBody').innerHTML;
+    expect(agentHtml).toContain('API Agent');         // the saved agent's card, in the agent modal
+    expect(agentHtml).toContain('instantiateAgent');   // Add-to-canvas wired
+    // and it is NOT injected into the prompt library anymore
+    const overlay = win.document.getElementById('promptLibOverlay');
+    overlay.dataset.rendered = '';
+    win.renderPromptLib();
+    expect(win.document.getElementById('promptLibBody').innerHTML).toNotContain('API Agent');
+    win.saveCustomAgents([]);
+  });
+  it('search filters agent cards by name and hides groups with no match', () => {
+    win.saveCustomAgents([
+      { id: 'user:api', name: 'WebAPI Agent', source: 'user', pack: '', version: '1', updated: 'x', config: cfg },
+      { id: 'org:p/rev', name: 'Conventions Reviewer', source: 'org', pack: 'p', version: '1', updated: 'x', config: cfg }
+    ]);
+    win.renderAgentLib();
+    const body = win.document.getElementById('agentLibBody');
+    win.filterAgentLib('webapi');
+    const cards = [...body.querySelectorAll('.plib-card')];
+    const visible = cards.filter(c => c.style.display !== 'none').map(c => c.querySelector('.plib-card-title').textContent);
+    expect(visible.length).toBe(1);
+    expect(visible[0]).toContain('WebAPI Agent');
+    // the Org group (only Conventions Reviewer) is hidden when it has no match
+    const groups = [...body.querySelectorAll('.agent-group')];
+    expect(groups.some(g => g.style.display === 'none')).toBe(true);
+    // clearing the search restores everything
+    win.filterAgentLib('');
+    expect([...body.querySelectorAll('.plib-card')].every(c => c.style.display !== 'none')).toBe(true);
+    win.saveCustomAgents([]);
+  });
+  it('the form edits the FULL agent config (type, model, tools, max turns), not just name/prompt', () => {
+    win.saveCustomAgents([{ id: 'user:x', name: 'X', source: 'user', pack: '', version: '1.0.0', updated: 'x', config: { agentType: 'general', model: 'opus-4.8', tools: ['Read'], prompt: 'p', notes: '', maxTurns: 10 } }]);
+    win.openAgentForm('user:x');
+    const d = win.document;
+    // the form is populated from the preset
+    expect(d.getElementById('customAgentType').value).toBe('general');
+    expect([...d.getElementById('customAgentTools').querySelectorAll('.tool-tag.active')].map(b => b.textContent)).toContain('Read');
+    // edit the full config via the form controls
+    d.getElementById('customAgentType').value = 'backend';
+    d.getElementById('customAgentMaxTurns').value = '5';
+    [...d.getElementById('customAgentTools').querySelectorAll('.tool-tag')].find(b => b.textContent === 'Bash').classList.add('active');
+    win.saveAgentForm();
+    const a = win.getCustomAgents().find(x => x.id === 'user:x');
+    expect(a.config.agentType).toBe('backend');     // type editable
+    expect(a.config.maxTurns).toBe(5);               // max turns editable
+    expect(a.config.tools).toContain('Read');         // kept
+    expect(a.config.tools).toContain('Bash');         // newly toggled on
+    expect(a.config.model).toBe('opus-4.8');          // model read from the select
+    win.saveCustomAgents([]);
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
@@ -7218,7 +7348,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

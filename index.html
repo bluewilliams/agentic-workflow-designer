@@ -122,6 +122,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
   font-size:12px;resize:vertical;line-height:1.5;box-sizing:border-box}
 .plib-input-modal textarea:focus{outline:none;border-color:var(--accent)}
 .plib-input-modal .plib-input-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
+.ca-label{display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.3px;margin:8px 0 3px}
+.ca-input{width:100%;box-sizing:border-box;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px}
+.ca-input:focus{outline:none;border-color:var(--accent)}
 .btn.danger{border-color:#ef4444;color:#ef4444}
 .btn.danger:hover{background:#ef4444;color:#fff}
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -755,6 +758,10 @@ svg.canvas{width:100%;height:100%;display:block}
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
       Prompts
     </button>
+    <button class="btn sm" onclick="if(typeof toggleAgentLib==='function')toggleAgentLib()" title="Agent Library">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>
+      Agents
+    </button>
     <button class="btn sm" onclick="toggleHelp()" title="Help (?)">?</button>
   </div>
   <div class="canvas-wrap" id="canvasWrap">
@@ -1018,6 +1025,11 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>Prompts that benefit from cross-repo search or Jira/Confluence context include guidance for using those tools when available.</p>
 <p>The <strong>Live Monitors</strong> category contains prompts that watch things for you over time: CI builds, PR reviews, deploys, incidents. They run on a recurring interval, track changes across iterations, and self-terminate when done (build goes green, PR merges, service recovers).</p>
 
+<h3>Agent Library</h3>
+<p>Click the <strong>Agents</strong> button in the toolbar to open the Agent Library - reusable <em>agent presets</em>. Where the Prompt Library holds copy-paste text, an agent preset is a saved snapshot of an agent node's whole config (role, model, tools, prompt, and Agent Context) that you drop onto the canvas pre-wired. Build an agent that knows your API conventions once, reuse it in every workflow.</p>
+<p>Select an agent node on the canvas and click <strong>+ Save selected agent</strong> to save it (give it a name and an optional <em>version</em> you control). Saved agents are grouped by source - <strong>My Agents</strong> (yours, with Edit/Delete) and <strong>Org</strong> packs (shared, Add-only). Click <strong>Add to canvas</strong> to instantiate one as a normal agent node. Use the search box to filter by name once your library grows.</p>
+<p><strong>Sharing.</strong> <strong>Export mine</strong> downloads your agents as a pack; <strong>Import pack</strong> reads one back. Imports are source-partitioned and never overwrite your own agents - each agent has a namespaced id (e.g. <code>user:my-agent</code> vs <code>org:platform/api-agent</code>), so an org pack can only touch the org group. Re-importing is version-aware: a higher <code>version</code> updates in place, an equal or lower one is left alone. Everything is stored in your browser (localStorage); the pack format is <code>{ "format": "awd-agent-pack", "version": 1, "source": "user|org", "agents": [ ... ] }</code>.</p>
+
 <h3>Recommended Integrations</h3>
 <p>These optional MCP servers and tools unlock better results from both workflows and prompt library prompts:</p>
 <ul>
@@ -1087,6 +1099,34 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 </div>
 
+<!-- Custom Agent (portable agent preset) form - REMOVABLE with the custom-agents block -->
+<div class="plib-input-overlay" id="customAgentOverlay" onclick="if(event.target===this)closeAgentForm()">
+  <div class="plib-input-modal" style="max-height:86vh;overflow-y:auto">
+    <h3 id="customAgentFormTitle">Save agent preset</h3>
+    <div class="plib-input-desc">Saves the agent's full config (role, model, tools, max turns, prompt, context) as a reusable preset in your browser. Export to share with your team. Name is required; version is optional and author-controlled.</div>
+    <label class="ca-label">Name</label>
+    <input type="text" id="customAgentName" placeholder="e.g. WebAPI Endpoints Agent" class="ca-input">
+    <label class="ca-label">Version (optional)</label>
+    <input type="text" id="customAgentVersion" placeholder="e.g. 1.0.0" class="ca-input">
+    <div style="display:flex;gap:10px">
+      <div style="flex:1"><label class="ca-label">Agent Type</label><select id="customAgentType" class="ca-input"></select></div>
+      <div style="flex:1"><label class="ca-label">Model</label><select id="customAgentModel" class="ca-input"></select></div>
+    </div>
+    <label class="ca-label">Max Turns</label>
+    <input type="number" min="1" max="50" id="customAgentMaxTurns" class="ca-input">
+    <label class="ca-label">Tools</label>
+    <div id="customAgentTools" class="tools-grid" style="margin-bottom:8px"></div>
+    <label class="ca-label">Agent Prompt</label>
+    <textarea id="customAgentPrompt" placeholder="The role's instructions..." style="min-height:120px"></textarea>
+    <label class="ca-label" style="margin-top:8px">Agent Context (optional)</label>
+    <textarea id="customAgentNotes" placeholder="Extra context / constraints appended to this agent's prompt..." style="min-height:64px"></textarea>
+    <div class="plib-input-actions">
+      <button class="btn sm" onclick="closeAgentForm()">Cancel</button>
+      <button class="btn sm primary" onclick="saveAgentForm()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Prompt Library Modal -->
 <div class="help-overlay" id="promptLibOverlay" onclick="if(event.target===this)togglePromptLib()">
   <div class="help-modal plib-modal">
@@ -1095,6 +1135,17 @@ svg.canvas{width:100%;height:100%;display:block}
       <button class="help-close" onclick="togglePromptLib()">&times;</button>
     </div>
     <div class="help-body" id="promptLibBody"></div>
+  </div>
+</div>
+
+<!-- Agent Library Modal - REMOVABLE with the custom-agents block -->
+<div class="help-overlay" id="agentLibOverlay" onclick="if(event.target===this)toggleAgentLib()">
+  <div class="help-modal plib-modal">
+    <div class="help-header">
+      <h2>Agent Library</h2>
+      <button class="help-close" onclick="toggleAgentLib()">&times;</button>
+    </div>
+    <div class="help-body" id="agentLibBody"></div>
   </div>
 </div>
 
@@ -4585,6 +4636,248 @@ function importCustomPromptsFile(event) {
   reader.readAsText(file);
 }
 // === end Custom prompts ===
+
+// === Custom agents (portable agent presets / Agent Library) - REMOVABLE ===
+// Save a configured agent node as a named, reusable, SHAREABLE preset and drop it into any workflow
+// pre-wired. Mirrors the custom-prompts feature (localStorage + CRUD + export/import + a form). A preset
+// is just a snapshot of an agent node's config - instantiating one adds a normal 'agent' node (NO new
+// node type). Source-partitioned (user|org|builtin) with NAMESPACED ids so an org import can never
+// clobber the user's own agents; merge is version-aware. Inert until used: with no saved agents the only
+// addition is a toolbar + hint in the Prompt Library. To remove: delete this block, the #customAgentOverlay
+// markup, and the one guarded `renderAgentLibrary()` call in renderPromptLib.
+const CUSTOM_AGENTS_KEY = 'awd_custom_agents';
+function getCustomAgents() {
+  try { const a = JSON.parse(localStorage.getItem(CUSTOM_AGENTS_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
+function saveCustomAgents(arr) { localStorage.setItem(CUSTOM_AGENTS_KEY, JSON.stringify(Array.isArray(arr) ? arr : [])); }
+// Namespaced, stable id: source:slug (org/builtin prefix the pack). The source prefix is what makes a
+// cross-source collision impossible, so a user agent is structurally safe from an org-pack import.
+function newAgentId(source, name, pack) {
+  const s = (source === 'org' || source === 'builtin') ? source : 'user';
+  const p = (s !== 'user' && pack) ? (slugify(pack) + '/') : '';
+  return s + ':' + p + (slugify(name) || 'agent');
+}
+// Dotted-number version compare; missing/blank == lowest. Returns -1 / 0 / 1.
+function compareAgentVersions(a, b) {
+  const pa = String(a == null ? '' : a).split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b == null ? '' : b).split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d < 0 ? -1 : 1; }
+  return 0;
+}
+// Keep only the known agent-node config fields, with safe defaults (foreign packs may be sparse/dirty).
+function normalizeAgentConfig(c) {
+  c = c || {};
+  return {
+    agentType: typeof c.agentType === 'string' ? c.agentType : 'general',
+    model: typeof c.model === 'string' ? c.model : (state.defaultModel || 'opus-4.8'),
+    tools: Array.isArray(c.tools) ? c.tools.slice() : ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LSP'],
+    prompt: typeof c.prompt === 'string' ? c.prompt : '',
+    notes: typeof c.notes === 'string' ? c.notes : '',
+    maxTurns: typeof c.maxTurns === 'number' ? c.maxTurns : 10
+  };
+}
+let _agentFormCtx = null; // { editId, baseConfig }
+function saveSelectedAgentPreset() {
+  const node = state.nodes.find(n => n.id === state.selectedId);
+  if (!node || node.type !== 'agent') { showToast('Select an agent node on the canvas first'); return; }
+  openAgentForm(null, node);
+}
+function openAgentForm(id, node) {
+  const existing = id ? getCustomAgents().find(a => a.id === id) : null;
+  // base config: the existing preset's, or the selected node's snapshot (normalized to fill any gaps)
+  const base = normalizeAgentConfig(existing ? existing.config : (node && node.config));
+  _agentFormCtx = { editId: existing ? existing.id : null, baseConfig: JSON.parse(JSON.stringify(base)) };
+  $('customAgentFormTitle').textContent = existing ? 'Edit agent' : 'Save agent preset';
+  $('customAgentName').value = existing ? existing.name : (node ? (node.label || '') : '');
+  $('customAgentVersion').value = existing ? (existing.version || '') : '1.0.0';
+  $('customAgentType').innerHTML = AGENT_TYPES.map(a => '<option value="' + a.id + '"' + (a.id === base.agentType ? ' selected' : '') + '>' + a.name + '</option>').join('');
+  $('customAgentModel').innerHTML = MODELS.map(m => '<option value="' + m.value + '"' + (m.value === base.model ? ' selected' : '') + '>' + m.label + '</option>').join('');
+  $('customAgentMaxTurns').value = base.maxTurns || 10;
+  $('customAgentTools').innerHTML = ALL_TOOLS.map(t => '<button type="button" class="tool-tag' + ((base.tools || []).includes(t) ? ' active' : '') + '" onclick="this.classList.toggle(\'active\')">' + t + '</button>').join('');
+  $('customAgentPrompt').value = base.prompt || '';
+  $('customAgentNotes').value = base.notes || '';
+  $('customAgentOverlay').classList.add('show');
+  setTimeout(() => $('customAgentName').focus(), 50);
+}
+function closeAgentForm() { $('customAgentOverlay').classList.remove('show'); _agentFormCtx = null; }
+function saveAgentForm() {
+  if (!_agentFormCtx) return;
+  const name = $('customAgentName').value.trim();
+  if (!name) { showToast('Name is required'); return; }
+  const version = $('customAgentVersion').value.trim();
+  const tools = [...$('customAgentTools').querySelectorAll('.tool-tag.active')].map(b => b.textContent);
+  const mt = parseInt($('customAgentMaxTurns').value, 10);
+  const config = Object.assign({}, _agentFormCtx.baseConfig, {
+    agentType: $('customAgentType').value,
+    model: $('customAgentModel').value,
+    tools: tools,
+    maxTurns: (mt > 0 ? mt : 10),
+    prompt: $('customAgentPrompt').value,
+    notes: $('customAgentNotes').value
+  });
+  const arr = getCustomAgents();
+  const now = new Date().toISOString();
+  if (_agentFormCtx.editId) {
+    const a = arr.find(x => x.id === _agentFormCtx.editId);
+    if (a) { a.name = name; a.version = version; a.updated = now; a.config = config; }
+  } else {
+    const id = newAgentId('user', name);
+    const existing = arr.find(x => x.id === id);
+    if (existing) { existing.name = name; existing.version = version; existing.updated = now; existing.config = config; }
+    else { arr.push({ id: id, name: name, source: 'user', pack: '', version: version, updated: now, config: config }); }
+  }
+  const editing = !!_agentFormCtx.editId;
+  saveCustomAgents(arr);
+  closeAgentForm();
+  rerenderAgentLib();
+  showToast(editing ? 'Agent updated' : 'Agent saved to your library');
+}
+function deleteCustomAgent(id) {
+  const arr = getCustomAgents();
+  const a = arr.find(x => x.id === id);
+  if (!a) return;
+  if (!confirm('Delete agent "' + a.name + '"? This cannot be undone.')) return;
+  saveCustomAgents(arr.filter(x => x.id !== id));
+  rerenderAgentLib();
+  showToast('Agent deleted');
+}
+function instantiateAgent(id) {
+  const a = getCustomAgents().find(x => x.id === id);
+  if (!a) { showToast('Agent not found'); return; }
+  addNode('agent', undefined, undefined, a.name, JSON.parse(JSON.stringify(normalizeAgentConfig(a.config))));
+  if (typeof toggleAgentLib === 'function') { const ov = $('agentLibOverlay'); if (ov && ov.classList.contains('show')) toggleAgentLib(); }
+  showToast('Added "' + a.name + '" to the canvas');
+}
+function exportAgentPack(source) {
+  const src = source || 'user';
+  const arr = getCustomAgents().filter(a => a.source === src);
+  if (!arr.length) { showToast('No ' + src + ' agents to export yet'); return; }
+  const blob = new Blob([JSON.stringify({ format: 'awd-agent-pack', version: 1, source: src, agents: arr }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'awd-agent-pack-' + src + '.json'; a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Exported ' + arr.length + ' agent' + (arr.length !== 1 ? 's' : ''));
+}
+// Merge an imported agent pack. Source-partitioned + version-aware + non-clobbering: an incoming id is
+// forced to its resolved source's namespace, so an org pack can NEVER overwrite a user agent. Within the
+// same id: incoming version > local updates; equal/lower is skipped. Returns {added,updated,skipped} or null.
+function mergeImportedAgents(data) {
+  const incoming = (data && Array.isArray(data.agents)) ? data.agents : (Array.isArray(data) ? data : null);
+  if (!incoming) return null;
+  const declaredSource = (data && (data.source === 'org' || data.source === 'builtin' || data.source === 'user')) ? data.source : 'org';
+  const declaredPack = (data && typeof data.pack === 'string') ? data.pack : '';
+  const arr = getCustomAgents();
+  let added = 0, updated = 0, skipped = 0;
+  incoming.forEach(raw => {
+    if (!raw || typeof raw.name !== 'string' || !raw.name.trim() || !raw.config) return;
+    const source = (raw.source === 'org' || raw.source === 'builtin' || raw.source === 'user') ? raw.source : declaredSource;
+    const pack = (typeof raw.pack === 'string' && raw.pack) ? raw.pack : declaredPack;
+    // Force the id into the resolved source's namespace (re-derive if absent or spoofed across sources).
+    let id = (typeof raw.id === 'string' && raw.id.indexOf(source + ':') === 0) ? raw.id : newAgentId(source, raw.name, pack);
+    const entry = {
+      id: id, name: raw.name.trim(), source: source, pack: pack,
+      version: typeof raw.version === 'string' ? raw.version : '',
+      updated: typeof raw.updated === 'string' ? raw.updated : new Date().toISOString(),
+      config: normalizeAgentConfig(raw.config)
+    };
+    const existing = arr.find(x => x.id === id); // namespaced id => same source by construction
+    if (!existing) { arr.push(entry); added++; }
+    else if (compareAgentVersions(entry.version, existing.version) > 0) { Object.assign(existing, entry); updated++; }
+    else { skipped++; }
+  });
+  saveCustomAgents(arr);
+  return { added, updated, skipped };
+}
+function importAgentPackFile(event) {
+  const file = event.target.files[0]; event.target.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    let data; try { data = JSON.parse(e.target.result); } catch (err) { showToast('Invalid JSON file'); return; }
+    const r = mergeImportedAgents(data);
+    if (!r) { showToast('Not an agent-pack file'); return; }
+    rerenderAgentLib();
+    showToast('Imported agents: ' + r.added + ' added, ' + r.updated + ' updated, ' + r.skipped + ' unchanged');
+  };
+  reader.readAsText(file);
+}
+function agentCardHtml(a) {
+  const role = getAgentTypeName(a.config && a.config.agentType) || 'Agent';
+  const ver = a.version ? ' <span style="font-size:9px;font-weight:600;color:var(--accent);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;margin-left:6px;vertical-align:middle">v' + escHtml(a.version) + '</span>' : '';
+  let h = '<div class="plib-card"><div class="plib-card-body"><div class="plib-card-title">' + escHtml(a.name) + ver + '</div>'
+    + '<div class="plib-card-desc">' + escHtml(role + ' · ' + ((a.config && a.config.model) || '')) + '</div></div>'
+    + '<button class="plib-copy" onclick="instantiateAgent(\'' + a.id + '\')">Add to canvas</button>';
+  if (a.source === 'user') {
+    h += '<button class="btn sm" style="margin-left:6px" onclick="openAgentForm(\'' + a.id + '\')" title="Edit this agent">Edit</button>'
+      + '<button class="btn sm" style="margin-left:6px" onclick="deleteCustomAgent(\'' + a.id + '\')" title="Delete this agent">Delete</button>';
+  }
+  return h + '</div>';
+}
+// The Agent Library lives in its OWN modal (#agentLibOverlay), opened by the toolbar "Agents" button -
+// deliberately NOT nested in the Prompt Library (prompts are copy-paste text; agents are node configs you
+// instantiate on the canvas - two different surfaces). toggleAgentLib opens/renders; rerenderAgentLib
+// refreshes after CRUD. renderAgentLibrary returns the toolbar + source-grouped cards (also unit-tested).
+function toggleAgentLib() {
+  const overlay = $('agentLibOverlay'); if (!overlay) return;
+  overlay.classList.toggle('show');
+  if (overlay.classList.contains('show')) renderAgentLib();
+}
+function renderAgentLib() {
+  const body = $('agentLibBody'); if (!body) return;
+  const hasAgents = getCustomAgents().length > 0;
+  body.innerHTML = (hasAgents ? '<input type="text" class="plib-search" id="agentSearch" placeholder="Search agents..." oninput="filterAgentLib(this.value)">' : '')
+    + '<p style="margin-bottom:14px;color:var(--text3)">Reusable agent presets - a saved agent node\'s config (role, model, tools, prompt, context) you can drop into any workflow. Save the selected agent, or import a shared pack. Stored in your browser; export to share with your team.</p>'
+    + renderAgentLibrary();
+}
+// Re-render after CRUD, preserving the search box value (mirrors rerenderPromptLib).
+function rerenderAgentLib() {
+  const ov = $('agentLibOverlay'); if (!ov || !ov.classList.contains('show')) return;
+  const cur = $('agentSearch'); const q = cur ? cur.value : '';
+  renderAgentLib();
+  const ns = $('agentSearch'); if (ns && q) { ns.value = q; filterAgentLib(q); }
+}
+// DOM filter over agent cards by name/role text; hides a source group when none of its cards match.
+function filterAgentLib(query) {
+  const q = (query || '').toLowerCase();
+  const body = $('agentLibBody'); if (!body) return;
+  body.querySelectorAll('.plib-card').forEach(card => {
+    const title = card.querySelector('.plib-card-title');
+    const desc = card.querySelector('.plib-card-desc');
+    const text = ((title ? title.textContent : '') + ' ' + (desc ? desc.textContent : '')).toLowerCase();
+    card.style.display = (!q || text.includes(q)) ? '' : 'none';
+  });
+  body.querySelectorAll('.agent-group').forEach(g => {
+    const hasVisible = [...g.querySelectorAll('.plib-card')].some(c => c.style.display !== 'none');
+    g.style.display = (!q || hasVisible) ? '' : 'none';
+  });
+}
+// Returns the Agent Library body (toolbar + source-grouped cards) as an HTML string.
+function renderAgentLibrary() {
+  const agents = getCustomAgents();
+  let h = '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
+    + '<button class="btn sm primary" onclick="saveSelectedAgentPreset()" title="Save the selected agent node as a reusable preset">+ Save selected agent</button>'
+    + '<button class="btn sm" onclick="exportAgentPack(\'user\')">Export mine</button>'
+    + '<label class="btn sm" style="margin:0;cursor:pointer">Import pack<input type="file" accept=".json,application/json" style="display:none" onchange="importAgentPackFile(event)"></label>'
+    + '</div>';
+  if (!agents.length) {
+    return h + '<div style="font-size:12px;color:var(--text3)">No saved agents yet. Select an agent node on the canvas, then "Save selected agent" to make a reusable, shareable preset (e.g. an agent that knows your API conventions).</div>';
+  }
+  const order = { 'My Agents': 0 };
+  const groups = {};
+  agents.forEach(a => {
+    const key = a.source === 'org' ? ('Org: ' + (a.pack || 'shared')) : a.source === 'builtin' ? 'Built-in' : 'My Agents';
+    (groups[key] = groups[key] || []).push(a);
+  });
+  Object.keys(groups).sort((x, y) => (order[x] != null ? order[x] : 1) - (order[y] != null ? order[y] : 1) || x.localeCompare(y)).forEach(g => {
+    h += '<div class="agent-group"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin:8px 0 4px">' + escHtml(g) + '</div>';
+    groups[g].forEach(a => { h += agentCardHtml(a); });
+    h += '</div>';
+  });
+  return h;
+}
+// === end Custom agents ===
+
 const PROMPT_LIBRARY = [
   { category: 'Code Quality', prompts: [
     { title: 'Bug Hunter Review',

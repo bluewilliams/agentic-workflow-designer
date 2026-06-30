@@ -243,6 +243,14 @@ Prompts that need context (like "what file to analyze") show an input popup befo
 
 **Add your own.** Click **+ Add your own** to save a custom prompt (title, optional description, prompt body); it lands in a **My Prompts** category with Edit/Delete on each card. Custom prompts live in your browser (localStorage) - nothing is uploaded. **Export mine** downloads them as JSON and **Import** reads one back, so you can back them up or share a pack with a teammate (import dedupes by title, so re-importing an updated pack overwrites in place). The file format is `{ "format": "awd-custom-prompts", "version": 1, "prompts": [ { "title": "...", "desc": "...", "prompt": "..." } ] }`; import also accepts a bare array of those prompt objects.
 
+## Agent Library
+
+Click the **Agents** button in the toolbar for reusable **agent presets**. Where the Prompt Library holds copy-paste text, an agent preset is a saved snapshot of an agent node's whole config - role, model, tools, prompt, and Agent Context - that you drop onto the canvas pre-wired. Build an agent that knows your API conventions (or your testing standards, or your migration playbook) once, and reuse it in every workflow.
+
+Select an agent node and click **+ Save selected agent** to save it with a name and an optional, author-controlled **version**. Saved agents are grouped by source: **My Agents** (yours, with Edit/Delete) and **Org** packs (shared, Add-only). **Add to canvas** instantiates one as a normal agent node, and a search box filters by name once your library grows.
+
+**Sharing is built for teams.** **Export mine** downloads your agents as a pack; **Import pack** reads one back. Imports are **source-partitioned and never overwrite your own agents** - each agent has a namespaced id (`user:my-agent` vs `org:platform/api-agent`), so importing an org pack can only touch the org group. Re-importing is **version-aware**: a higher `version` updates in place, an equal or lower one is left alone (so an org can ship updates without clobbering local work). Everything is local (localStorage); the pack format is `{ "format": "awd-agent-pack", "version": 1, "source": "user|org", "agents": [ ... ] }`.
+
 ### Live Monitors
 
 The Prompt Library includes a dedicated **Live Monitors** category with prompts that watch things for you over time, leveraging state across iterations to do things a single run can't:
