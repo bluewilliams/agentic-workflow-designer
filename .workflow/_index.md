@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## expand-textarea-modal
+
+- record: .workflow/expand-textarea-to-modal.md
+- intent: summon a large modal editor for any text box (Requirements, Workflow Context, Agent Prompt, Agent Context, the Agent-editor customAgentPrompt/customAgentNotes, and the Prompt Library add-prompt customPromptBody) so users can draft/review long specs+prompts in-app instead of an external editor - without losing the streamlined inline boxes. Affordance: a discreet top-right corner button (`taExpandButton`, ~40% opacity) on each wired field, PLUS `Cmd/Ctrl+E` while ANY textarea is focused (own keydown listener, since the main handler early-returns on field focus). KEY DESIGN: the modal is a REMOTE CONTROL, not a copy - `syncTextExpand` writes the modal value back to the source AND dispatches the source's own `input` event, so validateStoryInput/updatePrompt/autosave/the config data-key binding all fire exactly as inline typing (no save/cancel/reconcile -> regression-proof; closing just closes). DRY wiring: config fields get the button via the shared `configTextarea()`; static fields wrapped at init by an idempotent `enhanceExpandableTextarea()` (no duplicated button markup). Overlay z-index 500 -> works modal-over-modal (from inside the Agent/Prompt form modals). Live word/char count + "changes save automatically" + caret preserved; Esc/Done/backdrop close + focus returns to source. `textExpandTitleFor` picks a friendly title (config <label> > id map > dataset override > "Edit text").
+- files: index.html (`.text-expand-*`/`.ta-*` CSS; `#textExpandOverlay` markup; REMOVABLE JS block openTextExpand/syncTextExpand/closeTextExpand/textExpandTitleFor/taExpandButton/enhanceExpandableTextarea + Cmd/Ctrl+E & Esc listener; one-line configTextarea wrap; a help-modal paragraph), tests.html ("Expand-to-modal text editing" describe, 7 tests + 8 bridge exports)
+- status: current | date: 2026-07-01 | note: 1181 -> 1188 (+7). Additive/removable; no existing behavior changed (inline fields render inside a positioned .ta-wrap, otherwise identical). Headless screenshots viewed: discreet corner button on Requirements+Workflow Context (no text overlap); expanded modal shows title, big editor w/ preserved caret, live count, "changes save automatically", Done. A test proves a modal edit fires storyInput.oninput -> Refine gate flips disabled->enabled (remote-control design proven). Content-lint; temp files removed. UNCOMMITTED (Blue commits).
+
 ## import-autofit
 
 - record: .workflow/import-autofit-and-zoomfit-defer.md
