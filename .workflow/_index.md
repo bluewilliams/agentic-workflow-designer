@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## tool-access-wording
+
+- record: .workflow/tool-access-wording-and-dry.md
+- intent: align the per-node tool line on ONE phrasing ("You have access to these tools: X") across Workflow / Sub-Agents / Agent Teams / OpenSpec-export intent, replacing the two prior variants (bare "- Tools:" label + the sentence form). The SDK is untouched - it emits the real `tools=[...]` param, the only hard enforcement point. Semantics decided: availability, a CLOSED enumeration (deliberately NO "minimally"/"at least" - that makes the list a floor and re-authorizes a deselected tool like WebSearch); prose in the copy-paste formats is a strong DIRECTIONAL signal, not a sandbox. Then DRY: extracted the wording into a pure content helper `toolAccessText(tools)` (returns the WORDS only; each generator keeps its own container shape + emit guard, so output is byte-identical), routed through all 7 call sites. Rejected a monolithic `renderAgent(node,{format})` (leaky - formats should drift independently); the model line was deliberately left divergent (label+param vs getModelId vs raw).
+- files: index.html (`toolAccessText` helper + 7 call sites; old label variants removed), tests.html ("Tool availability wording (aligned across formats)" describe: helper-direct + aligned-across-3-prose-formats + old-labels-gone + OpenSpec-carries-it + golden exact-line pin)
+- status: current | date: 2026-06-30 | note: 1177 -> 1181 (+4). Byte-identical extraction (pre-existing round-trip `toBe` guard + substring tests stayed green through it). Parked next candidates: the dependency line and the max-turns line (same "shared words, divergent shape" pattern); model line NOT a candidate.
+
 ## refine-plan-clipboard
 
 - record: .workflow/refine-plan-clipboard-roundtrip.md

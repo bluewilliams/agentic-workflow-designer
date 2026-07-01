@@ -144,6 +144,40 @@ Each template is structured with numbered steps, expected outputs, handoff summa
 
 The bottom panel generates prompts in 5 formats. Internally these are called "export formats" in the code (`state.exportFormat`, `setExportFormat()`, etc.).
 
+### Generator architecture (read this first)
+
+If you are new to this file, this is the map. There are six generators, each a plain function that reads the same `state` (nodes / connections / config) and returns a string:
+
+| Generator | Output | Notes |
+|-----------|--------|-------|
+| `genWorkflow()` | Workflow markdown | |
+| `genSubAgents()` | Claude Code Task blocks | per-agent prompt via `buildAgentPrompt()` |
+| `genAgentTeams()` | Team-lead brief | per-teammate via `buildTeammateBlock()` |
+| `genAgentSDK()` | Python | tools become the real `tools=[...]` param |
+| `genClaudePrompt()` | Claude.ai prose | |
+| `buildOpenSpecSchema()` | OpenSpec `schema.yaml` (export) | see [OpenSpec Schema Export](#openspec-schema-export) |
+
+**They are independent by design.** There is no shared "render any format" pipeline. Each generator composes its own output. This is deliberate: a change to one format's shape *cannot* break another, and formats are free to diverge (a Workflow bullet, an SDK Python param, and an OpenSpec YAML block are genuinely different things). Do **not** refactor these into one `renderAgent(node, {format})` mega-function - that abstraction grows a `format` conditional per divergence and couples formats that should move independently.
+
+**What they DO share is a layered set of single-source seams**, so common content lives in exactly one place. Each generator calls these; they are the DRY layer:
+
+| Seam suffix | Returns | Examples | Meaning |
+|-------------|---------|----------|---------|
+| `*Block(heading)` | array of lines for a titled section | `requirementsBlock`, `appSourceBlock`, `repoBlock`, `deliveryBlock` | a whole section, always emitted |
+| `*Hint()` | a string, or `''` when a toggle/condition is off | `conventionsHint`, `consumeRecordsHint`, `rulesPathsHint`, `productDocsHint`, `codeSearchHint`, `datadogGroundingHint`, `customMcpHint`, `clarifyFirstHint` | gated context; caller pushes only when non-empty |
+| `*Directive()` | a short imperative line (rendered as a blockquote) | `executionModelDirective` | one-line policy at the top of a format |
+| content helper | shared WORDS only (no container) | `toolAccessText`, `getEffectivePrompt`, `groundingLookupSteps` | reused wording; the caller owns the shape |
+
+**The governing rule: DRY the words, not the shape.** A content helper returns the phrasing that must stay identical across formats; each generator keeps its own container (bullet vs `**bold**` vs indent vs trailing period vs YAML vs Python). Example: `toolAccessText(tools)` returns `"You have access to these tools: X"`; `genWorkflow` prefixes `- `, `buildTeammateBlock` prefixes `${pre}- `, `buildAgentPrompt` appends `.`, and `genAgentSDK` ignores it entirely (it uses the real param). One wording edit updates every prose format at once, without forcing them to look alike. The read-path grounding is the fuller version of the same pattern: `groundingLookupSteps()` is the one source feeding the prompt formats (`consumeRecordsHint`), the SDK (via `wrapComment`), and the OpenSpec export (`openSpecGroundingBlock`).
+
+**Where to make a change:**
+- Reword something that must match across formats -> edit the shared helper (one place).
+- Change how one format looks -> edit that generator only (the others are untouched, guaranteed).
+- Add a new context section to all formats -> write a `*Block`/`*Hint`, then call it in each generator (the established pattern; the whole preamble - requirements, app source, conventions, grounding, repos, delivery - already works this way, shared ~5x).
+- A per-agent facet line (tool / model / turns / deps) - extract to a content helper *only* when the wording is both drift-prone and genuinely repeated. Tool access qualified; the model line (renders three different ways) and the dependency line (`Depends on:` vs `Input from:` vs a prose `## Input` block) are intentionally divergent and should stay inline.
+
+**Byte-identical contract.** The generated strings are effectively a public API - people paste them into Claude. The test suite pins them (substring assertions plus a serialize/deserialize round-trip `toBe` check). Any refactor of this machinery must keep output byte-identical; prove it by keeping the full suite green through the change rather than by eyeballing. Feature code is wrapped in `// === ... - REMOVABLE ===` markers so a whole capability can be lifted out cleanly.
+
 ### 1. Workflow (Structured Markdown)
 A `##` header-structured document with numbered steps, agent roles, parallel execution notes, decision points, and expected deliverables. Best for pasting into a Claude.ai conversation as a planning prompt.
 

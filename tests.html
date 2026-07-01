@@ -1390,6 +1390,39 @@ describe('Durable Record: protocol content', () => {
   });
 });
 
+describe('Tool availability wording (aligned across formats)', () => {
+  // Per-node tool selection surfaces as "You have access to these tools: ..." everywhere it
+  // appears as prose - a closed enumeration (availability, not a floor) so a deselected tool
+  // reads as not-granted. The Agent SDK enforces via the real tools=[...] param instead.
+  it('toolAccessText is the single source for the phrasing (pure content helper)', () => {
+    expect(win.toolAccessText(['Read', 'Grep'])).toBe('You have access to these tools: Read, Grep');
+    expect(win.toolAccessText([])).toBe('You have access to these tools: ');   // bare label, caller guards emission
+  });
+  it('every prose generator uses the same "You have access to these tools:" phrasing', () => {
+    buildTestWorkflow('linear');  // Planner has tools [Read, Grep, Glob]
+    ['genWorkflow', 'genSubAgents', 'genAgentTeams'].forEach(fn => {
+      const out = win[fn]();
+      expect(out).toContain('You have access to these tools:');
+      expect(out).toContain('Read, Grep, Glob');
+    });
+    // golden: the exact rendered line (prefix + content) so the helper can't drift the container
+    expect(win.genWorkflow()).toContain('- You have access to these tools: Read, Grep, Glob');
+  });
+  it('the old bare "- Tools:" / "**Tools**:" label is gone from the prose formats', () => {
+    buildTestWorkflow('parallel');
+    ['genWorkflow', 'genSubAgents', 'genAgentTeams'].forEach(fn => {
+      const out = win[fn]();
+      expect(out).toNotContain('- Tools:');
+      expect(out).toNotContain('**Tools**:');
+    });
+  });
+  it('OpenSpec export intent uses the aligned phrasing too', () => {
+    buildTestWorkflow('linear');
+    const s = win.buildOpenSpecSchema();
+    expect(s.schemaYaml).toContain('You have access to these tools:');
+  });
+});
+
 describe('Durable Record: exporter injection', () => {
   beforeEach(() => { resetState(); });
 
@@ -6980,7 +7013,7 @@ describe('OpenSpec schema export', () => {
     const rev = artBlock(s.schemaYaml, 'reviewer');
     expect(rev).toContain('Role:');
     expect(rev).toContain('Model:');
-    expect(rev).toContain('Tools:');
+    expect(rev).toContain('You have access to these tools:');
     expect(rev).toContain('Max turns:');
     expect(rev).toContain('Gate');
     expect(rev).toContain('Revise');
