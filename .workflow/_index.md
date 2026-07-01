@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## input-gating
+
+- record: .workflow/generate-plan-prompt-input-gating.md
+- intent: gate Generate Plan Prompt on the requirements input (disable when empty, with a why-tooltip) for a consistent affordance with Auto Workflow + Refine. KEY DECISION: Plan gates like REFINE (non-empty), NOT like Auto Workflow (>=6 words prose) - Plan/Refine work with a bare Jira URL and short specs (they fetch the ticket and plan against it), whereas Auto Workflow's prose gate is specific to its keyword-picking; gating Plan the strict way would wrongly disable it for a valid ticket URL. Added `planBtn` id + `validateStoryInput` gating + disabled-state tooltips on Refine/Plan (enabled-state descriptions skipped - inline Quick start/Optional help already covers them); click-time self-check retained as a safety net.
+- files: index.html (planBtn id; validateStoryInput gates planBtn + Refine/Plan tooltips; 1 help-modal sentence), tests.html ("Input gating" describe, 4 tests)
+- status: current | date: 2026-06-30 | note: 1176/1176 (+4). Tests pin the decision: bare Jira URL + short (<6-word) spec keep Plan/Refine enabled while Auto Workflow stays disabled; empty disables all; a sentence enables all. Confirmed generatePlanPrompt and generateRefinePrompt have identical preconditions.
+
 ## workflow-management-ui
 
 - record: .workflow/workflow-management-ui-and-tooltips.md

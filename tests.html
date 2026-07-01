@@ -7420,6 +7420,35 @@ describe('Custom Agents (Agent Library)', () => {
   });
 });
 
+describe('Input gating (Auto Workflow / Refine / Plan)', () => {
+  const set = v => { win.document.getElementById('storyInput').value = v; win.validateStoryInput(); };
+  afterEach(() => set(''));
+  it('empty box disables all three', () => {
+    set('');
+    expect(win.document.getElementById('generateBtn').disabled).toBe(true);
+    expect(win.document.getElementById('refineBtn').disabled).toBe(true);
+    expect(win.document.getElementById('planBtn').disabled).toBe(true);
+  });
+  it('a Jira URL enables Refine and Plan (they fetch the ticket) but NOT Auto Workflow (no keywords)', () => {
+    set('https://team.atlassian.net/browse/PROJ-42');
+    expect(win.document.getElementById('refineBtn').disabled).toBe(false);
+    expect(win.document.getElementById('planBtn').disabled).toBe(false);
+    expect(win.document.getElementById('generateBtn').disabled).toBe(true); // URL-only has no keywords
+  });
+  it('a sentence of requirements enables all three', () => {
+    set('Add a rate limiter to the public API with per-key quotas.');
+    expect(win.document.getElementById('generateBtn').disabled).toBe(false);
+    expect(win.document.getElementById('refineBtn').disabled).toBe(false);
+    expect(win.document.getElementById('planBtn').disabled).toBe(false);
+  });
+  it('Plan gates like Refine, not like Auto Workflow (a short spec keeps Plan enabled)', () => {
+    set('Fix login bug'); // < 6 words -> Auto Workflow disabled, but Plan/Refine work with any requirements
+    expect(win.document.getElementById('generateBtn').disabled).toBe(true);
+    expect(win.document.getElementById('planBtn').disabled).toBe(false);
+    expect(win.document.getElementById('refineBtn').disabled).toBe(false);
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
