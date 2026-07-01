@@ -633,15 +633,15 @@ svg.canvas{width:100%;height:100%;display:block}
     <h3>Workflow Management</h3>
     <div class="btn-row">
       <button class="btn sm primary" onclick="saveWorkflow()">Save</button>
-      <button class="btn sm" onclick="duplicateWorkflow()">Clone</button>
+      <button class="btn sm" onclick="duplicateWorkflow()" title="Save a copy: renames the current workflow to &quot;(copy)&quot; so your next Save creates a new workflow, leaving the original untouched. Handy for spinning off a variant.">Clone</button>
       <div class="export-dd" style="position:relative;display:inline-flex">
-        <button class="btn sm" id="exportMenuBtn" aria-haspopup="true" aria-expanded="false" onclick="toggleExportMenu(event)" title="Download the workflow as a file - Workflow JSON or OpenSpec schema.">Export &#9662;</button>
+        <button class="btn sm" id="exportMenuBtn" aria-haspopup="true" aria-expanded="false" onclick="toggleExportMenu(event)" title="Download the workflow as a file - Workflow JSON, OpenSpec schema, or a Handoff package.">Export &#9662;</button>
         <div class="export-menu" id="exportMenu" role="menu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:60;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,0.4);min-width:210px;padding:4px">
           <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportWorkflowFile();closeExportMenu()" title="Download just the workflow definition (.json) to reuse or share. Re-open it with Import.">Workflow JSON</button>
           <button class="btn sm" id="openspecExportBtn" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportOpenSpecSchema();closeExportMenu()" title="Download as an OpenSpec custom schema (.zip of schema.yaml + templates). Unzip at your repo root and run: openspec schema validate &lt;name&gt;. Re-import the schema.yaml here to edit it visually.">OpenSpec schema</button>
+          <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportHandoffFile();closeExportMenu()" title="Download a resume package (.md) to hand in-progress work to another engineer: how to resume, the durable record path, the ready-to-run prompt, and the workflow definition. The live state travels with your git branch, not this file.">Handoff package</button>
         </div>
       </div>
-      <button class="btn sm" onclick="exportHandoffFile()" title="Download a resume package (.md) to hand in-progress work to another engineer: how to resume, the durable record path, the ready-to-run prompt, and the workflow definition. The live state travels with your git branch, not this file.">Handoff</button>
       <label class="btn sm" style="margin:0">Import
         <input type="file" accept=".json,.yaml,.yml,.md" style="display:none" onchange="importWorkflowFile(event)">
       </label>
@@ -703,7 +703,7 @@ svg.canvas{width:100%;height:100%;display:block}
         <div id="artifactPathField" style="display:none;margin-top:8px">
           <span class="memory-path-label">Artifact Path</span>
           <input type="text" id="artifactPathInput" class="memory-path" oninput="onArtifactPathInput()" placeholder=".workflow/untitled.md" style="width:100%;box-sizing:border-box;border:1px solid var(--surface2);background:var(--surface);color:var(--text);font-family:inherit"/>
-          <p class="memory-hint">Tip: use <strong>Handoff</strong> under Workflow Management to export a resume package for another engineer.</p>
+          <p class="memory-hint">Tip: use <strong>Export &#9662; &rarr; Handoff package</strong> under Workflow Management to export a resume package for another engineer.</p>
         </div>
       </div>
     </div>
@@ -722,15 +722,15 @@ svg.canvas{width:100%;height:100%;display:block}
 <!-- Main Canvas -->
 <div class="main-area">
   <div class="toolbar">
-    <button class="btn sm active" id="modeSelect" onclick="setMode('select')">
+    <button class="btn sm active" id="modeSelect" onclick="setMode('select')" title="Select mode (1): click a node to select it, drag to move it">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
       Select
     </button>
-    <button class="btn sm" id="modeConnect" onclick="setMode('connect')">
+    <button class="btn sm" id="modeConnect" onclick="setMode('connect')" title="Connect mode (2): drag from one node to another to link them">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
       Connect
     </button>
-    <button class="btn sm" id="modeDelete" onclick="setMode('delete')">
+    <button class="btn sm" id="modeDelete" onclick="setMode('delete')" title="Delete mode (3): click a node or connection to remove it">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
       Delete
     </button>
@@ -742,14 +742,14 @@ svg.canvas{width:100%;height:100%;display:block}
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-5.64-10.36L23 10"/></svg>
     </button>
     <div class="sep"></div>
-    <button class="btn sm" onclick="autoLayout()">
+    <button class="btn sm" onclick="autoLayout()" title="Auto-arrange the nodes into a clean left-to-right layout">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       Auto Layout
     </button>
-    <button class="btn sm" onclick="zoomFit()">Fit</button>
+    <button class="btn sm" onclick="zoomFit()" title="Fit the whole workflow in view">Fit</button>
     <div class="sep"></div>
-    <button class="btn sm" onclick="zoomIn()">+</button>
-    <button class="btn sm" onclick="zoomOut()">&minus;</button>
+    <button class="btn sm" onclick="zoomIn()" title="Zoom in">+</button>
+    <button class="btn sm" onclick="zoomOut()" title="Zoom out">&minus;</button>
     <span class="info" id="nodeCount"></span>
     <div class="sep"></div>
     <span class="info" id="zoomInfo">100%</span>
@@ -809,11 +809,11 @@ svg.canvas{width:100%;height:100%;display:block}
 <div class="prompt-area" id="promptArea">
   <div class="prompt-header">
     <div class="format-tabs">
-      <button class="format-tab active" data-format="prompt" onclick="setExportFormat('prompt')">Workflow</button>
-      <button class="format-tab" data-format="subagent" onclick="setExportFormat('subagent')">Sub-Agents</button>
-      <button class="format-tab" data-format="teams" onclick="setExportFormat('teams')">Agent Teams<span class="tab-badge">Preview</span></button>
-      <button class="format-tab" data-format="sdk" onclick="setExportFormat('sdk')">Agent SDK<span class="tab-badge">Python</span></button>
-      <button class="format-tab" data-format="claude" onclick="setExportFormat('claude')">Claude.ai</button>
+      <button class="format-tab active" data-format="prompt" onclick="setExportFormat('prompt')" title="One prompt Claude Code runs in a single session, playing each role in turn. Simplest - best for most cases.">Workflow</button>
+      <button class="format-tab" data-format="subagent" onclick="setExportFormat('subagent')" title="Each step delegated to its own sub-agent with a fresh, isolated context. Best for long or context-heavy workflows.">Sub-Agents</button>
+      <button class="format-tab" data-format="teams" onclick="setExportFormat('teams')" title="Agents run concurrently as a team, coordinating through a shared handoff file. Best for genuinely parallel work. (Preview)">Agent Teams<span class="tab-badge">Preview</span></button>
+      <button class="format-tab" data-format="sdk" onclick="setExportFormat('sdk')" title="Python using the Anthropic Agent SDK - wire the workflow into your own pipeline or automation.">Agent SDK<span class="tab-badge">Python</span></button>
+      <button class="format-tab" data-format="claude" onclick="setExportFormat('claude')" title="A simplified conversational prompt for Claude.ai, with no CLI tools.">Claude.ai</button>
     </div>
     <div class="prompt-actions">
       <span class="info" id="tokenEstimate" style="font-size:10px;color:var(--text3)"></span>
@@ -1017,7 +1017,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>Together, <strong>Keep a durable record</strong> (the write side) and <strong>Ground in prior records</strong> (the read side) form a flywheel: every run leaves behind its decisions, gotchas, and a tested spec, and the next run reads them before planning - so workflows in the same repo get sharper and stop repeating the same mistakes over time, with nobody curating anything by hand. The more you run, the better-grounded each new workflow starts.</p>
 
 <h3>Handoff</h3>
-<p>The <strong>Handoff</strong> button under <strong>Workflow Management</strong> downloads a single resume package (<code>.md</code>) so another engineer can pick up in-progress work: how to resume, the durable-record path, the ready-to-run prompt, and the full workflow definition. The live run state travels with your git branch and the durable record, not this file - so enable <strong>Keep a durable record</strong> before running for a truly resumable handoff.</p>
+<p>The <strong>Handoff package</strong> option in the <strong>Export</strong> menu (under <strong>Workflow Management</strong>) downloads a single resume package (<code>.md</code>) so another engineer can pick up in-progress work: how to resume, the durable-record path, the ready-to-run prompt, and the full workflow definition. The live run state travels with your git branch and the durable record, not this file - so enable <strong>Keep a durable record</strong> before running for a truly resumable handoff.</p>
 
 <h2 id="hg-more">More</h2>
 
