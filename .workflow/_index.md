@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## import-autofit
+
+- record: .workflow/import-autofit-and-zoomfit-defer.md
+- intent: importing a workflow now FITS the view (was overflowing until a manual Fit click; presets already fit via loadPreset->autoLayout). Fit added to `importWorkflowFile`'s 3 success branches ONLY - deliberately NOT in the shared `deserializeWorkflow` (undo/redo + autosave-restore also use it, where an auto re-fit would fight the user's view). Decision: `zoomFit` now SELF-DEFERS via setTimeout(0), so every caller just calls `zoomFit()` - no wrapper, no raw-setTimeout sprinkle. Safe because the fit MATH is sync-correct (node w/h are static NODE_DEFAULTS, getBoundingClientRect forces layout - proven headlessly a sync fit took a 2140px/8-node import 1 -> 0.392), so a one-macrotask defer is strictly safe; confirmed no caller needs a synchronous fit (only the Fit button + the mutation sites call it; no test references it). A named `fitViewSoon()` wrapper (pure zoomFit + explicit defer at call sites) was considered then dropped for the simpler single-function surface. Tradeoff accepted: zoomFit is now fire-and-forget async (no instant sync fit; nothing needs one today).
+- files: index.html (`zoomFit` self-defer via setTimeout(0); 3 fit calls in importWorkflowFile; autoLayout/addFanIn/addFanOut simplified from raw setTimeout(zoomFit) to zoomFit()). No test change - the import path is async FileReader; verified via headless harness (7-artifact foreign schema -> 8 nodes, 2140px vs 1280px viewport, auto-fits zoom 1 -> 0.392, re-confirmed after baking in the defer).
+- status: current | date: 2026-06-30 | note: 1181/1181 (call-site simplifications behavior-preserving - zoomFit was already effectively deferred at every mutation site - plus the new import fit). Content-lint. Temp harness files removed.
+
 ## tool-access-wording
 
 - record: .workflow/tool-access-wording-and-dry.md
