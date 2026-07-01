@@ -99,7 +99,7 @@ The durable record holds the spec-and-state of the work in one place. The epheme
 
 ### Handoff bundle
 
-When a larger task needs to pass between engineers, click **Handoff** (next to Export .json) to download a single self-contained Markdown package, `{slug}-handoff.md`. It contains:
+When a larger task needs to pass between engineers, choose **Export ▾ → Handoff package** to download a single self-contained Markdown package, `{slug}-handoff.md`. It contains:
 
 - **How to resume** - numbered steps starting from the durable record (the live state), then how to re-run.
 - **The durable record path** - where the spec-and-state lives (committed in the repo, or attached to the work item for cross-repo work).

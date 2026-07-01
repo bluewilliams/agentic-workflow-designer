@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## workflow-management-ui
+
+- record: .workflow/workflow-management-ui-and-tooltips.md
+- intent: UI polish (markup only, behavior-inert). (1) Folded the Handoff button into the Export dropdown (Export -> Workflow JSON / OpenSpec schema / Handoff package) - Handoff IS an export (a resume `.md` package) - so Workflow Management fits one row (Save . Clone . Export . Import); standalone Handoff button removed. (2) Added a tooltip to the previously-untitled Clone button (Clone = save-a-copy: renames to "(copy)" so the next Save creates a new workflow); kept the SHORT label so the row stays one line (a longer "Save Copy" would re-break it). (3) Focused tooltip-consistency pass: toolbar mode buttons (Select/Connect/Delete with their VERIFIED 1/2/3 shortcuts), view buttons (Auto Layout/Fit/zoom), and the five output tabs (condensed from the help modal); deliberately skipped self-evident (Save/Import) and inline-documented controls (toggles, generate buttons).
+- files: index.html (Export menu markup + Handoff menuitem, removed standalone Handoff button, Clone/toolbar/tab titles, 2 help-modal refs), README.md (Handoff bundle -> "Export -> Handoff package"). No JS logic, no tests (title/markup only).
+- status: current | date: 2026-06-30 | note: 1172/1172 (unchanged - behavior-inert). Screenshots confirmed one-row + the Export menu (Workflow JSON / OpenSpec schema / Handoff package); the 1/2/3 mode shortcuts were confirmed against the keydown handler before being claimed in tooltips. Decisions: Handoff-in-Export over a Save split-button; tooltip over relabel for Clone; scoped (not blanket) tooltips.
+
 ## portable-agents-library
 
 - record: .workflow/portable-agents-library.md
