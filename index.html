@@ -7329,6 +7329,16 @@ function forkStrategyOf(forkId) {
   return (f && f.config && f.config.strategy) || 'all';
 }
 
+// ── Per-agent facet content (the WORDS, one source; each format owns its container shape) ──
+// Extracted so a wording change happens in ONE place instead of across every generator (this line
+// previously lived inline in 7 spots). Pure content: it never decides whether to emit - callers keep
+// their own guard/indent/bold/period, because the container legitimately differs per format. Empty
+// tool list yields the bare label, matching prior inline behavior byte-for-byte. The Agent SDK does
+// NOT use this - it emits the real tools=[...] param, the only true enforcement point.
+function toolAccessText(tools) {
+  return 'You have access to these tools: ' + (tools && tools.length ? tools.join(', ') : '');
+}
+
 function genWorkflow() {
   const story = getStory(), name = getName();
   const ordered = topologicalSort();
@@ -7398,7 +7408,7 @@ function genWorkflow() {
           const sAt = getAgentTypeName(s.config.agentType);
           p.push(`  **${s.label}** (${sAt} Agent)`);
           p.push(`  - Model: ${getModelLabel(s.config.model)} (\`${getTaskModelParam(s.config.model)}\`)`);
-          if (s.config.tools.length > 0) p.push(`  - Tools: ${s.config.tools.join(', ')}`);
+          if (s.config.tools.length > 0) p.push('  - ' + toolAccessText(s.config.tools));
           p.push(`  - Instructions: ${getEffectivePrompt(s)}`);
           const _ddS = datadogStepHint(s); if (_ddS) p.push('  ' + _ddS);
           const _csS = codeSearchStepHint(s); if (_csS) p.push('  ' + _csS);
@@ -7412,7 +7422,7 @@ function genWorkflow() {
         const at = getAgentTypeName(node.config.agentType);
         p.push(`**Step ${stepNum}: ${node.label}** (${at} Agent)`);
         p.push(`- Model: ${getModelLabel(node.config.model)} (\`${getTaskModelParam(node.config.model)}\`)`);
-        if (node.config.tools.length > 0) p.push(`- Tools: ${node.config.tools.join(', ')}`);
+        if (node.config.tools.length > 0) p.push('- ' + toolAccessText(node.config.tools));
         p.push(`- Instructions: ${getEffectivePrompt(node)}`);
         const _ddN = datadogStepHint(node); if (_ddN) p.push('- ' + _ddN);
         const _csN = codeSearchStepHint(node); if (_csN) p.push('- ' + _csN);
@@ -7600,7 +7610,7 @@ function genSubAgents() {
     const promptLines = [];
     promptLines.push(`You are a ${at} agent responsible for: ${node.label}.`);
     if (node.config.tools.length > 0) {
-      promptLines.push(`You have access to these tools: ${node.config.tools.join(', ')}.`);
+      promptLines.push(toolAccessText(node.config.tools) + '.');
     }
     promptLines.push('');
 
@@ -7695,7 +7705,7 @@ function genSubAgents() {
         p.push('');
         p.push(`- **Agent type**: ${at}`);
         p.push(`- **Model**: ${getModelLabel(s.config.model)} (\`${getTaskModelParam(s.config.model)}\`)`);
-        p.push(`- **Tools**: ${s.config.tools.join(', ')}`);
+        p.push('- ' + toolAccessText(s.config.tools));
         p.push(`- **Max turns**: ${s.config.maxTurns}`);
         if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
         p.push('');
@@ -7710,7 +7720,7 @@ function genSubAgents() {
       p.push('');
       p.push(`- **Agent type**: ${at}`);
       p.push(`- **Model**: ${getModelLabel(node.config.model)} (\`${getTaskModelParam(node.config.model)}\`)`);
-      p.push(`- **Tools**: ${node.config.tools.join(', ')}`);
+      p.push('- ' + toolAccessText(node.config.tools));
       p.push(`- **Max turns**: ${node.config.maxTurns}`);
       if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
       p.push('');
@@ -7841,7 +7851,7 @@ function genAgentTeams() {
 
     lines.push(`${pre}**Teammate: "${node.label}"** (${at})`);
     lines.push(`${pre}- Model: \`${getTaskModelParam(node.config.model)}\` (${getModelLabel(node.config.model)})`);
-    lines.push(`${pre}- Tools: ${node.config.tools.join(', ')}`);
+    lines.push(`${pre}- ` + toolAccessText(node.config.tools));
     lines.push(`${pre}- Max turns: ${node.config.maxTurns}`);
 
     // Memory READ - before task (step zero)
@@ -8543,7 +8553,7 @@ function openSpecStepIntent(node) {
   if (node.type === 'agent') {
     lines.push('- Role: ' + getAgentTypeName(c.agentType));
     if (c.model) lines.push('- Model: ' + c.model);
-    if (c.tools && c.tools.length) lines.push('- Tools: ' + c.tools.join(', '));
+    if (c.tools && c.tools.length) lines.push('- ' + toolAccessText(c.tools));
     if (c.maxTurns) lines.push('- Max turns: ' + c.maxTurns);
   }
   getDownstreamDecisions(node.id).forEach(d => {
