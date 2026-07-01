@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## refine-plan-clipboard
+
+- record: .workflow/refine-plan-clipboard-roundtrip.md
+- intent: QoL for the copy-heavy Refine/Plan round-trip. The generated Refine and Plan prompts now instruct Claude Code to put the result on the SYSTEM CLIPBOARD (in addition to writing `.claude/specs/{slug}.md` / `.claude/plans/{slug}.md`), so paste-back into the Workflow Designer (Refine -> Requirements box, Plan -> Workflow Context box) is one paste instead of open-file-copy-paste. New pure helper `clipboardCopyInstruction(filePath)` - cross-platform PIPE form (`cat FILE | pbcopy` macOS / `... | xclip -selection clipboard` or `... | xsel -b` Linux / `... | clip.exe` Windows), with `clip.exe` covering PowerShell/cmd/Git Bash/WSL, and a graceful manual-copy fallback when no clipboard tool exists. KEEPS the file (persistence + fallback). Best-effort, non-destructive; Claude Code only (Claude.ai web falls back to the file).
+- files: index.html (clipboardCopyInstruction helper; the "Finally" blocks in generateRefinePrompt + generatePlanPrompt; two inline help notes), tests.html (helper cross-platform test + 2 existing refine/plan tests updated to new wording + clipboard assertions)
+- status: current | date: 2026-06-30 | note: 1177/1177 (+1 helper test; reworded "paste them into" -> "Paste it into" broke 2 pinned assertions -> updated to the new wording + pbcopy checks). Windows question resolved: clip.exe is a native Windows binary reachable from every shell (PowerShell/cmd/Git Bash/WSL); switched to the pipe form for shell robustness.
+
 ## input-gating
 
 - record: .workflow/generate-plan-prompt-input-gating.md

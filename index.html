@@ -445,7 +445,7 @@ svg.canvas{width:100%;height:100%;display:block}
         <button class="btn sm" onclick="dismissUrlPicker()" style="font-size:10px;opacity:.6">Dismiss</button>
       </div>
     </div>
-    <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5"><strong style="color:var(--text2)">Quick start</strong>: paste requirements above, pick a preset below, copy the prompt. <strong style="color:var(--text2)">Generate Refine Prompt</strong> (optional): generates an interview prompt - run it in Claude Code, then paste the refined spec back into Requirements replacing the original.</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5"><strong style="color:var(--text2)">Quick start</strong>: paste requirements above, pick a preset below, copy the prompt. <strong style="color:var(--text2)">Generate Refine Prompt</strong> (optional): generates an interview prompt - run it in Claude Code, then paste the refined spec back into Requirements (Claude copies it to your clipboard) replacing the original.</div>
   </div>
 
   <div class="sidebar-section">
@@ -456,7 +456,7 @@ svg.canvas{width:100%;height:100%;display:block}
     <div class="btn-row">
       <button class="btn sm" id="planBtn" onclick="generatePlanPrompt()">Generate Plan Prompt</button>
     </div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5"><strong style="color:var(--text2)">Optional</strong>: click <strong style="color:var(--text2)">Generate Plan Prompt</strong> to create a planning prompt - run it in Claude Code and paste the result into the Workflow Context box above. Best used after refining your requirements. Or paste a plan from <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">/plan</code> mode directly.</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5"><strong style="color:var(--text2)">Optional</strong>: click <strong style="color:var(--text2)">Generate Plan Prompt</strong> to create a planning prompt - run it in Claude Code and paste the result into the Workflow Context box above (Claude copies it to your clipboard). Best used after refining your requirements. Or paste a plan from <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">/plan</code> mode directly.</div>
   </div>
 
   <div class="sidebar-section">
@@ -5518,6 +5518,12 @@ function extractAcceptanceCriteria(text) {
   return criteria;
 }
 
+// Cross-platform "copy this file to the clipboard" instruction for the round-trip prompts (Refine/Plan),
+// so the user can paste the result straight back into the Workflow Designer instead of opening the file.
+// Best-effort: falls back to manual copy if no clipboard tool is available (e.g. xclip not installed).
+function clipboardCopyInstruction(filePath) {
+  return 'Copy the file to the system clipboard so it is ready to paste - pipe it to whichever clipboard tool this OS has: `cat ' + filePath + ' | pbcopy` (macOS), `cat ' + filePath + ' | xclip -selection clipboard` or `cat ' + filePath + ' | xsel -b` (Linux), or `cat ' + filePath + ' | clip.exe` (Windows - works from PowerShell, cmd, Git Bash, or WSL). If none is available, tell the user to open the file and copy it manually instead.';
+}
 function generateRefinePrompt() {
   const story = $('storyInput').value.trim();
   if (!story) {
@@ -5605,10 +5611,12 @@ function generateRefinePrompt() {
   lines.push('');
   lines.push('After writing the file, provide a brief summary of what was clarified beyond the original requirements.');
   lines.push('');
-  lines.push('**Finally**, in your response to the user (NOT in the file), tell them:');
-  lines.push('1. The refined spec has been saved to the file path above');
-  lines.push('2. Open the file, copy its full contents, and paste them into the **Requirements** field of the Workflow Designer, replacing the original text');
-  lines.push('3. If they want a codebase-aware implementation plan, click **Generate Plan Prompt** in the Workflow Designer next');
+  lines.push('**Finally**, make paste-back one step for the user:');
+  lines.push('- ' + clipboardCopyInstruction('.claude/specs/' + slug + '.md'));
+  lines.push('- Then, in your response (NOT in the file), tell them:');
+  lines.push('  1. The refined spec is on your clipboard (and saved to the file path above).');
+  lines.push('  2. Paste it into the **Requirements** field of the Workflow Designer, replacing the original text.');
+  lines.push('  3. If you want a codebase-aware implementation plan, click **Generate Plan Prompt** next.');
 
   const prompt = lines.join('\n');
   navigator.clipboard.writeText(prompt).then(() => {
@@ -5698,10 +5706,12 @@ function generatePlanPrompt() {
   lines.push('- Implementation sequence (what to build first, dependencies between changes)');
   lines.push('- Risks or open questions');
   lines.push('');
-  lines.push('**Finally**, in your response to the user (NOT in the file), tell them:');
-  lines.push('1. The implementation plan has been saved to the file path above');
-  lines.push('2. Open the file, copy its full contents, and paste them into the **Workflow Context** field of the Workflow Designer');
-  lines.push('3. Then pick a preset or click **Auto Workflow** to build the workflow, and copy the exported prompt to run the implementation');
+  lines.push('**Finally**, make paste-back one step for the user:');
+  lines.push('- ' + clipboardCopyInstruction('.claude/plans/' + slug + '.md'));
+  lines.push('- Then, in your response (NOT in the file), tell them:');
+  lines.push('  1. The implementation plan is on your clipboard (and saved to the file path above).');
+  lines.push('  2. Paste it into the **Workflow Context** field of the Workflow Designer.');
+  lines.push('  3. Then pick a preset or click **Auto Workflow** to build the workflow, and copy the exported prompt to run the implementation.');
 
   const prompt = lines.join('\n');
   navigator.clipboard.writeText(prompt).then(() => {
