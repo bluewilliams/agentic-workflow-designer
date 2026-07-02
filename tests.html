@@ -8703,7 +8703,7 @@ describe('Repo folder connect (run-report auto-ingestion)', () => {
     expect(!!wrap).toBe(true);
     if (win.repoConnectSupported()) {
       expect(wrap.style.display === 'none').toBe(false);
-      expect(wrap.innerHTML).toContain('Connect folder');
+      expect(wrap.innerHTML).toContain('Connect Reports Folder');
     } else {
       expect(wrap.style.display).toBe('none');
       expect(win.document.querySelectorAll('#repoConnectWrap button').length).toBe(0);

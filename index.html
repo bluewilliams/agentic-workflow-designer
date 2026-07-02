@@ -510,7 +510,7 @@ svg.canvas{width:100%;height:100%;display:block}
         <button onclick="addRulesPath('CONVENTIONS.md')">CONVENTIONS.md</button>
         <button onclick="addRulesPath('CONTRIBUTING.md')">CONTRIBUTING.md</button>
       </div>
-      <button class="path-clear" id="rulesPathClear" onclick="clearRulesPaths()" style="display:none">Clear all</button>
+      <button class="path-clear" id="rulesPathClear" onclick="clearRulesPaths()" style="display:none">Clear All</button>
     </div>
 
     <div>
@@ -527,7 +527,7 @@ svg.canvas{width:100%;height:100%;display:block}
         <button onclick="addProductDocPath('ARCHITECTURE.md')">ARCHITECTURE.md</button>
         <button onclick="addProductDocPath('docs/adr/')">docs/adr/</button>
       </div>
-      <button class="path-clear" id="productDocPathClear" onclick="clearProductDocPaths()" style="display:none">Clear all</button>
+      <button class="path-clear" id="productDocPathClear" onclick="clearProductDocPaths()" style="display:none">Clear All</button>
     </div>
   </div>
 
@@ -657,7 +657,7 @@ svg.canvas{width:100%;height:100%;display:block}
         <div class="export-menu" id="exportMenu" role="menu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:60;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,0.4);min-width:210px;padding:4px">
           <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportWorkflowFile();closeExportMenu()" title="Download just the workflow definition (.json) to reuse or share. Re-open it with Import.">Workflow JSON</button>
           <button class="btn sm" id="openspecExportBtn" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportOpenSpecSchema();closeExportMenu()" title="Download as an OpenSpec custom schema (.zip of schema.yaml + templates). Unzip at your repo root and run: openspec schema validate &lt;name&gt;. Re-import the schema.yaml here to edit it visually.">OpenSpec schema</button>
-          <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportHandoffFile();closeExportMenu()" title="Download a resume package (.md) to hand in-progress work to another engineer: how to resume, the durable record path, the ready-to-run prompt, and the workflow definition. The live state travels with your git branch, not this file.">Handoff package</button>
+          <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportHandoffFile();closeExportMenu()" title="Download a resume package (.md) to hand in-progress work to another engineer: how to resume, the durable record path, the ready-to-run prompt, and the workflow definition. The live state travels with your git branch, not this file.">Handoff Package</button>
         </div>
       </div>
       <label class="btn sm" style="margin:0">Import
@@ -732,7 +732,7 @@ svg.canvas{width:100%;height:100%;display:block}
     <p class="memory-help" id="runReportStatus">No run reports yet - connect ~/.awd once to catch every workflow's reports automatically (or a repo's .workflow folder for just that repo's; paste into Import works everywhere).</p>
     <div class="btn-row">
       <span id="repoConnectWrap" style="display:none;gap:4px;align-items:center"></span>
-      <button class="btn sm" id="tuningPromptBtn" onclick="copyTuningPrompt()" title="Copy a tuning prompt built from imported run reports: Claude analyzes the telemetry and returns an improved workflow JSON to import back.">Tuning prompt</button>
+      <button class="btn sm" id="tuningPromptBtn" onclick="copyTuningPrompt()" title="Copy a tuning prompt built from imported run reports: Claude analyzes the telemetry and returns an improved workflow JSON to import back.">Tuning Prompt</button>
     </div>
   </div>
 
@@ -844,7 +844,7 @@ svg.canvas{width:100%;height:100%;display:block}
     <div class="prompt-actions">
       <span class="info" id="tokenEstimate" style="font-size:10px;color:var(--text3)"></span>
       <button class="btn sm" onclick="if(typeof showExplain==='function')showExplain()" title="Per-part anatomy of the currently selected format: what will be emitted, what is skipped, and why">Explain</button>
-      <button class="btn sm" onclick="if(typeof explainSelectedStep==='function')explainSelectedStep()" title="Per-step anatomy of the node selected on the canvas: template, tool lines, hints, gates - emitted or skipped, and why">Explain step</button>
+      <button class="btn sm" onclick="if(typeof explainSelectedStep==='function')explainSelectedStep()" title="Per-step anatomy of the node selected on the canvas: template, tool lines, hints, gates - emitted or skipped, and why">Explain Step</button>
       <button class="btn sm primary" onclick="copyPrompt()">Copy</button>
     </div>
   </div>
@@ -1073,12 +1073,12 @@ svg.canvas{width:100%;height:100%;display:block}
 <h2 id="hg-more">More</h2>
 
 <h3>Run Reports &amp; Connect Repo</h3>
-<p>Generated workflows end with a small <code>awd:run</code> fence summarizing the run (steps, turn caps, gate cycles). Drop a run's final response or durable record onto <strong>Import</strong> and the designer badges your nodes with that telemetry; the <strong>Tuning prompt</strong> button turns the accumulated stats into a prompt that asks Claude to return an improved workflow JSON to import back. Everything lives in the <strong>Run Reports</strong> section, right below the memory and durable-record toggles - it completes that loop: the record a run keeps is where its report comes back from.</p>
-<p><strong>Connect folder</strong> (in the Run Reports section, Chromium only) removes even the paste. Recommended: connect <code>~/.awd</code> once - every run appends its fence to <code>~/.awd/run-reports.md</code>, so one grant catches every workflow against every repo, always on. Connecting a single repo's <code>.workflow</code> folder works too (reports also live in its durable records) when you only care about that repo. Rescans never double-count (content-hash dedupe); disconnect anytime. Stats live in your browser only.</p>
+<p>Generated workflows end with a small <code>awd:run</code> fence summarizing the run (steps, turn caps, gate cycles). Drop a run's final response or durable record onto <strong>Import</strong> and the designer badges your nodes with that telemetry; the <strong>Tuning Prompt</strong> button turns the accumulated stats into a prompt that asks Claude to return an improved workflow JSON to import back. Everything lives in the <strong>Run Reports</strong> section, right below the memory and durable-record toggles - it completes that loop: the record a run keeps is where its report comes back from.</p>
+<p><strong>Connect Reports Folder</strong> (in the Run Reports section, Chromium only) removes even the paste. Recommended: connect <code>~/.awd</code> once - every run appends its fence to <code>~/.awd/run-reports.md</code>, so one grant catches every workflow against every repo, always on. (<code>~/.awd</code> is a hidden folder: in the picker dialog press <code>Cmd+Shift+.</code> on macOS to reveal hidden folders - and the dialog remembers your last pick afterwards.) Connecting a single repo's <code>.workflow</code> folder works too (reports also live in its durable records) when you only care about that repo. Rescans never double-count (content-hash dedupe); disconnect anytime. Stats live in your browser only.</p>
 <h3>Workflow Advisor</h3>
 <p>Click the health indicator to open the review modal. Below any issues, a lightbulb <b>Suggestions</b> group offers non-blocking advice: unreviewed build paths (one-click <b>Attach Skeptic</b>), fan-outs that never synthesize, solo agents shipping code, read-only roles holding write tools, starved turn budgets - and, once run reports are ingested, telemetry-informed tuning (gates that loop, steps that cap out or fail). Suggestions never affect the badge count and never block generation.</p>
 <h3>Explain This Workflow</h3>
-<p>Generated prompts are compositions - templates, tool lines, hints, protocols, gates - each with its own firing condition. <strong>Explain</strong> (next to Copy) opens the anatomy of the selected format at the workflow level; <strong>Explain step</strong> (beside it) shows the per-step parts for the node selected on the canvas: emitted or skipped, why (which toggle, which role set, which condition), and a snippet of what is emitted. The statuses come from the same helpers the generators use, and agreement tests pin them to the real output.</p>
+<p>Generated prompts are compositions - templates, tool lines, hints, protocols, gates - each with its own firing condition. <strong>Explain</strong> (next to Copy) opens the anatomy of the selected format at the workflow level; <strong>Explain Step</strong> (beside it) shows the per-step parts for the node selected on the canvas: emitted or skipped, why (which toggle, which role set, which condition), and a snippet of what is emitted. The statuses come from the same helpers the generators use, and agreement tests pin them to the real output.</p>
 
 <h3>Prompt Library</h3>
 <p>Click the <strong>Prompts</strong> button in the toolbar for a library of ready-to-use prompts. Use the search box to filter by title or description. Star your favorites and they float to the top. Prompts that need your input (like a file path or bug description) show a popup before copying so the prompt is ready to paste.</p>
@@ -4902,7 +4902,7 @@ function renderPromptLib() {
   if (typeof openCustomPromptForm === 'function') {
     body.innerHTML += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">'
       + '<button class="btn sm primary" onclick="openCustomPromptForm()">+ Add your own</button>'
-      + '<button class="btn sm" onclick="exportCustomPrompts()">Export mine</button>'
+      + '<button class="btn sm" onclick="exportCustomPrompts()">Export Mine</button>'
       + '<label class="btn sm" style="margin:0;cursor:pointer">Import<input type="file" accept=".json,application/json" style="display:none" onchange="importCustomPromptsFile(event)"></label>'
       + '</div>';
   }
@@ -5322,7 +5322,7 @@ function agentCardHtml(a) {
     + '<button class="plib-fav' + (fav ? ' on' : '') + '" onclick="toggleAgentFav(\'' + a.id + '\')" title="' + (fav ? 'Pinned to Add Nodes palette - click to unpin' : 'Pin to the Add Nodes palette') + '">' + (fav ? '★' : '☆') + '</button>'
     + '<div class="plib-card-body"><div class="plib-card-title">' + escHtml(a.name) + ver + '</div>'
     + '<div class="plib-card-desc">' + escHtml(role + ' · ' + ((a.config && a.config.model) || '')) + '</div></div>'
-    + '<button class="plib-copy" onclick="instantiateAgent(\'' + a.id + '\')">Add to canvas</button>';
+    + '<button class="plib-copy" onclick="instantiateAgent(\'' + a.id + '\')">Add to Canvas</button>';
   if (a.source === 'user') {
     h += '<button class="btn sm" style="margin-left:6px" onclick="openAgentForm(\'' + a.id + '\')" title="Edit this agent">Edit</button>'
       + '<button class="btn sm" style="margin-left:6px" onclick="deleteCustomAgent(\'' + a.id + '\')" title="Delete this agent">Delete</button>';
@@ -5372,7 +5372,7 @@ function renderAgentLibrary() {
   const agents = getCustomAgents();
   let h = '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
     + '<button class="btn sm primary" onclick="saveSelectedAgentPreset()" title="Save the selected agent node as a reusable preset">+ Save selected agent</button>'
-    + '<button class="btn sm" onclick="exportAgentPack(\'user\')">Export mine</button>'
+    + '<button class="btn sm" onclick="exportAgentPack(\'user\')">Export Mine</button>'
     + '<label class="btn sm" style="margin:0;cursor:pointer">Import pack<input type="file" accept=".json,application/json" style="display:none" onchange="importAgentPackFile(event)"></label>'
     + '</div>';
   if (!agents.length) {
@@ -7964,7 +7964,7 @@ function showExplain(nodeId) {
   $('explainTitle').textContent = node ? 'Step anatomy: ' + node.label + ' (' + fmtName + ')' : 'Workflow anatomy (' + fmtName + ')';
   const foot = node
     ? 'Orchestrator-level blocks (memory, delivery, grounding, run report) are in the workflow-level Explain, next to the format tabs.'
-    : 'Per-step anatomy (templates, tool lines, hints, gates): select a node on the canvas and use "Explain step", next to this button.';
+    : 'Per-step anatomy (templates, tool lines, hints, gates): select a node on the canvas and use "Explain Step", next to this button.';
   $('explainList').innerHTML = rows.map(r => {
     const on = r.status === 'emitted';
     // A row whose snippet does not show everything unfolds in place via
@@ -10672,7 +10672,7 @@ async function scanRunReportsFromHandle(dirHandle) {
 async function connectRepoFolder() {
   if (!repoConnectSupported()) return;
   let picked;
-  try { picked = await window.showDirectoryPicker({ mode: 'read' }); }
+  try { picked = await window.showDirectoryPicker({ mode: 'read', id: 'awd-run-reports' }); }
   catch (e) { return; }  // user cancelled the picker
   const dir = await resolveRecordsDir(picked);
   repoConnect.handle = dir; repoConnect.name = dir.name || '.workflow'; repoConnect.status = 'granted';
@@ -10714,7 +10714,7 @@ function renderRepoConnect() {
   if (!repoConnectSupported()) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'inline-flex';
   if (!repoConnect.handle) {
-    wrap.innerHTML = '<button class="btn sm" onclick="connectRepoFolder()" title="Recommended: connect ~/.awd once to auto-import every workflow\'s run reports on every visit (runs append their telemetry there). Or connect a repo\'s .workflow folder for just that repo. Chromium only; Import paste/drop works everywhere.">Connect folder</button>';
+    wrap.innerHTML = '<button class="btn sm" onclick="connectRepoFolder()" title="Recommended: connect ~/.awd once to auto-import every workflow\'s run reports on every visit (runs append their telemetry there). Or connect a repo\'s .workflow folder for just that repo. Tip: ~/.awd is hidden - press Cmd+Shift+. (macOS) in the dialog to show hidden folders; the dialog remembers your last pick. Chromium only; Import paste/drop works everywhere.">Connect Reports Folder</button>';
   } else if (repoConnect.status === 'prompt') {
     wrap.innerHTML = '<button class="btn sm" onclick="scanConnectedRepo(true)" title="Permission is needed again for ' + escHtml(repoConnect.name) + ' - one click re-grants and rescans.">Reconnect ' + escHtml(repoConnect.name) + '</button>';
   } else {
