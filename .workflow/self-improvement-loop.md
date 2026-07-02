@@ -117,3 +117,4 @@ Follow-ons from first hosted use. The folder picker now passes id 'awd-run-repor
 - [x] Picker id memory + hidden-folder hints (tooltip + help)
 - [x] Connect Reports Folder rename (+ README/help/strong refs + test pin)
 - [x] Title Case sweep across 7 buttons
+- [x] Settled on "Connect Folder" after seeing it in situ (owner + me converged: the section header already says RUN REPORTS, so the button restating Reports only cost width); 6px breathing room between the status line and the buttons
