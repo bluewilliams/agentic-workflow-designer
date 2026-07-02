@@ -109,3 +109,11 @@ Owner ruling: run telemetry is a WORKFLOW-level concern, not a repo-level one - 
 - [x] Connect UI / help / README lead with ~/.awd; per-repo demoted to alternative
 - [x] Flat-folder resolveRecordsDir + multi-fence run-reports.md scan test; repo-field ingestion test
 - [x] Suite green; content-lint
+
+## Update (same day): picker memory, naming, casing
+
+Follow-ons from first hosted use. The folder picker now passes id 'awd-run-reports' so Chrome remembers the last-picked directory across sessions (a page cannot start a picker at an arbitrary path like ~/.awd - browser security; the id-memory gets 90 percent of the way after the first pick). Hidden-folder hint added to the Connect tooltip and help (Cmd+Shift+. on macOS reveals dot-folders in the dialog). Button renamed Connect folder -> "Connect Reports Folder" (owner floated Connect Optimize Folder; Reports names what the folder IS, and the section already carries the self-improvement purpose). Button-casing sweep to the app's Title Case convention: Tuning Prompt, Explain Step, Connect Reports Folder, Add to Canvas, Clear All, Export Mine, Handoff Package (owner caught the first two; the sweep found the rest).
+
+- [x] Picker id memory + hidden-folder hints (tooltip + help)
+- [x] Connect Reports Folder rename (+ README/help/strong refs + test pin)
+- [x] Title Case sweep across 7 buttons
