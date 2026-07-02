@@ -36,6 +36,10 @@ Requested fields (Blue): Requirements, Agent Prompt, Agent Context, the Agent ed
 - Headless screenshots (viewed): the discreet corner button renders on Requirements + Workflow Context at the intended low opacity without overlapping text; the expanded modal shows the title, big editor with preserved caret, live "N words / N chars" count, "Changes save automatically", and Done. Temp files removed.
 - Content-lint.
 
+## Follow-on (2026-07-01): the agent-node context badge (pencil) opens the modal
+
+The top-right ✎ badge on an agent node (rendered only when `config.notes` is non-empty - i.e. the agent has Agent Context) was a PASSIVE indicator with no click handler; users reasonably read the circled pencil as an edit button and clicking did nothing. Wired it to the expand modal: clicking the badge calls `editAgentContext(nodeId)` = `selectNode(nodeId)` (updateConfig builds the config panel synchronously, so the `[data-key="notes"]` textarea is in the DOM) then `openTextExpand(ta, 'Agent Context')`. Guarded (`typeof editAgentContext === 'function'`) so removing the expand block leaves the badge a passive indicator again - clean removability preserved. `mousedown` stopPropagation so the click doesn't start a node drag; SVG `<title>` = "Edit Agent Context"; `cursor:pointer`. Discovered while noticing the pencil shows on IMPORTED schemas (foreign import maps an artifact's `description` -> Agent Context when it also has an `instruction`) but not on presets (which never set notes) - so the badge is truthful, and this makes it a genuinely useful shortcut, especially on imported schemas. +1 test (badge -> modal open + title + value + edit flows back to config.notes); headless-verified a real click on `.note-indicator-bg` opens the modal (`cursor:pointer`, modalOpen:true). 1188 -> 1189.
+
 ## Task checklist
 
 - [x] Big modal editor that mirrors a textarea and live-syncs back via the source's own input event

@@ -99,7 +99,7 @@ Each Agent node has:
 - **Model**: Fable 5, Opus 4.8 (default), Opus 4.7, Opus 4.6, Sonnet 4.6, Sonnet 4.5, Opus 4.5, Haiku 4.5 (Fable 5 and the latest Opus/Sonnet also have [1M] variants)
 - **Tools**: Checkboxes for Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP
 - **Agent Prompt**: Freeform textarea. If left blank, falls back to `getEffectivePrompt()`
-- **Agent Context** (per-node, was "Custom Notes"): additional context injected into this agent's prompt section across all export formats. The workflow-wide counterpart is the **Workflow Context** sidebar field (`getPlan()`, `id="planInput"`)
+- **Agent Context** (per-node, `config.notes`, was "Custom Notes"): extra context injected into this agent's prompt section (labeled "Agent Context") across all export formats. The workflow-wide counterpart is the **Workflow Context** sidebar field (`getPlan()`, `id="planInput"`)
 - **Max Turns**: Integer cap on the agent's execution turns
 
 ### Review Loops (Skeptic + Verifier)
@@ -291,7 +291,7 @@ A `.zip` of the `openspec/schemas/<name>/` tree - `schema.yaml` plus one `templa
 
 ### WYSIWYG forwarding (designer -> schema)
 Everything the designer shows reaches the schema, at the right altitude:
-- agent prompt (incl. writer-style + skeptic-derived, via `getEffectivePrompt`) -> artifact `instruction`; Agent Context (`config.notes`) -> "Additional context"
+- agent prompt (incl. writer-style + skeptic-derived, via `getEffectivePrompt`) -> artifact `instruction`; Agent Context (`config.notes`) -> the "Agent Context" section
 - role / model / tools / max turns -> instruction "Intended execution parameters" (INTENT)
 - decision gate + revise loop -> instruction gate line (INTENT)
 - parallel `any`/`race` -> branch instruction prose (reuses `strategyJoinPhrase`); `all` is implicit in `requires`
