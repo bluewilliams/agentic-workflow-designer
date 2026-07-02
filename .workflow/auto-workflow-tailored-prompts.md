@@ -30,3 +30,10 @@ The Auto Workflow builder's research and documentation paths produced measurably
 - [x] Data Gatherer tool coherence (WebFetch dropped); analysis-prompt follow-up named
 - [x] Dead PROMPTS keys deleted with reference check
 - [x] Tests updated/added; suite green
+
+## Update (same day): Data Gatherer WebFetch restored
+
+Owner ruling reversed the drop: do not shrink a node's prior capability to satisfy prompt coherence - availability is a floor, and a granted-but-unmentioned tool is a milder flaw than a wrongly limited agent (also squares with Bash having been kept, which the researcher prompt equally never mentions). WebFetch is back in the Data Gatherer's default tools, and coherence is solved from the other side: a new Agent Context line licenses BOTH out-of-template tools ("use Bash for repo metrics... WebFetch for external reference data... when the analysis calls for them") without touching the shared PROMPTS.researcher template. The bespoke analysis-branch prompt remains the named follow-up; when it lands, the license moves into the prompt proper. +1 test (tools include WebFetch+Bash, notes license both). 1228 -> 1229.
+
+- [x] WebFetch restored + Agent Context license line (no shared-template edit)
+- [x] Test pinning tools + license; suite green; content-lint
