@@ -658,11 +658,13 @@ svg.canvas{width:100%;height:100%;display:block}
           <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportWorkflowFile();closeExportMenu()" title="Download just the workflow definition (.json) to reuse or share. Re-open it with Import.">Workflow JSON</button>
           <button class="btn sm" id="openspecExportBtn" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportOpenSpecSchema();closeExportMenu()" title="Download as an OpenSpec custom schema (.zip of schema.yaml + templates). Unzip at your repo root and run: openspec schema validate &lt;name&gt;. Re-import the schema.yaml here to edit it visually.">OpenSpec schema</button>
           <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportHandoffFile();closeExportMenu()" title="Download a resume package (.md) to hand in-progress work to another engineer: how to resume, the durable record path, the ready-to-run prompt, and the workflow definition. The live state travels with your git branch, not this file.">Handoff package</button>
+          <button class="btn sm" id="tuningPromptBtn" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="copyTuningPrompt();closeExportMenu()" title="Copy a tuning prompt built from imported run reports: Claude analyzes the telemetry and returns an improved workflow JSON to import back.">Tuning prompt</button>
         </div>
       </div>
       <label class="btn sm" style="margin:0">Import
         <input type="file" accept=".json,.yaml,.yml,.md" style="display:none" onchange="importWorkflowFile(event)">
       </label>
+      <span id="repoConnectWrap" style="display:none;gap:4px;align-items:center"></span>
     </div>
     <div class="saved-workflows-list" id="savedWorkflowList">
       <div class="saved-empty">No saved workflows yet</div>
@@ -702,7 +704,7 @@ svg.canvas{width:100%;height:100%;display:block}
       <input type="checkbox" id="consumeRecordsToggle" onchange="toggleConsumeRecords()" checked/>
       <span>Ground in prior records</span>
     </label>
-    <p class="memory-help">Before planning, agents scan committed <code>.workflow</code> records and inherit the relevant decisions, gotchas, and surface area. The read side of the durable record; a no-op on greenfield work.</p>
+    <p class="memory-help">Before planning, agents scan committed <code>.workflow</code> records and inherit the relevant decisions, gotchas, and surface area - reading each record's present-tense <em>Current behavior</em> section first and its history only for the why. The read side of the durable record; a no-op on greenfield work.</p>
     <div style="border-top:1px solid var(--border);margin:12px 0"></div>
     <label class="memory-toggle">
       <input type="checkbox" id="memoryToggle" onchange="toggleMemory()"/>
@@ -859,7 +861,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <div class="help-overlay" id="validationOverlay" onclick="if(event.target===this)closeValidation()">
   <div class="help-modal" style="max-width:560px">
     <div class="help-header">
-      <h2>Workflow Issues</h2>
+      <h2>Workflow Review</h2>
       <button class="help-close" onclick="closeValidation()">&times;</button>
     </div>
     <div class="help-body" id="validationList"></div>
@@ -1050,6 +1052,11 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h2 id="hg-more">More</h2>
 
+<h3>Run Reports &amp; Connect Repo</h3>
+<p>Generated workflows end with a small <code>awd:run</code> fence summarizing the run (steps, turn caps, gate cycles). Drop a run's final response or durable record onto <strong>Import</strong> and the designer badges your nodes with that telemetry; <strong>Export &#9662; &rarr; Tuning prompt</strong> turns the accumulated stats into a prompt that asks Claude to return an improved workflow JSON to import back.</p>
+<p><strong>Connect repo</strong> (next to Import, Chromium only) removes even the paste: pick your repo or its <code>.workflow</code> folder once, and the designer auto-ingests new run fences from your durable records on every visit. Rescans never double-count (content-hash dedupe); disconnect anytime. Stats live in your browser only.</p>
+<h3>Workflow Advisor</h3>
+<p>Click the health indicator to open the review modal. Below any issues, a lightbulb <b>Suggestions</b> group offers non-blocking advice: unreviewed build paths (one-click <b>Attach Skeptic</b>), fan-outs that never synthesize, solo agents shipping code, read-only roles holding write tools, starved turn budgets - and, once run reports are ingested, telemetry-informed tuning (gates that loop, steps that cap out or fail). Suggestions never affect the badge count and never block generation.</p>
 <h3>Prompt Library</h3>
 <p>Click the <strong>Prompts</strong> button in the toolbar for a library of ready-to-use prompts. Use the search box to filter by title or description. Star your favorites and they float to the top. Prompts that need your input (like a file path or bug description) show a popup before copying so the prompt is ready to paste.</p>
 <p><strong>Add your own.</strong> Use <strong>+ Add your own</strong> to save a custom prompt - it gets a <strong>My Prompts</strong> category with Edit/Delete on each card. Custom prompts are stored in your browser only. <strong>Export mine</strong> and <strong>Import</strong> move them as a JSON file for backup or sharing with a teammate; import merges by title.</p>
@@ -1438,9 +1445,9 @@ function groundingLookupSteps() {
   // from the original consumeRecordsHint so the prompt outputs stay byte-identical.
   return {
     tiers: 'Two breadcrumbs sit alongside the records and form a three-tier lookup: `.workflow/_timeline.md` (when things changed) and `.workflow/_index.md` (what a change touches), both leading to the durable record (the full detail). `_index.md` is the default entry; scan it as described next. When recency matters - a recent regression, onboarding onto an unfamiliar area, or resuming paused work - also scan `_timeline.md` first (newest-first, one line per change) and open what its top entries point at. That is a judgment call, not every run; when recency is irrelevant, skip straight to the index.',
-    scanIndex: 'If a record index exists at `.workflow/_index.md` in a repository in scope, scan it first (a cheap one-line-per-record breadcrumb). Match entries by the files and capability your change touches; prefer entries marked `status: current`. If the index is large, do NOT read it whole - `Grep` it for the file names, symbols, and capability slug your change touches and read only the matching entries, so your context stays bounded no matter how many entries the index holds. Then open ONLY the matched records and carry their decisions, gotchas, surface-area map, and requirements into your plan.',
+    scanIndex: 'If a record index exists at `.workflow/_index.md` in a repository in scope, scan it first (a cheap one-line-per-record breadcrumb). Match entries by the files and capability your change touches; prefer entries marked `status: current`, and skip anything in the index\'s "Archive (superseded)" section unless you are deliberately investigating history. If the index is large, do NOT read it whole - `Grep` it for the file names, symbols, and capability slug your change touches and read only the matching entries, so your context stays bounded no matter how many entries the index holds. Then open ONLY the matched records; in each, read its "Current behavior" section first - that is the present-tense truth of the capability in one read - and descend into the history below it only when you need the why behind a decision. Carry their behavior, decisions, gotchas, surface-area map, and requirements into your plan.',
     noTransitive: 'Do not read every record, and do not follow a record\'s cross-repository `siblings` link unless a matched entry shows a real dependency on that repository - never follow links transitively.',
-    supersede: 'If your change will modify or replace a behavior a current record defines, reconcile your plan against that record and plan to supersede it at finalize (set `supersedes` on the new entry and flip the old entry to `superseded`).',
+    supersede: 'If a matched record or entry is marked superseded, follow its `superseded_by` pointer forward and ground on the current record instead. If your change will modify or replace a behavior a current record defines, reconcile your plan against that record and plan to supersede it at finalize (set `supersedes` on the new entry and flip the old entry to `superseded`).',
     greenfield: 'If no index exists or no entry matches, proceed normally - this adds nothing to greenfield work.'
   };
 }
@@ -1459,6 +1466,29 @@ function wrapComment(text, width) {
   if (line) lines.push('# ' + line);
   return lines;
 }
+// Run report: every generated run ends with ONE machine-readable fence summarizing how
+// the orchestration performed (steps, gate cycles, turn caps). The designer imports it
+// to badge nodes with real telemetry and to compose tuning prompts - the feedback loop
+// that lets a workflow improve run over run. Always on (one fence at the end of a run,
+// no toggle); fields the orchestrator did not track are omitted, never invented.
+function runReportDirective() {
+  const name = getName() || 'workflow';
+  const r = [];
+  r.push('## Run Report (end of run)');
+  r.push('');
+  r.push('End your FINAL response with exactly one fenced code block tagged `awd:run` summarizing how the run went, so the workflow author can feed it back into the designer:');
+  r.push('');
+  r.push('```awd:run');
+  r.push('{"workflow": ' + JSON.stringify(name) + ', "steps": [{"slug": "planner", "status": "done", "turns": 4, "cap": 10}], "gates": [{"slug": "review-passed", "cycles": 2, "final": "Pass"}], "notes": ""}');
+  r.push('```');
+  r.push('');
+  r.push('- One `steps` entry per step, in execution order. `slug` is the step label lowercased and hyphenated (the same slug as its memory file). `status` is done, skipped, or failed.');
+  r.push('- Include `turns` and `cap` only if you actually tracked them - omit any field you do not know, never invent numbers.');
+  r.push('- One `gates` entry per decision gate: the revise `cycles` actually used and the `final` verdict.');
+  r.push('- The fence is data, not prose - place it at the very end of the final response. If a memory breadcrumb comment is required, the breadcrumb stays the very last line and this fence goes immediately before it.');
+  return r.join('\n');
+}
+
 function consumeRecordsHint(fmt) {
   if (!state.consumeRecords) return null;
   const s = groundingLookupSteps();
@@ -1521,7 +1551,7 @@ function recordHandoffHint() {
   // Gated on the durable-record toggle (no record = no checklist to feed); reused
   // verbatim across every agent, injected per-step like the other gated step hints.
   if (!state.durableRecord) return '';
-  return '**Durable record handoff:** end your report with two lines so the orchestrator can transcribe them into the record (it does not re-derive) - `DONE:` the work items you completed, and `STATUS:` a one-line current-state.';
+  return '**Durable record handoff:** end your report with two lines so the orchestrator can transcribe them into the record (it does not re-derive) - `DONE:` the exact Task-checklist items you completed, named as they appear in the record\'s checklist (so the orchestrator ticks those precise boxes rather than paraphrasing), and `STATUS:` a one-line current-state.';
 }
 function datadogStepHint(node) {
   if (!state.mcpDatadog) return '';
@@ -2798,6 +2828,13 @@ function importWorkflowFile(event) {
       } else { showToast('Failed to import workflow'); }
       return;
     }
+    // Run-report ingestion (removable feature, guarded): a pasted-back final response
+    // or a durable record carrying an awd:run fence routes to telemetry import, not
+    // workflow import. Checked AFTER awd:meta so handoff bundles still round-trip.
+    if (typeof extractRunFences === 'function') {
+      const fences = extractRunFences(text);
+      if (fences.length) { ingestRunFences(fences, { source: file.name || 'import' }); return; }
+    }
     if (/\.zip$/i.test(file.name || '')) {
       // Our OpenSpec export is a .zip; the re-importable file is the schema.yaml inside it.
       showToast('That is the zipped OpenSpec export - unzip it and import the schema.yaml inside to edit it here.');
@@ -2921,6 +2958,16 @@ function toggleExportMenu(e) {
   const open = !m || m.style.display === 'none' || !m.style.display;
   if (m) m.style.display = open ? 'block' : 'none';
   if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false');
+  // Tuning prompt needs imported telemetry (guarded - removable with the run-report block).
+  const tb = $('tuningPromptBtn');
+  if (tb && open) {
+    const has = (typeof hasRunReportData === 'function') && hasRunReportData(getName() || 'workflow');
+    tb.disabled = !has;
+    tb.style.opacity = has ? '' : '0.5';
+    tb.title = has
+      ? 'Copy a tuning prompt built from imported run reports: Claude analyzes the telemetry and returns an improved workflow JSON to import back.'
+      : 'Import a run report first (drop a run\'s final response or durable record containing an awd:run fence onto Import).';
+  }
 }
 function closeExportMenu() {
   const m = $('exportMenu'), b = $('exportMenuBtn');
@@ -3170,20 +3217,26 @@ function genDurableRecordProtocol(fmt) {
   p.push('');
   p.push('In addition to the ephemeral memory above, maintain ONE persistent, human-readable record for this workflow. The memory files are agent scratch state (under `~/.claude/`); this record is durable: it is the handoff document while work is in progress and the committable artifact when work is done.');
   p.push('');
+  p.push('**The durable system is EXACTLY three surfaces**: this one record per change/capability, the `.workflow/_index.md` breadcrumb index, and the `.workflow/_timeline.md` line. Never create any other durable document - no specs/ folder, no reports/, no companion files. The machine-readable fence and the Current behavior section live INSIDE the record; the Archive is a SECTION of `_index.md`, not a file.');
+  p.push('');
+  p.push('**Record grain: ONE record per unit of work** - the change you would ship or commit as one. When the work has multiple parts or phases, they become SECTIONS of the one record (and sub-items of its checklist), never sibling records. Create a second record only for a genuinely separate unit of work, and give each unit exactly one `_index.md` entry and one `_timeline.md` line.');
+  p.push('');
   p.push('**Record path**: `' + apath + '`');
   p.push('');
   p.push('### Structure and navigation');
-  p.push('Give the record an H1 title that names the change, then a one-line context: the work item, the branch, and the status. Keep every section tight, and omit any section that has no content (no empty placeholders). Scale the record to the change - a small change may be just a title, Why and scope, one or two Requirements, a few decisions, the Surface area, and Verify. Once the record grows past a screenful or several sections, add a one-line Contents index near the top that links each section heading (for example `[Requirements](#requirements)`), so a human can jump to what they need; skip the index while the record is short. Use the section order below so readers always know where to look.');
+  p.push('Give the record an H1 title that names the change, then a one-line context: the work item, the branch, and the status. Directly under that context line sit the two v2 anatomy pieces, in this order: the machine-readable `awd:record` fence, then the living "Current behavior" section (both defined below). Keep every section tight, and omit any section that has no content (no empty placeholders). Scale the record to the change - a small change may be just a title, Why and scope, one or two Requirements, a few decisions, the Surface area, and Verify. Once the record grows past a screenful or several sections, add a one-line Contents index near the top that links each section heading (for example `[Requirements](#requirements)`), so a human can jump to what they need; skip the index while the record is short. Use the section order below so readers always know where to look.');
   p.push('');
   p.push('### What it contains (in this order)');
+  p.push('- **Machine-readable header (`awd:record` fence)**: right under the H1 and its one-line context, a fenced code block tagged `awd:record` holding ONE JSON object: `{"slug": "<stable kebab-case capability slug>", "status": "current|superseded", "date": "YYYY-MM-DD", "files": [...], "verify": ["exact commands"], "superseded_by": null}`. Required: slug, status, date. A record is born `current` (it exists because work happened - never pre-create one); `superseded_by` stays null until a later record replaces it. Fill `files` and `verify` as they become known. This fence is what makes the record tool-consumable (indexers, run-report importers, lint) while the prose below stays human-first; keep it to the one object, a few lines.');
+  p.push('- **Current behavior**: the FIRST prose section - 2 to 6 present-tense sentences stating what the capability does NOW with this change in place. This is the living spec: when a later change amends this capability, UPDATE this section (or supersede the whole record) so a reader always gets current truth here in ONE read, and descends into the change history below only when the why matters. Everything under this section is history; this section is the present.');
   p.push('- **Why and scope**: one or two sentences on the objective and the reason it matters (who needs it, what problem or duplication it removes), plus a short "Non-goals" line stating what is deliberately out of scope. If a work-item URL was provided, snapshot its intent here as the point-in-time spec the work is built against; otherwise capture the goal from the task.');
   p.push('- **Requirements**: the contract, as a list of requirements - this is the section maintainers and agents lean on most to validate the system as they work, so make it the most complete part of the record. Each requirement is a normative statement (use MUST or SHALL) of one behavior the system must guarantee, followed by the Given / When / Then scenarios that define it. Cover the behavior COMPLETELY: the happy path AND the boundary, null or empty, negative, and failure or error cases - not just two or three. Once tests exist, name the test that verifies each scenario right on the scenario. This one section is both the spec and the acceptance criteria: a future agent or maintainer reads a requirement, sees the scenarios that define "correct", and can re-run the named test to confirm the system still holds. One requirement per distinct behavior; keep each scenario to a line.');
   p.push('- **Success criteria**: a few measurable, technology-agnostic outcomes that define the feature working at the level a non-technical stakeholder cares about (for example "100% of returned items meet the filter", "the response is byte-for-byte equivalent when the option is omitted", "consumers can delete their own client-side workaround with no change in behavior"). These are distinct from the Requirements (the behaviors) and from Verify (the real test run): they state the outcome, not the mechanism, so a reader who does not know the code can still tell whether the change succeeded. Include them for any non-trivial feature; keep each to a line.');
   p.push('- **Spec quality check**: a short markdown checkbox list (`- [ ]` / `- [x]`) the planning step ticks before implementation and re-confirms at completion, so a maintainer can trust the spec without re-deriving it: each requirement is testable and unambiguous; scope is bounded (Non-goals stated); no open clarifications remain; every scenario names a verifying test (or a noted follow-up); the success criteria are measurable. Keep it to the checklist, no prose. This is the self-validation gate that lets a future agent or maintainer rely on this record to validate the system.');
   p.push('- **Approach and decisions**: the technical approach (key architecture choices, important interfaces or data shapes) and the notable decisions, each with the reason AND, when a real fork existed, the alternative that was rejected and why (chose X over Y because Z). Recording the rejected alternative is what stops a future maintainer from "fixing" the change back into the worse option.');
   p.push('- **Surface area (file -> role)**: a compact map of the main files or types the change touches and what each does, including explicit out-of-scope notes, so an agent or person can navigate the change without rediscovering it. Mark it provisional until the grounding or first working step verifies it: the orchestrator should not assert confident surface-area guesses before grounding, and should label any pre-grounding map as provisional and correct it once the real files are known. Reference each file by a durable anchor - the file plus the symbol, function, type, or named section it touches - not a bare line number, which goes stale the moment the file changes; line numbers are fine in the working notes while grounding, but soften them to anchors at finalize.');
-  p.push('- **Task checklist**: the actual units of work needed to deliver the change - the concrete research, coding, and testing tasks (for example "add the input validation", "implement the query filter", "write the test for the empty-result case"), written as a markdown checkbox list (`- [ ]` open, `- [x]` done) at a reasonable grain - one line per trackable unit of work, not a single lump and not dozens of micro-steps - and ticked off (`- [x]`) as each is finished. This is the work breakdown a developer would track, NOT the workflow\'s agent or step names. The planning step seeds it; it grows during the run as work reveals more tasks, so it is not frozen after planning.');
-  p.push('- **Verify**: the actual commands to build and test the change (for example the test projects to run) and the result once they have been run (for example "all tests pass"), so any human or agent - or a CI eval - can re-confirm the feature still holds. Record real results, not intended ones.');
+  p.push('- **Task checklist**: the actual units of work needed to deliver the change - the concrete research, coding, and testing tasks (for example "add the input validation", "implement the query filter", "write the test for the empty-result case"), written as a markdown checkbox list (`- [ ]` open, `- [x]` done), authored UP FRONT when the record is born, derived from the plan. Granularity rule: one checkbox per discrete verifiable step - the resume-unit test is "could a fresh agent resume from this box?" - not one box per file and not one blob per feature. Boxes are ticked AS each task completes during the run, never transcribed wholesale at the end; when one agent completes several tasks, tick each box individually so the record shows the true step trail. This is the work breakdown a developer would track, NOT the workflow\'s agent or step names. It still grows during the run as work reveals more tasks, so it is not frozen after planning.');
+  p.push('- **Verify**: the actual commands to build and test the change - EXACT and copy-paste runnable (the test command with its arguments, the specific grep, the build invocation), not a prose description of testing - and the result once they have been run (for example "all tests pass"), so any human or agent - or a CI eval - can re-run them and re-confirm the feature still holds. Mirror the same commands into the `awd:record` fence\'s `verify` array so tools can re-run them without parsing prose. Record real results, not intended ones.');
   p.push('- **Risks / trade-offs** (include only if any exist): forward-looking risks or trade-offs the change carries, each with how it is mitigated or why it is acceptable to live with. Distinct from Gotchas - a gotcha is a fact already discovered, a risk is something a maintainer should keep watching. Omit the section entirely when there are none.');
   p.push('- **Gotchas / non-obvious** (include only if any exist): subtle behaviors, contract quirks, or edge decisions a future maintainer would otherwise trip on. Omit the section entirely when there are none.');
   p.push('- **Migration / rollout** (include only if any exist): deploy steps, data or schema migration, feature-flag, or rollback notes the change needs. Omit for a change that simply ships with the code.');
@@ -3195,19 +3248,20 @@ function genDurableRecordProtocol(fmt) {
   p.push('### Resume / handoff (while in progress, so another engineer or agent can pick this up)');
   p.push('- Name the workflow this record belongs to (`' + wfName + '`) and how to re-drive it: re-run the same workflow with this record present so agents continue from the Current state rather than restarting.');
   p.push('- Make the record self-contained: a new reader should be able to continue from Why and scope + Requirements + Current state/next action without the original chat. Capture any setup needed (branch to check out, environment, prerequisites).');
+  p.push('- Resume semantics: a resuming agent reads Current behavior first (the present truth), then finds the FIRST unchecked Task-checklist box - that is where work continues; the Current state / next action line corroborates it.');
   p.push('- Do not copy the full original workflow prompt in here; reference the workflow by name. Re-running it (or handing this record to a fresh agent with "continue from Current state") is what resumes the work.');
   p.push('');
   p.push('### How to maintain it');
   p.push('- Write it in plain, natural language a colleague would actually use: concise and concrete, no filler or marketing tone. Use hyphens, not em dashes or en dashes. It is read by both humans and agents maintaining the project later, so favor clarity over polish.');
-  p.push('- ANY agent in this workflow may amend the record - update the sections your step actually touched, by action not by role (this keeps it working for any workflow shape): defined or refined a behavior the system must guarantee -> Requirements (write its Given/When/Then scenarios, and once tests exist name the verifying test on each scenario); stated a measurable outcome -> Success criteria; validated the spec before building or at completion -> Spec quality check; made a decision -> Approach and decisions (record the rejected alternative and why); created or changed files -> Surface area; ran a build or tests -> Verify (record the real result); identified a forward-looking risk or trade-off -> Risks; hit a non-obvious edge or contract -> Gotchas; discovered new work -> add to the Task checklist; you are the last or synthesizing agent -> write the Outcome, write or update this record\'s entry in the `.workflow/_index.md` breadcrumb index (see Durable Record Index), and remove the in-progress scaffolding.');
+  p.push('- ANY agent in this workflow may amend the record - update the sections your step actually touched, by action not by role (this keeps it working for any workflow shape): changed what the capability does or how it behaves -> update Current behavior (rewrite it in the present tense; it must read as current truth, not a diff); defined or refined a behavior the system must guarantee -> Requirements (write its Given/When/Then scenarios, and once tests exist name the verifying test on each scenario); stated a measurable outcome -> Success criteria; validated the spec before building or at completion -> Spec quality check; made a decision -> Approach and decisions (record the rejected alternative and why); created or changed files -> Surface area; ran a build or tests -> Verify (record the real result); identified a forward-looking risk or trade-off -> Risks; hit a non-obvious edge or contract -> Gotchas; discovered new work -> add to the Task checklist; you are the last or synthesizing agent -> write the Outcome, write or update this record\'s entry in the `.workflow/_index.md` breadcrumb index (see Durable Record Index), and remove the in-progress scaffolding.');
   p.push('- The ORCHESTRATOR owns the record. The orchestrator is the top-level agent that drives this workflow and spawns its steps - ' + orchestratorIdentity(fmt) + ' - and it exists even when there is no named Planner step (for example a bug-fix workflow of Investigator -> Fixer -> Tester). It creates the record at kickoff, runs any up-front gates (clarify, grounding) before the first step, folds each step\'s findings in as they report back, and finalizes the record at the end. Individual steps amend the sections their own work touches.');
   p.push('- For parallel steps: fan-out agents write findings to the ephemeral memory, NOT to this record, to avoid write races on the shared document; the agent that joins or synthesizes folds the relevant findings into this record.');
-  p.push('- Create it at kickoff, before you spawn Step 1, with the H1 title, the Why and scope, the initial Requirements and Success criteria drawn from the work item (requirement scenarios filled in as the spec is understood; verifying-test names added once tests are written), the initial checklist, and the Built-with provenance line (the workflow name and its agent roles are known up front). Run the Spec quality check before implementation begins.');
+  p.push('- Create it at kickoff, before you spawn Step 1, with the H1 title, the `awd:record` fence (status `current` from birth - the record exists because this work is happening), a provisional Current behavior line when the capability already exists (what it does TODAY, refined as the work lands; omit for greenfield until there is behavior to state), the Why and scope, the initial Requirements and Success criteria drawn from the work item (requirement scenarios filled in as the spec is understood; verifying-test names added once tests are written), the full granular Task checklist derived from the plan (one box per discrete verifiable step), and the Built-with provenance line (the workflow name and its agent roles are known up front). Run the Spec quality check before implementation begins.');
   p.push('- Keep the minute-to-minute step progress (which agent/step is currently running) in the Current state / next-action scaffolding, NOT in the Built-with line or the Task checklist - it is transient and is removed on commit, whereas the Built-with provenance is durable and stays.');
   p.push('- Keep it CURRENT as work progresses. Overwrite the state / next-action section each update (do not just append to it) so that at any moment it is enough for another engineer or agent to resume. Append to the decisions and checklist sections as they grow.');
   p.push('### KEEP CURRENT (the orchestrator runs this after EVERY step, before spawning the next - enforced)');
   p.push('This beat is enforced, not optional: it is what makes an interrupted run resumable, which matters most on large multi-step workflows. Do NOT batch all record-writing to the end - if the run is interrupted between steps, a record that was never updated cannot tell anyone where to continue. After each step returns and before you spawn the next one:');
-  p.push('- **Transcribe, do not re-derive (the reliable path).** Each step is instructed (in its own handoff) to end its report with two lines - DONE: the work items it completed, and STATUS: a one-line current-state. The record update below is then a TRANSCRIPTION of those - tick the checklist items that match its DONE line and overwrite Current state from its STATUS line - not a reconstruction. If a step omits them, fall back to reading its Files Changed / verification.');
+  p.push('- **Transcribe, do not re-derive (the reliable path).** Each step is instructed (in its own handoff) to end its report with two lines - DONE: the exact checklist items it completed, named as they appear in the checklist, and STATUS: a one-line current-state. The record update below is then a TRANSCRIPTION of those - tick the exact boxes its DONE line names and overwrite Current state from its STATUS line - not a reconstruction. If a step omits them, fall back to reading its Files Changed / verification.');
   p.push('- Overwrite the "Current state / next action" section so it names the last step completed and the single next action - a cold reader, or a fresh agent resuming after a crash, must be able to continue from this line alone.');
   p.push('- Tick EACH Task checklist item that step completed - read the step\'s handoff (its Files Changed / Completed / verification) and tick every item it finished, INCLUDING when one step (for example an Implementer) completes several items at once; tick them all now, do not batch them to finalize. Add any new tasks it revealed, and if the handoff shows work not yet on the list, add it as an already-done item and tick it. An interrupted run must show exactly which items are done and which remain.');
   p.push('- Fold that step\'s durable output into the right section by action: a decision -> Approach and decisions; a file created or changed -> Surface area; a build or test run -> Verify (real result); a new behavior or scenario -> Requirements; a forward-looking risk -> Risks; a non-obvious edge -> Gotchas.');
@@ -3218,11 +3272,11 @@ function genDurableRecordProtocol(fmt) {
   p.push('Finalize is MANDATORY and runs to completion every time: a record must never be left in an in-progress state - status still saying in progress, scaffolding still present, or the checklist half-ticked. If the run is ending, finalize runs; the work is not done until it has.');
   p.push('- (a) Fold in any READ-ONLY steps\' findings. A step with no write access (for example a Reviewer running read-only) cannot amend the record itself, so the orchestrator records that step\'s verdict and ticks its checklist box on its behalf.');
   p.push('- (b) Confirm each Requirement scenario names its verifying test, and re-confirm the Spec quality check passes.');
-  p.push('- (c) Fill in the Outcome, mark the checklist done, and capture the final decisions plus the branch/PR links.');
+  p.push('- (c) Fill in the Outcome, mark the checklist done, and capture the final decisions plus the branch/PR links. Complete the `awd:record` fence: `files` lists what the change actually touched, `verify` mirrors the exact commands from the Verify section, and the status is accurate. Rewrite Current behavior one last time so it reads as the present-tense truth of what shipped. If the run is emitting an `awd:run` run-report fence, copy the same fence into this record as one more block (inside THIS record - never a separate file) so the run telemetry survives with the flywheel doc.');
   p.push('- (d) Write or update this record\'s entry in the `.workflow/_index.md` breadcrumb index (see Durable Record Index), AND prepend a one-line entry to the chronological `.workflow/_timeline.md` (see Durable Record Index). Add the Contents index if the record grew long.');
   p.push('- (e) Make it the best durable artifact - fill the gaps a cold reader would hit: add any Success criterion, assumption, Risk, follow-up, or navigational aid the work revealed but no single step recorded, and strengthen the Why or a decision\'s rationale if it is thinner than a future maintainer would need. Adding durable context here is as valid as removing transcript noise.');
   p.push('- (f) Strip the in-progress scaffolding (the "Current state / next action" line and the "Resume / handoff" section) and compress the transcript accretion - distilling rather than deleting anything that tells a future reader why a choice was made or shows the work was independently checked. The committed artifact is the requirements (with verifying tests), the approach and decisions, the completed checklist, the Verify results, and the outcome. In short, the orchestrator compresses Verify and Gotchas from running commentary into the durable facts: collapse a verbose per-agent verdict to a single durable line - that an independent review or verification ran, and what it confirmed or changed - rather than dropping it (the fact the work was adversarially checked is durable signal, not noise); collapse duplicate scan-line restatements to one line each; soften line-number references to durable anchors (the symbol, function, or section name, which does not rot as the file changes); distill any transient implementation scaffolding (paste-ready strings, a pre-implementation test plan, step-by-step working notes) into the durable section it belongs in - the file map into Surface area, the decisions into Approach, the realized tests into Verify - and drop whatever the committed code now carries verbatim, so no paste-ready working scaffolding survives; and keep the final facts plus the Built-with provenance line. Compress the transcript accretion, not the reasoning: the committed record must still read like an authored spec (as clean and complete as an OpenSpec or spec-kit document), so a maintainer reading it cold can see what changed and why; never compress away the Why, the decisions and their rejected alternatives, or the durable gotchas. When a detail sits between noise and context, keep it in distilled form - a future agent re-deriving the why costs far more than a couple of retained lines.');
-  p.push('- (g) Completion gate - finalize is not done until ALL of these are true: no in-progress scaffolding remains (no "Current state / next action", no "Resume / handoff"); the status line reads finalized or committable, NOT "in progress"; every Task checklist item is ticked or explicitly marked deferred with a reason; the Outcome is filled; each Requirement scenario names its verifying test; no bare line numbers remain (every code reference is a durable anchor - a symbol, function, or section name); no transient or paste-ready scaffolding remains (it has been distilled into the durable sections or dropped where the committed code now carries it); and the `.workflow/_index.md` capability entry is written AND a one-line entry is prepended to the chronological `.workflow/_timeline.md`. If any is false, finalize is incomplete - finish it. A half-finalized record is a failure: it misleads a future reader into thinking the work is still underway.');
+  p.push('- (g) Completion gate - finalize is not done until ALL of these are true: no in-progress scaffolding remains (no "Current state / next action", no "Resume / handoff"); the status line reads finalized or committable, NOT "in progress"; every Task checklist item is ticked or explicitly marked deferred with a reason; the Outcome is filled; each Requirement scenario names its verifying test; no bare line numbers remain (every code reference is a durable anchor - a symbol, function, or section name); no transient or paste-ready scaffolding remains (it has been distilled into the durable sections or dropped where the committed code now carries it); the `awd:record` fence is present with a status consistent with the checklist and record body; the Current behavior section reads as present-tense truth of the shipped behavior; the fence\'s `verify` commands were ACTUALLY run this session with their real results in the Verify section; no companion documents were created (record + index + timeline are the only durable surfaces); and the `.workflow/_index.md` capability entry is written AND a one-line entry is prepended to the chronological `.workflow/_timeline.md`. If any is false, finalize is incomplete - finish it. A half-finalized record is a failure: it misleads a future reader into thinking the work is still underway. There is no external validator for this system - the agent IS the linter, and this gate is the validation.');
   p.push('');
   p.push('### Where it lives');
   p.push('- **Single repository**: write it to `' + apath + '` in that repo so it versions with the code (the change to this file lands in the same PR as the implementation).');
@@ -3235,9 +3289,9 @@ function genDurableRecordProtocol(fmt) {
   p.push('- **Group by a stable capability slug; structured but readable.** Start the file with a one-line header noting the scan-then-open pattern. Group entries under a stable kebab-case capability heading (the area the work touches, for example `batch-item-filter`) so every record touching that capability groups together over time, even as wording changes. Each entry is a short block of labeled facets; omit any facet that does not apply, so a trivial change stays a couple of lines.');
   p.push('- **Facets:** Identity - `record` (path), `intent` (one line). Matchers (how an agent judges relevance) - `files` (the main files or types touched, the sharpest matcher for code), `work-item` (the immediate ticket), `epic` (the parent unit when there is one, which groups an epic\'s records across repositories and tickets). Scale - `repos` (repositories this unit of work touched), `siblings` (paths to the sibling records in other repositories for the same unit of work). Lineage - `status` (current, superseded, or partial), `supersedes`, `superseded_by`, `date`.');
   p.push('- **Example entry** (under a `## batch-item-filter` heading): `record: .workflow/prj-201-size-tiers.md` / `intent: tiered size filter (min + max), replacing the single-min filter` / `files: SizeQueryRepository, SizeRequest(+Factory), RequestDto` / `work-item: PRJ-201 | epic: PRJ-150 | status: current | supersedes: PRJ-064 | date: 2026-09-02`.');
-  p.push('- **Evolution over time.** When a later change re-works a capability (a changed requirement or a new business need), do NOT delete the old record - it is the history of why the capability looked the way it did. Instead: the new entry sets `supersedes` to the prior record; the prior entry flips `status` to superseded and gains `superseded_by` pointing at the new one; and the new record captures why it changed in Why and scope. A scan then lands a reader on the current record with the prior one one hop away. The forward link (the new naming what it supersedes) is always written; the backward link (the old naming the new) is best effort - write it when the old record is in a repository the current work already touches, but do not make a cross-repository edit just to add it, since the parent work item or epic and the forward link already connect them.');
+  p.push('- **Evolution over time.** When a later change re-works a capability (a changed requirement or a new business need), do NOT delete the old record - it is the history of why the capability looked the way it did. Instead: the new entry sets `supersedes` to the prior record; the prior entry flips `status` to superseded and gains `superseded_by` pointing at the new one, and MOVES to an `## Archive (superseded)` section at the BOTTOM of `_index.md` as a one-line pointer, so the active index tracks only the current capability surface; the prior record\'s own `awd:record` fence flips the same way (status superseded, `superseded_by` filled); and the new record captures why it changed in Why and scope. A scan then lands a reader on the current record with the prior one one hop away. The forward link (the new naming what it supersedes) is always written; the backward link (the old naming the new) is best effort - write it when the old record is in a repository the current work already touches, but do not make a cross-repository edit just to add it, since the parent work item or epic and the forward link already connect them.');
   p.push('- **Multiple repositories.** When a unit of work spans repositories, write a record AND an index entry in each touched repository, each describing that repository\'s slice, linked by `siblings` plus the shared `work-item`/`epic` when there is one. (When the work was described in plain text with no work item, the `siblings` links and the shared capability slug carry the correlation, and the `work-item`/`epic` facets are simply omitted.) This keeps every repository self-describing - a scan of its own index finds its own work - without depending on another repository being checked out. When grounding new work, read the index only from the repositories in scope (not every repository), and follow a sibling link into another repository only when a matched local entry shows a real dependency, never transitively.');
-  p.push('- **Scaling the index (a scan stays cheap at any size).** The index is built so a grounding agent never loads the whole file: it greps the index for the file names, symbols, and capability slug its change touches and reads only the matching entries, so context cost tracks relevance, not total size - an index with thousands of entries still costs only the handful of matches to consult. Keep the LIVE index lean so a scan stays bounded as history grows: when an entry is superseded, you may move it out of `.workflow/_index.md` into a `.workflow/_index_archive.md` (the supersession links still connect them, so the history is one hop away, but it is not loaded during normal grounding); below a modest size, leaving superseded entries in place is fine. The live index then tracks the repository\'s current capability surface, not its lifetime record count. Only if a single repository\'s live index ever grows genuinely large, split it into per-capability files (`.workflow/_index/{capability}.md`) behind a tiny top-level `.workflow/_index.md` that lists the capabilities, so a grounding agent reads only the one capability shard it needs - never shard by date or number, which loses that locality.');
+  p.push('- **Scaling the index (a scan stays cheap at any size).** The index is built so a grounding agent never loads the whole file: it greps the index for the file names, symbols, and capability slug its change touches and reads only the matching entries, so context cost tracks relevance, not total size - an index with thousands of entries still costs only the handful of matches to consult. Keep the LIVE part of the index lean so a scan stays bounded as history grows: superseded entries move to the `## Archive (superseded)` section at the bottom of `_index.md` as one-line pointers (the supersession links still connect them, so history is one hop away, but the active sections track only the repository\'s current capability surface). The index stays ONE file, always - never split it into archive files or per-capability shards; the record + `_index.md` + `_timeline.md` are the only durable surfaces, and grep-scoped scanning is what keeps cost tracking relevance rather than total size at any scale.');
   p.push('');
   p.push('This record is the spec-and-state of the work in one place. The ephemeral memory keeps the run alive across compaction; this record makes the run resumable by a human and useful to future human and agent maintainers, who get the requirements (with the tests that verify them), the approach and decisions, and the surface area touched in one navigable document.');
   return p.join('\n');
@@ -3250,7 +3304,10 @@ function genDurableRecordComment(prefix) {
   const p = [];
   p.push(c + 'DURABLE RECORD (committable artifact)');
   p.push(c + 'Maintain one persistent, human-readable record at: ' + apath);
-  p.push(c + 'Give it an H1 title + a one-line context (work item, branch, status). It holds: Why and');
+  p.push(c + 'Give it an H1 title + a one-line context (work item, branch, status), then an awd:record');
+  p.push(c + 'JSON fence (slug, status current|superseded, date, files, verify commands, superseded_by)');
+  p.push(c + 'and a present-tense "Current behavior" section FIRST (the living spec; history below).');
+  p.push(c + 'It holds: Why and');
   p.push(c + 'scope (objective + non-goals); a Requirements section = the contract, each a normative');
   p.push(c + 'MUST/SHALL statement + complete Given/When/Then scenarios (happy + boundary + null +');
   p.push(c + 'negative + error cases) with the verifying test named on each scenario; measurable Success');
@@ -3415,6 +3472,32 @@ function renderNodes() {
       badgeIcon.setAttribute('fill', '#3b82f6'); badgeIcon.setAttribute('pointer-events', 'none');
       badgeIcon.textContent = '\u270E';
       g.appendChild(badgeIcon);
+    }
+
+    // Run-telemetry badge (top-left): shown when imported run reports carry stats for
+    // this node, matched by label slug (guarded - removable with the run-report block).
+    if ((node.type === 'agent' || node.type === 'task' || node.type === 'decision') && typeof runReportStatsFor === 'function') {
+      const rs = runReportStatsFor(node);
+      if (rs && (rs.runs > 0 || rs.cycleRuns > 0)) {
+        const rbx = 8, rby = -4;
+        const rBadge = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        rBadge.setAttribute('cx', rbx); rBadge.setAttribute('cy', rby); rBadge.setAttribute('r', 8);
+        rBadge.setAttribute('class', 'run-stats-badge');
+        rBadge.setAttribute('fill', '#3a2f14'); rBadge.setAttribute('stroke', '#f59e0b'); rBadge.setAttribute('stroke-width', '1');
+        const rTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        rTitle.textContent = 'Run history: ' + runStatsSummary(rs);
+        rBadge.appendChild(rTitle);
+        g.appendChild(rBadge);
+        const rText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        rText.setAttribute('x', rbx); rText.setAttribute('y', rby + 1);
+        rText.setAttribute('font-size', '8'); rText.setAttribute('text-anchor', 'middle');
+        rText.setAttribute('dominant-baseline', 'central');
+        rText.setAttribute('fill', '#f59e0b'); rText.setAttribute('pointer-events', 'none');
+        rText.textContent = node.type === 'decision'
+          ? (rs.cycleRuns ? (rs.cycleSum / rs.cycleRuns).toFixed(1) + 'x' : '\u25B8')
+          : (rs.capHits > 0 ? '\u26A0' + rs.capHits : '\u25B8' + rs.runs);
+        g.appendChild(rText);
+      }
     }
 
     // Ports (connection points)
@@ -4096,6 +4179,14 @@ function updateConfig() {
     }
     if (node.config.format === 'pr') {
       fields.innerHTML += configInput('Target Branch', 'targetBranch', node.config.targetBranch || '', 'text', 'e.g. main, develop (default: main)');
+    }
+  }
+
+  // Run history line (removable with the run-report block; read-only stats display).
+  if (typeof runReportStatsFor === 'function' && node) {
+    const _rs = runReportStatsFor(node);
+    if (_rs && (_rs.runs > 0 || _rs.cycleRuns > 0)) {
+      fields.innerHTML += '<div class="config-run-history" style="font-size:11px;color:var(--text-dim,#8b95a7);margin-top:6px">Run history: ' + escHtml(runStatsSummary(_rs)) + '</div>';
     }
   }
 
@@ -7314,6 +7405,138 @@ function validateWorkflow() {
   });
   return warnings;
 }
+// ═══════════════════════════════════════════════════════════
+// WORKFLOW ADVISOR (removable block)
+// ═══════════════════════════════════════════════════════════
+// Non-blocking suggestions one level above validateWorkflow: the validator catches
+// structural errors (its warnings gate the badge); the advisor nudges hand-built
+// workflows toward preset-grade patterns (review coverage, synthesis, sane budgets)
+// and, when run reports have been ingested, turns real telemetry into tuning advice.
+// Suggestions NEVER count toward the validation badge and never block anything.
+// Removing this block degrades showValidation to issues-only via its typeof guard.
+const ADVISOR_REVIEWER_ROLES = new Set(['reviewer', 'tester', 'adversary', 'verifier']);
+// BFS downstream from startId, refusing to cross reviewer-role agents (a reviewed
+// path is sanitized) and revise back-edges. True if an output node is reachable.
+function advisorReachesOutputUnreviewed(startId) {
+  const seen = new Set([startId]);
+  const q = [startId];
+  while (q.length) {
+    const cur = q.shift();
+    for (const c of state.connections) {
+      if (c.from !== cur || isReviseBackEdge(c) || seen.has(c.to)) continue;
+      const to = state.nodes.find(n => n.id === c.to);
+      if (!to) continue;
+      if (to.type === 'output') return true;
+      if (to.type === 'agent' && to.config && ADVISOR_REVIEWER_ROLES.has(to.config.agentType)) continue;
+      seen.add(c.to); q.push(c.to);
+    }
+  }
+  return false;
+}
+// All node ids reachable downstream of fromId (revise back-edges excluded).
+function advisorReachable(fromId) {
+  const seen = new Set();
+  const q = [fromId];
+  while (q.length) {
+    const cur = q.shift();
+    state.connections.forEach(c => {
+      if (c.from === cur && !isReviseBackEdge(c) && !seen.has(c.to)) { seen.add(c.to); q.push(c.to); }
+    });
+  }
+  return seen;
+}
+function adviseWorkflow() {
+  const s = [];
+  if (state.nodes.length === 0) return s;
+  const agents = state.nodes.filter(n => n.type === 'agent');
+  const outputs = state.nodes.filter(n => n.type === 'output');
+
+  // (a) A build step whose work reaches the output with no review on the way.
+  agents.forEach(n => {
+    const at = n.config.agentType;
+    const holdsWrite = (n.config.tools || []).some(t => t === 'Write' || t === 'Edit');
+    const builder = at === 'coder' || at === 'frontend' || at === 'backend' || (at === 'general' && holdsWrite);
+    if (!builder) return;
+    if (advisorReachesOutputUnreviewed(n.id)) {
+      const sug = { msg: '"' + n.label + '" builds work that reaches the output with no review step (Reviewer, Tester, Skeptic, or Verifier) on the way - consider a Skeptic review loop.' };
+      if (canAttachReviewLoop(n) && !hasReviewLoop(n.id)) { sug.nodeId = n.id; sug.action = 'attachSkeptic'; }
+      s.push(sug);
+    }
+  });
+
+  // (b) Fan-out whose branches meet again only at the output - results are never joined.
+  state.nodes.filter(n => n.type === 'parallel').forEach(par => {
+    const children = state.connections.filter(c => c.from === par.id).map(c => c.to);
+    if (children.length < 2) return;
+    const sets = children.map(advisorReachable);
+    const common = [...sets[0]].filter(id => sets.every(set => set.has(id)));
+    if (common.length === 0) return; // never converge at all - the validator's reconvergence note covers that
+    const commonNodes = common.map(id => state.nodes.find(x => x.id === id)).filter(Boolean);
+    const hasAgent = commonNodes.some(n => n.type === 'agent');
+    const hasOutput = commonNodes.some(n => n.type === 'output');
+    if (!hasAgent && hasOutput) {
+      s.push({ msg: 'Fork "' + par.label + '" fans out to ' + children.length + ' branches that meet again only at the output - consider a synthesizer step that joins their results before delivery.' });
+    }
+  });
+
+  // (c) One agent carrying the whole workflow into a code delivery.
+  const codeOut = outputs.find(o => o.config && (o.config.format === 'pr' || o.config.format === 'commit'));
+  if (agents.length === 1 && codeOut) {
+    s.push({ msg: 'One agent carries the whole workflow into a ' + (codeOut.config.format === 'pr' ? 'pull request' : 'commit') + ' - consider splitting the work (plan / build / test) or adding a review step before delivery.' });
+  }
+
+  // (d) A read-and-analyze role holding write tools while still on its default template.
+  // A CUSTOM prompt signals deliberate configuration (preset synthesizers, report
+  // builders) and is exempt; the default role template never instructs writing.
+  agents.forEach(n => {
+    const at = n.config.agentType;
+    if (!['planner', 'architect', 'reviewer', 'researcher', 'adversary'].includes(at)) return;
+    const wt = (n.config.tools || []).filter(t => t === 'Write' || t === 'Edit');
+    if (wt.length === 0) return;
+    if (classifyAgentPrompt(n).state === 'custom') return;
+    s.push({ msg: 'Is "' + n.label + '" (' + getAgentTypeName(at) + ', a read-and-analyze role) meant to hold ' + wt.join('/') + '? If it only analyzes and reports, dropping the write tools keeps its independence; if it writes a deliverable, a tailored prompt would make that intent clear.' });
+  });
+
+  // (e) A build/test step with a turn budget too small to finish and verify.
+  agents.forEach(n => {
+    const at = n.config.agentType;
+    if (!['coder', 'frontend', 'backend', 'tester'].includes(at)) return;
+    if ((n.config.maxTurns || 10) <= 3) {
+      s.push({ msg: '"' + n.label + '" (' + getAgentTypeName(at) + ') has only ' + n.config.maxTurns + ' turn' + (n.config.maxTurns !== 1 ? 's' : '') + ' - implementation steps usually need more to finish and verify their work; consider raising Max Turns.' });
+    }
+  });
+
+  // (f) Telemetry-informed advice, only when run reports exist for this workflow.
+  if (typeof hasRunReportData === 'function' && hasRunReportData()) {
+    const wf = loadRunReports()[getName() || 'workflow'] || {};
+    const nodesStats = wf.nodes || {};
+    state.nodes.forEach(n => {
+      const st = nodesStats[slugify(n.label)];
+      if (!st) return;
+      if (n.type === 'decision' && st.cycleRuns > 0) {
+        const avg = st.cycleSum / st.cycleRuns;
+        if (avg >= 2.5) s.push({ msg: 'Gate "' + n.label + '" averages ' + avg.toFixed(1) + ' revise cycles over ' + st.cycleRuns + ' run' + (st.cycleRuns !== 1 ? 's' : '') + ' - strengthen the step feeding it or add an earlier review so work arrives at the gate cleaner.' });
+      }
+      if (n.type === 'agent' && st.runs > 0 && st.capHits * 2 >= st.runs) {
+        s.push({ msg: '"' + n.label + '" hit its turn cap in ' + st.capHits + ' of ' + st.runs + ' run' + (st.runs !== 1 ? 's' : '') + ' - raise Max Turns or split the step.' });
+      }
+      if (st.failures > 0) {
+        s.push({ msg: '"' + n.label + '" failed in ' + st.failures + ' run' + (st.failures !== 1 ? 's' : '') + ' - check its inputs, scope, and tool access.' });
+      }
+    });
+  }
+  return s;
+}
+// One-click fix for rule (a): close the modal, attach the loop, confirm.
+function advisorAttachSkeptic(nodeId) {
+  const n = state.nodes.find(x => x.id === nodeId);
+  if (!n || !canAttachReviewLoop(n) || hasReviewLoop(nodeId)) return;
+  closeValidation();
+  attachReviewLoop(nodeId, 'adversary');
+  showToast('Skeptic review loop attached to "' + n.label + '"');
+}
+// ═══ end WORKFLOW ADVISOR ═══
+
 function updateValidation() {
   const el = $('validationInfo');
   if (!el) return;
@@ -7331,16 +7554,34 @@ function updateValidation() {
 }
 function showValidation() {
   const warnings = validateWorkflow();
-  if (warnings.length === 0) { showToast('No workflow issues found', 2000); return; }
+  const suggestions = (typeof adviseWorkflow === 'function') ? adviseWorkflow() : [];
+  if (warnings.length === 0 && suggestions.length === 0) { showToast('No workflow issues found', 2000); return; }
   const list = $('validationList');
-  list.innerHTML = warnings.map(w => {
-    const isErr = w.type === 'error';
-    const icon = isErr ? '✖' : '⚠';
-    const color = isErr ? '#ef4444' : '#f59e0b';
-    return '<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06)">'
-      + '<span style="color:' + color + ';flex:0 0 auto">' + icon + '</span>'
-      + '<span>' + escHtml(w.msg) + '</span></div>';
-  }).join('');
+  const groupHead = t => '<div style="padding:10px 0 4px;font-size:11px;font-weight:600;letter-spacing:.5px;color:var(--text3)">' + t + '</div>';
+  let html = '';
+  if (warnings.length > 0) {
+    if (suggestions.length > 0) html += groupHead('ISSUES');
+    html += warnings.map(w => {
+      const isErr = w.type === 'error';
+      const icon = isErr ? '✖' : '⚠';
+      const color = isErr ? '#ef4444' : '#f59e0b';
+      return '<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06)">'
+        + '<span style="color:' + color + ';flex:0 0 auto">' + icon + '</span>'
+        + '<span>' + escHtml(w.msg) + '</span></div>';
+    }).join('');
+  }
+  if (suggestions.length > 0) {
+    html += groupHead('SUGGESTIONS (advisory - never block anything)');
+    html += suggestions.map(sg => {
+      const btn = (sg.action === 'attachSkeptic' && sg.nodeId)
+        ? '<button class="btn sm" style="margin-left:auto;flex:0 0 auto" onclick="advisorAttachSkeptic(\'' + sg.nodeId + '\')">Attach Skeptic</button>'
+        : '';
+      return '<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06)">'
+        + '<span style="color:#60a5fa;flex:0 0 auto">\u{1F4A1}</span>'
+        + '<span>' + escHtml(sg.msg) + '</span>' + btn + '</div>';
+    }).join('');
+  }
+  list.innerHTML = html;
   $('validationOverlay').classList.add('show');
 }
 function closeValidation() { $('validationOverlay').classList.remove('show'); }
@@ -7939,6 +8180,9 @@ function genWorkflow() {
     }
   }
 
+  p.push('');
+  p.push(runReportDirective());
+
   return p.join('\n');
 }
 
@@ -8209,6 +8453,9 @@ function genSubAgents() {
   // discipline only (deliveryAgentNote in buildAgentPrompt).
   deliveryBlock('##').forEach(l => p.push(l));
 
+  p.push(runReportDirective());
+  p.push('');
+
   taskSectionLines(ordered, '##').forEach(l => p.push(l));
   return p.join('\n');
 }
@@ -8447,6 +8694,9 @@ function genAgentTeams() {
       p.push(genDurableRecordProtocol('teams'));
     }
   }
+
+  p.push('');
+  p.push(runReportDirective());
 
   taskSectionLines(ordered, '##').forEach(l => p.push(l));
   return p.join('\n');
@@ -8778,6 +9028,9 @@ function genAgentSDK() {
     }
   }
 
+  p.push('');
+  p.push('# Run-report convention: a run may end its final output with one `awd:run` fence (step/gate telemetry) the designer can import - see the prose formats for the schema.');
+
   taskSectionComments(ordered).forEach(l => p.push(l));
   return p.join('\n');
 }
@@ -8983,6 +9236,9 @@ function genClaudePrompt() {
       p.push(genDurableRecordProtocol('claude'));
     }
   }
+
+  p.push('');
+  p.push(runReportDirective());
 
   taskSectionLines(ordered, '##').forEach(l => p.push(l));
   return p.join('\n');
@@ -9383,6 +9639,13 @@ function buildOpenSpecSchema() {
   if (outputs.length) applyInstr += '\n\nDeliverables:\n' + outputs.map(o => '- ' + openSpecOutputLine(o)).join('\n');
   const applyCtx = openSpecContextBlock();
   if (applyCtx) applyInstr += '\n\n' + applyCtx;
+  // Run-report fence + reverse-grounding breadcrumb: an OpenSpec run reports the same
+  // telemetry fence as the prose formats, and writes ONE breadcrumb line back into the
+  // designer-native .workflow index so our grounding picks this run up unchanged (the
+  // converge-on-one-index close for cross-tool grounding direction (d)). Self-gating:
+  // the breadcrumb applies only where a .workflow/ system exists; never creates files.
+  applyInstr += '\n\nRun report: end your final output with exactly one fenced code block tagged `awd:run` holding one JSON object: {"workflow": ' + JSON.stringify(wfName) + ', "steps": [{"slug": "<step-slug>", "status": "done|skipped|failed"}], "gates": [{"slug": "<gate-slug>", "cycles": n, "final": "<verdict>"}], "notes": ""}. One steps entry per artifact executed, in order; omit fields you did not track, never invent numbers.';
+  applyInstr += '\n\nDesigner breadcrumb: if the repository keeps a `.workflow/` record system (a `.workflow/_timeline.md` exists), prepend ONE line to `.workflow/_timeline.md` in its format: `<date> - ' + wfName + ' - <one line: what this run changed> - openspec/schemas/' + wfName + '/schema.yaml`. If `.workflow/_index.md` has no entry covering this capability, add a one-line entry in its format too. One static line per run; do not create `.workflow/` or any files if the system is absent.';
   L.push('');
   L.push('apply:');
   L.push('  requires:');
@@ -9728,6 +9991,327 @@ function topologicalSort() {
 // ═══════════════════════════════════════════════════════════
 // COPY
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// RUN REPORT LOOP (removable) - import awd:run telemetry, badge nodes, tuning prompt.
+// The read side of the run-report contract emitted by runReportDirective(): paste or
+// drop a run's final response / durable record, stats aggregate in localStorage
+// (awd_run_reports), nodes with telemetry get a badge + a Run history line, and the
+// Export menu can compose a tuning prompt that asks Claude to return an improved
+// workflow JSON for re-import. Inert until a report is imported. Removing this block
+// (and its guarded call sites) leaves generation and import untouched.
+// ═══════════════════════════════════════════════════════════
+function extractRunFences(text) {
+  // Every valid awd:run fence in the text, with its raw inner JSON. A durable record
+  // accumulates one fence per run, so multi-fence files are the norm, not the edge;
+  // invalid fences are skipped, valid neighbors still count.
+  if (!text || String(text).indexOf('awd:run') === -1) return [];
+  const out = [];
+  const re = /```awd:run\s*\n?([\s\S]*?)```/g;
+  let m;
+  while ((m = re.exec(String(text))) !== null) {
+    try {
+      const rep = JSON.parse(m[1]);
+      if (rep && typeof rep === 'object' && Array.isArray(rep.steps)) out.push({ raw: m[1].trim(), rep: rep });
+    } catch (e) { /* unparseable fence - keep scanning */ }
+  }
+  return out;
+}
+function parseRunReport(text) {
+  const all = extractRunFences(text);
+  return all.length ? all[0].rep : null;
+}
+function loadRunReports() {
+  try { return JSON.parse(localStorage.getItem('awd_run_reports') || '{}') || {}; } catch (e) { return {}; }
+}
+function saveRunReports(data) {
+  try { localStorage.setItem('awd_run_reports', JSON.stringify(data)); }
+  catch (e) { showToast('Could not save run reports (storage full)'); }
+}
+function ingestRunReport(rep, opts) {
+  const wfName = rep.workflow || getName() || 'workflow';
+  const data = loadRunReports();
+  const wf = data[wfName] = data[wfName] || { nodes: {}, unmatched: [] };
+  wf.nodes = wf.nodes || {}; wf.unmatched = wf.unmatched || [];
+  const bySlug = {};
+  state.nodes.filter(n => n.type === 'agent' || n.type === 'task' || n.type === 'decision')
+    .forEach(n => { bySlug[slugify(n.label)] = n; });
+  let matched = 0, unmatched = 0, gates = 0;
+  (rep.steps || []).forEach(st => {
+    if (!st || !st.slug) return;
+    if (bySlug[st.slug]) matched++; else { unmatched++; if (wf.unmatched.indexOf(st.slug) === -1) wf.unmatched.push(st.slug); }
+    const e = wf.nodes[st.slug] = wf.nodes[st.slug] || { runs: 0, capHits: 0, failures: 0, cycleSum: 0, cycleRuns: 0 };
+    e.runs++;
+    if (st.status === 'failed') e.failures++;
+    if (typeof st.turns === 'number' && typeof st.cap === 'number' && st.turns >= st.cap) e.capHits++;
+  });
+  (rep.gates || []).forEach(gt => {
+    if (!gt || !gt.slug) return;
+    gates++;
+    if (!bySlug[gt.slug] && wf.unmatched.indexOf(gt.slug) === -1) wf.unmatched.push(gt.slug);
+    const e = wf.nodes[gt.slug] = wf.nodes[gt.slug] || { runs: 0, capHits: 0, failures: 0, cycleSum: 0, cycleRuns: 0 };
+    e.cycleRuns++;
+    e.cycleSum += (typeof gt.cycles === 'number' ? gt.cycles : 0);
+  });
+  wf.lastReport = rep;
+  wf.lastDate = new Date().toISOString().slice(0, 10);
+  saveRunReports(data);
+  if (!(opts && opts.quiet)) {
+    showToast('Run report: ' + matched + ' step' + (matched !== 1 ? 's' : '') + ' matched, ' + gates + ' gate' + (gates !== 1 ? 's' : '') + (unmatched ? ', ' + unmatched + ' unmatched' : ''));
+    render();
+    updateConfig();
+  }
+  return { matched: matched, unmatched: unmatched, gates: gates };
+}
+function runReportStatsFor(node) {
+  if (!node || !node.label) return null;
+  const wf = loadRunReports()[getName() || 'workflow'];
+  if (!wf || !wf.nodes) return null;
+  return wf.nodes[slugify(node.label)] || null;
+}
+function hasRunReportData(name) {
+  const wf = loadRunReports()[name || getName() || 'workflow'];
+  return !!(wf && wf.nodes && Object.keys(wf.nodes).length > 0);
+}
+function runStatsSummary(rs) {
+  const avg = rs.cycleRuns ? (rs.cycleSum / rs.cycleRuns) : null;
+  const parts = [];
+  if (rs.runs) parts.push(rs.runs + ' run' + (rs.runs !== 1 ? 's' : ''));
+  if (rs.capHits) parts.push('cap hits ' + rs.capHits);
+  if (rs.failures) parts.push('failures ' + rs.failures);
+  if (avg !== null) parts.push('avg gate cycles ' + avg.toFixed(1));
+  return parts.join(' \u00B7 ');
+}
+function genTuningPrompt() {
+  const name = getName() || 'workflow';
+  const wf = loadRunReports()[name];
+  if (!wf || !wf.nodes || Object.keys(wf.nodes).length === 0) return '';
+  const L = [];
+  L.push('# Tune this agentic workflow using its real run telemetry');
+  L.push('');
+  L.push('The workflow below has been run; the imported run reports aggregate to these per-step stats. Analyze where the process struggled and propose concrete tuning. Use ONLY these stats - do not invent telemetry.');
+  L.push('');
+  L.push('## Accumulated run stats (' + name + ')');
+  L.push('');
+  L.push('| step slug | runs | cap hits | failures | gate runs | avg revise cycles |');
+  L.push('|---|---|---|---|---|---|');
+  Object.keys(wf.nodes).forEach(slug => {
+    const e = wf.nodes[slug];
+    const avg = e.cycleRuns ? (e.cycleSum / e.cycleRuns).toFixed(1) : '-';
+    L.push('| ' + slug + ' | ' + e.runs + ' | ' + e.capHits + ' | ' + e.failures + ' | ' + e.cycleRuns + ' | ' + avg + ' |');
+  });
+  if (wf.unmatched && wf.unmatched.length) {
+    L.push('');
+    L.push('Unmatched slugs (steps reported by runs but absent from the current canvas - likely renamed): ' + wf.unmatched.join(', '));
+  }
+  L.push('');
+  L.push('## What to do');
+  L.push('');
+  L.push('1. Diagnose from the stats: a step hitting its turn cap is under-budgeted or overloaded; a gate averaging high revise cycles means the step feeding it needs a stronger prompt or an earlier review; failures mean the step needs rescoping or better inputs.');
+  L.push('2. Propose the tuning: raise maxTurns where caps hit; attach or move a review loop where revise cycles run high; split a step that both caps out and fails; strengthen the prompt of a step that repeatedly triggers revisions. Keep changes minimal and motivated - one stat, one change.');
+  L.push('3. List each change and the stat that motivated it.');
+  L.push('4. THEN return the COMPLETE updated workflow as ONE ```json code block in exactly the same format as the definition below (keep node ids and positions unless a change requires otherwise), so it can be imported straight back into the designer.');
+  L.push('');
+  L.push('## Current workflow definition (awd JSON)');
+  L.push('');
+  L.push('```json');
+  L.push(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, rulesPaths: state.rulesPaths || [], productDocPaths: state.productDocPaths || [], ...serializeWorkflow() }, null, 2));
+  L.push('```');
+  return L.join('\n');
+}
+function copyTuningPrompt() {
+  const text = genTuningPrompt();
+  if (!text) { showToast('No run reports imported for this workflow yet - import an awd:run report first'); return; }
+  const secrets = scanForSecrets(state.nodes.map(n => (n.config.prompt || '') + (n.config.notes || '')).join('\n'));
+  if (secrets.length > 0 && !confirm('Possible secrets detected in your inputs: ' + secrets.join(', ') + '.\n\nThese will be included in the copied prompt. Continue?')) return;
+  navigator.clipboard.writeText(text)
+    .then(() => showToast('Tuning prompt copied - paste it to Claude, then import the returned JSON'))
+    .catch(() => showToast('Could not copy - check clipboard permissions'));
+}
+// Content-hash dedupe shared by BOTH feeds (paste/drop import and the connected-folder
+// scan): each fence's exact inner JSON is hashed and remembered in awd_run_reports._hashes
+// (capped), so re-importing the same report or rescanning a folder never double-counts.
+// Dedupe lives at the FEED level; ingestRunReport itself stays dedupe-free on purpose
+// (direct calls remain simple, and both feeds share one seen-set here).
+function runReportHash(s) {
+  let h = 5381;
+  const str = String(s);
+  for (let i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+function ingestRunFences(fences, opts) {
+  const data = loadRunReports();
+  const seen = Array.isArray(data._hashes) ? data._hashes.slice() : [];
+  const newHashes = [];
+  let ingested = 0, skipped = 0;
+  (fences || []).forEach(f => {
+    if (!f || !f.rep || typeof f.raw !== 'string') return;
+    const h = runReportHash(f.raw);
+    if (seen.indexOf(h) !== -1 || newHashes.indexOf(h) !== -1) { skipped++; return; }
+    ingestRunReport(f.rep, { quiet: true });
+    newHashes.push(h);
+    ingested++;
+  });
+  if (newHashes.length) {
+    const fresh = loadRunReports();  // reload: each ingest rewrote the aggregates
+    fresh._hashes = (Array.isArray(fresh._hashes) ? fresh._hashes : []).concat(newHashes);
+    while (fresh._hashes.length > 500) fresh._hashes.shift();
+    saveRunReports(fresh);
+    render();
+    updateConfig();
+  }
+  if (!(opts && opts.quiet)) {
+    const src = (opts && opts.source) ? ' from ' + opts.source : '';
+    if (ingested > 0) showToast('Ingested ' + ingested + ' new run report' + (ingested !== 1 ? 's' : '') + src + (skipped ? ' (' + skipped + ' already seen)' : ''));
+    else if (skipped > 0) showToast('No new run reports' + src + ' (' + skipped + ' already seen)');
+    else showToast('No run reports found' + src);
+  }
+  return { ingested: ingested, skipped: skipped };
+}
+// ═══════════════════════════════════════════════════════════
+// END RUN REPORT LOOP
+// ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// REPO FOLDER CONNECT (removable) - zero-friction run-report ingestion.
+// Chromium's File System Access API: connect the repo (or its .workflow folder)
+// once; the designer rescans on load when permission is already granted, and on
+// demand, feeding new awd:run fences through the same dedupe as paste. The handle
+// persists in IndexedDB (handles cannot live in localStorage). Hidden entirely when
+// the API is unsupported - paste/drop stays the universal fallback. Removing this
+// block (plus the #repoConnectWrap span and the guarded boot call) leaves the
+// paste path and everything else untouched.
+// ═══════════════════════════════════════════════════════════
+const repoConnect = { handle: null, name: '', status: 'none' };  // none | granted | prompt
+function repoConnectSupported() {
+  return typeof window.showDirectoryPicker === 'function' && typeof indexedDB !== 'undefined';
+}
+// Minimal promise kv over one IndexedDB object store - directory handles are
+// structured-cloneable, so they persist here across visits.
+function awdIdb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('awd-designer', 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore('kv'); };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+function awdIdbSet(key, val) {
+  return awdIdb().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').put(val, key);
+    tx.oncomplete = () => { db.close(); res(); };
+    tx.onerror = () => { db.close(); rej(tx.error); };
+  }));
+}
+function awdIdbGet(key) {
+  return awdIdb().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readonly');
+    const rq = tx.objectStore('kv').get(key);
+    rq.onsuccess = () => { db.close(); res(rq.result); };
+    rq.onerror = () => { db.close(); rej(rq.error); };
+  }));
+}
+function awdIdbDel(key) {
+  return awdIdb().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').delete(key);
+    tx.oncomplete = () => { db.close(); res(); };
+    tx.onerror = () => { db.close(); rej(tx.error); };
+  }));
+}
+// Picked the repo root? Descend into its .workflow subfolder. Picked .workflow
+// (or any records folder) directly? Use it as-is.
+async function resolveRecordsDir(picked) {
+  try { return await picked.getDirectoryHandle('.workflow'); } catch (e) { return picked; }
+}
+// Pure scan: accepts ANY object speaking the directory-handle async-iterator
+// protocol (values() yielding {kind, name, getFile}), which is what makes it
+// testable with a fake handle - the picker/permission plumbing above it is not.
+async function scanRunReportsFromHandle(dirHandle) {
+  const out = [];
+  for await (const entry of dirHandle.values()) {
+    if (!entry || entry.kind !== 'file' || !/\.md$/i.test(entry.name || '')) continue;
+    try {
+      const file = await entry.getFile();
+      const text = await file.text();
+      extractRunFences(text).forEach(f => out.push({ source: entry.name, raw: f.raw, rep: f.rep }));
+    } catch (e) { /* unreadable file - skip */ }
+  }
+  return out;
+}
+async function connectRepoFolder() {
+  if (!repoConnectSupported()) return;
+  let picked;
+  try { picked = await window.showDirectoryPicker({ mode: 'read' }); }
+  catch (e) { return; }  // user cancelled the picker
+  const dir = await resolveRecordsDir(picked);
+  repoConnect.handle = dir; repoConnect.name = dir.name || '.workflow'; repoConnect.status = 'granted';
+  try { await awdIdbSet('repoDir', dir); }
+  catch (e) { showToast('Connected for this session only (could not persist the folder handle)'); }
+  renderRepoConnect();
+  await scanConnectedRepo(true);
+}
+async function scanConnectedRepo(interactive) {
+  if (!repoConnect.handle) return;
+  try {
+    let perm = await repoConnect.handle.queryPermission({ mode: 'read' });
+    if (perm !== 'granted') {
+      if (!interactive) { repoConnect.status = 'prompt'; renderRepoConnect(); return; }
+      perm = await repoConnect.handle.requestPermission({ mode: 'read' });  // needs a user gesture
+      if (perm !== 'granted') { repoConnect.status = 'prompt'; renderRepoConnect(); return; }
+    }
+    repoConnect.status = 'granted';
+    renderRepoConnect();
+    const fences = await scanRunReportsFromHandle(repoConnect.handle);
+    const r = ingestRunFences(fences, { quiet: true });
+    if (r.ingested > 0) showToast(r.ingested + ' new run report' + (r.ingested !== 1 ? 's' : '') + ' from ' + repoConnect.name + '/');
+    else if (interactive) showToast('No new run reports in ' + repoConnect.name + '/');
+  } catch (e) {
+    if (interactive) showToast('Could not read the connected folder - try reconnecting it');
+    repoConnect.status = 'prompt';
+    renderRepoConnect();
+  }
+}
+async function disconnectRepoFolder() {
+  repoConnect.handle = null; repoConnect.name = ''; repoConnect.status = 'none';
+  try { await awdIdbDel('repoDir'); } catch (e) {}
+  renderRepoConnect();
+  showToast('Repo folder disconnected');
+}
+function renderRepoConnect() {
+  const wrap = $('repoConnectWrap');
+  if (!wrap) return;
+  if (!repoConnectSupported()) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'inline-flex';
+  if (!repoConnect.handle) {
+    wrap.innerHTML = '<button class="btn sm" onclick="connectRepoFolder()" title="Connect your repo (or its .workflow folder) once - the designer then auto-imports new run reports from durable records on every visit. Chromium only; Import paste/drop works everywhere.">Connect repo</button>';
+  } else if (repoConnect.status === 'prompt') {
+    wrap.innerHTML = '<button class="btn sm" onclick="scanConnectedRepo(true)" title="Permission is needed again for ' + escHtml(repoConnect.name) + ' - one click re-grants and rescans.">Reconnect ' + escHtml(repoConnect.name) + '</button>';
+  } else {
+    wrap.innerHTML = '<button class="btn sm" onclick="scanConnectedRepo(true)" title="Connected to ' + escHtml(repoConnect.name) + '/ - click to rescan for new run reports now.">&#10227; ' + escHtml(repoConnect.name) + '</button>'
+      + '<button class="btn sm" onclick="disconnectRepoFolder()" title="Disconnect the folder (stops auto-importing run reports; already-imported stats stay).">&#215;</button>';
+  }
+}
+async function initRepoConnect() {
+  if (!repoConnectSupported()) { renderRepoConnect(); return; }
+  try {
+    const h = await awdIdbGet('repoDir');
+    if (h) {
+      repoConnect.handle = h;
+      repoConnect.name = h.name || '.workflow';
+      const perm = await h.queryPermission({ mode: 'read' });
+      repoConnect.status = perm === 'granted' ? 'granted' : 'prompt';
+      renderRepoConnect();
+      if (perm === 'granted') await scanConnectedRepo(false);  // quiet auto-scan, toast only on news
+      return;
+    }
+  } catch (e) { /* idb unavailable or handle gone - behave as never connected */ }
+  renderRepoConnect();
+}
+// ═══════════════════════════════════════════════════════════
+// END REPO FOLDER CONNECT
+// ═══════════════════════════════════════════════════════════
+
 function scanForSecrets(text) {
   const patterns = [
     { re: /\b(sk-[a-zA-Z0-9\-_]{20,})/g, type: 'API key (sk-)' },
@@ -9809,6 +10393,7 @@ const _autoRestored = restoreAutoSave();
 if (!_autoRestored) { updateTransform(); render(); }
 renderSavedWorkflowList();
 if (typeof renderAgentPalette === 'function') renderAgentPalette();
+if (typeof initRepoConnect === 'function') initRepoConnect();
 validateStoryInput();
 </script>
 </body>

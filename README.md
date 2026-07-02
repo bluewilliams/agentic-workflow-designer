@@ -78,6 +78,8 @@ No infra required. The memory protocol is embedded directly in the generated pro
 
 Workflow memory is ephemeral agent scratch state under `~/.claude/` that keeps a run alive across compaction. When you also want a record the work can be **handed off and committed**, check **Keep a durable record** (it appears under the memory toggle, since a durable record builds on memory - it is a strict superset).
 
+The durable system is exactly three surfaces - one record per change, `.workflow/_index.md`, and `.workflow/_timeline.md` - never any companion documents. Each record opens with a compact machine-readable `awd:record` JSON fence (slug, status `current|superseded`, date, files, exact verify commands, superseded-by link) and a present-tense **Current behavior** section: the living truth of the capability, updated on every change, so a reader gets the current spec in one read and descends into the change history below only for the why. Superseded index entries move to an Archive section at the bottom of `_index.md`, keeping the active index lean forever.
+
 When enabled, the generated prompts instruct agents to maintain one persistent, human-readable document that is:
 
 - the **resumable handoff doc** while work is in progress (an H1 title and one-line context, a Why-and-scope, a **Requirements** contract, the approach and decisions, a surface-area map of the files touched, a **work-breakdown task checklist** - the concrete coding/research/test tasks a developer tracks, not the workflow's agent steps - a Verify section with the real build/test commands and results, any risks/gotchas, plus a current-state/next-action note and a resume note), and
@@ -107,6 +109,14 @@ When a larger task needs to pass between engineers, choose **Export ▾ → Hand
 - **The workflow definition** - the serialized workflow, so they can import it back into the designer to edit the pipeline.
 
 If a workflow was seeded only with a work-item URL, the prompt and definition are intentionally thin - the agent fetches the ticket at runtime, and the resolved context the previous engineer worked from lives in the durable record. The bundle says so, so the receiver trusts the durable record for the current spec and state. The handoff bundle pairs naturally with Durable Record; without a durable record there is no captured state to resume from, and the bundle says that too.
+
+## Run Reports (self-improvement loop)
+
+Every generated workflow ends by asking the run to close with a small machine-readable fence (```` ```awd:run ````) summarizing how the process went: steps executed, turn caps hit, gate revise cycles and verdicts. When the durable record is on, the run copies the same fence into the record, so telemetry travels with the flywheel doc.
+
+Feed a report back and the designer learns: drop the run's final response or its durable record onto **Import** (or connect a folder, below) and the stats aggregate per step in your browser (localStorage, aggregates only). Nodes with telemetry get an amber badge (cap hits, average gate cycles) and a Run history line in the config panel. **Export ▾ → Tuning prompt** then composes the accumulated stats plus the current workflow JSON into a prompt asking Claude to diagnose where the process struggled and return an improved workflow JSON you import straight back - the designer never analyzes anything itself; it composes the prompt and draws the badges.
+
+**Connect repo (Chromium)**: next to Import, connect your repo (or its `.workflow` folder) once via the browser's File System Access API - the designer then rescans it on every visit and auto-ingests any new run fences from your durable records, no pasting. Content-hash dedupe means rescans and repeat imports never double-count. The folder handle persists in IndexedDB; disconnect anytime. On browsers without the API the button simply does not appear and paste/drop remains the path. Step matching is by label slug, so renaming a node orphans its old stats (advisory data - acceptable).
 
 ## Repo Context Paths
 
@@ -315,6 +325,7 @@ LSP is enabled by default on most agent presets. Code-analysis prompts in the Pr
 - **Empty prompt detection**: When you copy a prompt, the app warns if any agents have empty prompts (they won't know what to do).
 - **Undo/Redo**: Toolbar buttons or `Ctrl+Z` / `Cmd+Z` to undo, `Ctrl+Shift+Z` / `Cmd+Shift+Z` to redo. Covers adding, deleting, connecting, disconnecting, and dragging nodes. 50-step history.
 - **Workflow validation**: A health indicator in the toolbar shows a green check or amber warning count. Click it to see issues like disconnected nodes, empty prompts, or incomplete decision gates. Catches problems before you copy the prompt.
+- **Workflow advisor**: The same review modal also lists non-blocking suggestions (a lightbulb group below the issues): a build step reaching the output with no review on the way (with a one-click Attach Skeptic fix), a fan-out whose branches are never synthesized, a solo agent shipping a PR, a read-and-analyze role holding write tools on its default template, an under-budgeted build step - and, once run reports have been ingested, telemetry-informed advice (gates that loop a lot, steps that hit their turn cap or failed). Suggestions never count toward the health badge and never block anything.
 - **Token estimate**: The approximate token count of the generated prompt appears next to the Copy button so you can gauge cost and context usage.
 - **Clone workflow**: Click **Clone** in the Workflow Management section to duplicate the current workflow under a new name. Useful for creating variants without losing the original.
 - **Prompt Library search**: Type in the search box to filter prompts by title or description across all categories.

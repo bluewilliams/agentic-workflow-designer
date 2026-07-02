@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "tool-selection-consistency", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+Preset testers carry Edit. toolSubstitutionNote() reconciles static templates with the closed tool enumeration: when a node's effective prompt mentions a tool outside its selection, the five agent-facing surfaces emit one note naming the gap. toolScopeNote() scopes the enumeration to the ten modeled chips - withheld core tools are named explicitly, and everything unmodeled (MCP tools, task tracking, runtime utilities) is declared unrestricted; the SDK carries the outside-clause only.
+
 ## Why and scope
 
 Two follow-ups closing the loop on the owner's tool model ("tool selected, the agent has it; tool deselected, it is not part of the agent's prompt"):

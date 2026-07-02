@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "validation-modal", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+Workflow validation details render in the #validationOverlay modal (help-modal classes, per-warning severity icon rows, Esc/backdrop/button close); zero-issue runs show a toast instead. The app contains no native alert() calls.
+
 ## Why and scope
 
 Clicking the toolbar warning badge called native `alert('Workflow Issues:\n\n' + ...)` - jarring against the app's modal/toast language and unreadable for many warnings (one unstyled block, no scrolling affordance). This was the app's ONLY `alert()` call site (verified by grep), so the native-dialog surface is now gone entirely.

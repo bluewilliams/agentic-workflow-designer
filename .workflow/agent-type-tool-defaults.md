@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "agent-type-tool-defaults", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+Every agent type resolves a default tool set through agentTypeToolDefaults() (AGENT_TYPE_TOOL_DEFAULTS; writer per style via WRITER_TOOL_DEFAULTS; general derived from NODE_DEFAULTS; adversary/verifier mirroring REVIEW_LOOP_KINDS). Type changes pristine-swap tools by the matches-any-default rule in both the node panel and the Agent Library form (applyAgentTypeChange), and never touch customized sets. Coder/frontend/backend/debugger/researcher defaults include WebSearch/WebFetch, licensed by conditional web steps in their templates.
+
 ## Why and scope
 
 Owner ruling: an agent's role class implies a default tool floor - a Researcher generally SHOULD have the web tools (WebSearch/WebFetch), a Coder needs write access, a Planner is read-only. Before this, only Writer had per-style tool defaults (WRITER_TOOL_DEFAULTS); every other type change left the node holding whatever tools it was created with (usually the generic Add-Agent set), so switching a fresh node to Researcher never granted the web tools its role implies. The user's selection always wins: deselecting a tool is respected everywhere, and the per-step availability line ("You have access to these tools: ...") remains the dynamic truth of what is actually selected.

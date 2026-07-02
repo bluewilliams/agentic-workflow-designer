@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "parallel-sibling-emission", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+All five generators walk emission with an emitted-id set: a parallel group emits once at its first-encountered sibling, interleaved intermediate nodes keep their own topo slot, and nothing duplicates or drops. validateWorkflow warns when fork siblings depend on each other; its reachability ignores any decision's noLabel failure branch (a revision path is not a dependency).
+
 ## Why and scope
 
 All five generators walked the topo-ordered agent list with the same pattern: on hitting a parallel-group member, emit the WHOLE sibling group, then `i += siblings.length`. That assumes siblings are contiguous in topo order. Wire fork -> (A, B) plus A -> C -> B and topo order interleaves (A, C, B): the group emitted at A, the blind `+= 2` advance consumed C's slot, then B (a group member) triggered the group AGAIN - A and B appeared twice and **C was silently dropped**. In the SDK output `gamma_config` was defined but `gamma.run()` never called; `validateWorkflow` said nothing. Silent omission of a step the user drew, in every format. Verified headlessly before the fix.

@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "prompt-contract-polish", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+closingOrderNote() emits one ordering sentence when two or more end-of-response contracts stack (Handoff Summary, then DONE:/STATUS record lines, then the memory breadcrumb last). The unknown-agent-type fallback composes from PROMPTS.general's body with a label-seeded first line. CODE_SEARCH_STEP_ROLES spans 12 roles including reviewer/tester/adversary/verifier; DATADOG_STEP_ROLES stays deliberately narrow.
+
 ## Why and scope
 
 Three small generated-prompt quality items from the designer audit, batched: (1) an agent with memory + durable record on receives up to four stacked "end your response with" contracts (role Handoff Summary / Output Format, DONE:/STATUS: record lines, memory breadcrumb) with no ordering guidance; (2) the unknown-agent-type smart fallback in getEffectivePrompt was a near-duplicate of `PROMPTS.general` (drift risk - one gets improved, the other silently does not); (3) `CODE_SEARCH_STEP_ROLES` excluded the review/critic roles even though the hint's own rationale (cross-repo seams, producer/consumer pairs, auditing claims) squarely fits them.

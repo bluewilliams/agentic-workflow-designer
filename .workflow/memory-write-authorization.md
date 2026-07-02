@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "memory-write-authorization", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+Memory-file writes are protocol-level, not task-level: every per-agent memory-write emission carries memoryWriteAuthNote(), so an agent whose task tools omit Write is still authorized and expected to append to its memory files. The Agent SDK format unions "Write" into the emitted tools=[...] param when memory is on and the node lacks it, with a generated-code comment. Everything sits behind the existing memoryEnabled gates; memory off emits nothing.
+
 ## Why and scope
 
 The memory protocol mandates per-agent file appends ("append a TOON entry to `@{slug}.md`... This is not optional"), but the per-agent tool line is a closed enumeration that scopes task work. An agent whose task tools omit `Write` (Skeptic, Verifier, preset Reviewer/Researcher) received two contradictory instructions: "you have access to these tools: Read, Grep, Glob, LSP" and "you MUST write files". In the prose formats that is a contradiction the agent has to guess its way through; in the Agent SDK format `tools=[...]` is a hard runtime block, so compliance was literally impossible and the agent silently dropped out of the memory protocol. Design ruling: memory writes are PROTOCOL-level, not task-level - every agent writes its own memory; the tool enumeration scopes the task only.

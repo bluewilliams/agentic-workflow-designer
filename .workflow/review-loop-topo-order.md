@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "review-loop-topo-order", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+topologicalSort excludes revise back-edges from its ordering graph (via the generalized isReviseBackEdge - see revise-loop-topo-generalization), so attached Skeptic/Verifier loops emit in correct dependency order in all four prose generators and the OpenSpec export anchors requires on the true upstream instead of orphaning the gated artifact.
+
 ## Why and scope
 
 Attaching a Skeptic or Verifier to a NON-terminal node broke the emitted step order in all four prose generators. `topologicalSort` fed the loop's failure back-edge (decision -> revise target) into Kahn's algorithm as a normal dependency, making the loop cluster cyclic: no node in it ever reached in-degree 0, so the whole cluster fell into the "append unvisited in creation order" fallback. Planner -> Coder(+Skeptic) -> Tester emitted as Planner, Coder, **Tester, Skeptic review: Coder** - the orchestrator ran downstream work on unreviewed output, and the document contradicted itself (Tester's "Depends on" named a step that appeared after it). Verified headlessly before the fix in genWorkflow, genSubAgents, genAgentTeams, and genClaudePrompt.

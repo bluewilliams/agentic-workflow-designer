@@ -113,7 +113,9 @@ Parked items with the real-run evidence behind them, so the dedicated passes sta
 
 **Size**: small-medium. Lighter option is a gated string prepend at the export's first-artifact site + a test asserting the preamble appears when the toggle is on and is absent when off; heavier option adds an artifact + `requires` edge + round-trip handling. Additive, removable, low-risk - same pattern as the existing gated injections.
 
-## 10. Reverse cross-tool: OpenSpec runs drop a breadcrumb (+timeline) into our index
+## 10. Reverse cross-tool: OpenSpec runs drop a breadcrumb (+timeline) into our index - DONE (2026-07-02)
+
+**Status (2026-07-02): DONE.** Shipped inside the self-improvement-loop unit: the exported apply step's instruction now emits the run's `awd:run` fence AND appends the one-line breadcrumb into the target repo's `.workflow/_timeline.md` (plus an `_index.md` line for a new capability), in our format, self-gated on the `.workflow/` system existing and explicitly forbidden from creating files. Record: `.workflow/self-improvement-loop.md`.
 
 **What**: have an OpenSpec run authored by our exporter append a one-line entry to `.workflow/_index.md` and `.workflow/_timeline.md` pointing at its generated step docs, so a LATER prompt-run workflow's "Ground in prior records" picks up OpenSpec-authored work for free. This is the reverse of #9 and the clean way to solve grounding-direction (d) - our prompt runs benefiting from OpenSpec durable docs - WITHOUT a polyglot reader.
 
