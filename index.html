@@ -9274,6 +9274,26 @@ function openSpecParseYaml(text) {
   }
   return parseMap(0);
 }
+// Pull our own "Agent Context:" block back out of an artifact instruction so a round-tripped schema
+// (e.g. one whose `awd:meta` comment was dropped by `openspec schema fork`) re-populates the Agent
+// Context field instead of leaving that text buried in the prompt - and returns the prompt WITHOUT
+// the block so a later re-export does not duplicate it. A genuinely foreign schema has no such block
+// -> notes ''. Mirrors the export order in openSpecInstruction: prompt, then "\n\nAgent Context:\n
+// <notes>", then optional repo-context / intent blocks (the notes end where the first of those begins).
+function openSpecExtractAgentContext(instruction) {
+  const s = typeof instruction === 'string' ? instruction : '';
+  const marker = '\n\nAgent Context:\n';
+  const i = s.indexOf(marker);
+  if (i < 0) return { prompt: s, notes: '' };
+  const rest = s.slice(i + marker.length);
+  const enders = ['\n\nIntended execution parameters', '\n\nRepo context to read and honor'];
+  let end = rest.length;
+  enders.forEach(e => { const j = rest.indexOf(e); if (j >= 0 && j < end) end = j; });
+  const notes = rest.slice(0, end).trim();
+  const prompt = (s.slice(0, i) + rest.slice(end)).trim();   // prompt + any trailing blocks, sans the context
+  return { prompt, notes };
+}
+
 function openSpecSchemaToWorkflow(parsed) {
   // Map a parsed OpenSpec schema -> a deserializeWorkflow-shaped object. Returns null if it is not a
   // schema (no artifacts with ids). Layered left-to-right layout by longest-path depth so the graph is
@@ -9307,11 +9327,15 @@ function openSpecSchemaToWorkflow(parsed) {
     idMap[a.id] = id;
     const instruction = typeof a.instruction === 'string' ? a.instruction : '';
     const desc = typeof a.description === 'string' ? a.description : '';
+    // Extract our own "Agent Context:" block into notes (clean round-trip); a foreign schema has no
+    // such block -> notes ''. An OpenSpec `description` is artifact metadata, NOT Agent Context, so it
+    // only backfills the prompt when there is no instruction - it is never mapped into notes.
+    const split = openSpecExtractAgentContext(instruction);
     nodes.push({
       id: id, type: 'agent', label: humanize(a.id) || a.id, x: X0 + d * COLW, y: Y0 + row * ROWH, w: 200, h: 64,
       config: { agentType: 'general', model: state.defaultModel || 'opus-4.8',
         tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LSP'],
-        prompt: instruction || desc, notes: (instruction && desc) ? desc : '', maxTurns: 10 }
+        prompt: split.prompt || desc, notes: split.notes, maxTurns: 10 }
     });
   });
   const connections = [];
