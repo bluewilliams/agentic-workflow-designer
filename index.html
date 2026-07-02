@@ -1452,6 +1452,19 @@ function datadogGroundingHint() {
 // drives the node-config display). Toggle is the single source of truth for Datadog
 // guidance - no Datadog text is hardcoded in any agent template. Returns '' when not applicable.
 const DATADOG_STEP_ROLES = new Set(['planner', 'architect', 'researcher', 'debugger', 'tester']);
+// One-line closing order for stacked end-of-response contracts. A step can carry up
+// to four (role Handoff Summary / Output Format, durable-record DONE:/STATUS: lines,
+// memory breadcrumb); emitted only when a second contract is active so a single
+// contract stays unqualified. Wording must keep the breadcrumb response-final (the
+// memory postamble already specifies that - do not contradict it).
+function closingOrderNote() {
+  const extras = (recordHandoffHint() ? 1 : 0) + (state.memoryEnabled ? 1 : 0);
+  if (extras < 1) return '';
+  const parts = ['your role\'s Handoff Summary (or Output Format) first'];
+  if (recordHandoffHint()) parts.push('then the DONE:/STATUS: record lines');
+  if (state.memoryEnabled) parts.push('then the memory breadcrumb comment as the very last line');
+  return '**Closing order:** end your response with ' + parts.join(', ') + '.';
+}
 function recordHandoffHint() {
   // Durable-record per-step cadence (write side): each step reports transcribe-ready
   // lines so the orchestrator copies them into the record rather than re-deriving.
@@ -1470,7 +1483,12 @@ function datadogStepHint(node) {
 // injected at the per-agent emission sites, NEVER in getEffectivePrompt (which also
 // drives the node-config display). Toggle is the single source of truth for code-search
 // guidance - no code-search text is hardcoded in any agent template. Returns '' when not applicable.
-const CODE_SEARCH_STEP_ROLES = new Set(['planner', 'architect', 'researcher', 'debugger', 'coder', 'backend', 'frontend', 'general']);
+// Includes the review/critic roles (reviewer, tester, adversary, verifier): the hint's own
+// rationale - cross-repo seams, producer/consumer pairs - squarely fits auditing work, and
+// the hint self-gates ("Reach for whichever technique fits"). Writer stays out (docs work
+// rarely spans repo seams); DATADOG_STEP_ROLES stays narrower on purpose - plan-shaping
+// telemetry belongs to the reasoning roles, implementers inherit it via the orchestrator's brief.
+const CODE_SEARCH_STEP_ROLES = new Set(['planner', 'architect', 'researcher', 'debugger', 'coder', 'backend', 'frontend', 'general', 'reviewer', 'tester', 'adversary', 'verifier']);
 function codeSearchStepHint(node) {
   if (!state.mcpCodeSearch) return '';
   if (!node || !node.config || !CODE_SEARCH_STEP_ROLES.has(node.config.agentType)) return '';
@@ -1498,16 +1516,30 @@ function getEffectivePrompt(node) {
   }
   const mapped = AGENT_TYPE_PROMPT_MAP[node.config.agentType];
   if (mapped && PROMPTS[mapped]) return PROMPTS[mapped];
-  // Smart fallback for unknown/unmapped agent types using the node label + notes
-  // (mapped types, incl. 'general', resolve above via AGENT_TYPE_PROMPT_MAP -> PROMPTS)
+  // Smart fallback for unknown/unmapped agent types: the General template's body
+  // verbatim (single source, no drift), with the first line seeded from the node's
+  // label + notes. Display-only for these types - classifyAgentPrompt template-compares
+  // mapped types only, so the dynamic first line never breaks pristine detection.
   const taskDesc = (node.config.notes && node.config.notes.trim()) ? `${node.label}: ${node.config.notes.trim()}` : node.label;
-  return `Complete the task: ${taskDesc}.\n\n1. Read and understand any input from previous steps\n2. Use Glob and Grep to orient yourself in the codebase before making changes\n3. Use \`LSP workspaceSymbol\` to find relevant types and symbols in the task area\n4. Use \`LSP goToDefinition\` and \`LSP findReferences\` on key symbols before modifying them - understand their usage scope\n5. Use \`LSP incomingCalls\` / \`LSP outgoingCalls\` to trace call chains if the task involves tracing behavior or fixing a bug\n6. Analyze the requirements and plan your approach\n7. Execute the work using the tools available to you\n8. Verify your output is complete and correct - run linter/tests if applicable\n9. Document what was done and any issues encountered\n\n## Handoff Summary\nEnd your response with:\n- **Completed**: What was accomplished\n- **Files Changed**: Specific files created or modified (with brief reason)\n- **Key Decisions**: Important choices made and why\n- **Next Step Needs**: What the next agent must know to continue effectively`;
+  return `Complete the task: ${taskDesc}.` + PROMPTS.general.slice(PROMPTS.general.indexOf('\n'));
 }
 
 // Classifies an agent node's prompt as empty / unmodified-template / custom by
 // recomputing the would-be template exactly as getEffectivePrompt does (writer-style
 // variant, else AGENT_TYPE_PROMPT_MAP -> PROMPTS) and comparing trim() to the stored
 // prompt. Display-only: drives the node-config status line + preview, never generation.
+// True when the text byte-matches (trim) ANY role template a node could have been baked
+// from: every mapped PROMPTS template, every writer style variant, and every adversary
+// critic variant. Pristine template text is safe to swap on a type change; anything
+// else is user work and must never be touched.
+function matchesAnyRoleTemplate(text) {
+  const t = (text || '').trim();
+  if (!t) return false;
+  if (Object.values(AGENT_TYPE_PROMPT_MAP).some(k => PROMPTS[k] && t === PROMPTS[k].trim())) return true;
+  if (WRITING_STYLES.some(s => { const k = 'writer' + capitalize(s.id); return PROMPTS[k] && t === PROMPTS[k].trim(); })) return true;
+  return [...Object.keys(ADVERSARY_LENS_BY_ROLE), undefined].some(r => t === buildAdversaryPrompt(r).trim());
+}
+
 function classifyAgentPrompt(node) {
   const text = getEffectivePrompt(node);
   const role = getAgentTypeName(node.config.agentType);
@@ -1528,6 +1560,9 @@ function classifyAgentPrompt(node) {
     if (mapped && PROMPTS[mapped]) template = PROMPTS[mapped];
   }
   if (template !== null && stored.trim() === template.trim()) return { state: 'template', role, lines, text };
+  // Pristine template text from a DIFFERENT role (a pre-fix type change left it behind):
+  // say so instead of claiming it was "edited from" this role's template.
+  if (matchesAnyRoleTemplate(stored)) return { state: 'foreign-template', role, lines, text };
   return { state: 'custom', role, lines, text };
 }
 
@@ -1618,13 +1653,9 @@ const PROMPTS = {
   validator: 'Validate that all improvements are correct and complete.\n\n\n1. Cross-reference Reviewer findings against Improver changes\n2. Verify all Critical and High items were addressed\n3. Run the full test suite - all tests must pass\n4. Run the linter - no new errors or warnings\n5. Confirm no new issues were introduced\n\nOutput: PASS/FAIL verdict, findings coverage (X of Y addressed), test results, and linter results.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or FAIL\n- **Findings Coverage**: X of Y critical/high items verified\n- **Test Results**: Suite pass/fail with any new failures\n- **Remaining Concerns**: Anything that still needs attention',
 
   // --- Research ---
-  codebaseExplorer: 'Explore the codebase to map the current implementation.\n\n\n1. Use `Glob "**/*"` to map file structure, then `LSP workspaceSymbol` to get a symbol-level inventory of the relevant domain\n2. Use `LSP documentSymbol` on each key file to understand its exported API and internal structure at a glance\n3. Use `LSP outgoingCalls` on entry-point functions to trace the full execution path - follow the chain down to leaf dependencies\n4. Use `LSP incomingCalls` on core utilities to understand which parts of the system depend on them\n5. Use `LSP goToImplementation` on key interfaces and abstract classes to find all concrete implementations\n6. Use `LSP findReferences` on shared types and constants to map where they are consumed across the codebase\n7. Use `LSP hover` to quickly get type signatures and doc comments without reading full definition files\n8. Document current architecture, patterns, and abstractions\n9. Identify extension points and integration boundaries\n10. Note technical debt or constraints that may affect implementation\n\nOutput: structured findings with file references, call hierarchy map, interface→implementation inventory, architecture overview, and key patterns discovered.\n\n## Handoff Summary\nEnd your response with:\n- **Architecture Map**: Key modules and their relationships\n- **Call Hierarchy**: Critical execution paths traced via LSP\n- **Extension Points**: Where new code should integrate\n- **Reusable Code**: Existing utilities, hooks, and patterns to leverage\n- **Constraints**: Technical debt or limitations affecting implementation',
 
-  docResearcher: 'Research official documentation, best practices, and community solutions.\n\n\n1. Use `WebSearch` to find official framework/library documentation for the relevant technologies and versions\n2. Use `WebFetch` to read key documentation pages and extract relevant patterns, API signatures, and examples\n3. Identify established best practices and recommended approaches from official sources\n4. Search for community solutions to similar problems - look for common pitfalls others have encountered\n5. Note any known anti-patterns, version-specific issues, or migration concerns\n6. Gather concrete code examples demonstrating recommended approaches\n\nOutput: curated findings with source URLs, recommended approaches ranked by suitability, and pitfalls to avoid.\n\n## Handoff Summary\nEnd your response with:\n- **Recommended Approach**: Best approach based on documentation research\n- **Key References**: URLs to the most relevant documentation pages\n- **Code Examples**: Concrete patterns from official docs to follow\n- **Pitfalls**: Known issues or anti-patterns to avoid\n- **Version Notes**: Any version-specific considerations',
 
-  patternAnalyzer: 'Analyze existing patterns and conventions in the codebase.\n\n\n1. Use `LSP workspaceSymbol` to search for types and names similar to the feature being built - find the closest existing analogues\n2. Use `LSP documentSymbol` on the best analogue files to understand their internal structure and naming conventions\n3. Use `LSP findReferences` on shared utilities, hooks, and base classes to understand which ones are convention vs one-off\n4. Use `LSP goToImplementation` on common interfaces to compare how different features implement the same contract\n5. Note naming conventions, file organization, and import styles derived from LSP findings\n6. Note any deviations from established patterns\n7. Assess which patterns should be followed vs improved\n\nOutput: pattern inventory with code examples (file:line references), convention guide, and recommendations for the implementation approach.\n\n## Handoff Summary\nEnd your response with:\n- **Pattern to Follow**: The closest existing analogue with file:line\n- **Conventions**: Naming, file organization, and import styles to match\n- **Shared Code**: Reusable utilities and their LSP-verified reference counts\n- **Deviations**: Existing inconsistencies to be aware of\n- **Recommendation**: Preferred implementation approach aligned with codebase patterns',
 
-  synthesizer: 'Synthesize findings from all researchers into actionable recommendations.\n\n\n1. Correlate findings across codebase exploration, documentation, and pattern analysis\n2. Identify consensus and conflicts between sources\n3. Prioritize recommendations by impact and feasibility\n4. Create a clear action plan with specific steps and file references\n5. Flag risks or open questions requiring human decision\n\nOutput: executive summary, prioritized recommendations, concrete action plan, and risk register.\n\n## Handoff Summary\nEnd your response with:\n- **Recommended Approach**: Top recommendation with rationale\n- **Action Plan**: Numbered steps for implementation\n- **Open Questions**: Items requiring human decision before proceeding\n- **Risks**: Conflicts or uncertainties from the research findings',
 
   // --- Audit ---
   securityAuditor: 'Audit for security vulnerabilities across the codebase.\n\n\n1. Use `LSP workspaceSymbol` to find all authentication, authorization, and input-handling functions\n2. Use `LSP incomingCalls` on each auth/permission check to map all callers - identify any code path that does NOT call it (potential bypass)\n3. Use `LSP findReferences` on user-controlled input parameters to trace them through the codebase - identify where they reach sinks (queries, shell commands, HTML output) without sanitization\n4. Use `LSP outgoingCalls` on request handler entry points to trace the full data flow from input to storage/output\n5. Use `LSP goToDefinition` on security-sensitive types (tokens, sessions, credentials) to verify they are handled correctly throughout\n\nFocus: SQL/command injection, XSS, CSRF, auth/authorization flaws, data exposure, insecure dependencies, secrets in code, OWASP Top 10.\n\nFor each finding: severity (Critical/High/Medium/Low), location (file:line), LSP-traced data flow, potential exploit scenario, and remediation steps. Output a prioritized security findings list.\n\n## Handoff Summary\nEnd your response with:\n- **Critical Findings**: Immediate-action vulnerabilities with file:line\n- **High Findings**: Important but not immediately exploitable\n- **Data Flow Risks**: Untrusted input paths reaching sensitive sinks\n- **Auth Gaps**: Code paths without proper auth checks\n- **Remediation Priority**: Top items ranked by exploitability',
@@ -3639,9 +3670,19 @@ function deleteConnection(id) {
 }
 
 function selectNode(id, skipRender) {
+  // Selecting a node must give visible feedback: the config panel sits far down the
+  // sidebar, so scroll it into view - but only on a genuine selection CHANGE (never on
+  // re-selects or drag-start of the already-selected node, which would scroll-jack).
+  const changed = state.selectedId !== id;
   state.selectedId = id;
   if (!skipRender) render();
   updateConfig();
+  if (changed && id !== null) {
+    const panel = $('configPanel');
+    if (panel && panel.classList.contains('visible') && panel.scrollIntoView) {
+      panel.scrollIntoView({ block: 'nearest' });
+    }
+  }
 }
 
 function duplicateNode() {
@@ -4065,6 +4106,15 @@ function updateConfig() {
           const p = getEffectivePrompt(node);
           node.config.prompt = p;
           promptEl.value = p;
+        } else if (promptEl && matchesAnyRoleTemplate(promptEl.value)) {
+          // Same pristine-swap rule the Writing Style handler uses: an unmodified role
+          // template re-bakes for the NEW type (a second type change used to strand the
+          // previous role's text under a status line claiming it came from the new one).
+          // User-customized text never enters this branch.
+          node.config.prompt = '';
+          const p = getEffectivePrompt(node);
+          node.config.prompt = p;
+          promptEl.value = p;
         }
         // Re-render to show/hide Writing Style dropdown
         updateConfig();
@@ -4187,11 +4237,13 @@ function agentPromptStatusBlock(node) {
     status = `Using the ${info.role} role template (auto-applied when the workflow is generated). Type here to override with your own.`;
   } else if (info.state === 'template') {
     status = `Full ${info.role} role template attached (~${info.lines} lines). It is auto-applied when the workflow is generated; edit to customize.`;
+  } else if (info.state === 'foreign-template') {
+    status = `Unmodified template text from a different role (left over from an agent-type change). Reset to apply the ${info.role} template.`;
   } else {
     status = `Edited from the ${info.role} template (${info.lines} lines).`;
   }
   const hint = `Two ways to steer this agent: edit the Agent Prompt above to change the template in place, or leave it as the role template and add extra context in Agent Context below.`;
-  const resetBtn = info.state === 'custom'
+  const resetBtn = (info.state === 'custom' || info.state === 'foreign-template')
     ? `<button type="button" class="agent-prompt-reset" data-role="${escHtml(info.role)}">Reset to ${escHtml(info.role)} template</button>`
     : '';
   return `<div class="config-field agent-prompt-field" style="margin-top:-6px">
@@ -6328,16 +6380,20 @@ function generateFromStory() {
 
   } else if (dominant === 'research') {
     // Research/advisory spike: parallel investigation -> synthesize -> report. Read-only,
-    // never writes code. Mirrors the Parallel Research preset.
-    const fork = addNode('parallel', 0, 0, 'Research', { strategy: 'all', description: 'Investigate the question from multiple angles' });
+    // never writes code. Mirrors the Parallel Research preset: same mode/options inference
+    // from the story, same mode-aware prompt builders, and the fork carries researchMode
+    // so applyResearchMode works on the auto-built workflow too.
+    const rMode = inferResearchMode(story);
+    const rOptions = detectNamedOptions(story);
+    const fork = addNode('parallel', 0, 0, 'Research', { strategy: 'all', description: 'Investigate the question from multiple angles', researchMode: rMode, options: rOptions, evaluationBias: '' });
     addConnection(entryNode.id, fork.id);
     const r1 = addNode('agent', 0, 0, 'Codebase Researcher', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'LSP'], prompt: PROMPTS.researcher, notes: '', maxTurns: 10 });
-    const r2 = addNode('agent', 0, 0, 'Options Researcher', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'WebSearch'], prompt: PROMPTS.researcher, notes: '', maxTurns: 10 });
-    const r3 = addNode('agent', 0, 0, 'Tradeoff Analyzer', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'LSP', 'WebSearch'], prompt: PROMPTS.researcher, notes: '', maxTurns: 10 });
+    const r2 = addNode('agent', 0, 0, 'Options Researcher', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'WebSearch', 'WebFetch'], prompt: researchDocPrompt(rMode, rOptions), notes: '', maxTurns: 10 });
+    const r3 = addNode('agent', 0, 0, 'Tradeoff Analyzer', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'LSP'], prompt: researchPatternPrompt(rMode, rOptions), notes: '', maxTurns: 10 });
     addConnection(fork.id, r1.id); addConnection(fork.id, r2.id); addConnection(fork.id, r3.id);
     const join = addNode('parallel', 0, 0, 'Synthesize', { strategy: 'all' });
     addConnection(r1.id, join.id); addConnection(r2.id, join.id); addConnection(r3.id, join.id);
-    const synth = addNode('agent', 0, 0, 'Synthesizer', { agentType: 'writer', writingStyle: 'technical', model: state.defaultModel, tools: WRITER_TOOL_DEFAULTS.technical, prompt: PROMPTS.writerTechnical, notes: '', maxTurns: 10 });
+    const synth = addNode('agent', 0, 0, 'Synthesizer', { agentType: 'planner', model: state.defaultModel, tools: ['Read', 'Write'], prompt: researchSynthesizerPrompt(rMode, rOptions, ''), notes: '', maxTurns: 5 });
     addConnection(join.id, synth.id);
     const output = addNode('output', 0, 0, 'Research Report', { deliverable: 'Findings, scored options, tradeoffs, and a recommendation', format: 'report' });
     addConnection(synth.id, output.id);
@@ -6347,7 +6403,7 @@ function generateFromStory() {
     // Measure / forecast / cost-estimate task: gather the data, analyze it, write the
     // report. Read-only, produces a report - never writes code. Distinct from research
     // (evaluate options) and review (audit code).
-    const gather = addNode('agent', 0, 0, 'Data Gatherer', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP', 'WebFetch'], prompt: PROMPTS.researcher, notes: '', maxTurns: 10 });
+    const gather = addNode('agent', 0, 0, 'Data Gatherer', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP'], prompt: PROMPTS.researcher, notes: '', maxTurns: 10 });
     addConnection(entryNode.id, gather.id);
     const analyst = addNode('agent', 0, 0, 'Analyst', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP'], prompt: PROMPTS.researcher, notes: '', maxTurns: 10 });
     addConnection(gather.id, analyst.id);
@@ -6473,20 +6529,30 @@ function generateFromStory() {
   if (selfContained) {
     // research/review already built their reviewer/synthesizer and output node.
   } else if (isDocWorkflow) {
-    // Documentation: doc reviewer → output (no code review, no testing)
-    const docReviewer = addNode('agent', 0, 0, 'Doc Reviewer', {
-      agentType: 'reviewer', model: state.defaultModel,
-      tools: ['Read', 'Grep', 'Glob', 'LSP'],
-      prompt: PROMPTS.reviewer,
-      notes: 'Review documentation for accuracy, completeness, clarity, and adherence to project documentation conventions.',
-      maxTurns: 5
-    });
-    lastNodes.forEach(n => addConnection(n.id, docReviewer.id));
-
+    // Documentation: adversarial writer-lens review of the DOCS -> gate -> output,
+    // mirroring the documentation preset (accuracy against the code, completeness,
+    // clarity - not a code-review checklist). The loop needs a single reviewed node;
+    // with several tail branches, fall back to a linear writer-lens reviewer.
     const output = addNode('output', 0, 0, 'Documentation', {
       deliverable: 'Complete documentation deliverable', format: 'docs'
     });
-    addConnection(docReviewer.id, output.id);
+    if (lastNodes.length === 1) {
+      const docWriter = lastNodes[0];
+      const dc = addNode('agent', 0, 0, 'Skeptic review: ' + docWriter.label, { agentType: 'adversary', adversaryRole: 'writer', reviewLoopFor: docWriter.id, reviewLoopKind: 'adversary', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'LSP'], maxTurns: 5 });
+      const d = addNode('decision', 0, 0, 'Docs accurate?', { condition: 'Documentation is accurate against the code, complete, and clear', yesLabel: 'Passed', noLabel: 'Needs revision', maxRevisions: 3, reviewLoopDecisionFor: docWriter.id });
+      addConnection(docWriter.id, dc.id); addConnection(dc.id, d.id);
+      addConnection(d.id, docWriter.id, 'Needs revision'); addConnection(d.id, output.id, 'Passed');
+    } else {
+      const docReviewer = addNode('agent', 0, 0, 'Doc Reviewer', {
+        agentType: 'reviewer', model: state.defaultModel,
+        tools: ['Read', 'Grep', 'Glob', 'LSP'],
+        prompt: buildAdversaryPrompt('writer'),
+        notes: 'Review documentation for accuracy, completeness, clarity, and adherence to project documentation conventions.',
+        maxTurns: 5
+      });
+      lastNodes.forEach(n => addConnection(n.id, docReviewer.id));
+      addConnection(docReviewer.id, output.id);
+    }
 
   } else {
     // Code workflows: optional security → code review → decision → tester → output
@@ -7923,6 +7989,8 @@ function genSubAgents() {
       promptLines.push('');
       promptLines.push(genAgentMemoryPostamble(node.label, slugMap[node.id]));
     }
+    const _coSa = closingOrderNote();
+    if (_coSa) { promptLines.push(''); promptLines.push(_coSa); }
 
     return promptLines;
   }
@@ -8155,6 +8223,8 @@ function genAgentTeams() {
       lines.push(pre + '  3. End response with `<!-- WF_BC: ' + _wf + ' @' + _slug + ' {ISO-timestamp} -->`');
       lines.push(pre + '  ' + memoryWriteAuthNote());
     }
+    const _coAt = closingOrderNote();
+    if (_coAt) lines.push(pre + '- ' + _coAt);
 
     return lines;
   }
@@ -8317,6 +8387,23 @@ function genAgentSDK() {
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
+  // Clarify-first + Datadog grounding: same shared hint sources as the prose formats,
+  // rendered as wrapped # comments like the records block (blockquote markers, bold,
+  // and backticks stripped - no markdown in Python comments).
+  const _sdkHintLines = hint => hint.split('\n').forEach(line =>
+    wrapComment(line.replace(/^>\s?/, '').replace(/\*\*/g, '').replace(/`/g, ''), 79).forEach(l => p.push(l)));
+  if (state.clarifyFirst) {
+    p.push('# ── Clarify ambiguous requirements before planning ───────────────────────────');
+    _sdkHintLines(clarifyFirstHint());
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
+  if (state.mcpDatadog) {
+    p.push('# ── Ground the plan in production telemetry (if relevant) ────────────────────');
+    _sdkHintLines(datadogGroundingHint());
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
   if (state.mcpCodeSearch) {
     p.push('# ── Code search (MCP) (cross-repo code search) ───────────────────────────────');
     p.push('# If a code-search MCP is connected (e.g. Sourcebot, Sourcegraph, Kilo Code - any');
@@ -8407,6 +8494,9 @@ function genAgentSDK() {
       instructions.push('');
     }
     instructions.push(getEffectivePrompt(node));
+    // Per-step Datadog/code-search hints are deliberately NOT injected here: the SDK's
+    // tools=[...] param is hard enforcement and grants no MCP access, so the hint would
+    // be an un-executable instruction (pinned by tests R3/C5 "SDK exporter is excluded").
     if (node.config.notes && node.config.notes.trim()) instructions.push('Agent Context: ' + node.config.notes.trim());
     // Add downstream decision awareness
     const downDec = getDownstreamDecisions(node.id);
@@ -8420,6 +8510,8 @@ function genAgentSDK() {
       instructions.push('');
       instructions.push(genAgentMemoryPostamble(node.label, slugMap[node.id]));
     }
+    const _coSdk = closingOrderNote();
+    if (_coSdk) instructions.push(_coSdk);
 
     if (instructions.length > 0) {
       p.push(`    instructions="""`);
