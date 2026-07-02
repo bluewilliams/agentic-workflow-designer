@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "sdk-toggle-parity", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+genAgentSDK renders the clarifyFirst and mcpDatadog toggles as orchestrator-level # banners from the same shared hint sources the prose formats use. Per-step Datadog/code-search hints stay out of SDK agent instructions deliberately: the hard tools=[...] param grants no MCP access (pinned by tests R3/C5, rationale comment at the site).
+
 ## Why and scope
 
 genAgentSDK silently dropped two workflow toggles: `clarifyFirst` and `mcpDatadog` produced no output at all in the SDK format (every other format renders them; the OpenSpec exporter at least toasts about silent no-ops). A pipeline author reading the generated script had no idea the workflow was configured to clarify requirements first or ground in production telemetry.

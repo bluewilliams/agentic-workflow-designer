@@ -153,12 +153,12 @@ async function runAll(win) {
   const resultsEl = document.getElementById('results');
   resultsEl.innerHTML = '';
 
-  function runGroup(group, testsDiv, suiteName) {
+  async function runGroup(group, testsDiv, suiteName) {
     let gPass = 0, gFail = 0;
     for (const test of group.tests) {
       try {
         if (group.beforeEach) group.beforeEach();
-        test.fn();
+        await test.fn();
         if (group.afterEach) group.afterEach();
         gPass++; totalPass++;
         testsDiv.innerHTML += `<div class="test-row"><span class="icon">✅</span><span class="test-name">${esc(test.name)}</span></div>`;
@@ -172,7 +172,7 @@ async function runAll(win) {
     if (group.children) {
       for (const child of group.children) {
         testsDiv.innerHTML += `<div class="test-row" style="padding:6px 0 2px;border-bottom:none"><span style="font-size:11px;font-weight:600;color:var(--text2)">${esc(child.name)}</span></div>`;
-        const childResult = runGroup(child, testsDiv, suiteName + ' > ' + child.name);
+        const childResult = await runGroup(child, testsDiv, suiteName + ' > ' + child.name);
         gPass += childResult.pass;
         gFail += childResult.fail;
       }
@@ -186,7 +186,7 @@ async function runAll(win) {
     const testsDiv = document.createElement('div');
     testsDiv.className = 'tests';
 
-    const { pass: suitePass, fail: suiteFail } = runGroup(suite, testsDiv, suite.name);
+    const { pass: suitePass, fail: suiteFail } = await runGroup(suite, testsDiv, suite.name);
 
     const badge = suiteFail === 0
       ? `<span class="badge green">${suitePass} passed</span>`
@@ -1084,10 +1084,11 @@ describe('Durable Record: protocol content', () => {
     expect(proto).toContain('tick them all now, do not batch them to finalize');
     expect(proto).toContain('An interrupted run must show exactly which items are done and which remain');
   });
-  it('v2.4: per-step update is a transcription of each step DONE/STATUS lines', () => {
+  it('v2.4: per-step update is a transcription of each step DONE/STATUS lines (exact box names)', () => {
     const proto = win.genDurableRecordProtocol();
     expect(proto).toContain('Transcribe, do not re-derive');
-    expect(proto).toContain('DONE: the work items it completed');
+    expect(proto).toContain('DONE: the exact checklist items it completed');
+    expect(proto).toContain('tick the exact boxes its DONE line names');
     expect(proto).toContain('STATUS: a one-line current-state');
   });
   it('v2.5: each agent gets the reusable transcribe-ready handoff fragment, gated on durableRecord', () => {
@@ -1129,12 +1130,16 @@ describe('Durable Record: protocol content', () => {
     // ...and explicitly NOT the workflow/agent step names.
     expect(proto).toContain("NOT the workflow's agent or step names");
   });
-  it('Task checklist and Spec quality check are explicit markdown checkboxes at a reasonable grain', () => {
+  it('Task checklist is granular + live: authored up front, one box per verifiable step, ticked as completed', () => {
     const proto = win.genDurableRecordProtocol();
     expect(proto).toContain('markdown checkbox list');  // both sections framed as checkbox lists
     expect(proto).toContain('- [ ]');                   // unchecked checkbox syntax
     expect(proto).toContain('- [x]');                   // checked checkbox syntax
-    expect(proto).toContain('reasonable grain');        // granularity guidance for the task breakdown
+    expect(proto).toContain('authored UP FRONT when the record is born');
+    expect(proto).toContain('one checkbox per discrete verifiable step');
+    expect(proto).toContain('could a fresh agent resume from this box?');
+    expect(proto).toContain('never transcribed wholesale at the end');
+    expect(proto).toContain('finds the FIRST unchecked Task-checklist box');  // resume semantics
   });
   it('v2.1: has a durable Built-with provenance item (committed, not transient progress)', () => {
     win.document.getElementById('workflowName').value = 'Demo';
@@ -1382,11 +1387,92 @@ describe('Durable Record: protocol content', () => {
     const proto = win.genDurableRecordProtocol();
     expect(proto).toContain('provisional until the grounding');
   });
-  it('v2.8: the index protocol describes scaling (grep-not-load-whole, archive superseded, capability-shard)', () => {
+  it('v2.8: the index protocol describes scaling (grep-not-load-whole, in-file Archive section, one file always)', () => {
     const proto = win.genDurableRecordProtocol();
     expect(proto).toContain('Scaling the index');
     expect(proto).toContain('context cost tracks relevance');
-    expect(proto).toContain('_index_archive.md');
+    expect(proto).toContain('Archive (superseded)');
+    expect(proto).toContain('The index stays ONE file, always');
+    expect(proto).toNotContain('_index_archive.md');   // no companion documents, ever (owner rule)
+  });
+});
+
+describe('Durable artifacts v2 (fence, Current behavior, archive, self-lint)', () => {
+  function protoOn() {
+    resetState();
+    win.state.memoryEnabled = true;
+    win.state.durableRecord = true;
+    win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write','Edit'], prompt:'', maxTurns:10 });
+  }
+  it('the record anatomy defines the awd:record fence (born current, no planned state)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('awd:record');
+    expect(proto).toContain('"status": "current|superseded"');
+    expect(proto).toContain('A record is born `current`');
+    expect(proto).toNotContain('planned|current');
+  });
+  it('Current behavior is the FIRST prose section and reads as present-tense living truth', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('**Current behavior**: the FIRST prose section');
+    expect(proto).toContain('this section is the present');
+  });
+  it('the no-new-documents rule is explicit (three surfaces only)', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('The durable system is EXACTLY three surfaces');
+    expect(proto).toContain('Never create any other durable document');
+    expect(proto).toContain('the Archive is a SECTION of `_index.md`, not a file');
+  });
+  it('the record grain rule (one record per unit of work) appears in the three core formats', () => {
+    protoOn();
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams()].forEach(out => {
+      expect(out).toContain('**Record grain: ONE record per unit of work**');
+      expect(out).toContain('SECTIONS of the one record');
+      expect(out).toContain('exactly one `_index.md` entry and one `_timeline.md` line');
+    });
+  });
+  it('finalize self-lint gate covers fence consistency, Current behavior truth, and actually-run verify', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('fence is present with a status consistent with the checklist');
+    expect(proto).toContain('Current behavior section reads as present-tense truth');
+    expect(proto).toContain('were ACTUALLY run this session');
+    expect(proto).toContain('the agent IS the linter');
+  });
+  it('verify commands must be exact and mirrored into the fence verify array', () => {
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('EXACT and copy-paste runnable');
+    expect(proto).toContain("Mirror the same commands into the `awd:record` fence's `verify` array");
+  });
+  it('the three core formats carry the v2 anatomy when memory+durable are on, none when durable off', () => {
+    protoOn();
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams()].forEach(out => {
+      expect(out).toContain('awd:record');
+      expect(out).toContain('Current behavior');
+      expect(out).toContain('Archive (superseded)');
+    });
+    win.state.durableRecord = false;
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams()].forEach(out => {
+      expect(out).toNotContain('awd:record');
+    });
+  });
+  it('grounding reads Current behavior first, skips the Archive, follows superseded_by forward - all consumers', () => {
+    resetState();
+    win.state.consumeRecords = true;
+    const h = win.consumeRecordsHint();
+    expect(h).toContain('read its "Current behavior" section first');
+    expect(h).toContain('skip anything in the index\'s "Archive (superseded)" section');
+    expect(h).toContain('follow its `superseded_by` pointer forward');
+    const g = win.openSpecGroundingBlock();
+    expect(g).toContain('Current behavior');
+    win.state.memoryEnabled = false;
+    win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    expect(win.genAgentSDK()).toContain('superseded_by');   // single token survives wrapComment line breaks
+  });
+  it('recordHandoffHint names exact checklist items so the orchestrator ticks precise boxes', () => {
+    win.state.durableRecord = true;
+    const rh = win.recordHandoffHint();
+    expect(rh).toContain('exact Task-checklist items you completed');
+    expect(rh).toContain('named as they appear');
+    win.state.durableRecord = false;
   });
 });
 
@@ -7958,6 +8044,126 @@ describe('Validation details modal (replaces native alert)', () => {
   });
 });
 
+describe('Workflow advisor (non-blocking suggestions)', () => {
+  function cleanRunReports() { try { win.localStorage.removeItem('awd_run_reports'); } catch (e) {} }
+  it('rule a: unreviewed build to output fires with a one-click Attach Skeptic that fixes it', () => {
+    resetState(); cleanRunReports();
+    const i = win.addNode('input', 0, 0, 'Story', {});
+    const c = win.addNode('agent', 200, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write','Edit'], prompt:'x', maxTurns:10 });
+    const c2 = win.addNode('agent', 300, 0, 'Builder Two', { agentType:'coder', model:'opus-4.8', tools:['Read','Write','Edit'], prompt:'x', maxTurns:10 });
+    const o = win.addNode('output', 400, 0, 'PR', { format:'pr', targetBranch:'main', branchName:'' });
+    win.addConnection(i.id, c.id); win.addConnection(c.id, c2.id); win.addConnection(c2.id, o.id);
+    const sugs = win.adviseWorkflow();
+    const hit = sugs.find(x => x.action === 'attachSkeptic');
+    expect(!!hit).toBe(true);
+    expect(hit.msg).toContain('no review step');
+    win.advisorAttachSkeptic(c2.id);
+    expect(win.hasReviewLoop(c2.id)).toBe(true);
+    // the terminal skeptic gates EVERYTHING upstream of the output: both builders sanitized
+    const after = win.adviseWorkflow();
+    expect(after.some(x => x.action === 'attachSkeptic')).toBe(false);
+  });
+  it('rule a: silent when a tester sits between the builder and the output', () => {
+    resetState(); cleanRunReports();
+    const c = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'x', maxTurns:10 });
+    const t = win.addNode('agent', 200, 0, 'Tester', { agentType:'tester', model:'opus-4.8', tools:['Read','Bash','Edit','Write'], prompt:'x', maxTurns:8 });
+    const o = win.addNode('output', 400, 0, 'PR', { format:'pr', targetBranch:'main', branchName:'' });
+    win.addConnection(c.id, t.id); win.addConnection(t.id, o.id);
+    expect(win.adviseWorkflow().some(x => x.action === 'attachSkeptic')).toBe(false);
+  });
+  it('rule b: fan-out converging only at the output suggests a synthesizer; a joiner silences it', () => {
+    resetState(); cleanRunReports();
+    const f = win.addNode('parallel', 0, 0, 'Fork', {});
+    const a = win.addNode('agent', 200, -50, 'Scout A', { agentType:'researcher', model:'opus-4.8', tools:['Read','Grep'], prompt:'x', maxTurns:10 });
+    const b = win.addNode('agent', 200, 50, 'Scout B', { agentType:'researcher', model:'opus-4.8', tools:['Read','Grep'], prompt:'x', maxTurns:10 });
+    const o = win.addNode('output', 400, 0, 'Report', { format:'report' });
+    win.addConnection(f.id, a.id); win.addConnection(f.id, b.id);
+    win.addConnection(a.id, o.id); win.addConnection(b.id, o.id);
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('synthesizer') !== -1)).toBe(true);
+    const j = win.addNode('agent', 300, 0, 'Joiner', { agentType:'writer', writingStyle:'technical', model:'opus-4.8', tools:['Read','Write'], prompt:'x', maxTurns:5 });
+    win.state.connections = win.state.connections.filter(c2 => !(c2.to === o.id));
+    win.addConnection(a.id, j.id); win.addConnection(b.id, j.id); win.addConnection(j.id, o.id);
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('synthesizer') !== -1)).toBe(false);
+  });
+  it('rule c: solo agent shipping a PR is flagged; a second agent clears it', () => {
+    resetState(); cleanRunReports();
+    const c = win.addNode('agent', 0, 0, 'Doer', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'x', maxTurns:10 });
+    const o = win.addNode('output', 200, 0, 'PR', { format:'pr', targetBranch:'main', branchName:'' });
+    win.addConnection(c.id, o.id);
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('One agent carries the whole workflow') !== -1)).toBe(true);
+    win.addNode('agent', 100, 100, 'Planner', { agentType:'planner', model:'opus-4.8', tools:['Read','Grep'], prompt:'x', maxTurns:5 });
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('One agent carries the whole workflow') !== -1)).toBe(false);
+  });
+  it('rule d: read-only role holding Write on its default template is questioned; a custom prompt is exempt', () => {
+    resetState(); cleanRunReports();
+    const pnode = win.addNode('agent', 0, 0, 'Planner', { agentType:'planner', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:5 });
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('read-and-analyze role') !== -1)).toBe(true);
+    pnode.config.prompt = 'Plan the work, then WRITE the plan to plan.md yourself.';
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('read-and-analyze role') !== -1)).toBe(false);
+  });
+  it('rule e: a builder with 3 turns is flagged as starved; 8 turns is fine', () => {
+    resetState(); cleanRunReports();
+    const c = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'x', maxTurns:3 });
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('raising Max Turns') !== -1)).toBe(true);
+    c.config.maxTurns = 8;
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('raising Max Turns') !== -1)).toBe(false);
+  });
+  it('rule f: telemetry advice fires only with seeded run reports and matches by slug', () => {
+    resetState(); cleanRunReports();
+    const c = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'x', maxTurns:10 });
+    const d = win.addNode('decision', 200, 0, 'Review passed?', { condition:'ok', yesLabel:'Yes', noLabel:'No', maxRevisions:3 });
+    win.addConnection(c.id, d.id);
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('revise cycles') !== -1)).toBe(false);
+    win.saveRunReports({ workflow: { nodes: {
+      'builder': { runs: 2, capHits: 2, failures: 1, cycleSum: 0, cycleRuns: 0 },
+      'review-passed': { runs: 0, capHits: 0, failures: 0, cycleSum: 6, cycleRuns: 2 }
+    }, unmatched: [] } });
+    const sugs = win.adviseWorkflow();
+    expect(sugs.some(x => x.msg.indexOf('averages 3.0 revise cycles') !== -1)).toBe(true);
+    expect(sugs.some(x => x.msg.indexOf('hit its turn cap in 2 of 2 runs') !== -1)).toBe(true);
+    expect(sugs.some(x => x.msg.indexOf('failed in 1 run') !== -1)).toBe(true);
+    cleanRunReports();
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('revise cycles') !== -1)).toBe(false);
+  });
+  it('suggestions never touch the validation badge (issues-only count)', () => {
+    resetState(); cleanRunReports();
+    const c = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'x', maxTurns:10 });
+    const o = win.addNode('output', 200, 0, 'PR', { format:'pr', targetBranch:'main', branchName:'' });
+    win.addConnection(c.id, o.id);
+    expect(win.validateWorkflow().length).toBe(0);
+    expect(win.adviseWorkflow().length).toBeGreaterThan(0);
+    win.updateValidation();
+    expect(win.document.getElementById('validationInfo').textContent).toBe('\u2713');
+  });
+  it('modal shows the SUGGESTIONS group with the Attach Skeptic button; both groups when issues exist too', () => {
+    resetState(); cleanRunReports();
+    const c = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'x', maxTurns:10 });
+    const o = win.addNode('output', 200, 0, 'PR', { format:'pr', targetBranch:'main', branchName:'' });
+    win.addConnection(c.id, o.id);
+    win.showValidation();
+    const list = win.document.getElementById('validationList');
+    expect(win.document.getElementById('validationOverlay').classList.contains('show')).toBe(true);
+    expect(list.textContent).toContain('SUGGESTIONS');
+    expect(list.innerHTML).toContain('advisorAttachSkeptic');
+    expect(list.textContent).toNotContain('ISSUES');
+    win.closeValidation();
+    win.addNode('agent', 300, 300, 'Loner', { agentType:'general', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:5 });
+    win.showValidation();
+    expect(list.textContent).toContain('ISSUES');
+    expect(list.textContent).toContain('SUGGESTIONS');
+    win.closeValidation();
+  });
+  it('every preset yields zero suggestions (calibration pin - all 15 audited, none nags)', () => {
+    cleanRunReports();
+    ['feature','bugfix','fullstack','ui_component','refactoring','documentation','devops','performance','data_migration','testing','test_automation','review','parallel_research','swarm','delivery_swarm'].forEach(p2 => {
+      resetState();
+      win.loadPreset(p2);
+      const sugs = win.adviseWorkflow();
+      expect(sugs.length + 0).toBe(0);
+    });
+  });
+});
+
 describe('Generated-output consistency', () => {
   it('genWorkflow parallel siblings carry Agent Context, Max turns, and Success gate like sequential steps', () => {
     resetState();
@@ -8258,6 +8464,189 @@ describe('Interleaved parallel sibling emission (no duplicates, no drops)', () =
   });
 });
 
+describe('Run report loop', () => {
+  function seedWorkflow() {
+    resetState();
+    win.localStorage.removeItem('awd_run_reports');
+    const a = win.addNode('agent', 0, 0, 'Planner', { agentType:'planner', model:'opus-4.8', tools:['Read','Grep','Glob','LSP'], prompt:'', maxTurns:10 });
+    const b = win.addNode('agent', 200, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write','Edit'], prompt:'', maxTurns:10 });
+    const d = win.addNode('decision', 400, 0, 'Review Passed', { condition:'ok', yesLabel:'Yes', noLabel:'No', maxRevisions:3 });
+    win.addConnection(a.id, b.id); win.addConnection(b.id, d.id);
+    return { a, b, d };
+  }
+  function seededReport() {
+    return { workflow: win.getName() || 'workflow',
+      steps: [ { slug:'planner', status:'done', turns:4, cap:10 },
+               { slug:'builder', status:'done', turns:10, cap:10 },
+               { slug:'ghost-step', status:'failed' } ],
+      gates: [ { slug:'review-passed', cycles:2, final:'Yes' } ], notes:'' };
+  }
+  it('the run-report directive is emitted in the three core formats (and claude), with the fence schema', () => {
+    seedWorkflow();
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genClaudePrompt()].forEach(out => {
+      expect(out).toContain('## Run Report (end of run)');
+      expect(out).toContain('```awd:run');
+      expect(out).toContain('never invent numbers');
+    });
+  });
+  it('the SDK gets only the one-line convention comment, not the directive', () => {
+    seedWorkflow();
+    const sdk = win.genAgentSDK();
+    expect(sdk).toContain('# Run-report convention');
+    expect(sdk).toNotContain('## Run Report (end of run)');
+  });
+  it('the OpenSpec apply instruction carries the fence and the reverse-grounding breadcrumb', () => {
+    seedWorkflow();
+    const out = win.addNode('output', 600, 0, 'Done', { format:'code', deliverable:'' });
+    win.addConnection(win.state.nodes.find(n => n.label === 'Review Passed').id, out.id, 'Yes');
+    const schema = win.buildOpenSpecSchema();
+    expect(schema.schemaYaml).toContain('awd:run');
+    expect(schema.schemaYaml).toContain('.workflow/_timeline.md');
+    expect(schema.schemaYaml).toContain('do not create `.workflow/` or any files if the system is absent');
+  });
+  it('parseRunReport: raw fence, fence embedded in a record, garbage, and absent all behave', () => {
+    const fence = '```awd:run\n{"workflow":"w","steps":[{"slug":"a","status":"done"}]}\n```';
+    expect(win.parseRunReport(fence).steps.length).toBe(1);
+    const md = '# A record\n\nSome prose.\n\n' + fence + '\n\nMore prose.';
+    expect(win.parseRunReport(md).workflow).toBe('w');
+    expect(win.parseRunReport('```awd:run\nnot json\n```')).toBe(null);
+    expect(win.parseRunReport('no fence here')).toBe(null);
+    expect(win.parseRunReport('```awd:run\n{"workflow":"w"}\n```')).toBe(null);
+  });
+  it('ingestion aggregates stats, counts cap hits, and collects unmatched slugs', () => {
+    seedWorkflow();
+    win.ingestRunReport(seededReport());
+    win.ingestRunReport(seededReport());
+    const wf = win.loadRunReports()[win.getName() || 'workflow'];
+    expect(wf.nodes['planner'].runs).toBe(2);
+    expect(wf.nodes['planner'].capHits).toBe(0);
+    expect(wf.nodes['builder'].capHits).toBe(2);
+    expect(wf.nodes['ghost-step'].failures).toBe(2);
+    expect(wf.nodes['review-passed'].cycleRuns).toBe(2);
+    expect(wf.nodes['review-passed'].cycleSum).toBe(4);
+    expect(wf.unmatched.includes('ghost-step')).toBe(true);
+    expect(wf.unmatched.length).toBe(1);
+  });
+  it('badges and the config Run history line appear with stats and are absent without', () => {
+    const { b } = seedWorkflow();
+    win.render();
+    expect(win.document.querySelectorAll('.run-stats-badge').length).toBe(0);
+    win.ingestRunReport(seededReport());
+    win.render();
+    expect(win.document.querySelectorAll('.run-stats-badge').length).toBeGreaterThan(0);
+    win.selectNode(b.id); win.updateConfig();
+    expect(!!win.document.querySelector('.config-run-history')).toBe(true);
+    win.localStorage.removeItem('awd_run_reports');
+    win.render(); win.updateConfig();
+    expect(win.document.querySelectorAll('.run-stats-badge').length).toBe(0);
+    expect(!!win.document.querySelector('.config-run-history')).toBe(false);
+  });
+  it('the tuning prompt composes stats + awd JSON + the return-updated-JSON instruction; empty without stats', () => {
+    seedWorkflow();
+    expect(win.genTuningPrompt()).toBe('');
+    expect(win.hasRunReportData(win.getName() || 'workflow')).toBe(false);
+    win.ingestRunReport(seededReport());
+    expect(win.hasRunReportData(win.getName() || 'workflow')).toBe(true);
+    const t = win.genTuningPrompt();
+    expect(t).toContain('| builder | 1 | 1 |');
+    expect(t).toContain('agentic-workflow-designer');
+    expect(t).toContain('COMPLETE updated workflow');
+    expect(t).toContain('do not invent telemetry');
+    win.localStorage.removeItem('awd_run_reports');
+  });
+});
+
+describe('Repo folder connect (run-report auto-ingestion)', () => {
+  const F1 = '```awd:run\n{"workflow":"wf-a","steps":[{"slug":"builder","status":"done","turns":3,"cap":10}]}\n```';
+  const F2 = '```awd:run\n{"workflow":"wf-a","steps":[{"slug":"builder","status":"done","turns":10,"cap":10}],"gates":[{"slug":"gate","cycles":2,"final":"Pass"}]}\n```';
+  const BAD = '```awd:run\nnot json\n```';
+  it('extractRunFences finds every valid fence, skips invalid ones, and parseRunReport keeps its first-fence contract', () => {
+    const text = '# Record\nprose\n' + F1 + '\nmore\n' + BAD + '\n' + F2 + '\ntail';
+    const all = win.extractRunFences(text);
+    expect(all.length).toBe(2);
+    expect(all[0].rep.steps[0].turns).toBe(3);
+    expect(all[1].rep.gates[0].cycles).toBe(2);
+    expect(typeof all[0].raw).toBe('string');
+    expect(win.extractRunFences('no fences here').length).toBe(0);
+    expect(win.parseRunReport(text).steps[0].turns).toBe(3);
+  });
+  it('runReportHash is stable and input-sensitive', () => {
+    expect(win.runReportHash('abc')).toBe(win.runReportHash('abc'));
+    expect(win.runReportHash('abc') === win.runReportHash('abd')).toBe(false);
+    expect(typeof win.runReportHash('')).toBe('string');
+  });
+  it('ingestRunFences dedupes within a call, across calls, and across feeds; aggregates count once', () => {
+    resetState();
+    win.localStorage.removeItem('awd_run_reports');
+    const r1 = win.ingestRunFences(win.extractRunFences(F1 + '\n' + F1 + '\n' + F2), { quiet: true });
+    expect(r1.ingested).toBe(2);
+    expect(r1.skipped).toBe(1);
+    const r2 = win.ingestRunFences(win.extractRunFences(F2), { quiet: true });
+    expect(r2.ingested).toBe(0);
+    expect(r2.skipped).toBe(1);
+    const agg = win.loadRunReports()['wf-a'].nodes['builder'];
+    expect(agg.runs).toBe(2);
+    expect(agg.capHits).toBe(1);
+    win.localStorage.removeItem('awd_run_reports');
+  });
+  it('the ingested-hash set is capped at 500', () => {
+    win.localStorage.removeItem('awd_run_reports');
+    const fences = [];
+    for (let i = 0; i < 505; i++) fences.push({ raw: 'raw-' + i, rep: { workflow: 'wf-cap', steps: [] } });
+    win.ingestRunFences(fences, { quiet: true });
+    expect(win.loadRunReports()._hashes.length).toBe(500);
+    win.localStorage.removeItem('awd_run_reports');
+  });
+  it('scanRunReportsFromHandle reads only .md files via the async-iterator protocol (fake handle)', async () => {
+    const mk = (name, text) => ({ kind: 'file', name, getFile: async () => ({ text: async () => text }) });
+    const fake = { async *values() {
+      yield mk('a.md', 'prose\n' + F1);
+      yield mk('b.txt', F1);
+      yield mk('c.md', 'two runs\n' + F2 + '\nmiddle prose\n' + F1);
+      yield { kind: 'directory', name: 'sub' };
+      yield mk('d.md', 'no fences at all');
+    } };
+    const out = await win.scanRunReportsFromHandle(fake);
+    expect(out.length).toBe(3);
+    expect(out[0].source).toBe('a.md');
+    expect(out[1].source).toBe('c.md');
+    expect(out.filter(c => c.source === 'b.txt').length).toBe(0);
+  });
+  it('resolveRecordsDir descends into .workflow when present, else uses the picked folder', async () => {
+    const wfDir = { name: '.workflow' };
+    const root = { name: 'repo', getDirectoryHandle: async (n) => { if (n === '.workflow') return wfDir; throw new Error('no'); } };
+    const bare = { name: 'records', getDirectoryHandle: async () => { throw new Error('no'); } };
+    expect(await win.resolveRecordsDir(root)).toBe(wfDir);
+    expect(await win.resolveRecordsDir(bare)).toBe(bare);
+  });
+  it('UI affordance is consistent with API support and inert when never connected', () => {
+    win.repoConnect.handle = null; win.repoConnect.name = ''; win.repoConnect.status = 'none';
+    win.renderRepoConnect();
+    const wrap = win.document.getElementById('repoConnectWrap');
+    expect(!!wrap).toBe(true);
+    if (win.repoConnectSupported()) {
+      expect(wrap.style.display === 'none').toBe(false);
+      expect(wrap.innerHTML).toContain('Connect repo');
+    } else {
+      expect(wrap.style.display).toBe('none');
+      expect(win.document.querySelectorAll('#repoConnectWrap button').length).toBe(0);
+    }
+  });
+  it('connected and permission-lapsed states render rescan/disconnect and reconnect', () => {
+    if (!win.repoConnectSupported()) { expect(true).toBe(true); return; }
+    win.repoConnect.handle = { name: '.workflow' }; win.repoConnect.name = '.workflow'; win.repoConnect.status = 'granted';
+    win.renderRepoConnect();
+    const wrap = win.document.getElementById('repoConnectWrap');
+    expect(wrap.innerHTML).toContain('.workflow');
+    expect(wrap.innerHTML).toContain('disconnectRepoFolder');
+    win.repoConnect.status = 'prompt';
+    win.renderRepoConnect();
+    expect(wrap.innerHTML).toContain('Reconnect');
+    win.repoConnect.handle = null; win.repoConnect.name = ''; win.repoConnect.status = 'none';
+    win.renderRepoConnect();
+  });
+});
+
 describe('Agent Context round-trip through OpenSpec (export -> foreign import -> re-export)', () => {
   it('openSpecExtractAgentContext splits the block out of the prompt (and none present -> notes empty)', () => {
     const r = win.openSpecExtractAgentContext('Do the work.\n\nAgent Context:\nUse src/api.\n\nIntended execution parameters (a runtime honors what it can):\n- Role: General');
@@ -8328,7 +8717,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.toolSubstitutionNote = toolSubstitutionNote; window.toolScopeNote = toolScopeNote; window.showValidation = showValidation; window.closeValidation = closeValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.toolSubstitutionNote = toolSubstitutionNote; window.toolScopeNote = toolScopeNote; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

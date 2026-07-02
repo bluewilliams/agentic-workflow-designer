@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "general-agent-template", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+The General agent type resolves to its own neutral scaffold template (PROMPTS.general: complete the task, orient, plan, execute, verify, Handoff Summary) via AGENT_TYPE_PROMPT_MAP.general = 'general', distinct from the Researcher template. validateWorkflow still nudges empty-prompt General agents to tailor the scaffold. The dynamic label-seeded fallback in getEffectivePrompt serves only genuinely unknown agent types and composes its body from PROMPTS.general so the two cannot drift.
+
 ## Why and scope
 
 Resetting a "General" agent filled its Agent Prompt with the **codebase-research** template - because `AGENT_TYPE_PROMPT_MAP.general` pointed at `'researcher'` (the same prompt the dedicated Researcher type uses). So "General-purpose agent" silently handed you a research-specific checklist, and `classifyAgentPrompt` (which resolves templates through the same map) treated that researcher text AS the General template. Surfaced by Blue after a Reset.

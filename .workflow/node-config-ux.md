@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "node-config-ux", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+Selecting a node scrolls the config panel into view on a genuine selection change. Changing an agent's type re-bakes a pristine template prompt for the new type via matchesAnyRoleTemplate() and never touches customized text; classifyAgentPrompt reports a truthful foreign-template state with a Reset button for stranded old-role text.
+
 ## Why and scope
 
 Two node-configuration UX defects from the audit. (1) Selecting a node gave NO visible feedback: the config panel sits ~1600px below the sidebar fold (headless-measured panel top 2621px in a 1000px viewport, sidebar scrollTop 0), so every configure step began with manual hunting. (2) The type-switch bake trap: changing agent type bakes the template into `config.prompt` only when the box is empty, so a SECOND type change stranded the previous role's full template under a status line claiming "Edited from the {new role} template" - and generation ran the new type on the old role's text.

@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "revise-loop-topo-generalization", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+isReviseBackEdge() (any decision's noLabel failure branch) is the shared predicate excluded from topologicalSort's ordering graph and from validateWorkflow's sibling-dependency reachability. Hand-built manual revise loops order correctly under Kahn's algorithm instead of falling back to creation order; all 15 preset outputs are unchanged (verified byte-identical), and the OpenSpec export anchors requires correctly for manual-loop schemas.
+
 ## Why and scope
 
 The review-loop-topo-order fix excluded only ATTACHED Skeptic/Verifier back-edges (reviewLoopDecisionFor) from topologicalSort, deliberately leaving hand-built revise loops on the creation-order fallback and naming the generalization as a follow-up. This is that follow-up: any decision's noLabel failure branch is a REVISION path, not a dependency - the app's decision semantics are pass/revise (every generator describes the No branch as "re-run with feedback"), so the ordering graph now excludes them all.

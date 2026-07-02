@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "delivery-ownership-subagents", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+In the sub-agent format, delivery (branch, push, PR) is orchestrator-owned and emitted once in genSubAgents' tail. Each agent prompt carries deliveryAgentNote() instead: pr/commit outputs get a branch-discipline note (never push or open the PR yourself), report/docs get nothing, and no-output workflows keep the per-agent noCommitBlock. The other four formats emit delivery at the orchestrator level as before.
+
 ## Why and scope
 
 In the sub-agent format, `buildAgentPrompt` injected the full imperative delivery block (`deliveryBlock('##')` - branch checkout, `git push`, `gh pr create` / Bitbucket API steps) into EVERY spawned agent's prompt. A literal mid-workflow Planner, Researcher, or Reviewer was licensed - instructed, even - to push the branch and open the PR before downstream steps ran, and several agents could each open one. The other four formats already emit delivery once at the orchestrator level; the sub-agent format was the outlier.

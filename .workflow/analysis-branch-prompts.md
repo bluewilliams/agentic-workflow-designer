@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "analysis-branch-prompts", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+The Auto Workflow analysis branch runs two bespoke templates: PROMPTS.analysisGatherer (a numbers-with-sources inventory - Bash repo metrics, LSP usage surfaces, conditional WebFetch for external reference data, measured-vs-estimated tagged at collection) and PROMPTS.analysisSynthesizer (visible arithmetic, justified assumptions, low/expected/high ranges, an independent sanity anchor, per-number confidence). The Data Gatherer's out-of-template tools are licensed in-prompt; no Agent Context line is needed.
+
 ## Why and scope
 
 The auto-builder's analysis branch (Data Gatherer -> Analyst -> Report Writer, for measure/forecast/cost/quantify stories) ran both agents on the generic codebase-research template, whose output contract ("recommended implementation approach") does not fit a measurement task at all. The Data Gatherer carried an interim Agent Context line licensing its Bash/WebFetch use because the shared template never mentioned them - the tool-selection-consistency record named a bespoke prompt as the proper fix. This is that fix.

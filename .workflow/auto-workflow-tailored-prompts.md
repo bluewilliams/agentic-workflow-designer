@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "auto-workflow-tailored-prompts", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+The Auto Workflow research branch mirrors the Parallel Research preset: mode inference from the story, researchDocPrompt/researchPatternPrompt/researchSynthesizerPrompt with the preset's tool sets, and the fork carries researchMode so the mode editor works on auto-built workflows. The documentation tail attaches the writer-lens Skeptic loop. The analysis branch runs the bespoke analysisGatherer/analysisSynthesizer prompts (see analysis-branch-prompts). The four dead PROMPTS keys are deleted.
+
 ## Why and scope
 
 The Auto Workflow builder's research and documentation paths produced measurably weaker prompts than the presets for the same intent. Research branch: 'Options Researcher' carried tools `Read/Grep/Glob/WebSearch` but the generic `PROMPTS.researcher` prompt, whose steps mandate seven LSP operations it did not have and never mention WebSearch; 'Tradeoff Analyzer' said nothing about tradeoffs; 'Synthesizer' got the technical-writer documentation template. Documentation path: 'Doc Reviewer' reviewed prose with the code-review checklist (`PROMPTS.reviewer`, "LSP findReferences on modified functions"). Meanwhile the tailored, mode-aware `research*Prompt` builders the Parallel Research preset uses sat unused, and four dead PROMPTS keys (`synthesizer`, `docResearcher`, `patternAnalyzer`, `codebaseExplorer`) lingered unreferenced.

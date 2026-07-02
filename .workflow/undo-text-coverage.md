@@ -2,6 +2,14 @@
 
 Branch: main. Status: current.
 
+```awd:record
+{"slug": "undo-text-coverage", "status": "current", "date": "2026-07-01", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": null}
+```
+
+## Current behavior
+
+Text edits undo at editing-session grain: the first input on a config field since (re)build or blur pushes the pre-edit snapshot, a keystroke burst is one entry, and the expand modal rides the same listener by construction. Node drags commit their mousedown snapshot only on mouseup with actual movement, so bare select-clicks consume no undo slots.
+
 ## Why and scope
 
 Two undo defects from the UX audit. (a) Config text edits never pushed an undo snapshot, so Cmd+Z after writing a prompt jumped to the last STRUCTURAL snapshot - it could silently wipe a hand-written prompt. (b) Every node mousedown pushed a snapshot even for plain select-clicks, so browsing a workflow flooded the 50-entry cap with no-ops and Cmd+Z "did nothing" repeatedly.
