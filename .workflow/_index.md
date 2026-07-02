@@ -2,6 +2,41 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## delivery-ownership-subagents
+
+- record: .workflow/delivery-ownership-subagents.md
+- intent: buildAgentPrompt injected the full imperative delivery block (branch/push/`gh pr create`) into EVERY sub-agent's prompt, licensing a mid-workflow Planner or Reviewer to open the PR (or several agents to each open one). Delivery is now orchestrator-owned in the sub-agent format too: genSubAgents emits `deliveryBlock('##')` once in its orchestrator tail (matching the other four formats, which were verified already orchestrator-level), and each agent gets `deliveryAgentNote()` instead - pr/commit = branch-discipline note (work on the feature branch, never push or open the PR yourself), report/docs = empty, no output node = the existing noCommitBlock verbatim.
+- files: index.html (deliveryAgentNote beside deliveryBlock; buildAgentPrompt swap; genSubAgents tail emission), tests.html (single gh-pr-create + per-agent discipline + no-output discipline tests)
+- status: current | date: 2026-07-01 | note: 1213 -> 1215 (+2). Content-lint.
+
+## review-loop-topo-order
+
+- record: .workflow/review-loop-topo-order.md
+- intent: attaching a Skeptic/Verifier to a non-terminal node emitted steps OUT OF ORDER in all four prose generators - topologicalSort fed the loop's failure back-edge to Kahn's as a dependency, the cluster went cyclic, and everything fell into the creation-order fallback (downstream Tester emitted before the Skeptic gate). New `isReviewLoopBackEdge()` (same identification as detach/reroute: decision with reviewLoopDecisionFor + noLabel-labelled edge) excluded from the adjacency; forward edges stay. OpenSpec mid-chain-loop export healed for free (gated artifact was `requires: []` orphan root, apply tracked the skeptic; now the chain is planner -> coder -> skeptic -> tester, apply requires tester). Manual revise loops deliberately untouched.
+- files: index.html (isReviewLoopBackEdge + topologicalSort exclusion), tests.html ("Review-loop topological ordering" describe)
+- status: current | date: 2026-07-01 | note: part of 1203 -> 1213 (+10 with parallel-sibling-emission). Content-lint.
+
+## parallel-sibling-emission
+
+- record: .workflow/parallel-sibling-emission.md
+- intent: all five generators emitted a parallel group with `i += siblings.length`, assuming siblings are contiguous in topo order; fork->(A,B) + A->C->B duplicated the A/B group and SILENTLY DROPPED C (SDK defined gamma_config but never called run()). Converted every loop to an emitted-id set walk (group emits once at first member, skips advance by 1, non-siblings emit in their own topo slot) - byte-identical for the contiguous case. Plus a validateWorkflow warning when fork siblings have a dependency path between them ("cannot truly run simultaneously"), with revise-edge-aware reachability (any decision's noLabel branch excluded) so manual revise loops like the test-automation preset don't false-positive.
+- files: index.html (5 emission loops + validator warning), tests.html ("Interleaved parallel sibling emission" describe)
+- status: current | date: 2026-07-01 | note: part of 1203 -> 1213. Content-lint.
+
+## generated-output-consistency
+
+- record: .workflow/generated-output-consistency.md
+- intent: batch of generated-output consistency fixes from the designer-wide audit: genWorkflow parallel siblings get Agent Context/Max turns/Success gate parity with sequential steps (was bare `Context:` + missing fields); empty-label decision fallbacks aligned to Yes/No at 10 sites (was Pass/Fail, contradicting routing text); 3 unguarded toolAccessText call sites now skip empty tool lists (per the helper's own documented contract); em dashes removed from all emitted strings (revise-cycle lines, TOON example, placeholder, palette tooltip); validator empty-General warning copy updated for PROMPTS.general ("generic scaffold - tailor it"); Debugger desc now honest ("Investigates bugs to root cause" - its template does not fix).
+- files: index.html (genWorkflow parallel branch, fallback sites, guards, strings, AGENT_TYPES desc), tests.html ("Generated-output consistency" describe)
+- status: current | date: 2026-07-01 | note: 1199 -> 1203 (+4). Content-lint.
+
+## memory-write-authorization
+
+- record: .workflow/memory-write-authorization.md
+- intent: the memory protocol mandates per-agent file appends but the closed tool enumeration made a Write-less agent (Skeptic/Verifier/preset Reviewer) read its tool list as forbidding them - and the SDK's hard `tools=[...]` made compliance impossible. Ruling: memory writes are PROTOCOL-level, not task-level. New `memoryWriteAuthNote()` sentence injected at every per-agent memory-write emission (genMemoryProtocol, postamble, Sub-Agents header, teammate WRITE LAST); genAgentSDK unions `"Write"` into the emitted tools param when memory is on and the node lacks it (with a generated-code comment). Direct per-agent writes kept deliberately (orchestrator-transcribes belongs to the durable-record layer, not memory). All behind existing memoryEnabled gates; off = byte-identical output.
+- files: index.html (memoryWriteAuthNote + 4 injections + genAgentSDK tools union), tests.html ("Memory write authorization" describe)
+- status: current | date: 2026-07-01 | note: 1195 -> 1199 (+4). Content-lint.
+
 ## general-agent-template
 
 - record: .workflow/general-agent-template.md

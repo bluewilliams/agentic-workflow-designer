@@ -7590,6 +7590,215 @@ describe('General agent template (distinct from Researcher)', () => {
   });
 });
 
+describe('Memory write authorization (read-only-task agents)', () => {
+  const NOTE = 'it does not restrict the memory protocol';
+  it('prose formats state that memory writes are exempt from the task tool list when memory is on', () => {
+    resetState();
+    win.state.memoryEnabled = true;
+    win.addNode('agent', 100, 100, 'Code Skeptic', { agentType:'adversary', model:'opus-4.8', tools:['Read','Grep','Glob','LSP'], prompt:'', maxTurns:8 });
+    expect(win.genWorkflow()).toContain(NOTE);
+    expect(win.genSubAgents()).toContain(NOTE);
+    expect(win.genAgentTeams()).toContain(NOTE);
+  });
+  it('emits no authorization note and no SDK Write union when memory is off', () => {
+    resetState();
+    win.state.memoryEnabled = false;
+    win.addNode('agent', 100, 100, 'Code Skeptic', { agentType:'adversary', model:'opus-4.8', tools:['Read','Grep','Glob','LSP'], prompt:'', maxTurns:8 });
+    expect(win.genWorkflow()).toNotContain(NOTE);
+    expect(win.genSubAgents()).toNotContain(NOTE);
+    expect(win.genAgentTeams()).toNotContain(NOTE);
+    const sdk = win.genAgentSDK();
+    expect(sdk).toContain('tools=["Read", "Grep", "Glob", "LSP"],');
+    expect(sdk).toNotContain('# Write added for the memory protocol');
+  });
+  it('SDK unions Write into the hard tools param for a Write-less agent when memory is on', () => {
+    resetState();
+    win.state.memoryEnabled = true;
+    win.addNode('agent', 100, 100, 'Code Skeptic', { agentType:'adversary', model:'opus-4.8', tools:['Read','Grep','Glob','LSP'], prompt:'', maxTurns:8 });
+    expect(win.genAgentSDK()).toContain('tools=["Read", "Grep", "Glob", "LSP", "Write"],  # Write added for the memory protocol');
+  });
+  it('SDK leaves an agent that already has Write untouched (no duplicate, no comment)', () => {
+    resetState();
+    win.state.memoryEnabled = true;
+    win.addNode('agent', 100, 100, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write','Edit'], prompt:'', maxTurns:10 });
+    const sdk = win.genAgentSDK();
+    expect(sdk).toContain('tools=["Read", "Write", "Edit"],');
+    expect(sdk).toNotContain('"Write", "Write"');
+    expect(sdk).toNotContain('# Write added for the memory protocol');
+  });
+});
+
+describe('Generated-output consistency', () => {
+  it('genWorkflow parallel siblings carry Agent Context, Max turns, and Success gate like sequential steps', () => {
+    resetState();
+    const f = win.addNode('parallel', 0, 0, 'Fork', {});
+    const a = win.addNode('agent', 200, 0, 'Worker A', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', notes:'Focus on the API layer', maxTurns:7 });
+    const b = win.addNode('agent', 200, 200, 'Worker B', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:9 });
+    const d = win.addNode('decision', 400, 0, 'Gate', { condition:'API layer complete', yesLabel:'Yes', noLabel:'No', maxRevisions:3 });
+    win.addConnection(f.id, a.id); win.addConnection(f.id, b.id); win.addConnection(a.id, d.id);
+    const wf = win.genWorkflow();
+    expect(wf).toContain('  - Agent Context: Focus on the API layer');
+    expect(wf).toContain('  - Max turns: 7');
+    expect(wf).toContain('  - Success gate: "API layer complete"');
+    expect(wf).toNotContain('  - Context: Focus on the API layer');
+  });
+  it('empty-label decisions fall back to Yes/No consistently (routing and gate text agree)', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    win.addNode('decision', 200, 0, 'Gate', { condition:'Done right', yesLabel:'', noLabel:'', maxRevisions:3 });
+    win.addConnection(a.id, win.state.nodes.find(n => n.type === 'decision').id);
+    const wf = win.genWorkflow();
+    expect(wf).toContain('→ Yes/No');
+    expect(wf).toNotContain('Pass/Fail');
+    expect(win.genAgentTeams()).toNotContain('Pass/Fail verdict');
+  });
+  it('an agent with an empty tool list emits no dangling tool line in any format', () => {
+    resetState();
+    win.addNode('agent', 0, 0, 'Thinker', { agentType:'planner', model:'opus-4.8', tools:[], prompt:'', maxTurns:5 });
+    expect(win.genWorkflow()).toNotContain('these tools: \n');
+    expect(win.genSubAgents()).toNotContain('these tools: \n');
+    expect(win.genAgentTeams()).toNotContain('these tools: \n');
+  });
+  it('sub-agent format: imperative PR steps emit ONCE (orchestrator); agents carry discipline only', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Coder A', { agentType:'coder', model:'opus-4.8', tools:['Read','Write','Edit','Bash'], prompt:'', maxTurns:10 });
+    const b = win.addNode('agent', 200, 0, 'Coder B', { agentType:'coder', model:'opus-4.8', tools:['Read','Write','Edit','Bash'], prompt:'', maxTurns:10 });
+    const o = win.addNode('output', 400, 0, 'PR', { format:'pr', targetBranch:'main', branchName:'' });
+    win.addConnection(a.id, b.id); win.addConnection(b.id, o.id);
+    const out = win.genSubAgents();
+    expect(out.split('gh pr create').length - 1).toBe(1);
+    expect(out.split('Delivery Discipline').length - 1).toBe(2);
+    expect(out).toContain('do NOT push the feature branch or open a pull request yourself');
+  });
+  it('sub-agent format: no output node keeps the per-agent no-commit discipline', () => {
+    resetState();
+    win.addNode('agent', 0, 0, 'Coder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    expect(win.genSubAgents()).toContain('Do not commit, push, or open a PR');
+  });
+  it('generated outputs contain no em dashes (revise-loop text included)', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const d = win.addNode('decision', 200, 0, 'Gate', { condition:'ok', yesLabel:'Yes', noLabel:'No', maxRevisions:3 });
+    const t = win.addNode('agent', 400, 0, 'Tester', { agentType:'tester', model:'opus-4.8', tools:['Read','Bash'], prompt:'', maxTurns:8 });
+    win.addConnection(a.id, d.id); win.addConnection(d.id, t.id, 'Yes'); win.addConnection(d.id, a.id, 'No');
+    win.state.memoryEnabled = true;
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genAgentSDK(), win.genClaudePrompt()].forEach(out => {
+      expect(out).toNotContain('—');
+    });
+  });
+});
+
+describe('Review-loop topological ordering (mid-chain loops)', () => {
+  function buildMidChainLoop() {
+    resetState();
+    const p = win.addNode('agent', 0, 0, 'Planner', { agentType:'planner', model:'opus-4.8', tools:['Read','Grep'], prompt:'', maxTurns:10 });
+    const c = win.addNode('agent', 200, 0, 'Coder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const t = win.addNode('agent', 400, 0, 'Tester', { agentType:'tester', model:'opus-4.8', tools:['Read','Bash'], prompt:'', maxTurns:10 });
+    win.addConnection(p.id, c.id); win.addConnection(c.id, t.id);
+    win.attachReviewLoop(c.id, 'adversary');
+    return { p, c, t };
+  }
+  it('topologicalSort places the loop cluster in flow order (back-edge is not a dependency)', () => {
+    buildMidChainLoop();
+    const order = win.topologicalSort().map(n => n.label);
+    expect(order.indexOf('Coder') > order.indexOf('Planner')).toBe(true);
+    expect(order.indexOf('Skeptic review: Coder') > order.indexOf('Coder')).toBe(true);
+    expect(order.indexOf('Tester') > order.indexOf('Skeptic review: Coder')).toBe(true);
+  });
+  it('all four prose formats emit the Skeptic review before the downstream Tester', () => {
+    buildMidChainLoop();
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genClaudePrompt()].forEach(out => {
+      const headings = out.match(/Step \d+: [^\n*]+/g) || [];
+      const rev = headings.findIndex(h => h.includes('Skeptic review: Coder'));
+      const tester = headings.findIndex(h => h.includes('Tester'));
+      expect(rev >= 0).toBe(true);
+      expect(tester >= 0).toBe(true);
+      expect(rev < tester).toBe(true);
+    });
+  });
+  it('OpenSpec export of a mid-chain loop keeps the dependency chain (no orphan root artifact)', () => {
+    buildMidChainLoop();
+    const y = win.buildOpenSpecSchema().schemaYaml;
+    const stanzaStart = y.indexOf('- id: tester');
+    const nextStanza = y.indexOf('- id:', stanzaStart + 1);
+    const stanza = y.slice(stanzaStart, nextStanza < 0 ? y.indexOf('\napply:') : nextStanza);
+    expect(stanzaStart >= 0).toBe(true);
+    expect(/requires:\s*\n\s*- skeptic-review-coder/.test(stanza)).toBe(true);
+    expect(stanza).toNotContain('requires: []');
+    expect(/apply:\s*\n\s*requires:\s*\n\s*- tester\b/.test(y)).toBe(true);
+    expect(y).toContain('tracks: tester.md');
+  });
+});
+
+describe('Interleaved parallel sibling emission (no duplicates, no drops)', () => {
+  function buildInterleaved() {
+    resetState();
+    const f = win.addNode('parallel', 0, 0, 'Fork', {});
+    const a = win.addNode('agent', 200, 0, 'Alpha', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const b = win.addNode('agent', 200, 200, 'Beta', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const g = win.addNode('agent', 400, 0, 'Gamma', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    win.addConnection(f.id, a.id); win.addConnection(f.id, b.id);
+    win.addConnection(a.id, g.id); win.addConnection(g.id, b.id);
+  }
+  const count = (s, re) => (s.match(re) || []).length;
+  it('genWorkflow emits the group once and Gamma exactly once', () => {
+    buildInterleaved();
+    const wf = win.genWorkflow();
+    expect(count(wf, /\*\*Alpha\*\*/g)).toBe(1);
+    expect(count(wf, /\*\*Beta\*\*/g)).toBe(1);
+    expect(count(wf, /Step \d+: Gamma/g)).toBe(1);
+    expect(count(wf, /\*\*Step \d+: Parallel Execution\*\*/g)).toBe(1);
+  });
+  it('genSubAgents emits the group once and Gamma exactly once', () => {
+    buildInterleaved();
+    const sa = win.genSubAgents();
+    expect(count(sa, /#### Alpha/g)).toBe(1);
+    expect(count(sa, /#### Beta/g)).toBe(1);
+    expect(count(sa, /Step \d+: Gamma/g)).toBe(1);
+    expect(count(sa, /Parallel - Launch Together/g)).toBe(1);
+  });
+  it('genAgentTeams spawns each teammate exactly once', () => {
+    buildInterleaved();
+    const at = win.genAgentTeams();
+    expect(count(at, /Teammate: "Alpha"/g)).toBe(1);
+    expect(count(at, /Teammate: "Beta"/g)).toBe(1);
+    expect(count(at, /Spawn "Gamma" Teammate/g)).toBe(1);
+  });
+  it('genAgentSDK runs every agent exactly once (Gamma is not dropped)', () => {
+    buildInterleaved();
+    const sdk = win.genAgentSDK();
+    expect(count(sdk, /alpha_task = asyncio\.create_task/g)).toBe(1);
+    expect(count(sdk, /beta_task = asyncio\.create_task/g)).toBe(1);
+    expect(count(sdk, /await gamma\.run\(/g)).toBe(1);
+  });
+  it('genClaudePrompt emits each perspective exactly once', () => {
+    buildInterleaved();
+    const cp = win.genClaudePrompt();
+    expect(count(cp, /\*\*Alpha\*\*/g)).toBe(1);
+    expect(count(cp, /\*\*Beta\*\*/g)).toBe(1);
+    expect(count(cp, /Step \d+: Gamma/g)).toBe(1);
+  });
+  it('validateWorkflow warns that dependent fork siblings cannot truly run in parallel', () => {
+    buildInterleaved();
+    const msgs = win.validateWorkflow().map(w => w.msg);
+    expect(msgs.some(m => m.includes('cannot truly run simultaneously'))).toBe(true);
+  });
+  it('a clean contiguous fork yields no sibling-dependency warning and unchanged emission', () => {
+    resetState();
+    const f = win.addNode('parallel', 0, 0, 'Fork', {});
+    const a = win.addNode('agent', 200, 0, 'Alpha', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const b = win.addNode('agent', 200, 200, 'Beta', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const j = win.addNode('agent', 400, 100, 'Joiner', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    win.addConnection(f.id, a.id); win.addConnection(f.id, b.id);
+    win.addConnection(a.id, j.id); win.addConnection(b.id, j.id);
+    const msgs = win.validateWorkflow().map(w => w.msg);
+    expect(msgs.some(m => m.includes('cannot truly run simultaneously'))).toBe(false);
+    const wf = win.genWorkflow();
+    expect(count(wf, /\*\*Alpha\*\*/g)).toBe(1);
+    expect(count(wf, /Step \d+: Joiner/g)).toBe(1);
+  });
+});
+
 describe('Agent Context round-trip through OpenSpec (export -> foreign import -> re-export)', () => {
   it('openSpecExtractAgentContext splits the block out of the prompt (and none present -> notes empty)', () => {
     const r = win.openSpecExtractAgentContext('Do the work.\n\nAgent Context:\nUse src/api.\n\nIntended execution parameters (a runtime honors what it can):\n- Role: General');
