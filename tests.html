@@ -8589,6 +8589,50 @@ describe('Run report loop', () => {
   });
 });
 
+describe('Workflow-level telemetry home (~/.awd)', () => {
+  it('the directive tells runs to append the fence to ~/.awd/run-reports.md, self-gating, in all prose formats', () => {
+    resetState();
+    win.addNode('agent', 0, 0, 'Coder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genClaudePrompt()].forEach(out => {
+      expect(out).toContain('~/.awd/run-reports.md');
+      expect(out).toContain('skip this silently');
+      expect(out).toContain('"repo": "my-app"');
+    });
+  });
+  it('the OpenSpec apply instruction carries the ~/.awd append and the optional repo field', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const o = win.addNode('output', 200, 0, 'Done', { format:'code' });
+    win.addConnection(a.id, o.id);
+    const schema = win.buildOpenSpecSchema();
+    expect(schema.schemaYaml).toContain('~/.awd/run-reports.md');
+    expect(schema.schemaYaml).toContain('"repo"');
+  });
+  it('a flat ~/.awd-shaped folder (no .workflow subdir, multi-fence run-reports.md) scans correctly', async () => {
+    const fences = '```awd:run\n{"workflow":"wf-x","steps":[{"slug":"a","status":"done"}]}\n```\n\n' +
+                   '```awd:run\n{"workflow":"wf-y","repo":"other-app","steps":[{"slug":"b","status":"done"}]}\n```';
+    const fakeAwd = { kind: 'directory', name: '.awd',
+      getDirectoryHandle: async () => { throw new Error('no .workflow'); },
+      values: async function* () {
+        yield { kind: 'file', name: 'run-reports.md', getFile: async () => ({ text: async () => fences, lastModified: 1 }) };
+      } };
+    const dir = await win.resolveRecordsDir(fakeAwd);
+    expect(dir).toBe(fakeAwd);
+    const found = await win.scanRunReportsFromHandle(dir);
+    expect(found.length).toBe(2);
+    expect(found[1].rep.repo).toBe('other-app');
+  });
+  it('a fence carrying the optional repo field ingests and aggregates exactly like one without', () => {
+    resetState();
+    win.localStorage.removeItem('awd_run_reports');
+    const withRepo = '```awd:run\n{"workflow":"wf-r","repo":"my-app","steps":[{"slug":"builder","status":"done","turns":9,"cap":10}]}\n```';
+    const r = win.ingestRunFences(win.extractRunFences(withRepo), { quiet: true });
+    expect(r.ingested).toBe(1);
+    const stats = win.loadRunReports()['wf-r'];
+    expect(stats.nodes.builder.runs).toBe(1);
+  });
+});
+
 describe('Repo folder connect (run-report auto-ingestion)', () => {
   const F1 = '```awd:run\n{"workflow":"wf-a","steps":[{"slug":"builder","status":"done","turns":3,"cap":10}]}\n```';
   const F2 = '```awd:run\n{"workflow":"wf-a","steps":[{"slug":"builder","status":"done","turns":10,"cap":10}],"gates":[{"slug":"gate","cycles":2,"final":"Pass"}]}\n```';
@@ -8659,7 +8703,7 @@ describe('Repo folder connect (run-report auto-ingestion)', () => {
     expect(!!wrap).toBe(true);
     if (win.repoConnectSupported()) {
       expect(wrap.style.display === 'none').toBe(false);
-      expect(wrap.innerHTML).toContain('Connect repo');
+      expect(wrap.innerHTML).toContain('Connect folder');
     } else {
       expect(wrap.style.display).toBe('none');
       expect(win.document.querySelectorAll('#repoConnectWrap button').length).toBe(0);
