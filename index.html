@@ -729,7 +729,7 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-section memory-section" id="runReportSection">
     <h3>Run Reports <span style="color:var(--text3);font-weight:400;font-size:11px">self-improvement</span></h3>
-    <p class="memory-help" id="runReportStatus">No run reports yet - runs report back automatically once connected (or paste a run's final response into Import).</p>
+    <p class="memory-help" id="runReportStatus">No run reports yet - connect ~/.awd once to catch every workflow's reports automatically (or a repo's .workflow folder for just that repo's; paste into Import works everywhere).</p>
     <div class="btn-row">
       <span id="repoConnectWrap" style="display:none;gap:4px;align-items:center"></span>
       <button class="btn sm" id="tuningPromptBtn" onclick="copyTuningPrompt()" title="Copy a tuning prompt built from imported run reports: Claude analyzes the telemetry and returns an improved workflow JSON to import back.">Tuning prompt</button>
@@ -1074,7 +1074,7 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h3>Run Reports &amp; Connect Repo</h3>
 <p>Generated workflows end with a small <code>awd:run</code> fence summarizing the run (steps, turn caps, gate cycles). Drop a run's final response or durable record onto <strong>Import</strong> and the designer badges your nodes with that telemetry; the <strong>Tuning prompt</strong> button turns the accumulated stats into a prompt that asks Claude to return an improved workflow JSON to import back. Everything lives in the <strong>Run Reports</strong> section, right below the memory and durable-record toggles - it completes that loop: the record a run keeps is where its report comes back from.</p>
-<p><strong>Connect repo</strong> (in the Run Reports section, Chromium only) removes even the paste: pick your repo or its <code>.workflow</code> folder once, and the designer auto-ingests new run fences from your durable records on every visit. Rescans never double-count (content-hash dedupe); disconnect anytime. Stats live in your browser only.</p>
+<p><strong>Connect folder</strong> (in the Run Reports section, Chromium only) removes even the paste. Recommended: connect <code>~/.awd</code> once - every run appends its fence to <code>~/.awd/run-reports.md</code>, so one grant catches every workflow against every repo, always on. Connecting a single repo's <code>.workflow</code> folder works too (reports also live in its durable records) when you only care about that repo. Rescans never double-count (content-hash dedupe); disconnect anytime. Stats live in your browser only.</p>
 <h3>Workflow Advisor</h3>
 <p>Click the health indicator to open the review modal. Below any issues, a lightbulb <b>Suggestions</b> group offers non-blocking advice: unreviewed build paths (one-click <b>Attach Skeptic</b>), fan-outs that never synthesize, solo agents shipping code, read-only roles holding write tools, starved turn budgets - and, once run reports are ingested, telemetry-informed tuning (gates that loop, steps that cap out or fail). Suggestions never affect the badge count and never block generation.</p>
 <h3>Explain This Workflow</h3>
@@ -1502,12 +1502,13 @@ function runReportDirective() {
   r.push('End your FINAL response with exactly one fenced code block tagged `awd:run` summarizing how the run went, so the workflow author can feed it back into the designer:');
   r.push('');
   r.push('```awd:run');
-  r.push('{"workflow": ' + JSON.stringify(name) + ', "steps": [{"slug": "planner", "status": "done", "turns": 4, "cap": 10}], "gates": [{"slug": "review-passed", "cycles": 2, "final": "Pass"}], "notes": ""}');
+  r.push('{"workflow": ' + JSON.stringify(name) + ', "repo": "my-app", "steps": [{"slug": "planner", "status": "done", "turns": 4, "cap": 10}], "gates": [{"slug": "review-passed", "cycles": 2, "final": "Pass"}], "notes": ""}');
   r.push('```');
   r.push('');
   r.push('- One `steps` entry per step, in execution order. `slug` is the step label lowercased and hyphenated (the same slug as its memory file). `status` is done, skipped, or failed.');
-  r.push('- Include `turns` and `cap` only if you actually tracked them - omit any field you do not know, never invent numbers.');
+  r.push('- Include `turns` and `cap` only if you actually tracked them - omit any field you do not know, never invent numbers. Include `repo` (the repository name the run executed against) when there is one; omit it otherwise.');
   r.push('- One `gates` entry per decision gate: the revise `cycles` actually used and the `final` verdict.');
+  r.push('- ALSO append the exact same fence to `~/.awd/run-reports.md`, creating the directory and file if missing - that file is the workflow designer\'s telemetry drop and its canonical feed (a copy inside a durable record is archival context). If writing outside the working directory is not permitted, skip this silently; the response fence still stands.');
   r.push('- The fence is data, not prose - place it at the very end of the final response. If a memory breadcrumb comment is required, the breadcrumb stays the very last line and this fence goes immediately before it.');
   return r.join('\n');
 }
@@ -7942,7 +7943,7 @@ function explainWorkflow(format) {
       : (decEmitted ? 'the orchestrator evaluates these gates and routes pass/revise'
                     : 'gates are carried inline on the steps in this format'),
     decEmitted ? decHeading : ''));
-  rows.push(exRow('Run report directive', true, 'always on - one awd:run fence at the end of the run feeds the designer badges and tuning prompt', 'Run Report (end of run)'));
+  rows.push(exRow('Run report directive', true, 'always on - one awd:run fence at the end of the run (and appended to ~/.awd/run-reports.md) feeds the designer badges and tuning prompt', runReportDirective()));
   return rows;
 }
 
@@ -10047,7 +10048,7 @@ function buildOpenSpecSchema() {
   // designer-native .workflow index so our grounding picks this run up unchanged (the
   // converge-on-one-index close for cross-tool grounding direction (d)). Self-gating:
   // the breadcrumb applies only where a .workflow/ system exists; never creates files.
-  applyInstr += '\n\nRun report: end your final output with exactly one fenced code block tagged `awd:run` holding one JSON object: {"workflow": ' + JSON.stringify(wfName) + ', "steps": [{"slug": "<step-slug>", "status": "done|skipped|failed"}], "gates": [{"slug": "<gate-slug>", "cycles": n, "final": "<verdict>"}], "notes": ""}. One steps entry per artifact executed, in order; omit fields you did not track, never invent numbers.';
+  applyInstr += '\n\nRun report: end your final output with exactly one fenced code block tagged `awd:run` holding one JSON object: {"workflow": ' + JSON.stringify(wfName) + ', "repo": "<repository name, omit if not applicable>", "steps": [{"slug": "<step-slug>", "status": "done|skipped|failed"}], "gates": [{"slug": "<gate-slug>", "cycles": n, "final": "<verdict>"}], "notes": ""}. One steps entry per artifact executed, in order; omit fields you did not track, never invent numbers. ALSO append the same fence to `~/.awd/run-reports.md` (create if missing - the workflow designer\'s canonical telemetry feed); skip silently if writing there is not permitted.';
   applyInstr += '\n\nDesigner breadcrumb: if the repository keeps a `.workflow/` record system (a `.workflow/_timeline.md` exists), prepend ONE line to `.workflow/_timeline.md` in its format: `<date> - ' + wfName + ' - <one line: what this run changed> - openspec/schemas/' + wfName + '/schema.yaml`. If `.workflow/_index.md` has no entry covering this capability, add a one-line entry in its format too. One static line per run; do not create `.workflow/` or any files if the system is absent.';
   L.push('');
   L.push('apply:');
@@ -10491,14 +10492,14 @@ function updateRunReportSection() {
   if (status) {
     status.textContent = has
       ? (wf.reports || 1) + ' run report' + ((wf.reports || 1) !== 1 ? 's' : '') + ' ingested for "' + name + '"' + (wf.lastDate ? ' - last ' + wf.lastDate : '') + '. Node badges and the tuning prompt are live.'
-      : 'No run reports yet - runs report back automatically once connected (or paste a run\'s final response into Import).';
+      : 'No run reports yet - connect ~/.awd once to catch every workflow\'s reports automatically (or a repo\'s .workflow folder for just that repo\'s; paste into Import works everywhere).';
   }
   if (tb) {
     tb.disabled = !has;
     tb.style.opacity = has ? '' : '0.5';
     tb.title = has
       ? 'Copy a tuning prompt built from imported run reports: Claude analyzes the telemetry and returns an improved workflow JSON to import back.'
-      : 'Import a run report first (connect the repo, or drop a run\'s final response or durable record containing an awd:run fence onto Import).';
+      : 'Import a run report first (connect ~/.awd or the repo\'s .workflow folder, or drop a run\'s final response containing an awd:run fence onto Import).';
   }
 }
 function runStatsSummary(rs) {
@@ -10713,7 +10714,7 @@ function renderRepoConnect() {
   if (!repoConnectSupported()) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'inline-flex';
   if (!repoConnect.handle) {
-    wrap.innerHTML = '<button class="btn sm" onclick="connectRepoFolder()" title="Connect your repo (or its .workflow folder) once - the designer then auto-imports new run reports from durable records on every visit. Chromium only; Import paste/drop works everywhere.">Connect repo</button>';
+    wrap.innerHTML = '<button class="btn sm" onclick="connectRepoFolder()" title="Recommended: connect ~/.awd once to auto-import every workflow\'s run reports on every visit (runs append their telemetry there). Or connect a repo\'s .workflow folder for just that repo. Chromium only; Import paste/drop works everywhere.">Connect folder</button>';
   } else if (repoConnect.status === 'prompt') {
     wrap.innerHTML = '<button class="btn sm" onclick="scanConnectedRepo(true)" title="Permission is needed again for ' + escHtml(repoConnect.name) + ' - one click re-grants and rescans.">Reconnect ' + escHtml(repoConnect.name) + '</button>';
   } else {

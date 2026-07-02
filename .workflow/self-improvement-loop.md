@@ -100,3 +100,12 @@ Owner UX ruling: the loop's read-side controls were scattered and overlookable -
 - [x] Workflow Management row back to exactly four controls (wrap fix, test-pinned)
 - [x] Tuning prompt out of Export; gating via updateRunReportSection on the updatePrompt seam + ingestion
 - [x] Help/README wording; +2 tests (section order/home, status + gate tracking); suite green; content-lint
+
+## Update (same day): telemetry is workflow-level - the ~/.awd common home
+
+Owner ruling: run telemetry is a WORKFLOW-level concern, not a repo-level one - the repo scoping was an accident of transport (the fence rode the durable record because it already existed). The directive now also instructs every run to APPEND the same fence to `~/.awd/run-reports.md` (creating it if missing), named as the designer's canonical telemetry feed; the copy inside a durable record is archival context and stays. Self-gating: if writing outside the working directory is not permitted (Claude Code prompts for out-of-tree writes; one always-allow settles it per machine), the run skips silently and the final-response fence still stands as the paste fallback. The OpenSpec apply instruction carries the same addition. The fence schema gains an optional `repo` field (the repository the run executed against, omit-never-invent) as future-proofing for per-repo segmentation - no UI built for it. Designer side needed almost nothing: resolveRecordsDir already falls back to a flat picked folder, extractRunFences already reads every fence in a file, and the content-hash dedupe already makes overlapping feeds safe - so connecting `~/.awd` once covers every workflow against every repo, always on, which is the owner's "relates to the workflows alone so it's on or off" model. Connect UI, help modal, and README now lead with the ~/.awd recommendation and demote per-repo connect to the alternative. The workflow-level explain row now carries the full directive text (same header-literal gap class fixed for the memory rows earlier). +4 tests (directive in all prose formats + OpenSpec, flat-folder scan with repo field, repo-field ingestion). 1306 -> 1310.
+
+- [x] Directive: ~/.awd append + canonical wording + self-gating skip + repo field (prose formats + OpenSpec apply)
+- [x] Connect UI / help / README lead with ~/.awd; per-repo demoted to alternative
+- [x] Flat-folder resolveRecordsDir + multi-fence run-reports.md scan test; repo-field ingestion test
+- [x] Suite green; content-lint
