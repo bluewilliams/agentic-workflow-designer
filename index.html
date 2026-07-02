@@ -658,13 +658,11 @@ svg.canvas{width:100%;height:100%;display:block}
           <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportWorkflowFile();closeExportMenu()" title="Download just the workflow definition (.json) to reuse or share. Re-open it with Import.">Workflow JSON</button>
           <button class="btn sm" id="openspecExportBtn" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportOpenSpecSchema();closeExportMenu()" title="Download as an OpenSpec custom schema (.zip of schema.yaml + templates). Unzip at your repo root and run: openspec schema validate &lt;name&gt;. Re-import the schema.yaml here to edit it visually.">OpenSpec schema</button>
           <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportHandoffFile();closeExportMenu()" title="Download a resume package (.md) to hand in-progress work to another engineer: how to resume, the durable record path, the ready-to-run prompt, and the workflow definition. The live state travels with your git branch, not this file.">Handoff package</button>
-          <button class="btn sm" id="tuningPromptBtn" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="copyTuningPrompt();closeExportMenu()" title="Copy a tuning prompt built from imported run reports: Claude analyzes the telemetry and returns an improved workflow JSON to import back.">Tuning prompt</button>
         </div>
       </div>
       <label class="btn sm" style="margin:0">Import
         <input type="file" accept=".json,.yaml,.yml,.md" style="display:none" onchange="importWorkflowFile(event)">
       </label>
-      <span id="repoConnectWrap" style="display:none;gap:4px;align-items:center"></span>
     </div>
     <div class="saved-workflows-list" id="savedWorkflowList">
       <div class="saved-empty">No saved workflows yet</div>
@@ -729,6 +727,14 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
   </div>
 
+  <div class="sidebar-section memory-section" id="runReportSection">
+    <h3>Run Reports <span style="color:var(--text3);font-weight:400;font-size:11px">self-improvement</span></h3>
+    <p class="memory-help" id="runReportStatus">No run reports yet - runs report back automatically once connected (or paste a run's final response into Import).</p>
+    <div class="btn-row">
+      <span id="repoConnectWrap" style="display:none;gap:4px;align-items:center"></span>
+      <button class="btn sm" id="tuningPromptBtn" onclick="copyTuningPrompt()" title="Copy a tuning prompt built from imported run reports: Claude analyzes the telemetry and returns an improved workflow JSON to import back.">Tuning prompt</button>
+    </div>
+  </div>
 
   <div class="sidebar-section config-panel" id="configPanel">
     <h3>Node Configuration</h3>
@@ -1067,8 +1073,8 @@ svg.canvas{width:100%;height:100%;display:block}
 <h2 id="hg-more">More</h2>
 
 <h3>Run Reports &amp; Connect Repo</h3>
-<p>Generated workflows end with a small <code>awd:run</code> fence summarizing the run (steps, turn caps, gate cycles). Drop a run's final response or durable record onto <strong>Import</strong> and the designer badges your nodes with that telemetry; <strong>Export &#9662; &rarr; Tuning prompt</strong> turns the accumulated stats into a prompt that asks Claude to return an improved workflow JSON to import back.</p>
-<p><strong>Connect repo</strong> (next to Import, Chromium only) removes even the paste: pick your repo or its <code>.workflow</code> folder once, and the designer auto-ingests new run fences from your durable records on every visit. Rescans never double-count (content-hash dedupe); disconnect anytime. Stats live in your browser only.</p>
+<p>Generated workflows end with a small <code>awd:run</code> fence summarizing the run (steps, turn caps, gate cycles). Drop a run's final response or durable record onto <strong>Import</strong> and the designer badges your nodes with that telemetry; the <strong>Tuning prompt</strong> button turns the accumulated stats into a prompt that asks Claude to return an improved workflow JSON to import back. Everything lives in the <strong>Run Reports</strong> section, right below the memory and durable-record toggles - it completes that loop: the record a run keeps is where its report comes back from.</p>
+<p><strong>Connect repo</strong> (in the Run Reports section, Chromium only) removes even the paste: pick your repo or its <code>.workflow</code> folder once, and the designer auto-ingests new run fences from your durable records on every visit. Rescans never double-count (content-hash dedupe); disconnect anytime. Stats live in your browser only.</p>
 <h3>Workflow Advisor</h3>
 <p>Click the health indicator to open the review modal. Below any issues, a lightbulb <b>Suggestions</b> group offers non-blocking advice: unreviewed build paths (one-click <b>Attach Skeptic</b>), fan-outs that never synthesize, solo agents shipping code, read-only roles holding write tools, starved turn budgets - and, once run reports are ingested, telemetry-informed tuning (gates that loop, steps that cap out or fail). Suggestions never affect the badge count and never block generation.</p>
 <h3>Explain This Workflow</h3>
@@ -2975,16 +2981,6 @@ function toggleExportMenu(e) {
   const open = !m || m.style.display === 'none' || !m.style.display;
   if (m) m.style.display = open ? 'block' : 'none';
   if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false');
-  // Tuning prompt needs imported telemetry (guarded - removable with the run-report block).
-  const tb = $('tuningPromptBtn');
-  if (tb && open) {
-    const has = (typeof hasRunReportData === 'function') && hasRunReportData(getName() || 'workflow');
-    tb.disabled = !has;
-    tb.style.opacity = has ? '' : '0.5';
-    tb.title = has
-      ? 'Copy a tuning prompt built from imported run reports: Claude analyzes the telemetry and returns an improved workflow JSON to import back.'
-      : 'Import a run report first (drop a run\'s final response or durable record containing an awd:run fence onto Import).';
-  }
 }
 function closeExportMenu() {
   const m = $('exportMenu'), b = $('exportMenuBtn');
@@ -8041,6 +8037,9 @@ function updateTokenEstimate() {
 function updatePrompt() {
   const out = $('promptOutput');
   updateFormatRec();
+  // Run Reports section rides the universal re-render seam (covers workflow-name
+  // changes, imports, boot) - guarded so removing the run-report block is safe.
+  if (typeof updateRunReportSection === 'function') updateRunReportSection();
   if (state.nodes.length === 0) {
     const hints = {
       prompt: 'Add nodes to see a structured workflow overview...',
@@ -10458,7 +10457,9 @@ function ingestRunReport(rep, opts) {
   });
   wf.lastReport = rep;
   wf.lastDate = new Date().toISOString().slice(0, 10);
+  wf.reports = (wf.reports || 0) + 1;
   saveRunReports(data);
+  if (typeof updateRunReportSection === 'function') updateRunReportSection();
   if (!(opts && opts.quiet)) {
     showToast('Run report: ' + matched + ' step' + (matched !== 1 ? 's' : '') + ' matched, ' + gates + ' gate' + (gates !== 1 ? 's' : '') + (unmatched ? ', ' + unmatched + ' unmatched' : ''));
     render();
@@ -10475,6 +10476,30 @@ function runReportStatsFor(node) {
 function hasRunReportData(name) {
   const wf = loadRunReports()[name || getName() || 'workflow'];
   return !!(wf && wf.nodes && Object.keys(wf.nodes).length > 0);
+}
+// One home for the loop's read side (the Run Reports sidebar section, below the
+// memory/record toggles): status line + tuning-prompt gate. Called from updatePrompt
+// (the universal re-render seam, so workflow-name changes and imports are covered)
+// and after every ingestion, including quiet folder rescans.
+function updateRunReportSection() {
+  const status = $('runReportStatus');
+  const tb = $('tuningPromptBtn');
+  if (!status && !tb) return;
+  const name = getName() || 'workflow';
+  const wf = loadRunReports()[name];
+  const has = !!(wf && wf.nodes && Object.keys(wf.nodes).length > 0);
+  if (status) {
+    status.textContent = has
+      ? (wf.reports || 1) + ' run report' + ((wf.reports || 1) !== 1 ? 's' : '') + ' ingested for "' + name + '"' + (wf.lastDate ? ' - last ' + wf.lastDate : '') + '. Node badges and the tuning prompt are live.'
+      : 'No run reports yet - runs report back automatically once connected (or paste a run\'s final response into Import).';
+  }
+  if (tb) {
+    tb.disabled = !has;
+    tb.style.opacity = has ? '' : '0.5';
+    tb.title = has
+      ? 'Copy a tuning prompt built from imported run reports: Claude analyzes the telemetry and returns an improved workflow JSON to import back.'
+      : 'Import a run report first (connect the repo, or drop a run\'s final response or durable record containing an awd:run fence onto Import).';
+  }
 }
 function runStatsSummary(rs) {
   const avg = rs.cycleRuns ? (rs.cycleSum / rs.cycleRuns) : null;
