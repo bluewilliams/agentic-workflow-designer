@@ -118,6 +118,10 @@ Feed a report back and the designer learns: drop the run's final response or its
 
 **Connect repo (Chromium)**: next to Import, connect your repo (or its `.workflow` folder) once via the browser's File System Access API - the designer then rescans it on every visit and auto-ingests any new run fences from your durable records, no pasting. Content-hash dedupe means rescans and repeat imports never double-count. The folder handle persists in IndexedDB; disconnect anytime. On browsers without the API the button simply does not appear and paste/drop remains the path. Step matching is by label slug, so renaming a node orphans its old stats (advisory data - acceptable).
 
+## Explain This Workflow
+
+Every generated prompt is a composition: role templates, tool lines, MCP hints, memory and record protocols, gates, delivery discipline - each with its own firing condition. **Explain** (next to Copy) shows the anatomy of the currently selected format at the orchestrator level; **Explain this step** (in a node's config panel) shows the per-step anatomy: every part with emitted or skipped status, the reason (which toggle, which role set, which condition), and a snippet of the emitted text. Statuses come from calling the same helpers the generators call - never a parallel re-implementation - and agreement tests pin the explainer to the real output, so it cannot drift into flattery.
+
 ## Repo Context Paths
 
 The **Repo Context Paths** sidebar section lets you point agents at a repo's own rules and product docs, so generated workflows read and honor more than just the per-task spec. It captures path strings only (the designer never touches your filesystem); the agents do the reading. Two optional chip lists, each with a text input, an Add button, per-chip remove, Clear-all, and one-click quick-add suggestions:
