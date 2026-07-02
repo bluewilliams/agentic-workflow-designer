@@ -23,6 +23,14 @@ The per-agent `config.notes` field was named inconsistently: the UI called it **
 - 1189 -> 1190 (+1): a test asserting all 5 generators AND the OpenSpec export contain "Agent Context" and NOT "additional context".
 - Full suite green through the change; NO test pinned the old "Additional context" string (grep-confirmed before editing), so nothing broke. Content-lint.
 
+## Follow-on (same session): fixed the import<->export asymmetry for Agent Context
+
+The rename surfaced a pre-existing asymmetry: EXPORT embeds `config.notes` into the artifact `instruction` as an "Agent Context:" block, but foreign IMPORT was pulling notes from the artifact's `description` (a semantic conflation - an OpenSpec `description` is artifact metadata, not agent context) AND leaving our own "Agent Context:" text buried in the prompt on a round-trip. Fixed the IMPORT side (`openSpecSchemaToWorkflow`):
+- New `openSpecExtractAgentContext(instruction)`: pulls our "Agent Context:" block back into notes and strips it from the prompt (so a re-export does not duplicate it). Mirrors the export order (prompt -> Agent Context -> repo-context -> intent); notes end where the first trailing block begins. A genuinely foreign schema has no such block -> notes ''.
+- STOPPED mapping a foreign `description` -> notes. `description` now only backfills the prompt when there is no instruction; it is never treated as Agent Context.
+- Export is unchanged and provenance-independent: any node with notes gets the "Agent Context:" block in its instruction, so import -> add/edit Agent Context in the designer -> re-export bundles it with the instructions exactly like native (Blue's question). Our own normal round-trip stays lossless via `awd:meta`; this fixes the `awd:meta`-stripped case (e.g. `openspec schema fork`).
+- +3 tests incl. a full export -> foreign-import -> re-export round-trip asserting Agent Context is extracted (not buried), not sourced from a foreign description, and bundled exactly once on re-export (no dup). 1190 -> 1193.
+
 ## Task checklist
 
 - [x] Swap all 7 generated-output labels to "Agent Context" (comprehensive grep, both case variants)
