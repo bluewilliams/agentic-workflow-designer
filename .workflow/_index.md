@@ -2,6 +2,20 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## tool-selection-consistency
+
+- record: .workflow/tool-selection-consistency.md
+- intent: closes the owner's tool model end-to-end. Preset testers gain Edit (9 arrays; templates instruct modifying test files; Validator/Feature Writer left curated). New toolSubstitutionNote(node): when a node's effective prompt backtick-mentions a tool outside its selection (deselected LSP on a researcher), the five agent-facing surfaces emit one note naming the missing tools ("skip those steps or achieve the same goal with the tools you do have") - reconciles static shared templates with the closed enumeration without selection-aware template surgery. Silent when covered or on empty tool lists. UPDATE same day: toolScopeNote(tools) scopes the enumeration to the MODELED set - names withheld core tools explicitly, declares MCP/task-tracking/runtime utilities outside the ten chips unrestricted (owner: the closed list must not forbid tools we do not model); SDK gets the outside-clause only.
+- files: index.html (tester arrays, toolSubstitutionNote + 5 injections), tests.html (3 tests + exposure)
+- status: current | date: 2026-07-01 | note: 1237 -> 1240 (+3). Content-lint.
+
+## agent-type-tool-defaults
+
+- record: .workflow/agent-type-tool-defaults.md
+- intent: owner ruling - a role class implies a default tool floor (Researcher gets WebSearch/WebFetch, Coder gets write access, Planner is read-only), while a user deselect always wins. New AGENT_TYPE_TOOL_DEFAULTS map + agentTypeToolDefaults() resolver (general derives from NODE_DEFAULTS; adversary/verifier mirror REVIEW_LOOP_KINDS, equality test-pinned; writer defers to WRITER_TOOL_DEFAULTS per style). Type change now pristine-swaps tools by the same matches-ANY-default rule the prompt bake fix uses, so tools and prompt follow the node together; customized sets never swap (this also removed the old unconditional writer-branch tool clobber). PROMPTS.researcher gains one selection-safe conditional web step ("where... web tools are available to you") so the template never lies under any selection. Presets/auto-built nodes unaffected (explicit curated arrays, no type-change event).
+- files: index.html (map + helpers after WRITER_TOOL_DEFAULTS; agentType handler; researcher template step 10), tests.html ("Agent-type default tool sets" describe, 8 tests; iframe exposure line extended)
+- status: current | date: 2026-07-01 | note: 1229 -> 1237 (+8), then same-day UPDATE (see record): coder/frontend/backend/debugger +web tools with conditional template steps, reviewer deliberately unchanged (read-only), Agent Library form gains full pristine-swap parity via applyAgentTypeChange (old writer-only clobber removed). 1241 -> 1246. Content-lint. UI-swap tests drive the real dropdown headlessly.
+
 ## node-config-ux
 
 - record: .workflow/node-config-ux.md
@@ -19,7 +33,7 @@ Scan-then-open: read this index first, match an entry against the files or capab
 ## auto-workflow-tailored-prompts
 
 - record: .workflow/auto-workflow-tailored-prompts.md
-- intent: Auto Workflow's research branch now actually mirrors the Parallel Research preset (its comment claimed it already did): inferResearchMode/detectNamedOptions from the story, researchDocPrompt for Options Researcher (Read/WebSearch/WebFetch - no more 7 LSP steps without LSP), researchPatternPrompt for Tradeoff Analyzer, researchSynthesizerPrompt for the Synthesizer (planner type, Read/Write, like the preset); fork carries researchMode so the mode editor works on auto-built workflows. Documentation tail gets the preset's writer-lens Skeptic review loop ("Docs accurate?" gate) with a linear writer-lens fallback for multi-branch tails; the omit-decision-gate structural test rewritten to pin the new sharper contract. Data Gatherer drops unmentioned WebFetch (bespoke analysis prompt = named follow-up). Four dead PROMPTS keys deleted (synthesizer, docResearcher, patternAnalyzer, codebaseExplorer).
+- intent: Auto Workflow's research branch now actually mirrors the Parallel Research preset (its comment claimed it already did): inferResearchMode/detectNamedOptions from the story, researchDocPrompt for Options Researcher (Read/WebSearch/WebFetch - no more 7 LSP steps without LSP), researchPatternPrompt for Tradeoff Analyzer, researchSynthesizerPrompt for the Synthesizer (planner type, Read/Write, like the preset); fork carries researchMode so the mode editor works on auto-built workflows. Documentation tail gets the preset's writer-lens Skeptic review loop ("Docs accurate?" gate) with a linear writer-lens fallback for multi-branch tails; the omit-decision-gate structural test rewritten to pin the new sharper contract. Data Gatherer WebFetch: dropped, then RESTORED same day by owner ruling (availability is a floor; never shrink prior capability for prompt coherence) with an Agent Context line licensing Bash+WebFetch instead of a shared-template edit (bespoke analysis prompt = named follow-up; see record Update section). Four dead PROMPTS keys deleted (synthesizer, docResearcher, patternAnalyzer, codebaseExplorer).
 - files: index.html (research branch, documentation tail, analysis tools, PROMPTS), tests.html (tailored-prompts describe, doc-gate test, Atlassian-regression list)
 - status: current | date: 2026-07-01 | note: 1219 -> 1221. Content-lint.
 

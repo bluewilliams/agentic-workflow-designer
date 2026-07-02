@@ -7427,25 +7427,46 @@ describe('Custom Agents (Agent Library)', () => {
     win.applyAgentTypeChange(c2, 'planner', 'KEEP ME', 'My Step');
     expect(c2.prompt).toBe('KEEP ME');                          // typed prompt never overwritten
   });
-  it('applyAgentTypeChange swaps tools to the writing-style defaults for writer', () => {
-    const c = { agentType: 'coder', model: 'opus-4.8', tools: ['Read', 'Bash'], prompt: 'p', notes: '', maxTurns: 10 };
-    win.applyAgentTypeChange(c, 'writer', 'p', 'Doc');
-    expect(c.writingStyle).toBe('technical');
-    expect(c.tools).toContain('Write');                         // technical defaults include Write/Edit
-    expect(c.tools).toContain('Edit');
+  it('applyAgentTypeChange pristine-swaps tools (node-panel parity): defaults follow, customized stay', () => {
+    const pristine = { agentType: 'coder', model: 'opus-4.8', tools: [...win.AGENT_TYPE_TOOL_DEFAULTS.coder], prompt: 'p', notes: '', maxTurns: 10 };
+    win.applyAgentTypeChange(pristine, 'writer', 'p', 'Doc');
+    expect(pristine.writingStyle).toBe('technical');
+    expect(win.toolSetsEqual(pristine.tools, win.WRITER_TOOL_DEFAULTS.technical)).toBe(true);
+    const custom = { agentType: 'coder', model: 'opus-4.8', tools: ['Read', 'Bash'], prompt: 'p', notes: '', maxTurns: 10 };
+    win.applyAgentTypeChange(custom, 'writer', 'p', 'Doc');
+    expect(win.toolSetsEqual(custom.tools, ['Read', 'Bash'])).toBe(true);   // customized set never clobbered
   });
-  it('changing Agent Type in the form fills a blank prompt + writer swaps tools (parity with node panel)', () => {
-    win.saveCustomAgents([{ id: 'user:blank', name: 'Blank', source: 'user', pack: '', version: '1', updated: 'x', config: { agentType: 'general', model: 'opus-4.8', tools: ['Read'], prompt: '', notes: '', maxTurns: 10 } }]);
+  it('applyAgentTypeChange re-bakes a pristine role template and swaps pristine tools for any type', () => {
+    const c = { agentType: 'planner', model: 'opus-4.8', tools: [...win.AGENT_TYPE_TOOL_DEFAULTS.planner], prompt: win.PROMPTS.planner, notes: '', maxTurns: 10 };
+    win.applyAgentTypeChange(c, 'researcher', win.PROMPTS.planner, 'Step');
+    expect(c.tools.includes('WebSearch')).toBe(true);
+    expect(c.prompt).toBe(win.PROMPTS.researcher);
+  });
+  it('changing Agent Type in the form pristine-swaps tools + fills a blank prompt (parity with node panel)', () => {
+    win.saveCustomAgents([{ id: 'user:blank', name: 'Blank', source: 'user', pack: '', version: '1', updated: 'x', config: { agentType: 'general', model: 'opus-4.8', tools: [...win.AGENT_TYPE_TOOL_DEFAULTS.general], prompt: '', notes: '', maxTurns: 10 } }]);
     win.openAgentForm('user:blank');
     const d = win.document;
     d.getElementById('customAgentType').value = 'planner';
     win.onAgentFormTypeChange();
     expect(d.getElementById('customAgentPrompt').value.trim().length > 0).toBe(true); // blank prompt got filled
-    // now writer -> tools swap reflected in the chips
+    let active = [...d.getElementById('customAgentTools').querySelectorAll('.tool-tag.active')].map(b => b.textContent);
+    expect(win.toolSetsEqual(active, win.AGENT_TYPE_TOOL_DEFAULTS.planner)).toBe(true); // pristine general set swapped to planner defaults
+    // planner defaults are still pristine -> writer swaps chips to the style defaults
     d.getElementById('customAgentType').value = 'writer';
     win.onAgentFormTypeChange();
-    const active = [...d.getElementById('customAgentTools').querySelectorAll('.tool-tag.active')].map(b => b.textContent);
+    active = [...d.getElementById('customAgentTools').querySelectorAll('.tool-tag.active')].map(b => b.textContent);
     expect(active).toContain('Write');
+    win.saveCustomAgents([]);
+  });
+  it('a customized tool selection in the form survives an Agent Type change', () => {
+    win.saveCustomAgents([{ id: 'user:cust', name: 'Cust', source: 'user', pack: '', version: '1', updated: 'x', config: { agentType: 'general', model: 'opus-4.8', tools: ['Read', 'Bash'], prompt: 'my prompt', notes: '', maxTurns: 10 } }]);
+    win.openAgentForm('user:cust');
+    const d = win.document;
+    d.getElementById('customAgentType').value = 'researcher';
+    win.onAgentFormTypeChange();
+    const active = [...d.getElementById('customAgentTools').querySelectorAll('.tool-tag.active')].map(b => b.textContent);
+    expect(win.toolSetsEqual(active, ['Read', 'Bash'])).toBe(true);
+    expect(d.getElementById('customAgentPrompt').value).toBe('my prompt');
     win.saveCustomAgents([]);
   });
   it('favorites are a separate user-owned id list (survive independently of the agent object)', () => {
@@ -7694,6 +7715,149 @@ describe('Auto Workflow tailored research prompts', () => {
     ['synthesizer','docResearcher','patternAnalyzer','codebaseExplorer'].forEach(k => {
       expect(win.PROMPTS[k] === undefined).toBe(true);
     });
+  });
+  it('toolSubstitutionNote flags template-taught tools missing from the selection, in every agent-facing format', () => {
+    resetState();
+    const r = win.addNode('agent', 0, 0, 'Scout', { agentType:'researcher', model:'opus-4.8', tools:['Read','Grep','Glob'], prompt:'', maxTurns:10 });
+    const note = win.toolSubstitutionNote(r);
+    expect(note).toContain('your instructions mention');
+    expect(note).toContain('LSP');
+    expect(win.genWorkflow()).toContain('your instructions mention');
+    expect(win.genSubAgents()).toContain('your instructions mention');
+    expect(win.genAgentTeams()).toContain('your instructions mention');
+    expect(win.genAgentSDK()).toContain('your instructions mention');
+  });
+  it('toolScopeNote names withheld core tools and un-forbids the unmodeled world', () => {
+    resetState();
+    const note = win.toolScopeNote(['Read','Grep','Glob']);
+    expect(note).toContain('deliberately withheld');
+    expect(note).toContain('Write');
+    expect(note).toContain('MCP tools connected to your session');
+    const fullNote = win.toolScopeNote(win.ALL_TOOLS.slice());
+    expect(fullNote).toNotContain('deliberately withheld');
+    expect(fullNote).toContain('remain available as normal');
+    expect(win.toolScopeNote([])).toBe('');
+    const r = win.addNode('agent', 0, 0, 'Scout', { agentType:'planner', model:'opus-4.8', tools:['Read','Grep','Glob','LSP'], prompt:'', maxTurns:10 });
+    expect(win.genWorkflow()).toContain('deliberately withheld');
+    expect(win.genSubAgents()).toContain('deliberately withheld');
+    expect(win.genAgentTeams()).toContain('deliberately withheld');
+    expect(win.genAgentSDK()).toContain('not restricted by it and remain available');
+  });
+  it('toolSubstitutionNote stays silent when the selection covers the prompt, and on empty tool lists', () => {
+    resetState();
+    const full = win.addNode('agent', 0, 0, 'Full', { agentType:'coder', model:'opus-4.8', tools:['Read','Write','Edit','Bash','Grep','Glob','WebSearch','WebFetch','LSP'], prompt:'', maxTurns:10 });
+    expect(win.toolSubstitutionNote(full)).toBe('');
+    const bare = win.addNode('agent', 200, 0, 'Bare', { agentType:'researcher', model:'opus-4.8', tools:[], prompt:'', maxTurns:10 });
+    expect(win.toolSubstitutionNote(bare)).toBe('');
+  });
+  it('preset testers carry Edit (templates instruct modifying test files)', () => {
+    resetState();
+    win.loadPreset('feature');
+    const t = win.state.nodes.find(n => n.config && n.config.agentType === 'tester');
+    expect(!!t).toBe(true);
+    expect(t.config.tools.includes('Edit')).toBe(true);
+  });
+  it('analysis intent: Data Gatherer keeps WebFetch and Bash, licensed via Agent Context', () => {
+    resetState();
+    win.document.getElementById('storyInput').value = 'Measure usage and forecast the monthly cost for the ingestion service';
+    win.generateFromStory();
+    const gather = win.state.nodes.find(n => n.label === 'Data Gatherer');
+    expect(!!gather).toBe(true);
+    expect(gather.config.tools.includes('WebFetch')).toBe(true);
+    expect(gather.config.tools.includes('Bash')).toBe(true);
+    expect(gather.config.notes).toContain('WebFetch');
+    expect(gather.config.notes).toContain('Bash');
+  });
+});
+
+describe('Agent-type default tool sets', () => {
+  it('every agent type resolves to a non-empty default tool set of known tools', () => {
+    win.AGENT_TYPES.forEach(t => {
+      const d = win.agentTypeToolDefaults(t.id, 'technical');
+      expect(Array.isArray(d) && d.length > 0).toBe(true);
+      d.forEach(tool => expect(win.ALL_TOOLS.includes(tool)).toBe(true));
+    });
+  });
+  it('researcher defaults include the web tools; planner/reviewer defaults are read-only', () => {
+    expect(win.AGENT_TYPE_TOOL_DEFAULTS.researcher.includes('WebSearch')).toBe(true);
+    expect(win.AGENT_TYPE_TOOL_DEFAULTS.researcher.includes('WebFetch')).toBe(true);
+    ['planner', 'reviewer'].forEach(t => {
+      expect(win.AGENT_TYPE_TOOL_DEFAULTS[t].includes('Write')).toBe(false);
+      expect(win.AGENT_TYPE_TOOL_DEFAULTS[t].includes('Edit')).toBe(false);
+    });
+  });
+  it('adversary and verifier defaults mirror REVIEW_LOOP_KINDS (cannot drift)', () => {
+    ['adversary', 'verifier'].forEach(k => {
+      expect(win.toolSetsEqual(win.AGENT_TYPE_TOOL_DEFAULTS[k], win.REVIEW_LOOP_KINDS[k].tools)).toBe(true);
+    });
+  });
+  it('the general default IS the new-node default (derived, not copied)', () => {
+    expect(win.AGENT_TYPE_TOOL_DEFAULTS.general === win.NODE_DEFAULTS.agent.config.tools).toBe(true);
+  });
+  it('implementing and debugging types default to the web tools (refined defaults)', () => {
+    ['coder', 'frontend', 'backend', 'debugger'].forEach(t => {
+      expect(win.AGENT_TYPE_TOOL_DEFAULTS[t].includes('WebSearch')).toBe(true);
+      expect(win.AGENT_TYPE_TOOL_DEFAULTS[t].includes('WebFetch')).toBe(true);
+    });
+  });
+  it('implementer/frontend/backend/investigator templates teach the web tools conditionally', () => {
+    ['implementer', 'frontend', 'backend', 'investigator'].forEach(k => {
+      expect(win.PROMPTS[k]).toContain('web tools are available to you');
+      expect(win.PROMPTS[k]).toContain('WebSearch');
+      expect(win.PROMPTS[k]).toContain('WebFetch');
+    });
+  });
+  it('an outdated pristine set that still matches another type default swaps; one matching nothing is kept', () => {
+    resetState();
+    // Old coder default (pre web tools) is still exactly the tester default -> pristine, swaps.
+    const a = win.addNode('agent', 100, 200, 'A', { agentType:'coder', tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:'' });
+    win.selectNode(a.id);
+    win.updateConfig();
+    let sel = win.document.querySelector('.config-select[data-key="agentType"]');
+    selectCustomOption(sel, 'researcher');
+    expect(win.toolSetsEqual(a.config.tools, win.AGENT_TYPE_TOOL_DEFAULTS.researcher)).toBe(true);
+    // Old debugger default matches no current default -> treated as customized, kept.
+    const b = win.addNode('agent', 300, 200, 'B', { agentType:'debugger', tools:['Read','Bash','Grep','Glob','LSP'], prompt:'' });
+    win.selectNode(b.id);
+    win.updateConfig();
+    sel = win.document.querySelector('.config-select[data-key="agentType"]');
+    selectCustomOption(sel, 'researcher');
+    expect(win.toolSetsEqual(b.config.tools, ['Read','Bash','Grep','Glob','LSP'])).toBe(true);
+  });
+  it('pristine tools follow a type change: general -> researcher gains web tools, sheds write access', () => {
+    resetState();
+    const node = win.addNode('agent', 100, 200, 'Agent', { agentType:'general' });
+    win.selectNode(node.id);
+    win.updateConfig();
+    const typeSelect = win.document.querySelector('.config-select[data-key="agentType"]');
+    selectCustomOption(typeSelect, 'researcher');
+    expect(win.toolSetsEqual(node.config.tools, win.AGENT_TYPE_TOOL_DEFAULTS.researcher)).toBe(true);
+    expect(node.config.tools.includes('WebFetch')).toBe(true);
+    expect(node.config.tools.includes('Write')).toBe(false);
+  });
+  it('customized tools survive a type change untouched', () => {
+    resetState();
+    const curated = ['Read', 'Grep', 'Glob', 'LSP', 'WebSearch'];
+    const node = win.addNode('agent', 100, 200, 'Agent', { agentType:'planner', tools:[...curated], prompt:'Custom plan.' });
+    win.selectNode(node.id);
+    win.updateConfig();
+    const typeSelect = win.document.querySelector('.config-select[data-key="agentType"]');
+    selectCustomOption(typeSelect, 'researcher');
+    expect(win.toolSetsEqual(node.config.tools, curated)).toBe(true);
+  });
+  it('switching to writer applies the style tool defaults via the same pristine rule', () => {
+    resetState();
+    const node = win.addNode('agent', 100, 200, 'Agent', { agentType:'general' });
+    win.selectNode(node.id);
+    win.updateConfig();
+    const typeSelect = win.document.querySelector('.config-select[data-key="agentType"]');
+    selectCustomOption(typeSelect, 'writer');
+    expect(win.toolSetsEqual(node.config.tools, win.WRITER_TOOL_DEFAULTS.technical)).toBe(true);
+  });
+  it('the researcher template offers the web step conditionally (never lies when web tools are deselected)', () => {
+    expect(win.PROMPTS.researcher).toContain('web tools are available to you');
+    expect(win.PROMPTS.researcher).toContain('WebSearch');
+    expect(win.PROMPTS.researcher).toContain('WebFetch');
   });
 });
 
@@ -8004,7 +8168,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.toolSubstitutionNote = toolSubstitutionNote; window.toolScopeNote = toolScopeNote; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
