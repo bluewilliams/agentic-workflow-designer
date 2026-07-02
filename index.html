@@ -1215,7 +1215,7 @@ const AGENT_TYPES = [
   { id: 'backend', name: 'Backend', desc: 'API and server-side specialist' },
   { id: 'reviewer', name: 'Reviewer', desc: 'Reviews code quality, security, and patterns' },
   { id: 'tester', name: 'Tester', desc: 'Writes and runs tests' },
-  { id: 'debugger', name: 'Debugger', desc: 'Investigates and fixes bugs' },
+  { id: 'debugger', name: 'Debugger', desc: 'Investigates bugs to root cause' },
   { id: 'researcher', name: 'Researcher', desc: 'Explores codebase, gathers context' },
   { id: 'writer', name: 'Writer', desc: 'Documentation and content creation specialist' },
   { id: 'general', name: 'General', desc: 'General-purpose agent' },
@@ -2862,6 +2862,15 @@ function exportHandoffFile() {
 }
 
 // Full memory protocol block for orchestrator-level prompts
+// Memory writes are PROTOCOL-level, not task-level. The per-agent tool line is a closed
+// enumeration that scopes TASK work, so a read-only-task agent (Skeptic, Verifier, preset
+// Reviewer/Researcher) would otherwise read its tool list as forbidding the mandatory
+// memory-file appends. One shared sentence, injected at every per-agent memory write
+// emission, resolves that: the enumeration never restricts the memory protocol.
+function memoryWriteAuthNote() {
+  return 'Memory-file writes are part of the workflow protocol, not the task: every agent appends to its memory files even when `Write` is not in its task tool list (the tool list scopes task work; it does not restrict the memory protocol).';
+}
+
 function genMemoryProtocol() {
   const path = getMemoryPath();
   const wfName = getName() || 'workflow';
@@ -2871,6 +2880,7 @@ function genMemoryProtocol() {
   p.push('');
   p.push('**Agents MUST read from and write to memory files on EVERY turn. This is not optional.**');
   p.push('Without memory file discipline, context is permanently lost during compaction, breaking the workflow.');
+  p.push(memoryWriteAuthNote());
   p.push('');
   p.push('**Memory path**: `' + path + '`');
   p.push('');
@@ -2919,7 +2929,7 @@ function genMemoryProtocol() {
   p.push('\u{1F4A1}: Existing auth pattern at src/auth/oauth.ts is reusable');
   p.push('');
   p.push('## @planner | 2026-02-22T10:35:00Z | \u2705done');
-  p.push('d: Plan complete \u2014 5 files to create, 2 to modify');
+  p.push('d: Plan complete - 5 files to create, 2 to modify');
   p.push('f: plan.md:created');
   p.push('\u2192 Implementation order: types \u2192 service \u2192 handler \u2192 tests');
   p.push('!: Breaking change to UserSession type affects 3 callers');
@@ -2992,6 +3002,8 @@ function genAgentMemoryPostamble(agentLabel, slug) {
   p.push('');
   p.push('3. **Breadcrumb** - end your response with:');
   p.push('   `<!-- WF_BC: ' + wfName + ' @' + slug + ' {ISO-timestamp} -->`');
+  p.push('');
+  p.push(memoryWriteAuthNote());
   p.push('');
   p.push('Status: ✅done 🔄active 🚧blocked ❌failed ⚠️warning 💡insight');
   p.push('Sigils: @agent #ticket !critical f:file d:decision →next ←depends');
@@ -4853,7 +4865,7 @@ function renderAgentPalette() {
   if (!agents.length) { el.innerHTML = ''; return; }
   el.innerHTML = '<div style="margin-top:8px"><h3 style="font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);margin-bottom:6px;font-weight:600">Custom Agents</h3>'
     + '<div class="palette-grid">'
-    + agents.map(a => '<div class="palette-item" onclick="instantiateAgent(\'' + a.id + '\')" title="' + escHtml(a.name + ' — ' + getAgentTypeName(a.config && a.config.agentType) + ' · ' + ((a.config && a.config.model) || '')) + '"><span class="palette-dot" style="background:var(--agent)"></span><span class="agent-name">' + escHtml(a.name) + '</span></div>').join('')
+    + agents.map(a => '<div class="palette-item" onclick="instantiateAgent(\'' + a.id + '\')" title="' + escHtml(a.name + ' - ' + getAgentTypeName(a.config && a.config.agentType) + ' · ' + ((a.config && a.config.model) || '')) + '"><span class="palette-dot" style="background:var(--agent)"></span><span class="agent-name">' + escHtml(a.name) + '</span></div>').join('')
     + '</div></div>';
 }
 // Namespaced, stable id: source:slug (org/builtin prefix the pack). The source prefix is what makes a
@@ -6973,7 +6985,7 @@ function clearCanvas(skipConfirm) {
   state.connectFrom = null;
   state.activePreset = null;
   $('workflowName').value = '';
-  if ($('storyInput')) { $('storyInput').value = ''; $('storyInput').placeholder = 'Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.\n\nJira URL: paste a link and pick a workflow preset \u2014 the agent fetches ticket details at runtime via Atlassian MCP.\n\nRequirements: paste full text and click Auto Workflow to auto-build a workflow from keywords.'; }
+  if ($('storyInput')) { $('storyInput').value = ''; $('storyInput').placeholder = 'Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.\n\nJira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.\n\nRequirements: paste full text and click Auto Workflow to auto-build a workflow from keywords.'; }
   state.repositories = [];
   renderRepoRows();
   if ($('appSourcePath')) $('appSourcePath').value = '';
@@ -7070,11 +7082,43 @@ function validateWorkflow() {
     const hasOut = state.connections.some(c => c.from === n.id);
     if (!hasIn && !hasOut) warnings.push({ type: 'warn', msg: '"' + n.label + '" is not connected to anything' });
   });
-  // Agents with empty prompts and no built-in template
+  // General agents with empty prompts (generic scaffold the user is expected to tailor)
   state.nodes.filter(n => n.type === 'agent').forEach(n => {
     if (!n.config.prompt || !n.config.prompt.trim()) {
       if (!n.config.agentType || n.config.agentType === 'general') {
-        warnings.push({ type: 'warn', msg: '"' + n.label + '" has no prompt and uses the General agent type (no built-in template)' });
+        warnings.push({ type: 'warn', msg: '"' + n.label + '" has no prompt and uses the General agent type (generic scaffold - tailor it to your task)' });
+      }
+    }
+  });
+  // Parallel siblings with a dependency path between them cannot truly run simultaneously.
+  // Any decision's failure branch (noLabel-labelled edge) is a revision path, not a
+  // dependency - excluded so manual revise loops and attached review loops never count.
+  const isReviseEdge = c => {
+    const from = state.nodes.find(n => n.id === c.from);
+    return !!(from && from.type === 'decision' && c.label === ((from.config && from.config.noLabel) || 'No'));
+  };
+  state.nodes.filter(n => n.type === 'parallel').forEach(par => {
+    const children = state.connections.filter(c => c.from === par.id).map(c => c.to);
+    const reaches = (fromId, toId) => {
+      const seen = new Set([fromId]);
+      const q = [fromId];
+      while (q.length) {
+        const cur = q.shift();
+        for (const c of state.connections) {
+          if (c.from !== cur || isReviseEdge(c)) continue;
+          if (c.to === toId) return true;
+          if (!seen.has(c.to)) { seen.add(c.to); q.push(c.to); }
+        }
+      }
+      return false;
+    };
+    for (let a = 0; a < children.length; a++) {
+      for (let b = a + 1; b < children.length; b++) {
+        if (reaches(children[a], children[b]) || reaches(children[b], children[a])) {
+          const an = state.nodes.find(n => n.id === children[a]);
+          const bn = state.nodes.find(n => n.id === children[b]);
+          warnings.push({ type: 'warn', msg: '"' + (an ? an.label : children[a]) + '" and "' + (bn ? bn.label : children[b]) + '" are siblings of the parallel group "' + par.label + '" but depend on each other - they cannot truly run simultaneously' });
+        }
       }
     }
   });
@@ -7293,6 +7337,17 @@ function deliveryBlock(level) {
   if (fmts.includes('commit')) return commitBlock(L + ' Commit');
   if (fmts.includes('report')) return reportBlock(L + ' Report');
   if (fmts.includes('docs')) return docsBlock(L + ' Documentation');
+  return noCommitBlock(L + ' Delivery');
+}
+// Per-agent variant for the sub-agent format: delivery is emitted ONCE at the
+// orchestrator level (deliveryBlock); each sub-agent gets branch discipline only,
+// so no mid-workflow agent pushes the branch or opens the PR itself.
+function deliveryAgentNote(level) {
+  const fmts = deliveryFormats();
+  const L = level || '##';
+  if (fmts.includes('pr')) return [L + ' Delivery Discipline', '', 'A pull request delivery step runs ONCE at the end of this workflow, owned by the orchestrator. Make your changes on the feature branch. Do NOT commit or push to the target branch, and do NOT push the feature branch or open a pull request yourself.', ''];
+  if (fmts.includes('commit')) return [L + ' Delivery Discipline', '', 'The commit delivery runs ONCE at the end of this workflow, owned by the orchestrator. Make your changes on the working branch; do NOT push, and do NOT finalize the delivery commit yourself.', ''];
+  if (fmts.includes('report') || fmts.includes('docs')) return [];
   return noCommitBlock(L + ' Delivery');
 }
 function prBlock(heading) {
@@ -7576,8 +7631,10 @@ function genWorkflow() {
     p.push('');
     let stepNum = 1;
     let i = 0;
+    const emittedPar = new Set();
     while (i < agents.length) {
       const node = agents[i];
+      if (emittedPar.has(node.id)) { i++; continue; }
       const isParallel = parallelChildren.has(node.id);
 
       if (isParallel) {
@@ -7595,10 +7652,16 @@ function genWorkflow() {
           const _ddS = datadogStepHint(s); if (_ddS) p.push('  ' + _ddS);
           const _csS = codeSearchStepHint(s); if (_csS) p.push('  ' + _csS);
           const _rhS = recordHandoffHint(); if (_rhS) p.push('  ' + _rhS);
-          if (s.config.notes && s.config.notes.trim()) p.push(`  - Context: ${s.config.notes.trim()}`);
+          if (s.config.notes && s.config.notes.trim()) p.push(`  - Agent Context: ${s.config.notes.trim()}`);
+          if (s.config.maxTurns) p.push(`  - Max turns: ${s.config.maxTurns}`);
+          const sDec = getDownstreamDecisions(s.id);
+          sDec.forEach(d => {
+            p.push(`  - Success gate: "${d.config.condition || d.label}" → ${d.config.yesLabel || 'Yes'}/${d.config.noLabel || 'No'}`);
+          });
           p.push('');
         });
-        i += siblings.length;
+        siblings.forEach(s => emittedPar.add(s.id));
+        i++;
       } else {
         const deps = getDepsWithType(node.id);
         const at = getAgentTypeName(node.config.agentType);
@@ -7616,7 +7679,7 @@ function genWorkflow() {
         const downDec = getDownstreamDecisions(node.id);
         if (downDec.length > 0) {
           downDec.forEach(d => {
-            p.push(`- Success gate: "${d.config.condition || d.label}" \u2192 ${d.config.yesLabel || 'Pass'}/${d.config.noLabel || 'Fail'}`);
+            p.push(`- Success gate: "${d.config.condition || d.label}" \u2192 ${d.config.yesLabel || 'Yes'}/${d.config.noLabel || 'No'}`);
           });
         }
         p.push('');
@@ -7641,9 +7704,9 @@ function genWorkflow() {
       const reviseConns = state.connections.filter(c => c.from === d.id && c.label === (d.config.noLabel || 'Revise'));
       const reviseTargets = reviseConns.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
       if (reviseTargets.length > 0) {
-        p.push(`  - ${d.config.noLabel || 'No'} \u2192 re-run ${reviseTargets.map(t => t.label).join(', ')} with specific feedback (max ${d.config.maxRevisions || 3} revision cycles \u2014 after that, proceed with best version and document remaining concerns)`);
+        p.push(`  - ${d.config.noLabel || 'No'} \u2192 re-run ${reviseTargets.map(t => t.label).join(', ')} with specific feedback (max ${d.config.maxRevisions || 3} revision cycles - after that, proceed with best version and document remaining concerns)`);
       } else {
-        p.push(`  - ${d.config.noLabel || 'No'} \u2192 re-run previous implementation step with specific feedback (max ${d.config.maxRevisions || 3} revision cycles \u2014 after that, proceed with best version and document remaining concerns)`);
+        p.push(`  - ${d.config.noLabel || 'No'} \u2192 re-run previous implementation step with specific feedback (max ${d.config.maxRevisions || 3} revision cycles - after that, proceed with best version and document remaining concerns)`);
       }
     }); p.push('');
   }
@@ -7748,6 +7811,7 @@ function genSubAgents() {
     p.push('## Memory System (CRITICAL)');
     p.push('');
     p.push('This workflow uses persistent memory files. **All agents MUST read and write to these files on every turn.**');
+    p.push(memoryWriteAuthNote());
     p.push('');
     p.push('**Each agent is instructed to (enforced in their prompts below):**');
     p.push('- Read `' + getMemoryPath() + 'shared.md` on start for upstream agent output (inter-agent communication)');
@@ -7825,7 +7889,7 @@ function genSubAgents() {
       promptLines.push('## Success Gate');
       downstreamDecisions.forEach(d => {
         promptLines.push(`Your output must clearly address: "${d.config.condition || d.label}"`);
-        promptLines.push(`Evaluate each criterion systematically, showing your reasoning. Then provide an explicit ${d.config.yesLabel || 'Pass'}/${d.config.noLabel || 'Fail'} verdict with supporting evidence. If ${d.config.noLabel || 'Fail'}, specify exactly what must change.`);
+        promptLines.push(`Evaluate each criterion systematically, showing your reasoning. Then provide an explicit ${d.config.yesLabel || 'Yes'}/${d.config.noLabel || 'No'} verdict with supporting evidence. If ${d.config.noLabel || 'No'}, specify exactly what must change.`);
       });
       promptLines.push('');
     } else {
@@ -7840,7 +7904,7 @@ function genSubAgents() {
     requirementsBlock(story, '## Requirements').forEach(l => promptLines.push(l));
     appSourceBlock('## App Source').forEach(l => promptLines.push(l));
     uiContextBlock('## UI Context').forEach(l => promptLines.push(l));
-    deliveryBlock('##').forEach(l => promptLines.push(l));
+    deliveryAgentNote('##').forEach(l => promptLines.push(l));
     repoBlock('## Repositories').forEach(l => promptLines.push(l));
 
     promptLines.push('## Output Format');
@@ -7865,8 +7929,10 @@ function genSubAgents() {
 
   let stepNum = 1;
   let i = 0;
+  const emittedPar = new Set();
   while (i < agents.length) {
     const node = agents[i];
+    if (emittedPar.has(node.id)) { i++; continue; }
     const isParallel = parallelChildren.has(node.id);
 
     if (isParallel) {
@@ -7887,12 +7953,13 @@ function genSubAgents() {
         p.push('');
         p.push(`- **Agent type**: ${at}`);
         p.push(`- **Model**: ${getModelLabel(s.config.model)} (\`${getTaskModelParam(s.config.model)}\`)`);
-        p.push('- ' + toolAccessText(s.config.tools));
+        if (s.config.tools.length > 0) p.push('- ' + toolAccessText(s.config.tools));
         p.push(`- **Max turns**: ${s.config.maxTurns}`);
         if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
         p.push('');
       });
-      i += siblings.length;
+      siblings.forEach(s => emittedPar.add(s.id));
+      i++;
     } else {
       const deps = getDepsWithType(node.id);
       const at = getAgentTypeName(node.config.agentType);
@@ -7902,7 +7969,7 @@ function genSubAgents() {
       p.push('');
       p.push(`- **Agent type**: ${at}`);
       p.push(`- **Model**: ${getModelLabel(node.config.model)} (\`${getTaskModelParam(node.config.model)}\`)`);
-      p.push('- ' + toolAccessText(node.config.tools));
+      if (node.config.tools.length > 0) p.push('- ' + toolAccessText(node.config.tools));
       p.push(`- **Max turns**: ${node.config.maxTurns}`);
       if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
       p.push('');
@@ -7925,15 +7992,15 @@ function genSubAgents() {
       }).filter(Boolean);
       const reviseConns = state.connections.filter(c => c.from === d.id && c.label === (d.config.noLabel || 'Revise'));
       const reviseTargets = reviseConns.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
-      const passConns = state.connections.filter(c => c.from === d.id && c.label === (d.config.yesLabel || 'Pass'));
+      const passConns = state.connections.filter(c => c.from === d.id && c.label === (d.config.yesLabel || 'Yes'));
       const passTargets = passConns.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
 
       p.push(`**${d.label}**: ${d.config.condition || 'Evaluate condition'}`);
       if (feeders.length > 0) p.push(`- Review output from: ${feeders.join(', ')}`);
       if (passTargets.length > 0) {
-        p.push(`- If **${d.config.yesLabel || 'Pass'}**: proceed to ${passTargets.map(t => t.label).join(', ')}`);
+        p.push(`- If **${d.config.yesLabel || 'Yes'}**: proceed to ${passTargets.map(t => t.label).join(', ')}`);
       } else {
-        p.push(`- If **${d.config.yesLabel || 'Pass'}**: proceed to the next step`);
+        p.push(`- If **${d.config.yesLabel || 'Yes'}**: proceed to the next step`);
       }
       if (reviseTargets.length > 0) {
         p.push(`- If **${d.config.noLabel || 'Revise'}**: re-spawn **${reviseTargets.map(t => t.label).join(', ')}** with the reviewer's feedback as additional context (max ${d.config.maxRevisions || 3} cycles)`);
@@ -7943,6 +8010,10 @@ function genSubAgents() {
       p.push('');
     });
   }
+
+  // Delivery runs ONCE here at the orchestrator level; agents carry branch
+  // discipline only (deliveryAgentNote in buildAgentPrompt).
+  deliveryBlock('##').forEach(l => p.push(l));
 
   taskSectionLines(ordered, '##').forEach(l => p.push(l));
   return p.join('\n');
@@ -8033,7 +8104,7 @@ function genAgentTeams() {
 
     lines.push(`${pre}**Teammate: "${node.label}"** (${at})`);
     lines.push(`${pre}- Model: \`${getTaskModelParam(node.config.model)}\` (${getModelLabel(node.config.model)})`);
-    lines.push(`${pre}- ` + toolAccessText(node.config.tools));
+    if (node.config.tools.length > 0) lines.push(`${pre}- ` + toolAccessText(node.config.tools));
     lines.push(`${pre}- Max turns: ${node.config.maxTurns}`);
 
     // Memory READ - before task (step zero)
@@ -8069,7 +8140,7 @@ function genAgentTeams() {
     if (downDec.length > 0) {
       downDec.forEach(d => {
         lines.push(`${pre}- **Success gate**: This teammate's output will be evaluated against: "${d.config.condition || d.label}"`);
-        lines.push(`${pre}  Tell them to evaluate each criterion systematically, show reasoning, then state an explicit ${d.config.yesLabel || 'Pass'}/${d.config.noLabel || 'Fail'} verdict. If ${d.config.noLabel || 'Fail'}, they must specify exactly what needs to change.`);
+        lines.push(`${pre}  Tell them to evaluate each criterion systematically, show reasoning, then state an explicit ${d.config.yesLabel || 'Yes'}/${d.config.noLabel || 'No'} verdict. If ${d.config.noLabel || 'No'}, they must specify exactly what needs to change.`);
       });
     }
 
@@ -8082,6 +8153,7 @@ function genAgentTeams() {
       lines.push(pre + '  1. Write TOON progress entry to `' + getMemoryPath() + '@' + _slug + '.md`');
       lines.push(pre + '  2. Append handoff to `' + getMemoryPath() + 'shared.md` with `→ @{next-agent}: {what they need}`');
       lines.push(pre + '  3. End response with `<!-- WF_BC: ' + _wf + ' @' + _slug + ' {ISO-timestamp} -->`');
+      lines.push(pre + '  ' + memoryWriteAuthNote());
     }
 
     return lines;
@@ -8089,8 +8161,10 @@ function genAgentTeams() {
 
   let stepNum = 1;
   let i = 0;
+  const emittedPar = new Set();
   while (i < agents.length) {
     const node = agents[i];
+    if (emittedPar.has(node.id)) { i++; continue; }
     const isParallel = parallelChildren.has(node.id);
 
     if (isParallel) {
@@ -8108,7 +8182,8 @@ function genAgentTeams() {
       else if (_atStrat === 'race') p.push('**Race.** Take the first useful result from the parallel teammates and stop waiting on the rest.');
       else p.push('**Wait for ALL parallel teammates to complete before proceeding.** Collect and review all outputs.');
       p.push('');
-      i += siblings.length;
+      siblings.forEach(s => emittedPar.add(s.id));
+      i++;
       stepNum++;
       continue;
     }
@@ -8312,14 +8387,18 @@ function genAgentSDK() {
   agents.forEach(node => {
     const varName = node.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     const at = getAgentTypeName(node.config.agentType);
-    const toolsList = node.config.tools.map(t => `"${t}"`).join(', ');
+    // The SDK tools param is a hard block (unlike the prose formats' directional tool
+    // line), so the memory protocol's mandatory file appends are impossible without
+    // Write - union it in for the memory run.
+    const sdkWriteAdded = state.memoryEnabled && !node.config.tools.includes('Write');
+    const toolsList = (sdkWriteAdded ? node.config.tools.concat('Write') : node.config.tools).map(t => `"${t}"`).join(', ');
 
     p.push(`# ${node.label} - ${at} Agent`);
     p.push(`${varName}_config = AgentConfig(`);
     p.push(`    name="${node.label}",`);
     p.push(`    model="${getModelId(node.config.model)}",`);
     p.push(`    max_turns=${node.config.maxTurns},`);
-    p.push(`    tools=[${toolsList}],`);
+    p.push(`    tools=[${toolsList}],` + (sdkWriteAdded ? '  # Write added for the memory protocol' : ''));
 
     const instructions = [];
     // Memory READ - step zero (before task)
@@ -8333,7 +8412,7 @@ function genAgentSDK() {
     const downDec = getDownstreamDecisions(node.id);
     if (downDec.length > 0) {
       downDec.forEach(d => {
-        instructions.push(`Success gate: Your output must address "${d.config.condition || d.label}". Evaluate each criterion, show your reasoning, then state an explicit ${d.config.yesLabel || 'Pass'}/${d.config.noLabel || 'Fail'} verdict. If ${d.config.noLabel || 'Fail'}, specify exactly what must change.`);
+        instructions.push(`Success gate: Your output must address "${d.config.condition || d.label}". Evaluate each criterion, show your reasoning, then state an explicit ${d.config.yesLabel || 'Yes'}/${d.config.noLabel || 'No'} verdict. If ${d.config.noLabel || 'No'}, specify exactly what must change.`);
       });
     }
     // Memory WRITE - final mandatory steps
@@ -8414,8 +8493,10 @@ function genAgentSDK() {
 
   let i = 0;
   let lastResultVar = 'requirements';
+  const emittedPar = new Set();
   while (i < agents.length) {
     const node = agents[i];
+    if (emittedPar.has(node.id)) { i++; continue; }
     const varName = node.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     const isParallel = parallelChildren.has(node.id);
 
@@ -8440,7 +8521,8 @@ function genAgentSDK() {
         p.push(`    ${siblings.map((s, j) => s.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase() + '_result').join(', ')} = results`);
       }
       lastResultVar = 'results';
-      i += siblings.length;
+      siblings.forEach(s => emittedPar.add(s.id));
+      i++;
     } else {
       p.push(`    # Step: ${node.label}`);
       p.push(`    ${varName}_result = await ${varName}.run(context=${lastResultVar})`);
@@ -8548,8 +8630,10 @@ function genClaudePrompt() {
 
     let stepNum = 1;
     let i = 0;
+    const emittedPar = new Set();
     while (i < agents.length) {
       const node = agents[i];
+      if (emittedPar.has(node.id)) { i++; continue; }
       const at = getAgentTypeName(node.config.agentType);
       const isParallel = parallelChildren.has(node.id);
 
@@ -8579,14 +8663,15 @@ function genClaudePrompt() {
           const downDec = getDownstreamDecisions(s.id);
           if (downDec.length > 0) {
             downDec.forEach(d => {
-              p.push(`Success criteria: "${d.config.condition || d.label}" - evaluate each criterion, show your reasoning, then state a clear ${d.config.yesLabel || 'Pass'}/${d.config.noLabel || 'Fail'} verdict.`);
+              p.push(`Success criteria: "${d.config.condition || d.label}" - evaluate each criterion, show your reasoning, then state a clear ${d.config.yesLabel || 'Yes'}/${d.config.noLabel || 'No'} verdict.`);
             });
             p.push('');
           }
         });
         p.push('Present findings for each perspective clearly separated.');
         p.push('');
-        i += siblings.length;
+        siblings.forEach(s => emittedPar.add(s.id));
+        i++;
       } else {
         const deps = getDepsWithType(node.id);
         p.push(`### Step ${stepNum}: ${node.label}`);
@@ -8614,9 +8699,9 @@ function genClaudePrompt() {
             const _rc = state.connections.filter(c => c.from === d.id && c.label === (d.config.noLabel || 'Revise'));
             const _rt = _rc.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
             if (_rt.length > 0) {
-              p.push(`If ${d.config.yesLabel || 'Pass'}: continue. If ${d.config.noLabel || 'Fail'}: go back to the ${_rt.map(t => t.label).join(', ')} step and revise. Maximum ${d.config.maxRevisions || 3} revision cycles - after that, proceed with the best available version and document any remaining concerns in your output.`);
+              p.push(`If ${d.config.yesLabel || 'Yes'}: continue. If ${d.config.noLabel || 'No'}: go back to the ${_rt.map(t => t.label).join(', ')} step and revise. Maximum ${d.config.maxRevisions || 3} revision cycles - after that, proceed with the best available version and document any remaining concerns in your output.`);
             } else {
-              p.push(`If ${d.config.yesLabel || 'Pass'}: continue. If ${d.config.noLabel || 'Fail'}: go back and revise the implementation. Maximum ${d.config.maxRevisions || 3} revision cycles - after that, proceed with the best available version and document any remaining concerns in your output.`);
+              p.push(`If ${d.config.yesLabel || 'Yes'}: continue. If ${d.config.noLabel || 'No'}: go back and revise the implementation. Maximum ${d.config.maxRevisions || 3} revision cycles - after that, proceed with the best available version and document any remaining concerns in your output.`);
             }
           });
           p.push('');
@@ -9373,11 +9458,23 @@ function openSpecImportForeign(text) {
 }
 // === end OpenSpec foreign-schema import ===
 
+// A review loop's failure back-edge: FROM a decision carrying reviewLoopDecisionFor,
+// labelled with that decision's noLabel - the same identification detachReviewLoop and
+// setReviewLoopBackTarget use. It is a runtime revision path, not a dependency: feeding
+// it to the ordering makes the loop cluster cyclic, which knocks every node in it out
+// of Kahn's queue and into the creation-order fallback (steps emit out of order).
+function isReviewLoopBackEdge(c) {
+  const from = state.nodes.find(n => n.id === c.from);
+  return !!(from && from.config && from.config.reviewLoopDecisionFor !== undefined &&
+    c.label === from.config.noLabel);
+}
+
 function topologicalSort() {
   const adj = {};
   const inDeg = {};
   state.nodes.forEach(n => { adj[n.id] = []; inDeg[n.id] = 0; });
   state.connections.forEach(c => {
+    if (isReviewLoopBackEdge(c)) return;
     if (adj[c.from]) { adj[c.from].push(c.to); inDeg[c.to] = (inDeg[c.to] || 0) + 1; }
   });
   const result = [];
