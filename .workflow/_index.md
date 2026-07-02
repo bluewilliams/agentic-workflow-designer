@@ -2,6 +2,34 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## undo-text-coverage
+
+- record: .workflow/undo-text-coverage.md
+- intent: config text edits never pushed undo (Cmd+Z could wipe a hand-written prompt by jumping to the last structural snapshot) and every node mousedown pushed a snapshot even for bare select-clicks (50-cap flooded with no-ops). Now: editing-session grain for text (first input since (re)build/blur snapshots pre-edit state, listener registered ahead of the state-writing handler; expand modal covered by construction - it dispatches the source's input event) and drag snapshots commit at drag-END only when the node moved (pushUndo gained an optional pre-captured-snap param). Behavioral tests written first and seen failing.
+- files: index.html (pushUndo param, mousedown/mouseup, session listener), tests.html (6 tests + undoDepth/clearUndo exposures)
+- status: current | date: 2026-07-01 | note: 1251 -> 1257 (+6). Content-lint.
+
+## revise-loop-topo-generalization
+
+- record: .workflow/revise-loop-topo-generalization.md
+- intent: generalizes the topo exclusion from attached review-loop back-edges to ANY decision's noLabel failure branch (the app's decision semantics are pass/revise; a revision path is never a dependency). One shared isReviseBackEdge() replaces isReviewLoopBackEdge (strict superset) AND validateWorkflow's inline copy - ordering and sibling-reachability can no longer disagree. All 15 presets verified BYTE-IDENTICAL before/after (headless snapshot diff of topo order + genWorkflow + genSubAgents); the fix exclusively repairs hand-built loops whose creation order differs from flow order (pinned: Tester-created-first now orders Planner -> Coder -> gate -> Tester). OpenSpec manual-loop export anchors requires to the real upstream (test-pinned).
+- files: index.html (isReviseBackEdge, topologicalSort, validateWorkflow alias), tests.html (new describe, predicate exposure), .workflow/review-loop-topo-order.md (follow-up flipped)
+- status: current | date: 2026-07-01 | note: 1248 -> 1251 (+3), zero existing-test changes. Content-lint.
+
+## validation-modal
+
+- record: .workflow/validation-modal.md
+- intent: the toolbar warning badge's details used native alert() - the app's ONLY alert site (grep-verified). Replaced with #validationOverlay on the existing help-modal classes (zero new CSS): icon + message row per warning (warn amber / error red), Esc + backdrop + close button, zero-issues path keeps its toast. Presentation swap only - validateWorkflow untouched.
+- files: index.html (overlay markup, showValidation/closeValidation, Esc entry), tests.html (2 tests + exposures)
+- status: current | date: 2026-07-01 | note: 1246 -> 1248 (+2). Content-lint.
+
+## analysis-branch-prompts
+
+- record: .workflow/analysis-branch-prompts.md
+- intent: bespoke prompts for the Auto Workflow analysis branch (measure/forecast/cost). PROMPTS.analysisGatherer (numbers with sources: Bash repo metrics, LSP usage surfaces, WebFetch pricing/benchmarks under conditional phrasing; measured-vs-estimated first-class) + PROMPTS.analysisSynthesizer (visible arithmetic, justified assumptions, low/expected/high ranges, sanity anchor, per-number confidence; Findings/Methodology/Assumptions/Recommendation handoff). Data Gatherer's interim Agent Context license line RETIRED - guidance lives in the prompt proper, per the tool-selection-consistency plan.
+- files: index.html (two PROMPTS entries + analysis-branch wiring), tests.html (analysis-intent test rewritten)
+- status: current | date: 2026-07-01 | note: 1246/1246 (rewrite in place). Content-lint.
+
 ## tool-selection-consistency
 
 - record: .workflow/tool-selection-consistency.md

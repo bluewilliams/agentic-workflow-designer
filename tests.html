@@ -7757,16 +7757,23 @@ describe('Auto Workflow tailored research prompts', () => {
     expect(!!t).toBe(true);
     expect(t.config.tools.includes('Edit')).toBe(true);
   });
-  it('analysis intent: Data Gatherer keeps WebFetch and Bash, licensed via Agent Context', () => {
+  it('analysis intent: Data Gatherer and Analyst get the bespoke analysis prompts (tools licensed in-prompt)', () => {
     resetState();
     win.document.getElementById('storyInput').value = 'Measure usage and forecast the monthly cost for the ingestion service';
     win.generateFromStory();
     const gather = win.state.nodes.find(n => n.label === 'Data Gatherer');
-    expect(!!gather).toBe(true);
+    const analyst = win.state.nodes.find(n => n.label === 'Analyst');
+    expect(!!gather && !!analyst).toBe(true);
     expect(gather.config.tools.includes('WebFetch')).toBe(true);
     expect(gather.config.tools.includes('Bash')).toBe(true);
-    expect(gather.config.notes).toContain('WebFetch');
-    expect(gather.config.notes).toContain('Bash');
+    expect(gather.config.prompt).toBe(win.PROMPTS.analysisGatherer);
+    expect(gather.config.prompt).toContain('WebFetch');
+    expect(gather.config.prompt).toContain('Bash');
+    expect(gather.config.notes).toBe('');   // interim Agent Context license retired - guidance lives in the prompt
+    expect(analyst.config.prompt).toBe(win.PROMPTS.analysisSynthesizer);
+    expect(analyst.config.prompt).toContain('assumption');
+    expect(win.toolSubstitutionNote(gather)).toBe('');   // prompt mentions only selected tools
+    expect(win.toolSubstitutionNote(analyst)).toBe('');
   });
 });
 
@@ -7927,6 +7934,30 @@ describe('Memory write authorization (read-only-task agents)', () => {
   });
 });
 
+describe('Validation details modal (replaces native alert)', () => {
+  it('opens the in-app modal listing every warning, and closes via closeValidation', () => {
+    resetState();
+    win.addNode('agent', 100, 100, 'Loner', { agentType:'general', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:5 });
+    const warnings = win.validateWorkflow();
+    expect(warnings.length).toBeGreaterThan(0);
+    win.showValidation();
+    const overlay = win.document.getElementById('validationOverlay');
+    expect(overlay.classList.contains('show')).toBe(true);
+    const listText = win.document.getElementById('validationList').textContent;
+    warnings.forEach(w => { expect(listText).toContain(w.msg); });
+    win.closeValidation();
+    expect(overlay.classList.contains('show')).toBe(false);
+  });
+  it('zero issues -> toast path, modal never opens', () => {
+    resetState();
+    win.closeValidation();
+    win.loadPreset('feature');
+    expect(win.validateWorkflow().length).toBe(0);
+    win.showValidation();
+    expect(win.document.getElementById('validationOverlay').classList.contains('show')).toBe(false);
+  });
+});
+
 describe('Generated-output consistency', () => {
   it('genWorkflow parallel siblings carry Agent Context, Max turns, and Success gate like sequential steps', () => {
     resetState();
@@ -7987,6 +8018,47 @@ describe('Generated-output consistency', () => {
   });
 });
 
+describe('Manual revise-loop topological ordering (generalized noLabel exclusion)', () => {
+  function buildManualLoopCreatedOutOfOrder() {
+    resetState();
+    // Tester created FIRST so the old creation-order fallback would emit it first (wrong).
+    const t = win.addNode('agent', 400, 0, 'Tester', { agentType:'tester', model:'opus-4.8', tools:['Read','Bash'], prompt:'', maxTurns:8 });
+    const p = win.addNode('agent', 0, 0, 'Planner', { agentType:'planner', model:'opus-4.8', tools:['Read','Grep'], prompt:'', maxTurns:10 });
+    const c = win.addNode('agent', 200, 0, 'Coder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const d = win.addNode('decision', 300, 0, 'Code OK?', { condition:'Code review passes', yesLabel:'Yes', noLabel:'No', maxRevisions:3 });
+    win.addConnection(p.id, c.id);
+    win.addConnection(c.id, d.id);
+    win.addConnection(d.id, t.id, 'Yes');
+    win.addConnection(d.id, c.id, 'No');   // manual revise loop - NOT an attached review loop
+    return { t, p, c, d };
+  }
+  it('a hand-built revise loop orders by dependencies, not creation order', () => {
+    buildManualLoopCreatedOutOfOrder();
+    const order = win.topologicalSort().map(n => n.label);
+    expect(order.indexOf('Planner') < order.indexOf('Coder')).toBe(true);
+    expect(order.indexOf('Coder') < order.indexOf('Code OK?')).toBe(true);
+    expect(order.indexOf('Code OK?') < order.indexOf('Tester')).toBe(true);
+    const wf = win.genWorkflow();
+    expect(wf.indexOf('Step 1: Planner') > -1).toBe(true);
+    expect(wf.indexOf(': Tester') > wf.indexOf(': Coder')).toBe(true);
+  });
+  it('isReviseBackEdge covers manual loops and attached loops; forward Yes edges are dependencies', () => {
+    const { d, c } = buildManualLoopCreatedOutOfOrder();
+    const noEdge = win.state.connections.find(cc => cc.from === d.id && cc.label === 'No');
+    const yesEdge = win.state.connections.find(cc => cc.from === d.id && cc.label === 'Yes');
+    expect(win.isReviseBackEdge(noEdge)).toBe(true);
+    expect(win.isReviseBackEdge(yesEdge)).toBe(false);
+  });
+  it('OpenSpec export of a manual-loop workflow keeps the gated downstream artifact anchored (no orphan root)', () => {
+    buildManualLoopCreatedOutOfOrder();
+    const s = win.buildOpenSpecSchema();
+    const block = ('\n' + s.schemaYaml).split('\n  - id: ').find(b => b.startsWith('tester\n')) || '';
+    expect(block.length).toBeGreaterThan(0);
+    expect(block).toContain('requires:');
+    expect(block).toContain('- coder');   // gated through the decision back to the real upstream
+  });
+});
+
 describe('Review-loop topological ordering (mid-chain loops)', () => {
   function buildMidChainLoop() {
     resetState();
@@ -8026,6 +8098,94 @@ describe('Review-loop topological ordering (mid-chain loops)', () => {
     expect(stanza).toNotContain('requires: []');
     expect(/apply:\s*\n\s*requires:\s*\n\s*- tester\b/.test(y)).toBe(true);
     expect(y).toContain('tracks: tester.md');
+  });
+});
+
+describe('Undo coverage: text edits and select-clicks', () => {
+  function selectAndGetPromptField() {
+    resetState();
+    const n = win.addNode('agent', 300, 200, 'Editable', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'original text', maxTurns:10 });
+    win.selectNode(n.id);
+    win.updateConfig();
+    win.clearUndo();
+    const field = win.document.querySelector('#configFields textarea[data-key="prompt"]');
+    return { n, field };
+  }
+  function typeInto(field, text) {
+    field.value = text;
+    field.dispatchEvent(new win.Event('input', { bubbles: true }));
+  }
+  it('a typing burst is ONE undo entry: single undo restores the pre-edit text', () => {
+    const { n, field } = selectAndGetPromptField();
+    const depth0 = win.undoDepth();
+    typeInto(field, 'original text plus');
+    typeInto(field, 'original text plus more');
+    typeInto(field, 'original text plus more still');
+    expect(win.undoDepth()).toBe(depth0 + 1);   // three keystrokes, one session snapshot
+    expect(n.config.prompt).toBe('original text plus more still');
+    win.undo();
+    expect(win.state.nodes.find(x => x.id === n.id).config.prompt).toBe('original text');
+  });
+  it('redo round-trips the text edit', () => {
+    const { n, field } = selectAndGetPromptField();
+    typeInto(field, 'changed');
+    win.undo();
+    expect(win.state.nodes.find(x => x.id === n.id).config.prompt).toBe('original text');
+    win.redo();
+    expect(win.state.nodes.find(x => x.id === n.id).config.prompt).toBe('changed');
+  });
+  it('blur ends the session: the next burst is its own undo entry', () => {
+    const { n, field } = selectAndGetPromptField();
+    typeInto(field, 'first burst');
+    field.dispatchEvent(new win.Event('blur', { bubbles: true }));
+    typeInto(field, 'second burst');
+    win.undo();
+    expect(win.state.nodes.find(x => x.id === n.id).config.prompt).toBe('first burst');
+    win.undo();
+    expect(win.state.nodes.find(x => x.id === n.id).config.prompt).toBe('original text');
+  });
+  it('a structural change after a text edit undoes independently (text edit survives, then reverts)', () => {
+    const { n, field } = selectAndGetPromptField();
+    typeInto(field, 'edited');
+    win.addNode('agent', 500, 200, 'Later', { agentType:'general', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:5 });
+    win.undo();   // removes Later
+    expect(win.state.nodes.find(x => x.label === 'Later')).toBe(undefined);
+    expect(win.state.nodes.find(x => x.id === n.id).config.prompt).toBe('edited');
+    win.undo();   // reverts the text edit
+    expect(win.state.nodes.find(x => x.id === n.id).config.prompt).toBe('original text');
+  });
+  it('a select-click storm consumes ZERO undo slots', () => {
+    resetState();
+    const a = win.addNode('agent', 200, 200, 'A', { agentType:'coder', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:5 });
+    const b = win.addNode('agent', 500, 200, 'B', { agentType:'coder', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:5 });
+    win.clearUndo();
+    const depth0 = win.undoDepth();
+    for (let i = 0; i < 5; i++) {
+      [a, b].forEach(node => {
+        const el = win.document.querySelector('.node-group[data-id="' + node.id + '"]');
+        el.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 400, clientY: 300 }));
+        el.dispatchEvent(new win.MouseEvent('mouseup', { bubbles: true, button: 0, clientX: 400, clientY: 300 }));
+      });
+    }
+    expect(win.undoDepth()).toBe(depth0);
+  });
+  it('an actual drag still produces exactly one undo entry and undoes the move', () => {
+    resetState();
+    const a = win.addNode('agent', 200, 200, 'Mover', { agentType:'coder', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:5 });
+    const x0 = a.x, y0 = a.y;
+    win.clearUndo();
+    const depth0 = win.undoDepth();
+    const el = win.document.querySelector('.node-group[data-id="' + a.id + '"]');
+    el.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 400, clientY: 300 }));
+    const wrapEl = win.document.getElementById('canvasWrap');
+    wrapEl.dispatchEvent(new win.MouseEvent('mousemove', { bubbles: true, button: 0, clientX: 460, clientY: 340 }));
+    wrapEl.dispatchEvent(new win.MouseEvent('mouseup', { bubbles: true, button: 0, clientX: 460, clientY: 340 }));
+    expect(a.x !== x0 || a.y !== y0).toBe(true);
+    expect(win.undoDepth()).toBe(depth0 + 1);
+    win.undo();
+    const after = win.state.nodes.find(nn => nn.id === a.id);
+    expect(after.x).toBe(x0);
+    expect(after.y).toBe(y0);
   });
 });
 
@@ -8168,7 +8328,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.toolSubstitutionNote = toolSubstitutionNote; window.toolScopeNote = toolScopeNote; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; };';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.toolSubstitutionNote = toolSubstitutionNote; window.toolScopeNote = toolScopeNote; window.showValidation = showValidation; window.closeValidation = closeValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; };';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
