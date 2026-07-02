@@ -91,3 +91,12 @@ Two strategic gaps, one unit of work. First, the durable records captured deltas
 A post-ship documentation audit found the help modal's Durable Record section predated the v2 anatomy: it described the record and index but not the two changes users feel - the resume story (checklist authored up front, ticked live, resume = first unchecked box) and the awd:record fence Connect Repo reads. One paragraph added between the orchestrator and breadcrumb-index paragraphs, closing with the record-grain rule. Docs only; no behavior change.
 
 - [x] Help modal Durable Record paragraph (fence + live checklist resume + grain rule)
+
+## Update (same day): one home for the read side - the Run Reports section
+
+Owner UX ruling: the loop's read-side controls were scattered and overlookable - the Connect-repo pill sat in the Workflow Management button row (wrapping it to two lines) while the Tuning prompt hid inside the Export dropdown. Both now live in a dedicated "Run Reports" sidebar section directly below the Memory & Durable Record toggles, which is the semantically right neighborhood: the record a run keeps is where its report comes back from. Contents: the connect/reconnect/rescan/disconnect state (section renders on unsupported browsers too - the paste path works everywhere, only the connect affordance hides), a live status line ("N run reports ingested for <workflow> - last <date>" vs a no-reports-yet nudge naming both feeds), and the Tuning prompt button with its data-gating (removed from the Export menu; the gate moved out of toggleExportMenu into updateRunReportSection(), which rides updatePrompt - the universal re-render seam - plus every ingestion including quiet folder rescans). ingestRunReport now counts wf.reports for the status line. Workflow Management is back to one line: Save / Clone / Export / Import, pinned by test. Help modal + README location wording updated.
+
+- [x] Run Reports section below the toggles (connect state + status line + tuning button)
+- [x] Workflow Management row back to exactly four controls (wrap fix, test-pinned)
+- [x] Tuning prompt out of Export; gating via updateRunReportSection on the updatePrompt seam + ingestion
+- [x] Help/README wording; +2 tests (section order/home, status + gate tracking); suite green; content-lint
