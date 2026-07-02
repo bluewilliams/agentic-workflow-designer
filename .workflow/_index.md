@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## general-agent-template
+
+- record: .workflow/general-agent-template.md
+- intent: the "General" agent type was mapped to the `researcher` prompt (`AGENT_TYPE_PROMPT_MAP.general = 'researcher'`), so a Reset showed the codebase-research checklist and it silently ran as a researcher. Gave General its own neutral general-purpose template (`PROMPTS.general`, static: complete-the-task -> orient/plan/execute/verify/Handoff) and repointed the map (general -> 'general'). KEY: kept the "empty General prompt" validation warning - validateWorkflow warns on empty General prompts but NOT typed agents, revealing the intent (typed agents have full role templates; General is a scaffold you tailor). The warning checks the stored prompt so it's unaffected; now coherent (scaffold + "tailor me" nudge) vs the old silent-researcher behavior. Static (not the dynamic label fallback) so classifyAgentPrompt/Reset compare correctly; the dynamic fallback remains for genuinely unknown types. No impact on imported foreign agents (they carry a prompt from the instruction, so the template is not used).
+- files: index.html (PROMPTS.general; AGENT_TYPE_PROMPT_MAP.general researcher->general; fallback comment), tests.html ("General agent template" describe: General maps to general + a general template not researcher, end-to-end genWorkflow emits it, Researcher unchanged)
+- status: current | date: 2026-07-01 | note: 1193 -> 1195 (+2). Existing empty-General warning test + preset-zero-warnings tests still pass (warning logic untouched; named presets use typed agents). Content-lint.
+
 ## agent-context-label
 
 - record: .workflow/agent-context-label-standardization.md
