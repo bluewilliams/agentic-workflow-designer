@@ -7569,6 +7569,27 @@ describe('Expand-to-modal text editing', () => {
   });
 });
 
+describe('General agent template (distinct from Researcher)', () => {
+  it('a General agent resolves to a general-purpose template, NOT the researcher prompt', () => {
+    resetState();
+    const g = win.addNode('agent', 100, 100, 'General Step', { agentType:'general', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:5 });
+    const eff = win.PROMPTS.general;   // what General now maps to
+    expect(win.AGENT_TYPE_PROMPT_MAP.general).toBe('general');
+    expect(typeof eff).toBe('string');
+    expect(eff).toContain('Complete the assigned task');
+    expect(eff).toNotContain('Research existing codebase patterns');   // no longer the researcher prompt
+    expect(eff === win.PROMPTS.researcher).toBe(false);
+    // end-to-end: an empty-prompt General agent emits the general template, not the researcher one
+    const wf = win.genWorkflow();
+    expect(wf).toContain('Complete the assigned task');
+    expect(wf).toNotContain('Research existing codebase patterns');
+  });
+  it('the Researcher type still uses the researcher prompt (unchanged)', () => {
+    expect(win.AGENT_TYPE_PROMPT_MAP.researcher).toBe('researcher');
+    expect(win.PROMPTS.researcher).toContain('Research existing codebase patterns');
+  });
+});
+
 describe('Agent Context round-trip through OpenSpec (export -> foreign import -> re-export)', () => {
   it('openSpecExtractAgentContext splits the block out of the prompt (and none present -> notes empty)', () => {
     const r = win.openSpecExtractAgentContext('Do the work.\n\nAgent Context:\nUse src/api.\n\nIntended execution parameters (a runtime honors what it can):\n- Role: General');

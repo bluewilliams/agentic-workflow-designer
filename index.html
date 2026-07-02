@@ -1482,7 +1482,7 @@ const AGENT_TYPE_PROMPT_MAP = {
   planner: 'planner', architect: 'architect', coder: 'implementer',
   frontend: 'frontend', backend: 'backend', reviewer: 'reviewer',
   tester: 'tester', debugger: 'investigator', researcher: 'researcher',
-  writer: 'writerTechnical', general: 'researcher', adversary: 'adversary', verifier: 'verifier'
+  writer: 'writerTechnical', general: 'general', adversary: 'adversary', verifier: 'verifier'
 };
 
 // Returns a quality prompt for any node - user prompt > agentType template > smart fallback
@@ -1498,7 +1498,8 @@ function getEffectivePrompt(node) {
   }
   const mapped = AGENT_TYPE_PROMPT_MAP[node.config.agentType];
   if (mapped && PROMPTS[mapped]) return PROMPTS[mapped];
-  // Smart fallback for general/unknown types using the node label + notes
+  // Smart fallback for unknown/unmapped agent types using the node label + notes
+  // (mapped types, incl. 'general', resolve above via AGENT_TYPE_PROMPT_MAP -> PROMPTS)
   const taskDesc = (node.config.notes && node.config.notes.trim()) ? `${node.label}: ${node.config.notes.trim()}` : node.label;
   return `Complete the task: ${taskDesc}.\n\n1. Read and understand any input from previous steps\n2. Use Glob and Grep to orient yourself in the codebase before making changes\n3. Use \`LSP workspaceSymbol\` to find relevant types and symbols in the task area\n4. Use \`LSP goToDefinition\` and \`LSP findReferences\` on key symbols before modifying them - understand their usage scope\n5. Use \`LSP incomingCalls\` / \`LSP outgoingCalls\` to trace call chains if the task involves tracing behavior or fixing a bug\n6. Analyze the requirements and plan your approach\n7. Execute the work using the tools available to you\n8. Verify your output is complete and correct - run linter/tests if applicable\n9. Document what was done and any issues encountered\n\n## Handoff Summary\nEnd your response with:\n- **Completed**: What was accomplished\n- **Files Changed**: Specific files created or modified (with brief reason)\n- **Key Decisions**: Important choices made and why\n- **Next Step Needs**: What the next agent must know to continue effectively`;
 }
@@ -1563,6 +1564,9 @@ function buildAdversaryPrompt(reviewedRole) {
 // PROMPT TEMPLATES - Comprehensive agent instructions
 // ═══════════════════════════════════════════════════════════
 const PROMPTS = {
+  // --- General (all-rounder scaffold; the workflow still warns if you leave a General agent's prompt empty, since you should tailor it) ---
+  general: 'Complete the assigned task.\n\n\n1. Read and understand any input from previous steps and the task requirements\n2. Use `Glob` and `Grep` to orient yourself in the codebase before making changes\n3. Use `LSP workspaceSymbol` to find relevant types and symbols in the task area\n4. Use `LSP goToDefinition` and `LSP findReferences` on key symbols before modifying them - understand their usage scope\n5. Use `LSP incomingCalls` / `LSP outgoingCalls` to trace call chains if the task involves tracing behavior or fixing a bug\n6. Analyze the requirements and plan your approach\n7. Execute the work using the tools available to you\n8. Verify your output is complete and correct - run linter/tests if applicable\n9. Document what was done and any issues encountered\n\n## Handoff Summary\nEnd your response with:\n- **Completed**: What was accomplished\n- **Files Changed**: Specific files created or modified (with brief reason)\n- **Key Decisions**: Important choices made and why\n- **Next Step Needs**: What the next agent must know to continue effectively',
+
   // --- Planning & Architecture ---
   planner: 'Analyze the requirements and create a detailed implementation plan.\n\n\n1. Use `Glob "**/*"` to map the project structure, then read key config files (package.json, tsconfig, etc.)\n2. Use `Grep` to find existing code related to the feature - search for relevant keywords, types, and patterns\n3. Read the most relevant files to understand current architecture, conventions, and data flow\n4. Use `LSP workspaceSymbol` to find key types, interfaces, and classes related to the feature area\n5. Use `LSP goToDefinition` on the most important types/functions to understand their signatures and dependencies\n6. Identify exactly which files to create or modify, with rationale for each\n7. Define component boundaries, interfaces, and data contracts\n8. Outline a testing strategy with specific test scenarios\n9. Flag potential risks, edge cases, and breaking changes\n\nOutput a structured, numbered plan with: file list (create/modify), implementation sequence, interface definitions, test scenarios, and risks.\n\n## Handoff Summary\nEnd your response with:\n- **Files to Create**: New files needed with purpose\n- **Files to Modify**: Existing files and what changes\n- **Key Types/Symbols**: LSP-discovered types/interfaces the Implementer must use\n- **Interfaces Defined**: Key contracts the Implementer must follow\n- **Risks**: Anything the next agent should watch out for',
 
