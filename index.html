@@ -856,6 +856,16 @@ svg.canvas{width:100%;height:100%;display:block}
 <div class="copied-toast" id="toast">Copied to clipboard!</div>
 
 <!-- Help Modal -->
+<div class="help-overlay" id="validationOverlay" onclick="if(event.target===this)closeValidation()">
+  <div class="help-modal" style="max-width:560px">
+    <div class="help-header">
+      <h2>Workflow Issues</h2>
+      <button class="help-close" onclick="closeValidation()">&times;</button>
+    </div>
+    <div class="help-body" id="validationList"></div>
+  </div>
+</div>
+
 <div class="help-overlay" id="helpOverlay" onclick="if(event.target===this)toggleHelp()">
   <div class="help-modal">
     <div class="help-header">
@@ -1723,6 +1733,11 @@ const PROMPTS = {
   testSuiteWriter: 'Analyze existing code and write tests for untested or under-tested modules.\n\n\n1. Read the analysis report identifying test surface, complexity hotspots, and coverage gaps\n2. Discover the project\'s CURRENT test conventions: find the most recently modified or added test files (git history, or newest by modification time) and read 2-3, then follow them exactly - framework, file location and naming, the structure and phrasing of test cases and groupings, assertions, fixtures, and mocking - preferring the most recent examples over any default. Use `LSP workspaceSymbol` to find existing test files and test utilities\n3. Use `LSP documentSymbol` on each target file to enumerate all public functions, classes, and exports - these define the test surface\n4. Use `LSP goToDefinition` on key types to understand input/output contracts and error conditions\n5. Use `LSP findReferences` on public APIs to understand how they are called in production - derive realistic test scenarios from actual usage\n6. Use `LSP incomingCalls` on critical functions to understand caller expectations and edge cases\n7. Prioritize by risk: test complex logic and error-prone paths first, simple getters/setters last\n8. Write unit tests: happy paths, error cases, boundary values, null/empty inputs\n9. Write integration tests: component interactions, data flow across module boundaries\n10. Run the full test suite with `Bash` and fix any failures before reporting\n\nOutput: test files created, coverage summary, and any areas requiring manual test design.\n\n## Handoff Summary\nEnd your response with:\n- **Tests Written**: Count and breakdown (unit/integration) per module\n- **Coverage**: Estimated coverage improvement (before → after)\n- **Risk Areas Covered**: Which high-risk paths now have test coverage\n- **Gaps Remaining**: Areas that need manual test design or mocking infrastructure\n- **Test Commands**: How to run the new tests',
 
   researcher: 'Research existing codebase patterns and similar implementations.\n\n\n1. Use `Glob "**/*"` to map the full project structure - identify key directories and files\n2. Use `Grep` with relevant keywords to find existing implementations of similar features\n3. Use `LSP workspaceSymbol` to search for types, interfaces, and classes by name in the feature domain\n4. Use `LSP documentSymbol` on the most relevant files to understand their full structure before reading them in detail\n5. Use `LSP goToDefinition` on key types and functions to understand their signatures and dependencies\n6. Use `LSP findReferences` on shared utilities and hooks to understand how widely they are used - identify the best reuse candidates\n7. Use `LSP goToImplementation` on interfaces to find all existing concrete implementations and understand the expected pattern\n8. Use `LSP incomingCalls` / `LSP outgoingCalls` on core functions to understand integration points and data flow\n9. Use `LSP hover` to quickly check type signatures without navigating away from the current file\n10. Where external references would help and web tools are available to you, use `WebSearch` to find official docs and best practices, and `WebFetch` to read the key pages\n11. Note naming conventions, file organization, import styles, and shared utilities\n12. Identify any constraints, technical debt, or gotchas that could affect the implementation\n13. Check for documentation, ADRs, or README files related to the area\n\nOutput: relevant patterns found with file:line references, recommended implementation approach aligned with existing conventions, and list of constraints to be aware of.\n\n## Handoff Summary\nEnd your response with:\n- **Relevant Files**: Key files the implementer should read before starting\n- **Pattern to Follow**: Specific existing pattern to replicate (file:line)\n- **Shared Code Available**: Utilities/hooks/components that can be reused (with LSP-verified reference counts)\n- **Key Types**: Types/interfaces the implementer must use (with goToDefinition locations)\n- **Constraints**: Technical debt, gotchas, or decisions to respect',
+
+  // --- Analysis (measure / forecast / cost / quantify) ---
+  analysisGatherer: 'Gather the concrete data needed to answer a measurement, cost, or forecasting question.\n\n\n1. Read the question from the requirements and any input from previous steps - identify exactly which quantities are needed\n2. Use `Glob` and `Grep` to locate the code, configs, and data sources that hold or produce those quantities\n3. Use `Bash` for repo-derived metrics: counts and sizes (wc, du, file counts) and history-based rates (git log over time windows)\n4. Use `LSP workspaceSymbol` and `LSP findReferences` to size usage surfaces - how many call sites, consumers, or integration points\n5. Where external reference data is needed (pricing pages, benchmark tables, rate limits) and web tools are available to you, use `WebFetch` to pull the actual numbers from authoritative pages\n6. Record every number with its source (file:line, command output, or URL) and how it was collected\n7. Keep MEASURED values separate from ESTIMATED ones - never silently blend them\n8. Note gaps: quantities you could not obtain, and what it would take to get them\n\nOutput: a data inventory - each quantity with value, unit, source, collection method, and measured-vs-estimated status.\n\n## Handoff Summary\nEnd your response with:\n- **Data Inventory**: Each quantity gathered - value, unit, source (file:line, command, or URL)\n- **Measured vs Estimated**: Which values are direct measurements and which are estimates\n- **Gaps**: Quantities that could not be gathered and why\n- **Collection Notes**: Anything about method or data quality the Analyst must know',
+
+  analysisSynthesizer: 'Analyze the gathered data to answer the measurement, cost, or forecasting question.\n\n\n1. Read the Data Gatherer\'s inventory and the original question - confirm the data covers it, and flag any gap that changes what can be answered\n2. Show your arithmetic: derive every computed figure step by step from the inventory values, with units carried through\n3. State every assumption explicitly (growth rates, utilization, pricing tiers, time horizons) and justify each one\n4. Keep measured inputs separate from estimated ones in every calculation, and carry that distinction into the results\n5. Where a forecast is required, give a range (low / expected / high) rather than a single point, and say what drives the spread\n6. Sanity-check the results against at least one independent anchor - a known real figure, an order-of-magnitude bound, or a second derivation path\n7. Assign a confidence level (high / medium / low) to each headline number, tied to the quality of its inputs\n8. Say what would most improve confidence if it were measured next\n\nOutput: the analysis with visible methodology - inputs, arithmetic, assumptions, ranges, and confidence.\n\n## Handoff Summary\nEnd your response with:\n- **Findings**: The headline numbers with units, each tagged measured or estimated, with confidence\n- **Methodology**: The calculation path from inventory to results\n- **Assumptions**: Every assumption made and its justification\n- **Recommendation**: What the numbers support doing, and what to measure next',
 
   // --- Specialized Implementation ---
   refactorer: 'Apply refactorings mapped to analysis findings.\n\n\n**Before making any changes - establish a baseline (if the project supports it):**\n1. If the project has a test suite, run it and record the results (pass count, fail count, skip count). This is your behavioral baseline. Pre-existing failures are not your responsibility, but you must not add new ones.\n2. If a linter/type checker is configured, run it and note the current state.\n3. If neither exists, proceed carefully using code review and LSP verification as your safety net instead.\n\n**Apply refactorings:**\n4. Read the analysis report and prioritize refactorings by impact and risk\n5. Use `LSP findReferences` on each symbol targeted for refactoring to confirm the full blast radius before changing it\n6. Use `LSP incomingCalls` on functions being extracted, inlined, or restructured to ensure all callers are updated\n7. Use `LSP outgoingCalls` on the target function to understand its dependency chain - preserve all dependencies when moving or splitting code\n8. Use `LSP goToDefinition` on types being refactored to understand their contracts before modifying them\n9. Apply refactorings incrementally - one transformation at a time\n10. After each refactoring, run the test suite if one exists. If any previously-passing test now fails, stop and fix the refactoring before continuing.\n11. Run linter and type checker if configured\n\nPreserve external behavior - refactoring must not change what the code does, only how it is structured.\n\nFor each refactoring: describe the transformation, files changed, complexity reduction, and LSP-confirmed blast radius.\n\n## Handoff Summary\nEnd your response with:\n- **Baseline**: Test results before refactoring (X pass, Y fail, Z skip)\n- **Final**: Test results after all refactorings (must match baseline)\n- **Refactorings Applied**: Each transformation with before/after description\n- **Files Changed**: Each file with what was restructured\n- **Complexity Reduction**: Measurable improvements (nesting depth, function length, coupling)\n- **Behavior Preserved**: Test suite confirmation that external behavior is unchanged\n- **Deferred Items**: Refactorings skipped and why',
@@ -3608,9 +3623,11 @@ function _snapshotState() {
   };
 }
 let _undoBatch = false;
-function pushUndo() {
+// Optional snap: callers that must capture state BEFORE a gesture completes (drag)
+// pass the pre-captured snapshot at commit time; everyone else snapshots now.
+function pushUndo(snap) {
   if (_undoBatch) return; // Suppress during bulk operations (preset load, generate)
-  _undoStack.push(_snapshotState());
+  _undoStack.push(snap || _snapshotState());
   if (_undoStack.length > UNDO_LIMIT) _undoStack.shift();
   _redoStack.length = 0; // Clear redo on new action
 }
@@ -4082,6 +4099,20 @@ function updateConfig() {
     }
   }
 
+  // Text edits undo at editing-session grain: the FIRST input on a field since it was
+  // (re)built or last blurred snapshots the pre-edit state. Registered BEFORE the
+  // state-writing handler below so the snapshot still sees pre-edit state. A burst of
+  // keystrokes is one undo entry; the expand modal's mirrored input events ride the
+  // same listener; blur ends the session.
+  fields.querySelectorAll('input,textarea').forEach(el => {
+    el.addEventListener('input', () => {
+      if (el._undoSession) return;
+      el._undoSession = true;
+      pushUndo();
+    });
+    el.addEventListener('blur', () => { el._undoSession = false; });
+  });
+
   // Bind events for inputs and textareas
   fields.querySelectorAll('input,textarea').forEach(el => {
     const handler = () => {
@@ -4364,8 +4395,10 @@ wrap.addEventListener('mousedown', e => {
     const nodeId = target.dataset.id;
     const node = state.nodes.find(n => n.id === nodeId);
     if (node) {
-      // Set up drag BEFORE selectNode re-renders (which destroys target element)
-      pushUndo();
+      // Set up drag BEFORE selectNode re-renders (which destroys target element).
+      // Snapshot is captured now but committed at drag-END, and only if the node
+      // actually moved - a bare select-click must not consume an undo slot.
+      state._dragUndoSnap = _snapshotState();
       state.dragging = node;
       state.dragMouseStart = { x: e.clientX, y: e.clientY };
       state.dragNodeStart = { x: node.x, y: node.y };
@@ -4425,6 +4458,10 @@ wrap.addEventListener('mouseup', e => {
     wrap.classList.remove('panning');
   }
   if (state.dragging) {
+    const moved = state.dragNodeStart &&
+      (state.dragging.x !== state.dragNodeStart.x || state.dragging.y !== state.dragNodeStart.y);
+    if (moved && state._dragUndoSnap) pushUndo(state._dragUndoSnap);
+    state._dragUndoSnap = null;
     state.dragging = null;
     render(); // Clean full render after drag completes
     updatePrompt();
@@ -4463,6 +4500,7 @@ document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'y') { e.preventDefault(); redo(); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); e.preventDefault(); }
   if (e.key === 'Escape') {
+    if ($('validationOverlay').classList.contains('show')) { closeValidation(); return; }
     if ($('helpOverlay').classList.contains('show')) { toggleHelp(); return; }
     state.connectFrom = null;
     tempLayer().innerHTML = '';
@@ -6455,9 +6493,9 @@ function generateFromStory() {
     // Measure / forecast / cost-estimate task: gather the data, analyze it, write the
     // report. Read-only, produces a report - never writes code. Distinct from research
     // (evaluate options) and review (audit code).
-    const gather = addNode('agent', 0, 0, 'Data Gatherer', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP', 'WebFetch'], prompt: PROMPTS.researcher, notes: 'Beyond the codebase itself, use Bash for repo metrics (counts, sizes, history) and WebFetch for external reference data (docs, pricing, benchmarks) when the analysis calls for them.', maxTurns: 10 });
+    const gather = addNode('agent', 0, 0, 'Data Gatherer', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP', 'WebFetch'], prompt: PROMPTS.analysisGatherer, notes: '', maxTurns: 10 });
     addConnection(entryNode.id, gather.id);
-    const analyst = addNode('agent', 0, 0, 'Analyst', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP'], prompt: PROMPTS.researcher, notes: '', maxTurns: 10 });
+    const analyst = addNode('agent', 0, 0, 'Analyst', { agentType: 'researcher', model: state.defaultModel, tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP'], prompt: PROMPTS.analysisSynthesizer, notes: '', maxTurns: 10 });
     addConnection(gather.id, analyst.id);
     const writer = addNode('agent', 0, 0, 'Report Writer', { agentType: 'writer', writingStyle: 'technical', model: state.defaultModel, tools: WRITER_TOOL_DEFAULTS.technical, prompt: PROMPTS.writerTechnical, notes: '', maxTurns: 10 });
     addConnection(analyst.id, writer.id);
@@ -7209,12 +7247,8 @@ function validateWorkflow() {
     }
   });
   // Parallel siblings with a dependency path between them cannot truly run simultaneously.
-  // Any decision's failure branch (noLabel-labelled edge) is a revision path, not a
-  // dependency - excluded so manual revise loops and attached review loops never count.
-  const isReviseEdge = c => {
-    const from = state.nodes.find(n => n.id === c.from);
-    return !!(from && from.type === 'decision' && c.label === ((from.config && from.config.noLabel) || 'No'));
-  };
+  // Revision paths never count as dependencies - shared predicate with topologicalSort.
+  const isReviseEdge = isReviseBackEdge;
   state.nodes.filter(n => n.type === 'parallel').forEach(par => {
     const children = state.connections.filter(c => c.from === par.id).map(c => c.to);
     const reaches = (fromId, toId) => {
@@ -7298,9 +7332,18 @@ function updateValidation() {
 function showValidation() {
   const warnings = validateWorkflow();
   if (warnings.length === 0) { showToast('No workflow issues found', 2000); return; }
-  const msg = warnings.map((w, i) => (i + 1) + '. ' + w.msg).join('\n');
-  alert('Workflow Issues:\n\n' + msg);
+  const list = $('validationList');
+  list.innerHTML = warnings.map(w => {
+    const isErr = w.type === 'error';
+    const icon = isErr ? '✖' : '⚠';
+    const color = isErr ? '#ef4444' : '#f59e0b';
+    return '<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06)">'
+      + '<span style="color:' + color + ';flex:0 0 auto">' + icon + '</span>'
+      + '<span>' + escHtml(w.msg) + '</span></div>';
+  }).join('');
+  $('validationOverlay').classList.add('show');
 }
+function closeValidation() { $('validationOverlay').classList.remove('show'); }
 // Minimal markdown renderer for prompt preview. Zero dependencies.
 function renderMarkdown(md) {
   if (!md || !md.trim()) return '';
@@ -9645,10 +9688,14 @@ function openSpecImportForeign(text) {
 // setReviewLoopBackTarget use. It is a runtime revision path, not a dependency: feeding
 // it to the ordering makes the loop cluster cyclic, which knocks every node in it out
 // of Kahn's queue and into the creation-order fallback (steps emit out of order).
-function isReviewLoopBackEdge(c) {
+// A decision's noLabel failure branch is a REVISION path, not a dependency: the app's
+// decision semantics are pass/revise (every generator describes the No branch as
+// "re-run with feedback"), so these edges are excluded from ordering. Covers both
+// attached Skeptic/Verifier loops (reviewLoopDecisionFor) and hand-built revise loops.
+// Shared by topologicalSort and validateWorkflow's sibling-dependency reachability.
+function isReviseBackEdge(c) {
   const from = state.nodes.find(n => n.id === c.from);
-  return !!(from && from.config && from.config.reviewLoopDecisionFor !== undefined &&
-    c.label === from.config.noLabel);
+  return !!(from && from.type === 'decision' && c.label === ((from.config && from.config.noLabel) || 'No'));
 }
 
 function topologicalSort() {
@@ -9656,7 +9703,7 @@ function topologicalSort() {
   const inDeg = {};
   state.nodes.forEach(n => { adj[n.id] = []; inDeg[n.id] = 0; });
   state.connections.forEach(c => {
-    if (isReviewLoopBackEdge(c)) return;
+    if (isReviseBackEdge(c)) return;
     if (adj[c.from]) { adj[c.from].push(c.to); inDeg[c.to] = (inDeg[c.to] || 0) + 1; }
   });
   const result = [];
