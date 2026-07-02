@@ -2,6 +2,34 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## node-config-ux
+
+- record: .workflow/node-config-ux.md
+- intent: two node-config UX defects. Selecting a node gave no visible feedback (config panel ~2621px below a 1000px viewport fold) - selectNode now scrolls the panel into view, gated on genuine selection CHANGE (no scroll-jacking; instant not smooth, smooth proved unreliable headless; before/after 2621px -> 341px). Type-switch bake trap: a second type change stranded the previous role's baked template under a lying status line - new matchesAnyRoleTemplate() (all mapped templates + writer variants + adversary lenses) generalizes the Writing Style handler's pristine-swap rule: pristine template text re-bakes for the new type, user text never touched. classifyAgentPrompt gains a 'foreign-template' state with truthful copy + Reset button for legacy saves.
+- files: index.html (selectNode, matchesAnyRoleTemplate, agentType handler, classifyAgentPrompt, agentPromptStatusBlock), tests.html (bake-trap sequence, custom-survives, foreign-template)
+- status: current | date: 2026-07-01 | note: 1225 -> 1228 (+3). Headless smoke of the full app passes. Content-lint.
+
+## prompt-contract-polish
+
+- record: .workflow/prompt-contract-polish.md
+- intent: three prompt-quality items batched. closingOrderNote(): one sentence ordering the up-to-four stacked end-of-response contracts (Handoff Summary -> DONE:/STATUS -> memory breadcrumb last), emitted only when a second contract is active; injected in sub-agent/teammate/SDK emissions. Unknown-type fallback in getEffectivePrompt now composes from PROMPTS.general's body (label/notes-seeded first line kept) - near-duplicate literal deleted, drift risk gone. CODE_SEARCH_STEP_ROLES widened 8 -> 12 (reviewer/tester/adversary/verifier - the hint's cross-repo-seams rationale fits auditing; writer stays out; DATADOG_STEP_ROLES deliberately unchanged, implementers inherit telemetry via the orchestrator's brief); C-series test literals updated in lockstep, C4 probe moved to writer/unknown.
+- files: index.html (closingOrderNote + 3 injections, fallback, role set), tests.html (closing-order describe, fallback-sync test, C-series)
+- status: current | date: 2026-07-01 | note: 1221 -> 1225 (+4). Content-lint.
+
+## auto-workflow-tailored-prompts
+
+- record: .workflow/auto-workflow-tailored-prompts.md
+- intent: Auto Workflow's research branch now actually mirrors the Parallel Research preset (its comment claimed it already did): inferResearchMode/detectNamedOptions from the story, researchDocPrompt for Options Researcher (Read/WebSearch/WebFetch - no more 7 LSP steps without LSP), researchPatternPrompt for Tradeoff Analyzer, researchSynthesizerPrompt for the Synthesizer (planner type, Read/Write, like the preset); fork carries researchMode so the mode editor works on auto-built workflows. Documentation tail gets the preset's writer-lens Skeptic review loop ("Docs accurate?" gate) with a linear writer-lens fallback for multi-branch tails; the omit-decision-gate structural test rewritten to pin the new sharper contract. Data Gatherer drops unmentioned WebFetch (bespoke analysis prompt = named follow-up). Four dead PROMPTS keys deleted (synthesizer, docResearcher, patternAnalyzer, codebaseExplorer).
+- files: index.html (research branch, documentation tail, analysis tools, PROMPTS), tests.html (tailored-prompts describe, doc-gate test, Atlassian-regression list)
+- status: current | date: 2026-07-01 | note: 1219 -> 1221. Content-lint.
+
+## sdk-toggle-parity
+
+- record: .workflow/sdk-toggle-parity.md
+- intent: genAgentSDK silently dropped the clarifyFirst and mcpDatadog toggles - both now render as orchestrator-level # comment banners from the SAME shared hint sources the prose formats use (wrapComment pattern, markdown stripped). KEY DISCOVERY: per-step Datadog/code-search hints are deliberately EXCLUDED from SDK agent instructions - tests R3/C5 pin it, rationale: the hard tools=[...] param grants no MCP access so the hint would be un-executable; an injection attempt was caught by those tests and reverted, with a source comment at the site so it is not retried.
+- files: index.html (genAgentSDK banners + rationale comment), tests.html (SDK toggle parity describe)
+- status: current | date: 2026-07-01 | note: 1215 -> 1219 (+4). Content-lint.
+
 ## delivery-ownership-subagents
 
 - record: .workflow/delivery-ownership-subagents.md

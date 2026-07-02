@@ -1917,8 +1917,8 @@ describe('Code search step awareness', () => {
   // Substring UNIQUE to the step hint (the standing codeSearchHint also contains "Code search (MCP)").
   const MARK = 'Code search (MCP) is available. A code-search MCP (for example Sourcebot)';
 
-  // The 8 roles in CODE_SEARCH_STEP_ROLES.
-  const STEP_ROLES = ['planner', 'architect', 'researcher', 'debugger', 'coder', 'backend', 'frontend', 'general'];
+  // The 12 roles in CODE_SEARCH_STEP_ROLES (review/critic roles included by design).
+  const STEP_ROLES = ['planner', 'architect', 'researcher', 'debugger', 'coder', 'backend', 'frontend', 'general', 'reviewer', 'tester', 'adversary', 'verifier'];
 
   // Build a minimal input -> agent -> output workflow with a single agent node of the given config.
   function workflowWith(agentLabel, agentConfig) {
@@ -1946,7 +1946,7 @@ describe('Code search step awareness', () => {
     expect(win.genClaudePrompt()).toContain(MARK);
   });
 
-  it('C2 all 8 roles in CODE_SEARCH_STEP_ROLES receive a non-empty hint containing the mark', () => {
+  it('C2 all 12 roles in CODE_SEARCH_STEP_ROLES receive a non-empty hint containing the mark', () => {
     win.state.mcpCodeSearch = true;
     STEP_ROLES.forEach(role => {
       const h = win.codeSearchStepHint({ config: { agentType: role } });
@@ -1970,14 +1970,14 @@ describe('Code search step awareness', () => {
     expect(win.genClaudePrompt()).toNotContain(MARK);
   });
 
-  it('C4 out-of-scope role, toggle on: reviewer and tester return empty', () => {
+  it('C4 out-of-scope role, toggle on: writer and unknown types return empty', () => {
     win.state.mcpCodeSearch = true;
-    expect(win.codeSearchStepHint({ config: { agentType: 'reviewer' } })).toBe('');
-    expect(win.codeSearchStepHint({ config: { agentType: 'tester' } })).toBe('');
+    expect(win.codeSearchStepHint({ config: { agentType: 'writer' } })).toBe('');
+    expect(win.codeSearchStepHint({ config: { agentType: 'someday_type' } })).toBe('');
   });
 
-  it('C4 out-of-scope role, toggle on: mark absent from a reviewer node step text', () => {
-    workflowWith('Reviewer', { agentType:'reviewer', model:'opus-4.6', tools:['Read','Grep'], prompt:'Review it.', maxTurns:5 });
+  it('C4 out-of-scope role, toggle on: mark absent from a writer node step text', () => {
+    workflowWith('Writer', { agentType:'writer', writingStyle:'technical', model:'opus-4.6', tools:['Read','Write'], prompt:'Write it.', maxTurns:5 });
     win.state.mcpCodeSearch = true;
     expect(win.genWorkflow()).toNotContain(MARK);
     expect(win.genSubAgents()).toNotContain(MARK);
@@ -2952,11 +2952,15 @@ describe('Workflow Generation', () => {
       const hasDecision = win.state.nodes.some(n => n.type === 'decision');
       expect(hasDecision).toBe(true);
     });
-    it('should omit decision gate for documentation workflows', () => {
+    it('documentation workflows gate on a docs-review loop, not a code-review decision', () => {
       win.document.getElementById('storyInput').value = 'Write comprehensive documentation and a detailed wiki guide for the project';
       win.generateFromStory();
-      const hasDecision = win.state.nodes.some(n => n.type === 'decision');
-      expect(hasDecision).toBe(false);
+      const decisions = win.state.nodes.filter(n => n.type === 'decision');
+      expect(decisions.length).toBe(1);
+      expect(decisions[0].config.reviewLoopDecisionFor !== undefined).toBe(true);
+      expect(decisions[0].label).toBe('Docs accurate?');
+      const skeptic = win.state.nodes.find(n => n.config && n.config.agentType === 'adversary');
+      expect(skeptic ? skeptic.config.adversaryRole : '').toBe('writer');
     });
     it('should feed extracted AC into decision condition', () => {
       win.document.getElementById('storyInput').value = 'Create a login form.\n\nAcceptance criteria:\n- Should validate email format\n- Must show error on invalid password';
@@ -3705,6 +3709,36 @@ describe('Writer Agent Type', () => {
       expect(node.config.agentType).toBe('writer');
       expect(node.config.writingStyle).toBe('technical');
       expect(node.config.prompt).toContain('technical writer');
+    });
+    it('re-bakes a pristine baked template on a SECOND type change (bake-trap fix)', () => {
+      const node = win.addNode('agent', 100, 200, 'Agent', { agentType:'general', prompt:'' });
+      win.selectNode(node.id);
+      win.updateConfig();
+      let typeSelect = win.document.querySelector('.config-select[data-key="agentType"]');
+      selectCustomOption(typeSelect, 'planner');
+      expect(node.config.prompt).toBe(win.PROMPTS.planner);
+      typeSelect = win.document.querySelector('.config-select[data-key="agentType"]');
+      selectCustomOption(typeSelect, 'tester');
+      expect(node.config.prompt).toBe(win.PROMPTS.tester);
+      expect(win.classifyAgentPrompt(node).state).toBe('template');
+    });
+    it('customized prompt text survives type changes untouched', () => {
+      const custom = 'My hand-written instructions.\nDo the thing carefully.';
+      const node = win.addNode('agent', 100, 200, 'Agent', { agentType:'planner', prompt:custom });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const typeSelect = win.document.querySelector('.config-select[data-key="agentType"]');
+      selectCustomOption(typeSelect, 'tester');
+      expect(node.config.prompt).toBe(custom);
+      expect(win.classifyAgentPrompt(node).state).toBe('custom');
+    });
+    it('classifyAgentPrompt reports foreign-template for another role\'s pristine text (legacy saves)', () => {
+      const node = win.addNode('agent', 100, 200, 'Agent', { agentType:'tester', prompt:win.PROMPTS.planner });
+      const info = win.classifyAgentPrompt(node);
+      expect(info.state).toBe('foreign-template');
+      const block = win.agentPromptStatusBlock(node);
+      expect(block).toContain('template text from a different role');
+      expect(block).toContain('Reset to Tester template');
     });
     it('should swap prompt when writing style changes from template', () => {
       const node = win.addNode('agent', 100, 200, 'Writer', {
@@ -6668,7 +6702,7 @@ describe('Atlassian two-block scenario matrix', () => {
 
   // The PROMPTS templates that had hardcoded Atlassian lines removed.
   describe('PROMPTS templates no longer hardcode Atlassian', () => {
-    const edited = ['planner','architect','investigator','reviewer','tester','codebaseExplorer','researcher','testPlanner','testReviewer'];
+    const edited = ['planner','architect','investigator','reviewer','tester','researcher','testPlanner','testReviewer'];
     edited.forEach(key => {
       it(key + ' template does not contain the hardcoded Atlassian line', () => {
         expect(win.PROMPTS[key]).toNotContain(HARDCODED);
@@ -7569,6 +7603,100 @@ describe('Expand-to-modal text editing', () => {
   });
 });
 
+describe('SDK toggle parity (Datadog grounding + Clarify first)', () => {
+  function sdkSetup() {
+    resetState();
+    win.addNode('agent', 0, 0, 'Investigator', { agentType:'debugger', model:'opus-4.8', tools:['Read','Grep','Glob','LSP'], prompt:'', maxTurns:10 });
+    win.addNode('agent', 200, 0, 'Writer', { agentType:'writer', writingStyle:'technical', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+  }
+  it('renders the Datadog grounding banner when mcpDatadog is on', () => {
+    sdkSetup();
+    win.state.mcpDatadog = true;
+    const sdk = win.genAgentSDK();
+    expect(sdk).toContain('Ground the plan in production telemetry');
+    expect(sdk).toContain('plan-shaping');
+  });
+  it('renders the Clarify-first banner when clarifyFirst is on', () => {
+    sdkSetup();
+    win.state.clarifyFirst = true;
+    const sdk = win.genAgentSDK();
+    expect(sdk).toContain('Clarify ambiguous requirements before planning');
+    expect(sdk).toContain('multiple-choice');
+  });
+  it('emits neither when the toggles are off', () => {
+    sdkSetup();
+    win.state.mcpDatadog = false; win.state.clarifyFirst = false;
+    const sdk = win.genAgentSDK();
+    expect(sdk).toNotContain('Ground the plan in production telemetry');
+    expect(sdk).toNotContain('Clarify ambiguous requirements');
+  });
+  it('per-step hints remain excluded from SDK agent instructions (hard tools param grants no MCP)', () => {
+    sdkSetup();
+    win.state.mcpDatadog = true; win.state.mcpCodeSearch = true;
+    const sdk = win.genAgentSDK();
+    expect(sdk).toNotContain('prefer what the orchestrator already folded into your brief');
+    expect(sdk).toNotContain('Code search (MCP) is available.');
+  });
+});
+
+describe('Closing-order note for stacked end-of-response contracts', () => {
+  function contractSetup() {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write','Edit'], prompt:'', maxTurns:10 });
+    const b = win.addNode('agent', 200, 0, 'Tester', { agentType:'tester', model:'opus-4.8', tools:['Read','Bash'], prompt:'', maxTurns:8 });
+    win.addConnection(a.id, b.id);
+  }
+  it('memory + durable record on: sub-agents and teams carry the full closing order, breadcrumb last', () => {
+    contractSetup();
+    win.state.memoryEnabled = true; win.state.durableRecord = true;
+    const sa = win.genSubAgents();
+    expect(sa).toContain('Closing order:');
+    expect(sa).toContain('DONE:/STATUS: record lines, then the memory breadcrumb comment as the very last line');
+    expect(win.genAgentTeams()).toContain('Closing order:');
+  });
+  it('memory only: closing order present without the record clause', () => {
+    contractSetup();
+    win.state.memoryEnabled = true; win.state.durableRecord = false;
+    const sa = win.genSubAgents();
+    expect(sa).toContain('Closing order:');
+    expect(sa).toNotContain('DONE:/STATUS: record lines');
+  });
+  it('no extra contracts: no closing-order note anywhere', () => {
+    contractSetup();
+    win.state.memoryEnabled = false; win.state.durableRecord = false;
+    expect(win.genSubAgents()).toNotContain('Closing order:');
+    expect(win.genAgentTeams()).toNotContain('Closing order:');
+    expect(win.genAgentSDK()).toNotContain('Closing order:');
+  });
+});
+
+describe('Auto Workflow tailored research prompts', () => {
+  it('research intent: Options Researcher and Tradeoff Analyzer get mode-aware prompts matching their tools', () => {
+    resetState();
+    win.document.getElementById('storyInput').value = 'Research and evaluate options for a caching approach, compare tradeoffs and investigate alternatives';
+    win.generateFromStory();
+    const opt = win.state.nodes.find(n => n.label === 'Options Researcher');
+    const trade = win.state.nodes.find(n => n.label === 'Tradeoff Analyzer');
+    const synth = win.state.nodes.find(n => n.label === 'Synthesizer');
+    expect(!!opt && !!trade && !!synth).toBe(true);
+    expect(opt.config.prompt).toContain('WebSearch');
+    expect(opt.config.prompt).toNotContain('LSP workspaceSymbol');
+    expect(opt.config.tools.includes('WebFetch')).toBe(true);
+    expect(opt.config.tools.includes('LSP')).toBe(false);
+    expect(trade.config.prompt === win.PROMPTS.researcher).toBe(false);
+    expect(synth.config.prompt).toContain('Synthesize all research');
+  });
+  it('the auto-built research fork carries researchMode so the mode editor works on it', () => {
+    const fork = win.state.nodes.find(n => n.type === 'parallel' && n.config.researchMode);
+    expect(!!fork).toBe(true);
+  });
+  it('dead PROMPTS keys are gone (synthesizer, docResearcher, patternAnalyzer, codebaseExplorer)', () => {
+    ['synthesizer','docResearcher','patternAnalyzer','codebaseExplorer'].forEach(k => {
+      expect(win.PROMPTS[k] === undefined).toBe(true);
+    });
+  });
+});
+
 describe('General agent template (distinct from Researcher)', () => {
   it('a General agent resolves to a general-purpose template, NOT the researcher prompt', () => {
     resetState();
@@ -7587,6 +7715,13 @@ describe('General agent template (distinct from Researcher)', () => {
   it('the Researcher type still uses the researcher prompt (unchanged)', () => {
     expect(win.AGENT_TYPE_PROMPT_MAP.researcher).toBe('researcher');
     expect(win.PROMPTS.researcher).toContain('Research existing codebase patterns');
+  });
+  it('unknown-type fallback keeps the label+notes seed and shares the General template body (no drift)', () => {
+    resetState();
+    const u = win.addNode('agent', 0, 0, 'Custom Step', { agentType:'someday_type', model:'opus-4.8', tools:['Read'], prompt:'', notes:'do the special thing', maxTurns:5 });
+    const eff = win.getEffectivePrompt(u);
+    expect(eff).toContain('Complete the task: Custom Step: do the special thing.');
+    expect(eff.slice(eff.indexOf('\n'))).toBe(win.PROMPTS.general.slice(win.PROMPTS.general.indexOf('\n')));
   });
 });
 
