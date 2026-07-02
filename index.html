@@ -3289,12 +3289,22 @@ function renderNodes() {
       g.appendChild(seqLabel);
     }
 
-    // Notes indicator badge (top-right corner)
+    // Agent-context badge (top-right pencil): shown when the agent has Agent Context (notes).
+    // Clicking it opens that context in the big expand editor (guarded so it stays a passive
+    // indicator if the expand-to-modal feature is removed).
     if (node.type === 'agent' && node.config.notes && node.config.notes.trim()) {
       const bx = w - 8, by = -4, br = 8;
       const badge = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       badge.setAttribute('cx', bx); badge.setAttribute('cy', by); badge.setAttribute('r', br);
       badge.setAttribute('class', 'note-indicator-bg');
+      if (typeof editAgentContext === 'function') {
+        badge.style.cursor = 'pointer';
+        const bTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        bTitle.textContent = 'Edit Agent Context';
+        badge.appendChild(bTitle);
+        badge.addEventListener('mousedown', e => e.stopPropagation());  // don't start a node drag
+        badge.addEventListener('click', e => { e.stopPropagation(); editAgentContext(node.id); });
+      }
       g.appendChild(badge);
       const badgeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       badgeIcon.setAttribute('x', bx); badgeIcon.setAttribute('y', by + 1);
@@ -4424,6 +4434,15 @@ function expandFromButton(btn) {
   const wrap = btn.closest('.ta-wrap');
   const ta = wrap && wrap.querySelector('textarea');
   if (ta) openTextExpand(ta, textExpandTitleFor(ta));
+}
+
+// Clicking an agent node's context badge (the top-right pencil) selects the node and pops its
+// Agent Context straight into the expand editor. selectNode -> updateConfig() builds the panel
+// synchronously, so the notes textarea is in the DOM by the time we open the modal.
+function editAgentContext(nodeId) {
+  selectNode(nodeId);
+  const ta = document.querySelector('#configPanel [data-key="notes"]');
+  if (ta) openTextExpand(ta, 'Agent Context');
 }
 
 // The corner button markup, shared by every wired textarea (static fields + configTextarea).
@@ -7586,7 +7605,7 @@ function genWorkflow() {
         const _ddN = datadogStepHint(node); if (_ddN) p.push('- ' + _ddN);
         const _csN = codeSearchStepHint(node); if (_csN) p.push('- ' + _csN);
         const _rhN = recordHandoffHint(); if (_rhN) p.push('- ' + _rhN);
-        if (node.config.notes && node.config.notes.trim()) p.push(`- Additional context: ${node.config.notes.trim()}`);
+        if (node.config.notes && node.config.notes.trim()) p.push(`- Agent Context: ${node.config.notes.trim()}`);
         if (node.config.maxTurns) p.push(`- Max turns: ${node.config.maxTurns}`);
         if (deps.length > 0) p.push(`- Depends on: ${deps.join(', ')}`);
         // Decision gate awareness
@@ -7786,7 +7805,7 @@ function genSubAgents() {
     promptLines.push('');
 
     if (node.config.notes && node.config.notes.trim()) {
-      promptLines.push('## Additional Context');
+      promptLines.push('## Agent Context');
       promptLines.push(node.config.notes.trim());
       promptLines.push('');
     }
@@ -8034,7 +8053,7 @@ function genAgentTeams() {
     lines.push('');
 
     if (node.config.notes && node.config.notes.trim()) {
-      lines.push(`${pre}- **Additional context**: ${node.config.notes.trim()}`);
+      lines.push(`${pre}- **Agent Context**: ${node.config.notes.trim()}`);
     }
 
     if (deps.length > 0) {
@@ -8305,7 +8324,7 @@ function genAgentSDK() {
       instructions.push('');
     }
     instructions.push(getEffectivePrompt(node));
-    if (node.config.notes && node.config.notes.trim()) instructions.push('Additional context: ' + node.config.notes.trim());
+    if (node.config.notes && node.config.notes.trim()) instructions.push('Agent Context: ' + node.config.notes.trim());
     // Add downstream decision awareness
     const downDec = getDownstreamDecisions(node.id);
     if (downDec.length > 0) {
@@ -8549,7 +8568,7 @@ function genClaudePrompt() {
           const _rhCpS = recordHandoffHint(); if (_rhCpS) p.push(_rhCpS);
           p.push('');
           if (s.config.notes && s.config.notes.trim()) {
-            p.push(`Additional context: ${s.config.notes.trim()}`);
+            p.push(`Agent Context: ${s.config.notes.trim()}`);
             p.push('');
           }
           // Decision gate for parallel agents
@@ -8576,7 +8595,7 @@ function genClaudePrompt() {
         const _rhCpN = recordHandoffHint(); if (_rhCpN) p.push(_rhCpN);
         p.push('');
         if (node.config.notes && node.config.notes.trim()) {
-          p.push(`**Additional context**: ${node.config.notes.trim()}`);
+          p.push(`**Agent Context**: ${node.config.notes.trim()}`);
           p.push('');
         }
         if (deps.length > 0) {
@@ -8766,7 +8785,7 @@ function openSpecInstruction(node) {
     if (c.acceptance && c.acceptance.trim()) body += '\n\nAcceptance criteria:\n' + c.acceptance.trim();
   } else {
     body = getEffectivePrompt(node);
-    if (c.notes && c.notes.trim()) body += '\n\nAdditional context:\n' + c.notes.trim();
+    if (c.notes && c.notes.trim()) body += '\n\nAgent Context:\n' + c.notes.trim();
   }
   const ctx = openSpecContextBlock();
   if (ctx) body += '\n\n' + ctx;
