@@ -85,3 +85,9 @@ Two strategic gaps, one unit of work. First, the durable records captured deltas
   - [x] Six rules + one-click Attach Skeptic; badge stays issues-only
   - [x] 15/15 presets advise clean, calibration-pinned
 - [x] Suite green (1290/1290); content-lint; all waves parent-verified
+
+## Update (same day): help-modal gap closed
+
+A post-ship documentation audit found the help modal's Durable Record section predated the v2 anatomy: it described the record and index but not the two changes users feel - the resume story (checklist authored up front, ticked live, resume = first unchecked box) and the awd:record fence Connect Repo reads. One paragraph added between the orchestrator and breadcrumb-index paragraphs, closing with the record-grain rule. Docs only; no behavior change.
+
+- [x] Help modal Durable Record paragraph (fence + live checklist resume + grain rule)

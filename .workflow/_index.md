@@ -4,6 +4,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 Record anatomy v2: each record opens with an `awd:record` JSON fence (slug, status current|superseded, date, files, exact verify commands, superseded_by) and a present-tense "Current behavior" section - read that first for the living truth, and the history below it only for the why. Records dated before 2026-07-01 migrate to v2 on touch. Superseded entries move to the Archive section at the bottom of this file; the durable system is exactly three surfaces (record + this index + _timeline.md), never any companion documents.
 
+## explain-workflow
+
+- record: .workflow/explain-workflow.md
+- intent: make prompt composition permanently inspectable (the 2026-07-01 audit's dozen invisible-composition bugs are this feature's reason to exist). Explain button beside Copy = workflow-level anatomy of the selected format (every orchestrator block as emitted/skipped + gating reason + snippet); "Explain this step" in the node config panel = per-step anatomy (template provenance, tool lines, hints, memory, gates, delivery, closing order). THE INVARIANT: statuses come from calling the same helpers the generators call, emitted rows carry verbatim probes, and agreement tests pin the explainer to real generated output across a node/toggle matrix in the three core formats - it cannot drift into lying. SDK collapses to one deliberate-exclusion note. Removable block, reused modal classes, inert until clicked.
+- files: index.html (explain block + modal + two entry buttons + Escape branch + help section), README.md, tests.html (agreement describe + exposures)
+- status: current | date: 2026-07-02 | note: 1291 -> 1299 (+8). Content-lint.
+
 ## self-improvement-loop
 
 - record: .workflow/self-improvement-loop.md

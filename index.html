@@ -837,6 +837,8 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
     <div class="prompt-actions">
       <span class="info" id="tokenEstimate" style="font-size:10px;color:var(--text3)"></span>
+      <button class="btn sm" onclick="if(typeof showExplain==='function')showExplain()" title="Per-part anatomy of the currently selected format: what will be emitted, what is skipped, and why">Explain</button>
+      <button class="btn sm" onclick="if(typeof explainSelectedStep==='function')explainSelectedStep()" title="Per-step anatomy of the node selected on the canvas: template, tool lines, hints, gates - emitted or skipped, and why">Explain step</button>
       <button class="btn sm primary" onclick="copyPrompt()">Copy</button>
     </div>
   </div>
@@ -865,6 +867,17 @@ svg.canvas{width:100%;height:100%;display:block}
       <button class="help-close" onclick="closeValidation()">&times;</button>
     </div>
     <div class="help-body" id="validationList"></div>
+  </div>
+</div>
+
+<!-- Explain This Workflow Modal (removable with the explain block) -->
+<div class="help-overlay" id="explainOverlay" onclick="if(event.target===this)closeExplain()">
+  <div class="help-modal" style="max-width:640px">
+    <div class="help-header">
+      <h2 id="explainTitle">Workflow anatomy</h2>
+      <button class="help-close" onclick="closeExplain()">&times;</button>
+    </div>
+    <div class="help-body" id="explainList"></div>
   </div>
 </div>
 
@@ -1041,6 +1054,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Keep a durable record</strong> - a committable spec + state document. It is a strict superset that builds on memory, written to <code>.workflow/{slug}.md</code> in your repo so it versions with the code.</li>
 </ul>
 <p>The <strong>orchestrator</strong> (the top-level agent driving the workflow and spawning its steps) owns the record: it creates it at kickoff, folds in each step's findings as the run proceeds, and finalizes it for commit - compressing the running per-agent commentary into a clean spec without dropping the why or the decisions.</p>
+<p>Each record leads with a machine-readable <code>awd:record</code> fence and a present-tense <strong>Current behavior</strong> section, and its task checklist is authored up front and ticked live as tasks complete - so an interrupted run resumes from the first unchecked box, and Connect Repo can read run fences straight out of the record. One record per unit of work, always: phases become sections, never sibling records.</p>
 <p>A breadcrumb index at <code>.workflow/_index.md</code> keeps one entry per record, grouped by capability. It is scanned first (scan-then-open) so future work reads only the relevant records instead of all of them. Supersession lineage keeps history one hop away: a re-worked capability leaves the old record marked superseded with the new one linked, so the index always points at current behavior.</p>
 
 <h3>Ground in Prior Records</h3>
@@ -1057,6 +1071,9 @@ svg.canvas{width:100%;height:100%;display:block}
 <p><strong>Connect repo</strong> (next to Import, Chromium only) removes even the paste: pick your repo or its <code>.workflow</code> folder once, and the designer auto-ingests new run fences from your durable records on every visit. Rescans never double-count (content-hash dedupe); disconnect anytime. Stats live in your browser only.</p>
 <h3>Workflow Advisor</h3>
 <p>Click the health indicator to open the review modal. Below any issues, a lightbulb <b>Suggestions</b> group offers non-blocking advice: unreviewed build paths (one-click <b>Attach Skeptic</b>), fan-outs that never synthesize, solo agents shipping code, read-only roles holding write tools, starved turn budgets - and, once run reports are ingested, telemetry-informed tuning (gates that loop, steps that cap out or fail). Suggestions never affect the badge count and never block generation.</p>
+<h3>Explain This Workflow</h3>
+<p>Generated prompts are compositions - templates, tool lines, hints, protocols, gates - each with its own firing condition. <strong>Explain</strong> (next to Copy) opens the anatomy of the selected format at the workflow level; <strong>Explain step</strong> (beside it) shows the per-step parts for the node selected on the canvas: emitted or skipped, why (which toggle, which role set, which condition), and a snippet of what is emitted. The statuses come from the same helpers the generators use, and agreement tests pin them to the real output.</p>
+
 <h3>Prompt Library</h3>
 <p>Click the <strong>Prompts</strong> button in the toolbar for a library of ready-to-use prompts. Use the search box to filter by title or description. Star your favorites and they float to the top. Prompts that need your input (like a file path or bug description) show a popup before copying so the prompt is ready to paste.</p>
 <p><strong>Add your own.</strong> Use <strong>+ Add your own</strong> to save a custom prompt - it gets a <strong>My Prompts</strong> category with Edit/Delete on each card. Custom prompts are stored in your browser only. <strong>Export mine</strong> and <strong>Import</strong> move them as a JSON file for backup or sharing with a teammate; import merges by title.</p>
@@ -4190,6 +4207,11 @@ function updateConfig() {
     }
   }
 
+  // Explain-this-step button (removable with the explain block): per-part anatomy of
+  // what the selected export format will emit for this node, and why.
+  if (typeof explainNode === 'function' && ['agent', 'decision', 'parallel', 'output'].includes(node.type)) {
+  }
+
   // Text edits undo at editing-session grain: the FIRST input on a field since it was
   // (re)built or last blurred snapshots the pre-edit state. Registered BEFORE the
   // state-writing handler below so the snapshot still sees pre-edit state. A burst of
@@ -4591,6 +4613,8 @@ document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'y') { e.preventDefault(); redo(); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); e.preventDefault(); }
   if (e.key === 'Escape') {
+    const _exOv = $('explainOverlay');
+    if (_exOv && _exOv.classList.contains('show')) { closeExplain(); return; }
     if ($('validationOverlay').classList.contains('show')) { closeValidation(); return; }
     if ($('helpOverlay').classList.contains('show')) { toggleHelp(); return; }
     state.connectFrom = null;
@@ -7585,6 +7609,386 @@ function showValidation() {
   $('validationOverlay').classList.add('show');
 }
 function closeValidation() { $('validationOverlay').classList.remove('show'); }
+
+// ═══════════════════════════════════════════════════════════
+// EXPLAIN THIS WORKFLOW (removable block)
+// ═══════════════════════════════════════════════════════════
+// Per-step and orchestrator-level anatomy of what the generators will emit and WHY.
+// THE INVARIANT: a row's status comes from CALLING the same helpers and gates the
+// generators call (a part is emitted iff the real helper returns text for this node
+// and state) - the conditions are never re-implemented here. Every emitted row
+// carries a probe: a verbatim substring of the text the generator emits. The
+// agreement tests generate real output and assert every probed row matches it; if
+// a generator changes what it emits, they fail and this explainer moves in lockstep.
+
+const EXPLAIN_FORMATS = { prompt: 'Workflow', subagent: 'Sub-Agents', teams: 'Agent Teams', sdk: 'Agent SDK', claude: 'Claude.ai' };
+
+// First meaningful line of a part's emitted text, stripped of container prefixes
+// (heading #s, blockquote >, list dashes) so it stays a verbatim substring of the
+// generated output at any nesting level.
+function explainProbe(text) {
+  const t = Array.isArray(text) ? text.filter(l => l && String(l).trim()).join('\n') : String(text || '');
+  const line = t.split('\n').find(l => l.trim());
+  if (!line) return '';
+  return line.trim().replace(/^[#>\-\s]+/, '').trim();
+}
+function exRow(part, emitted, reason, text) {
+  const probe = emitted ? explainProbe(text) : '';
+  const snippet = probe.length > 120 ? probe.slice(0, 120) + '...' : probe;
+  // full: the complete emitted text, kept so the modal can unfold a row in place
+  // (the snippet keeps the anatomy scannable; the full text is one click away).
+  const full = emitted ? (Array.isArray(text) ? text.filter(l => l && String(l).trim()).join('\n') : String(text || '')).trim() : '';
+  return { part, status: emitted ? 'emitted' : 'skipped', reason: reason || '', snippet, probe, full };
+}
+// Input-node anatomy: how the requirements enter the generated prompt. Statuses come
+// from the same helpers the generators call (requirementsBlock / inputSourceHint /
+// atlassianTicketFetchHint), preserving the agreement invariant.
+function explainInputNode(node, format) {
+  const rows = [];
+  const story = getStory();
+  const req = requirementsBlock(story, '## Requirements');
+  const lands = format === 'subagent' ? 'emitted in the orchestrator brief AND inside every agent prompt (## Requirements)'
+    : 'emitted once at the orchestrator level';
+  rows.push(exRow('Requirements', req.length > 0,
+    req.length ? ('from the Requirements input; ' + lands) : 'the Requirements input is empty - steps run from their prompts alone',
+    req.filter(l => l && !String(l).startsWith('#'))));
+  const urlOnly = !!story && isUrlOnly(story);
+  const srcHint = inputSourceHint();
+  rows.push(exRow('Source framing', urlOnly || !!srcHint,
+    urlOnly ? 'URL-only input: the orchestrator resolves the ticket once up front; steps work from the resolved spec and never re-fetch'
+      : srcHint ? ('input source is "' + ((node.config && node.config.source) || 'story') + '" - derive-requirements framing emitted')
+      : 'plain requirements text - no framing needed',
+    urlOnly ? req.filter(l => l && !String(l).startsWith('#')) : srcHint));
+  const atlT = atlassianTicketFetchHint(getWorkflowAtlassianUrls());
+  rows.push(exRow('Atlassian ticket fetch', !!atlT,
+    atlT ? 'Atlassian URL detected in the input - resolved once, up front, by the orchestrator' : 'no Atlassian URL in the input',
+    atlT || ''));
+  return rows;
+}
+
+// A node is a parallel-fork child exactly the way the generators decide it: it has
+// an incoming connection from a parallel node.
+function explainIsParallelChild(node) {
+  return state.nodes.filter(n => n.type === 'parallel').some(par =>
+    state.connections.some(c => c.from === par.id && c.to === node.id));
+}
+
+function explainAgentNode(node, format) {
+  const rows = [];
+  const info = classifyAgentPrompt(node);
+  const eff = getEffectivePrompt(node);
+  const tools = node.config.tools || [];
+  const deps = getDepsWithType(node.id);
+  const gates = getDownstreamDecisions(node.id);
+  const notes = (node.config.notes || '').trim();
+  const roleReason = {
+    'empty': info.role + ' role template, auto-applied (no custom prompt stored)',
+    'template': 'unmodified ' + info.role + ' role template (stored verbatim; Reset-safe)',
+    'foreign-template': 'pristine template text from a DIFFERENT role, left by a type change - Reset applies the ' + info.role + ' template',
+    'custom': 'custom prompt (user-edited; role templates not applied)'
+  }[info.state];
+  rows.push(exRow('Role instructions', true, roleReason, eff));
+  rows.push(exRow('Model', true, 'always emitted', format === 'claude' ? '' : getTaskModelParam(node.config.model)));
+
+  if (format === 'claude') {
+    rows.push(exRow('Tool availability', false, 'Claude.ai format carries no CLI tool lines'));
+    rows.push(exRow('Tool scope note', false, 'Claude.ai format carries no CLI tool lines'));
+    rows.push(exRow('Tool substitution note', false, 'Claude.ai format carries no CLI tool lines'));
+  } else {
+    rows.push(exRow('Tool availability', tools.length > 0,
+      tools.length > 0 ? 'closed enumeration of the selected core tools' : 'no tools selected - the line is omitted (caller guards emission)',
+      tools.length > 0 ? toolAccessText(tools) : ''));
+    const scope = toolScopeNote(tools);
+    rows.push(exRow('Tool scope note', !!scope,
+      scope ? (ALL_TOOLS.some(t => !tools.includes(t)) ? 'names the withheld core tools; declares unmodeled tools (MCP, task tracking) unrestricted' : 'full core set selected - outside-clause only')
+            : 'no enumeration emitted, nothing to scope',
+      scope));
+    const sub = toolSubstitutionNote(node);
+    rows.push(exRow('Tool substitution note', !!sub,
+      sub ? 'the effective prompt mentions tools outside the selection - names the gap so the prompt never contradicts it'
+          : (tools.length === 0 ? 'no enumeration emitted' : 'the selection covers every tool the prompt mentions'),
+      sub));
+  }
+
+  if (format === 'subagent' || format === 'teams') {
+    const memOn = state.memoryEnabled;
+    const memReason = memOn
+      ? 'memory toggle on - read-first / write-last protocol per agent (write authorization included: memory writes are protocol-level, exempt from the task tool list)'
+      : 'memory toggle off';
+    if (format === 'subagent') {
+      rows.push(exRow('Memory preamble (Step 0)', memOn, memReason, memOn ? genAgentMemoryPreamble(node.label) : ''));
+      rows.push(exRow('Memory postamble (Final Steps)', memOn, memReason, memOn ? genAgentMemoryPostamble(node.label) : ''));
+    } else {
+      rows.push(exRow('Memory read step', memOn, memReason, memOn ? '- **Memory - READ FIRST (CRITICAL)**: Before starting any work:' : ''));
+      rows.push(exRow('Memory write step', memOn, memReason, memOn ? '- **Memory - WRITE LAST (MANDATORY)**: After completing work:' : ''));
+    }
+  }
+
+  const dd = datadogStepHint(node);
+  rows.push(exRow('Datadog step hint', !!dd,
+    dd ? 'mcpDatadog toggle on and role is in DATADOG_STEP_ROLES'
+       : (!state.mcpDatadog ? 'Datadog toggle off'
+          : "role '" + node.config.agentType + "' not in DATADOG_STEP_ROLES (plan-shaping roles only; implementers inherit telemetry via the orchestrator brief)"),
+    dd));
+  const cs = codeSearchStepHint(node);
+  rows.push(exRow('Code-search step hint', !!cs,
+    cs ? 'mcpCodeSearch toggle on and role is in CODE_SEARCH_STEP_ROLES'
+       : (!state.mcpCodeSearch ? 'Code search toggle off'
+          : "role '" + node.config.agentType + "' not in CODE_SEARCH_STEP_ROLES (writer stays out - docs work rarely spans repo seams)"),
+    cs));
+  const rh = recordHandoffHint();
+  rows.push(exRow('Durable-record handoff (DONE:/STATUS:)', !!rh,
+    rh ? 'durable-record toggle on - the step reports transcribe-ready lines naming its exact checklist items' : 'durable-record toggle off',
+    rh));
+
+  rows.push(exRow('Agent Context', !!notes, notes ? 'appended to THIS agent only' : 'no Agent Context set', notes));
+
+  const isParChild = explainIsParallelChild(node);
+  if (format === 'prompt') {
+    rows.push(exRow('Depends on', deps.length > 0 && !isParChild,
+      deps.length === 0 ? 'no upstream dependencies'
+        : (isParChild ? 'parallel-fork sibling - the fork header conveys the dependency, the line is deliberately omitted' : 'upstream steps whose output feeds this one'),
+      deps.length > 0 && !isParChild ? 'Depends on: ' + deps.join(', ') : ''));
+    rows.push(exRow('Max turns', !!node.config.maxTurns, node.config.maxTurns ? 'turn budget for this step' : 'no maxTurns set',
+      node.config.maxTurns ? 'Max turns: ' + node.config.maxTurns : ''));
+  } else if (format === 'subagent') {
+    rows.push(exRow('Input (dependencies)', deps.length > 0, deps.length > 0 ? 'upstream steps whose output feeds this one' : 'no upstream dependencies',
+      deps.length > 0 ? 'Review the output from: ' + deps.join(', ') : ''));
+    rows.push(exRow('Max turns', true, 'always emitted in the step summary', '**Max turns**: ' + node.config.maxTurns));
+  } else if (format === 'teams') {
+    rows.push(exRow('Input from (dependencies)', deps.length > 0, deps.length > 0 ? 'upstream teammates whose output is passed as context' : 'no upstream dependencies',
+      deps.length > 0 ? 'Input from**: ' + deps.join(', ') : ''));
+    rows.push(exRow('Max turns', true, 'always emitted in the teammate block', 'Max turns: ' + node.config.maxTurns));
+  } else {
+    rows.push(exRow('Dependencies', deps.length > 0, deps.length > 0 ? 'upstream steps feed this one' : 'no upstream dependencies', ''));
+  }
+
+  const gateProbe = gates.length > 0 ? (gates[0].config.condition || gates[0].label) : '';
+  const gateText = format === 'prompt' ? 'Success gate: "' + gateProbe + '"'
+    : format === 'subagent' ? 'Your output must clearly address: "' + gateProbe + '"'
+    : format === 'teams' ? 'output will be evaluated against: "' + gateProbe + '"'
+    : 'Success criteria: "' + gateProbe + '"';
+  rows.push(exRow('Success gate', gates.length > 0,
+    gates.length > 0 ? 'a downstream decision evaluates this output - the step must state an explicit verdict' : 'no downstream decision gate',
+    gates.length > 0 ? gateText : ''));
+  if (format === 'subagent' && gates.length === 0) {
+    const downstream = getDownstream(node.id);
+    rows.push(exRow('Downstream consumers', downstream.length > 0,
+      downstream.length > 0 ? 'no gate, so the prompt names who consumes the output instead' : 'terminal step - nothing downstream',
+      downstream.length > 0 ? 'Your output will be consumed by: ' + downstream.join(', ') : ''));
+  }
+
+  if (format === 'subagent') {
+    const dan = deliveryAgentNote('##');
+    const fmts = deliveryFormats();
+    const danReason = dan.length > 0
+      ? (fmts.includes('pr') || fmts.includes('commit')
+          ? 'delivery output exists: agents get branch discipline only - the imperative steps run ONCE at the orchestrator level'
+          : 'no delivery output node - the safe no-commit discipline applies per agent')
+      : 'report/docs output: the final artifact is the orchestrator synthesis, no per-agent note';
+    rows.push(exRow('Delivery discipline', dan.length > 0, danReason, dan));
+  }
+
+  if (format === 'subagent' || format === 'teams') {
+    const co = closingOrderNote();
+    rows.push(exRow('Closing order', !!co,
+      co ? 'two or more end-of-response contracts are active - one ordering sentence prevents them fighting'
+         : 'fewer than two end-of-response contracts active (needs the durable record or memory)',
+      co));
+  }
+  return rows;
+}
+
+function explainDecisionNode(node, format) {
+  const rows = [];
+  const yes = node.config.yesLabel || 'Yes', no = node.config.noLabel || 'No';
+  const cond = node.config.condition || 'Evaluate condition';
+  const condProbe = format === 'claude' ? '' : '**' + node.label + '**: ' + cond;
+  rows.push(exRow('Gate condition', true,
+    node.config.condition ? 'user-defined condition' : 'no condition set - the node label is used as the criterion',
+    condProbe));
+  rows.push(exRow('Verdict labels', true,
+    (node.config.yesLabel && node.config.noLabel)
+      ? 'user labels ' + yes + '/' + no
+      : 'blank labels fall back to Yes/No (matching node-creation defaults and edge labels)', ''));
+  const reviseTargets = state.connections
+    .filter(c => c.from === node.id && c.label === (node.config.noLabel || 'No'))
+    .map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
+  const cap = node.config.maxRevisions || 3;
+  const reviseProbe = format === 'prompt' ? 'max ' + cap + ' revision cycles'
+    : (format === 'subagent' || format === 'teams') ? 'max ' + cap + ' cycles' : '';
+  rows.push(exRow('Revise routing', true,
+    (reviseTargets.length > 0 ? 'the ' + no + ' branch re-runs ' + reviseTargets.map(t => t.label).join(', ') : 'no ' + no + '-labelled edge - generic re-run guidance')
+      + '; capped at ' + cap + ' cycles, then proceed and document remaining concerns',
+    reviseProbe));
+  rows.push(exRow('Ordering semantics', true,
+    node.config.reviewLoopDecisionFor !== undefined
+      ? 'attached review-loop gate: its failure back-edge is excluded from step ordering (isReviseBackEdge)'
+      : 'manual gate: its ' + no + ' branch is a revision path, never an ordering dependency', ''));
+  const feeders = state.connections.filter(c => c.to === node.id)
+    .map(c => { const n = state.nodes.find(nd => nd.id === c.from); return n ? n.label : null; }).filter(Boolean);
+  rows.push(exRow('Evaluated output', feeders.length > 0,
+    feeders.length > 0 ? 'the gate judges output from these steps' : 'nothing feeds this gate yet',
+    feeders.length > 0 && format !== 'claude' ? feeders.join(', ') : ''));
+  return rows;
+}
+
+function explainParallelNode(node, format) {
+  const rows = [];
+  const strat = node.config.strategy || 'all';
+  const targets = getDownstream(node.id);
+  const stratProbe = format === 'prompt' ? (targets.length ? 'Run [' + targets.join(', ') + '] in parallel' : '')
+    : format === 'subagent' ? (strat === 'any' ? 'Join (First Complete)' : strat === 'race' ? 'Join (Race)' : 'single message')
+    : format === 'teams' ? (strat === 'any' ? 'Proceed when the first teammate finishes.' : strat === 'race' ? 'Race.' : 'Wait for ALL parallel teammates') : '';
+  rows.push(exRow('Join strategy', true,
+    strat === 'any' ? 'first complete wins - the run proceeds with the first branch to return'
+      : strat === 'race' ? 'race - the first useful result wins and the rest stop'
+      : 'wait for all branches, then collect and review every output', stratProbe));
+  rows.push(exRow('Sibling emission', true,
+    'siblings emit once as a group at the first-encountered member; a dependent node between siblings keeps its own step slot (emitted-id-set walk)', ''));
+  rows.push(exRow('Branches', targets.length > 0, targets.length > 0 ? targets.length + ' parallel branch(es)' : 'no branches connected yet',
+    ''));
+  return rows;
+}
+
+function explainOutputNode(node, format) {
+  const rows = [];
+  const fmts = deliveryFormats();
+  const winner = fmts.includes('pr') ? 'pr' : fmts.includes('commit') ? 'commit' : fmts.includes('report') ? 'report' : fmts.includes('docs') ? 'docs' : 'none';
+  const winnerHeading = { pr: 'Pull Request Creation', commit: 'Commit', report: 'Report', docs: 'Documentation', none: 'Do not commit, push, or open a PR' }[winner];
+  const mine = node.config.format;
+  rows.push(exRow('Delivery block', true,
+    "this output's format is '" + mine + "'; the delivery block is driven by priority pr > commit > report > docs across all output nodes ('" + winner + "' wins)" ,
+    mine === winner || (winner === 'none' && mine === 'code') ? winnerHeading : ''));
+  if (mine === 'pr') {
+    rows.push(exRow('Branches', true,
+      (node.config.branchName ? 'feature branch: ' + node.config.branchName : 'feature branch derived from the ticket ID at run time')
+      + '; target: ' + (node.config.targetBranch || 'main (default)'), ''));
+  }
+  return rows;
+}
+
+function explainNode(node, format) {
+  format = format || state.exportFormat;
+  if (!node) return [];
+  if (format === 'sdk') {
+    return [exRow('Agent SDK', true, 'hard tools=[...] param is the enforcement point; per-step MCP hints are deliberately excluded (an un-executable instruction otherwise); memory unions Write into the tools param when needed', '')];
+  }
+  if (node.type === 'agent') return explainAgentNode(node, format);
+  if (node.type === 'input') return explainInputNode(node, format);
+  if (node.type === 'decision') return explainDecisionNode(node, format);
+  if (node.type === 'parallel') return explainParallelNode(node, format);
+  if (node.type === 'output') return explainOutputNode(node, format);
+  return [exRow('Note', true, node.type + ' nodes shape the plan sections; see the workflow-level Explain for the orchestrator anatomy', '')];
+}
+
+function explainWorkflow(format) {
+  format = format || state.exportFormat;
+  if (format === 'sdk') {
+    return [exRow('Agent SDK', true, 'Python skeleton: the tools=[...] param is the only true enforcement point; per-step MCP hints are deliberately excluded (pinned by tests); clarify/Datadog toggles render as comment banners', '')];
+  }
+  const rows = [];
+  const em = executionModelDirective(format);
+  rows.push(exRow('Execution model', true, 'always emitted first - tells the runtime HOW to execute this format', em[0]));
+  const story = getStory();
+  rows.push(exRow('Requirements', !!story, story ? 'from the Requirements field' : 'Requirements field empty - section omitted', story));
+  const plan = getPlan();
+  rows.push(exRow('Workflow Context (plan)', !!plan, plan ? 'from the Workflow Context field - starting guidance, adapt-not-obey framing' : 'no Workflow Context pasted', plan ? 'Workflow Context (starting guidance - adapt based on findings)' : ''));
+  rows.push(exRow('App Source', !!getAppSource(), getAppSource() ? 'app-source path set - read-only exploration target' : 'no app source configured', getAppSource() ? 'App Source' : ''));
+  const uiN = $('uiContextNotes') ? $('uiContextNotes').value.trim() : '';
+  rows.push(exRow('UI Context', !!uiN, uiN ? 'UI/styling constraints set' : 'no UI context set', uiN ? 'UI Context' : ''));
+  const dfmts = deliveryFormats();
+  const dwinner = dfmts.includes('pr') ? 'Pull Request Creation' : dfmts.includes('commit') ? 'Commit' : dfmts.includes('report') ? 'Report' : dfmts.includes('docs') ? 'Documentation' : 'no-commit discipline';
+  rows.push(exRow('Delivery block', true, 'orchestrator-owned, emitted once; driver by priority pr > commit > report > docs: ' + dwinner, dfmts.includes('pr') ? 'Pull Request Creation' : ''));
+  rows.push(exRow('Repositories', getRepositories().length > 0, getRepositories().length > 0 ? getRepositories().length + ' repositories listed' : 'no repositories configured', getRepositories().length > 0 ? 'Repositories' : ''));
+  const atlT = atlassianTicketFetchHint(getWorkflowAtlassianUrls());
+  rows.push(exRow('Atlassian ticket fetch', !!atlT, atlT ? 'ticket URL(s) found in the requirements/nodes - toggle-independent, orchestrator fetches once' : 'no Atlassian URLs found in the workflow', atlT));
+  const atlG = atlassianGeneralHint();
+  rows.push(exRow('Atlassian (general)', !!atlG, atlG ? 'mcpAtlassian toggle on' : 'Atlassian toggle off', atlG));
+  const csH = codeSearchHint();
+  rows.push(exRow('Code search (workflow-level)', !!csH, csH ? 'mcpCodeSearch toggle on' : 'Code search toggle off', csH));
+  rows.push(exRow('Conventions', true, 'always emitted - comment discipline + test-convention discovery', conventionsHint()));
+  const ru = rulesPathsHint();
+  rows.push(exRow('Repo rules / constitution', !!ru, ru ? 'rules paths configured (BINDING constraints)' : 'no rules paths configured', ru));
+  const pd = productDocsHint();
+  rows.push(exRow('Product / architecture docs', !!pd, pd ? 'doc paths configured (goals to SERVE)' : 'no product-doc paths configured', pd));
+  const cr = consumeRecordsHint(format);
+  rows.push(exRow('Grounding in prior records', !!cr, cr ? 'consumeRecords toggle on - three-tier lookup, Current behavior first' : 'Ground-in-prior-records toggle off', cr));
+  const cl = clarifyFirstHint();
+  rows.push(exRow('Clarify-first gate', !!cl, cl ? 'clarifyFirst toggle on - one round of focused questions before planning' : 'Clarify-first toggle off', cl));
+  const ddG = datadogGroundingHint();
+  rows.push(exRow('Datadog grounding', !!ddG, ddG ? 'mcpDatadog toggle on - bounded plan-shaping telemetry read' : 'Datadog toggle off', ddG));
+  const cm = customMcpHint();
+  rows.push(exRow('Custom MCP tools', !!cm, cm ? 'custom MCP notes set' : 'no custom MCP notes', cm));
+  const memOn = state.memoryEnabled;
+  // Full protocol text so the row can unfold in place; probe stays the header line
+  // (the sub-agent format's memory header is inline in its generator, not a callable
+  // helper, so that format keeps the header-only literal).
+  const memFull = memOn
+    ? (format === 'subagent' ? 'Memory System (CRITICAL)'
+       : format === 'claude' ? genSingleAgentMemoryProtocol().replace(/^---\n/, '')
+       : genMemoryProtocol().replace(/^---\n/, ''))
+    : '';
+  rows.push(exRow('Memory protocol', memOn, memOn ? 'memory toggle on - per-agent files + shared handoff log + breadcrumbs' : 'memory toggle off', memFull));
+  const durOn = memOn && state.durableRecord;
+  const durFull = durOn ? genDurableRecordProtocol(format === 'subagent' ? 'subagent' : format === 'teams' ? 'teams' : 'prompt').replace(/^---\n/, '') : '';
+  rows.push(exRow('Durable record protocol', durOn,
+    durOn ? 'durable-record toggle on - ONE record per unit of work, three surfaces only, Current behavior first, live-ticked checklist'
+          : (memOn ? 'durable-record toggle off' : 'requires memory (superset invariant) - both toggles off'),
+    durFull));
+  const decisions = state.nodes.filter(n => n.type === 'decision');
+  const decHeading = format === 'prompt' ? 'Decision Points' : format === 'subagent' ? 'Decision Routing' : format === 'teams' ? 'Decision Gates' : '';
+  const decEmitted = format === 'claude'
+    ? decisions.length > 0 && state.nodes.filter(n => n.type === 'agent').every(a => getDownstreamDecisions(a.id).length === 0)
+    : decisions.length > 0;
+  rows.push(exRow('Decision section', decEmitted,
+    decisions.length === 0 ? 'no decision nodes'
+      : (decEmitted ? 'the orchestrator evaluates these gates and routes pass/revise'
+                    : 'gates are carried inline on the steps in this format'),
+    decEmitted ? decHeading : ''));
+  rows.push(exRow('Run report directive', true, 'always on - one awd:run fence at the end of the run feeds the designer badges and tuning prompt', 'Run Report (end of run)'));
+  return rows;
+}
+
+// The "Explain step" button lives beside the workflow-level Explain (owner call:
+// a button under the tool chips read as a stray chip). Guard-and-toast instead of
+// disabled-state plumbing: selection changes constantly and a helpful nudge beats
+// a mystery-disabled button.
+function explainSelectedStep() {
+  const node = state.selectedId ? state.nodes.find(n => n.id === state.selectedId) : null;
+  if (!node) { showToast('Select a step on the canvas first', 2500); return; }
+  showExplain(node.id);
+}
+function showExplain(nodeId) {
+  const fmt = state.exportFormat;
+  const fmtName = EXPLAIN_FORMATS[fmt] || fmt;
+  const node = nodeId ? state.nodes.find(n => n.id === nodeId) : null;
+  const rows = node ? explainNode(node, fmt) : explainWorkflow(fmt);
+  $('explainTitle').textContent = node ? 'Step anatomy: ' + node.label + ' (' + fmtName + ')' : 'Workflow anatomy (' + fmtName + ')';
+  const foot = node
+    ? 'Orchestrator-level blocks (memory, delivery, grounding, run report) are in the workflow-level Explain, next to the format tabs.'
+    : 'Per-step anatomy (templates, tool lines, hints, gates): select a node on the canvas and use "Explain step", next to this button.';
+  $('explainList').innerHTML = rows.map(r => {
+    const on = r.status === 'emitted';
+    // A row whose snippet does not show everything unfolds in place via
+    // details/summary - the map stays scannable, the territory is one click away.
+    // Two ways a snippet falls short: the full text has more lines than the probe,
+    // or the single line itself was truncated to the 120-char cap.
+    const expandable = on && r.full && (r.full.length > (r.probe || '').length + 20 || (r.snippet || '').endsWith('...'));
+    const body = !on || !r.snippet ? ''
+      : expandable
+        ? '<details style="margin-top:2px"><summary style="cursor:pointer;font-size:10px;color:var(--text2,#aab4c6);font-family:monospace;overflow-wrap:anywhere">' + escHtml(r.snippet) + ' <span style="color:var(--accent,#5b9dd9)">[view full]</span></summary><pre style="font-size:10px;color:var(--text2,#aab4c6);white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow-y:auto;margin:4px 0 0;padding:6px;background:rgba(0,0,0,0.25);border-radius:4px">' + escHtml(r.full) + '</pre></details>'
+        : '<div style="font-size:10px;color:var(--text2,#aab4c6);font-family:monospace;margin-top:2px;overflow-wrap:anywhere">' + escHtml(r.snippet) + '</div>';
+    return '<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06);' + (on ? '' : 'opacity:.55') + '">'
+      + '<span style="color:' + (on ? '#34d399' : 'var(--text3,#667085)') + ';flex:0 0 auto;font-size:12px">' + (on ? '&#10003;' : '&#183;') + '</span>'
+      + '<div style="min-width:0;flex:1"><div style="font-weight:600;font-size:12px">' + escHtml(r.part) + '</div>'
+      + '<div style="font-size:11px;color:var(--text3,#8b95a7)">' + escHtml(r.reason) + '</div>'
+      + body
+      + '</div></div>';
+  }).join('') + '<div style="font-size:10px;color:var(--text3,#8b95a7);padding-top:8px">' + escHtml(foot) + '</div>';
+  $('explainOverlay').classList.add('show');
+}
+function closeExplain() { $('explainOverlay').classList.remove('show'); }
 // Minimal markdown renderer for prompt preview. Zero dependencies.
 function renderMarkdown(md) {
   if (!md || !md.trim()) return '';
