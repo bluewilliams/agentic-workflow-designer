@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## dogfood-run-fixes
+
+- record: .workflow/dogfood-run-fixes.md
+- intent: the first dogfood run's fix batch + durable record protocol v2.1. Task model params are valid base aliases with a 1M prose note (modelContextNote at all five prose emission sites; SDK ids already valid); Atlassian hints conditional-honest; all four memory variants gain the first-turn breadcrumb clause, orchestrator kickoff seeding (shared.md / progress.md), and COMPLETE-handoff mirroring into @slug.md (the proven recovery copy) - every addition memory-gated with OFF assertions; sub-agents + workflow-parallel state one-shot spawn semantics (teams untouched); memory + durable record + grounding default ON (seed + HTML checked + clearCanvas; explicit-false imports stay false). Record protocol v2.1: append-only History ledger (one dated line per amendment, born with a created line), right-sized lineage (amend-in-place / partial slice / full supersede - `partial` finally has semantics), Grounds on / touches line in Links, section mutability rules (only Current behavior + scaffolding rewrite in place), and grounding hardening (orchestrator routes record excerpts by role; reviewers/testers treat record requirements + gotchas as criteria; testers re-run overlapping verify commands).
+- files: index.html (model-param block, hint honesty, four memory variants, execution directives, defaults, genDurableRecordProtocol + genDurableRecordComment, groundingLookupSteps + consumeRecordsHint, help modal), tests.html (6 migrations + 35 new), .workflow/sidebar-collapse.md (exemplar retrofit)
+- status: current | date: 2026-07-03 | note: 1350 -> 1385. A8 (first-run collapse curation) implemented then dropped by scope change - deferred to its own dogfood run.
+
 ## sidebar-collapse
 
 - record: .workflow/sidebar-collapse.md

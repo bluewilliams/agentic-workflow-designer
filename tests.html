@@ -235,8 +235,8 @@ function resetState() {
   win.state.isPanning = false;
   win.state.mousePos = { x: 0, y: 0 };
   win.state.exportFormat = 'prompt';
-  win.state.memoryEnabled = false;
-  win.state.durableRecord = false;
+  win.state.memoryEnabled = false;  // app default is now ON; test baseline stays OFF so memory-gating is explicit per test
+  win.state.durableRecord = false;  // app default is now ON; same deliberate OFF baseline
   win.state.artifactPath = '';
   win.state.defaultModel = 'opus-4.6';
   win.state.repositories = [];
@@ -1585,11 +1585,14 @@ describe('Consume prior records (read side)', () => {
     expect(h).toContain('open ONLY the matched records');
     expect(h).toContain('never follow links transitively');
   });
-  it('hint folds in the supersede-at-finalize step (the /speckit-analyze-style consistency steal)', () => {
+  it('hint right-sizes lineage: supersede on replace, amend in place on alter, partial on slice', () => {
     win.state.consumeRecords = true;
     const h = win.consumeRecordsHint();
-    expect(h).toContain('will modify or replace a behavior a current record defines');
     expect(h).toContain('plan to supersede it at finalize');
+    expect(h).toContain('Merely ALTERING a behavior');
+    expect(h).toContain('append one dated History line');
+    expect(h).toContain('leave its status `current`');
+    expect(h).toContain('status to `partial`');
   });
   it('hint tells a large index to be grepped, not loaded whole, so context stays bounded', () => {
     win.state.consumeRecords = true;
@@ -4218,19 +4221,24 @@ describe('Model Version Handling', () => {
       const output = win.genSubAgents();
       expect(output).toNotContain('/model claude-sonnet');
     });
-    it('should use opus[1m] shorthand for Opus 4.8 [1M]', () => {
+    it('should emit a base model param plus the 1M prose note for Opus 4.8 [1M] (Task tool rejects [1m] values)', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
       impl.config.model = 'opus-4.8-1m';
       const output = win.genSubAgents();
-      expect(output).toContain('model="opus[1m]"');
+      expect(output).toContain('model="opus"');
+      expect(output).toNotContain('model="opus[1m]"');
+      expect(output).toContain('1M context intended');
+      expect(output).toContain('/model opus[1m]');
     });
-    it('should use sonnet[1m] shorthand for Sonnet 4.6 [1M]', () => {
+    it('should emit a base model param plus the 1M prose note for Sonnet 4.6 [1M]', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
       impl.config.model = 'sonnet-4.6-1m';
       const output = win.genSubAgents();
-      expect(output).toContain('model="sonnet[1m]"');
+      expect(output).toContain('model="sonnet"');
+      expect(output).toNotContain('model="sonnet[1m]"');
+      expect(output).toContain('1M context intended');
     });
     it('should use fable shorthand for Fable 5', () => {
       buildTestWorkflow('linear');
@@ -4239,12 +4247,15 @@ describe('Model Version Handling', () => {
       const output = win.genSubAgents();
       expect(output).toContain('model="fable"');
     });
-    it('should use fable[1m] shorthand for Fable 5 [1M]', () => {
+    it('should emit a base model param plus the 1M prose note for Fable 5 [1M]', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
       impl.config.model = 'fable-5-1m';
       const output = win.genSubAgents();
-      expect(output).toContain('model="fable[1m]"');
+      expect(output).toContain('model="fable"');
+      expect(output).toNotContain('model="fable[1m]"');
+      expect(output).toContain('1M context intended');
+      expect(output).toContain('/model fable[1m]');
     });
   });
 
@@ -4263,12 +4274,14 @@ describe('Model Version Handling', () => {
       const output = win.genWorkflow();
       expect(output).toContain('claude-opus-4-5-20251001');
     });
-    it('should use [1M] label for 1M variants', () => {
+    it('should show the [1M] label with a base param and the 1M prose note', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
       impl.config.model = 'opus-4.8-1m';
       const output = win.genWorkflow();
-      expect(output).toContain('opus[1m]');
+      expect(output).toContain('Opus 4.8 [1M]');
+      expect(output).toContain('(`opus`)');
+      expect(output).toContain('1M context intended');
     });
   });
 });
@@ -5128,12 +5141,14 @@ describe('Cross-Feature Edge Cases', () => {
     expect(output).toContain('verify your work against the original requirements');
   });
 
-  it('should use correct model aliases for 1M variants in sub-agents export', () => {
+  it('should use a valid base model alias plus the 1M note for 1M variants in sub-agents export', () => {
     buildTestWorkflow('linear');
     const impl = win.state.nodes.find(n => n.label === 'Implementer');
     impl.config.model = 'sonnet-4.6-1m';
     const output = win.genSubAgents();
-    expect(output).toContain('model="sonnet[1m]"');
+    expect(output).toContain('model="sonnet"');
+    expect(output).toNotContain('model="sonnet[1m]"');
+    expect(output).toContain('1M context intended');
     expect(output).toNotContain('sonnet-4.6-1m');
   });
 
@@ -9624,6 +9639,251 @@ describe('Collapsible sidebar sections (toggle, persistence, auto-expand reveal 
     try { win.initSidebarCollapse(); } catch (e) { threw = true; }
     expect(threw).toBe(false);
     expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(0);
+  });
+});
+
+// ─── Suite: Dogfood-run fixes (A1-A7) + durable record v2.1 (B1-B5) ────────
+describe('Dogfood-run fixes: valid model params, honest hints, memory kickoff and recovery', () => {
+  beforeEach(() => { resetState(); });
+
+  it('A1: teams format emits the base param plus the 1M note', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.model = 'opus-4.8-1m';
+    const out = win.genAgentTeams();
+    expect(out).toContain('Model: `opus`');
+    expect(out).toContain('1M context intended');
+  });
+  it('A1: non-1M models emit no context note in any prose format', () => {
+    buildTestWorkflow('linear');
+    expect(win.genSubAgents()).toNotContain('1M context intended');
+    expect(win.genWorkflow()).toNotContain('1M context intended');
+    expect(win.genAgentTeams()).toNotContain('1M context intended');
+  });
+  it('A1: SDK keeps full API model ids (already valid) and needs no prose note', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.model = 'opus-4.8-1m';
+    const out = win.genAgentSDK();
+    expect(out).toContain('claude-opus-4-8');
+    expect(out).toNotContain('1M context intended');
+  });
+  it('A1: modelContextNote and getTaskModelParam agree on the base alias', () => {
+    expect(win.modelContextNote('opus-4.8')).toBe('');
+    expect(win.modelContextNote('opus-4.8-1m')).toContain('/model opus[1m]');
+    expect(win.getTaskModelParam('opus-4.8-1m')).toBe('opus');
+    expect(win.getTaskModelParam('sonnet-4.6-1m')).toBe('sonnet');
+    expect(win.getTaskModelParam('fable-5-1m')).toBe('fable');
+  });
+
+  it('A2: general Atlassian hint is conditional, not an availability assertion', () => {
+    win.state.mcpAtlassian = true;
+    const h = win.atlassianGeneralHint();
+    expect(h).toContain('if one is connected');
+    expect(h).toContain('do not block on Atlassian lookups');
+    expect(h).toNotContain('An Atlassian MCP server is available');
+  });
+  it('A2: ticket hint handles neither-tool-available honestly', () => {
+    win.state.mcpAtlassian = true;
+    const h = win.atlassianTicketFetchHint(['https://example.atlassian.net/browse/AB-1']);
+    expect(h).toContain('if neither can reach the ticket');
+    expect(h).toContain('rather than guessing');
+  });
+
+  it('A3: first-turn breadcrumb clause in all four memory variants', () => {
+    expect(win.genMemoryProtocol()).toContain('First turn of a fresh run');
+    expect(win.genAgentMemoryPreamble('Implementer')).toContain('First turn of a fresh run');
+    expect(win.genSingleAgentMemoryProtocol()).toContain('First turn of a fresh run');
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    expect(win.genAgentTeams()).toContain('First turn of a fresh run');
+  });
+  it('A3: memory ON - clause reaches every prose format output', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    expect(win.genWorkflow()).toContain('First turn of a fresh run');
+    expect(win.genSubAgents()).toContain('First turn of a fresh run');
+    expect(win.genAgentTeams()).toContain('First turn of a fresh run');
+    expect(win.genClaudePrompt()).toContain('First turn of a fresh run');
+  });
+  it('A3: memory OFF - absent from every format output', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = false;
+    expect(win.genWorkflow()).toNotContain('First turn of a fresh run');
+    expect(win.genSubAgents()).toNotContain('First turn of a fresh run');
+    expect(win.genAgentTeams()).toNotContain('First turn of a fresh run');
+    expect(win.genClaudePrompt()).toNotContain('First turn of a fresh run');
+  });
+
+  it('A4: workflow/teams protocol seeds memory at kickoff', () => {
+    const proto = win.genMemoryProtocol();
+    expect(proto).toContain('Kickoff (orchestrator, BEFORE Step 1)');
+    expect(proto).toContain('kickoff entry');
+  });
+  it('A4: sub-agents orchestrator block seeds memory at kickoff', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    const out = win.genSubAgents();
+    expect(out).toContain('Orchestrator kickoff (you, BEFORE Step 1)');
+    expect(out).toContain('kickoff entry');
+  });
+  it('A4: teams format carries the kickoff seed via the shared protocol', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    expect(win.genAgentTeams()).toContain('Kickoff (orchestrator, BEFORE Step 1)');
+  });
+  it('A4: claude.ai variant seeds progress.md at kickoff', () => {
+    const p = win.genSingleAgentMemoryProtocol();
+    expect(p).toContain('Kickoff (before Step 1)');
+    expect(p).toContain('progress.md');
+  });
+  it('A4: memory OFF - no kickoff seeding text in any format', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = false;
+    expect(win.genWorkflow()).toNotContain('kickoff entry');
+    expect(win.genSubAgents()).toNotContain('kickoff entry');
+    expect(win.genAgentTeams()).toNotContain('kickoff entry');
+    expect(win.genClaudePrompt()).toNotContain('kickoff entry');
+  });
+
+  it('A5: sub-agent postamble mirrors the COMPLETE handoff into the memory file', () => {
+    const post = win.genAgentMemoryPostamble('Implementer');
+    expect(post).toContain('COMPLETE handoff summary');
+    expect(post).toContain('recovery copy');
+  });
+  it('A5: teams WRITE LAST and the shared protocol require the complete handoff', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true;
+    expect(win.genAgentTeams()).toContain('COMPLETE handoff summary');
+    expect(win.genMemoryProtocol()).toContain('COMPLETE handoff');
+  });
+  it('A5: memory OFF - no handoff-mirroring text in outputs', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = false;
+    expect(win.genWorkflow()).toNotContain('COMPLETE handoff');
+    expect(win.genSubAgents()).toNotContain('COMPLETE handoff');
+    expect(win.genAgentTeams()).toNotContain('COMPLETE handoff');
+  });
+
+  it('A6: sub-agents execution model states one-shot semantics', () => {
+    buildTestWorkflow('linear');
+    const out = win.genSubAgents();
+    expect(out).toContain('ONE-SHOT sub-agent');
+    expect(out).toContain('cannot be messaged again');
+  });
+  it('A6: workflow format states it where parallel Task launches occur', () => {
+    buildTestWorkflow('parallel');
+    expect(win.genWorkflow()).toContain('one-shot sub-agent');
+  });
+  it('A6: teams format has no one-shot line (teammates are persistent)', () => {
+    buildTestWorkflow('linear');
+    const out = win.genAgentTeams();
+    expect(out).toNotContain('ONE-SHOT sub-agent');
+    expect(out).toNotContain('one-shot sub-agent');
+  });
+
+  it('A7: HTML ships memory, durable record, and grounding toggles checked', () => {
+    expect(win.document.getElementById('memoryToggle').hasAttribute('checked')).toBe(true);
+    expect(win.document.getElementById('durableRecordToggle').hasAttribute('checked')).toBe(true);
+    expect(win.document.getElementById('consumeRecordsToggle').hasAttribute('checked')).toBe(true);
+  });
+  it('A7: New Workflow reset restores the ON defaults', () => {
+    win.state.memoryEnabled = false; win.state.durableRecord = false; win.state.consumeRecords = false;
+    win.clearCanvas(true);
+    expect(win.state.memoryEnabled).toBe(true);
+    expect(win.state.durableRecord).toBe(true);
+    expect(win.state.consumeRecords).toBe(true);
+    expect(win.document.getElementById('memoryToggle').checked).toBe(true);
+    expect(win.document.getElementById('durableRecordToggle').checked).toBe(true);
+  });
+  it('A7: default output after reset carries memory + durable record protocols', () => {
+    win.clearCanvas(true);
+    win.addNode('agent', 300, 200, 'Implementer', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'Build it.', maxTurns:5 });
+    const out = win.genWorkflow();
+    expect(out).toContain('## Memory Protocol');
+    expect(out).toContain('## Durable Record');
+  });
+  it('A7: an explicit-false import stays false (no default override)', () => {
+    win.clearCanvas(true);
+    const ok = win.deserializeWorkflow({ version:1, memoryEnabled:false, durableRecord:false, canvas:{ nodes:[], connections:[], nextId:1, pan:{x:0,y:0}, zoom:1 } });
+    expect(ok).toBe(true);
+    expect(win.state.memoryEnabled).toBe(false);
+    expect(win.state.durableRecord).toBe(false);
+  });
+
+  it('B1: anatomy defines the append-only History ledger born with a created line', () => {
+    win.state.memoryEnabled = true; win.state.durableRecord = true;
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('**History**');
+    expect(proto).toContain('append-only provenance ledger');
+    expect(proto).toContain('(by {amending-slug})');
+    expect(proto).toContain('History section born with its single created line');
+  });
+  it('B1: finalize gate checks History covers this run', () => {
+    win.state.memoryEnabled = true; win.state.durableRecord = true;
+    expect(win.genDurableRecordProtocol()).toContain('the History section is present and its latest line covers this run');
+  });
+  it('B1: durable record OFF - no History protocol text in outputs', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true; win.state.durableRecord = false;
+    expect(win.genWorkflow()).toNotContain('append-only provenance ledger');
+    expect(win.genSubAgents()).toNotContain('append-only provenance ledger');
+  });
+
+  it('B2: index evolution distinguishes amendment, partial, and full supersession', () => {
+    win.state.memoryEnabled = true; win.state.durableRecord = true;
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('Not every change is a supersession');
+    expect(proto).toContain('A PARTIAL supersession');
+    expect(proto).toContain('Reserve `superseded` and the Archive move');
+    expect(proto).toContain('amended ANOTHER record');
+  });
+
+  it('B3: Links spec carries the Grounds on / touches traversal line', () => {
+    win.state.memoryEnabled = true; win.state.durableRecord = true;
+    expect(win.genDurableRecordProtocol()).toContain('Grounds on / touches');
+  });
+  it('B3: absent when durable record and grounding are OFF', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true; win.state.durableRecord = false; win.state.consumeRecords = false;
+    expect(win.genWorkflow()).toNotContain('Grounds on / touches');
+  });
+
+  it('B4: protocol states rewrite-in-place vs append-only mutability', () => {
+    win.state.memoryEnabled = true; win.state.durableRecord = true;
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('Section mutability rules');
+    expect(proto).toContain('ONLY rewrite-in-place prose surfaces');
+    expect(proto).toContain('never deleted or reworded once written');
+    expect(proto).toContain('appended dated addendum');
+    expect(proto).toContain('the append-only sections were never rewritten, only extended');
+  });
+  it('B4: durable record OFF - mutability text absent from outputs', () => {
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = true; win.state.durableRecord = false;
+    expect(win.genWorkflow()).toNotContain('Section mutability rules');
+  });
+
+  it('B5: grounding hint routes findings by role with excerpt discipline', () => {
+    win.state.consumeRecords = true;
+    const h = win.consumeRecordsHint();
+    expect(h).toContain('Route what you find by role');
+    expect(h).toContain('review criteria');
+    expect(h).toContain('a finding, not a style note');
+    expect(h).toContain('re-runs the `verify` commands');
+    expect(h).toContain('Distribute EXCERPTS');
+    expect(h).toContain('which record informed a material decision');
+  });
+  it('B5: grounding ON - routing text reaches the sub-agents output', () => {
+    buildTestWorkflow('linear');
+    win.state.consumeRecords = true;
+    expect(win.genSubAgents()).toContain('Route what you find by role');
+  });
+  it('B5: grounding OFF - hint is null and formats carry none of it', () => {
+    buildTestWorkflow('linear');
+    win.state.consumeRecords = false;
+    expect(win.consumeRecordsHint()).toBe(null);
+    expect(win.genSubAgents()).toNotContain('Route what you find by role');
   });
 });
 

@@ -88,6 +88,11 @@ The sidebar's length was an audited usability defect (Node Configuration measure
 - The 15 ids: workflow-name, requirements, workflow-context, default-model, repositories, repo-context-paths, add-nodes, presets, app-under-test, ui-context, workflow-management, mcp-integrations, memory-durable-record, run-reports, node-config.
 - Low, tolerated (reviewer): expandSection persists even when already expanded (redundant write, not a hot path); stale storage keys for removed ids are tolerated and rebuilt by collapse-all.
 
+## History
+
+- 2026-07-03: created - built live by the first dogfood run of the designer's own generated workflow (by sidebar-collapse)
+- 2026-07-03: History section and Grounds-on line added as the record-format v2.1 exemplar; no behavior change (by dogfood-run-fixes)
+
 ## Outcome
 
 The sidebar is now collapsible per-section with a chevron, persistent across visits, with expand/collapse-all and guaranteed auto-expand on every programmatic reveal. index.html +95/-16 plus a 10-test suite; 1350/1350 green; uncommitted for the director's review. Both review gates passed on cycle 1.
@@ -95,6 +100,10 @@ The sidebar is now collapsible per-section with a chevron, persistent across vis
 ## Built with (provenance)
 
 Workflow `sidebar-collapse` (Feature Development preset, Sub-Agents format): Planner -> Skeptic review gate ("Plan sound?", max 3 cycles) -> Implementer -> Reviewer gate ("Review Passed?", max 3 cycles) -> Tester -> code output (no-commit delivery). Memory + durable record + ground-in-records ON; grounding matched node-config-ux and fed the planner's brief; models opus[1m] per node (run as `opus` - the [1M] variant is not expressible in the Task tool's model parameter). Run live by Claude (Fable) as orchestrator, dogfooding the designer's own generated prompt; both gates passed cycle 1; the planner's response channel failed twice (harness idle quirk) and the memory files carried the run - the protocol's redundancy was load-bearing, not ceremonial.
+
+## Links
+
+- Grounds on / touches: grounds on `.workflow/node-config-ux.md` (the selectNode change-gated instant-scroll invariant); amended no other records.
 
 ```awd:run
 {"workflow": "sidebar-collapse", "repo": "agentic-workflow-designer", "steps": [{"slug": "planner", "status": "done"}, {"slug": "skeptic-review-planner", "status": "done"}, {"slug": "implementer", "status": "done"}, {"slug": "reviewer", "status": "done"}, {"slug": "tester", "status": "done"}], "gates": [{"slug": "plan-sound", "cycles": 1, "final": "Passed"}, {"slug": "review-passed", "cycles": 1, "final": "Approved"}], "notes": "Both gates cycle 1. Planner report channel failed twice (harness idle quirk); memory files carried the full plan and the run proceeded per the failure-handling craft. Implementer self-caught a chevron/textContent regression; Tester self-caught a wrapper-aware assertion fix. 1340 -> 1350 tests."}
