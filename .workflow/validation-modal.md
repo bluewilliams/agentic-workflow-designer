@@ -46,3 +46,9 @@ DELIBERATE KEEP (owner-granted skip license, applied): the two secrets-copy conf
 - [x] Six sites converted with _confirmed reentry; sync bodies preserved
 - [x] Two secrets-copy sites kept native with source comments (clipboard-gesture, rig-unprovable)
 - [x] Test hook __autoConfirm (sync short-circuit); 5 new tests incl. hookless veto/proceed and the 2-native/6-converted invariant; 1314 -> 1319
+
+## Update (same day): danger red reserved for the irreversible
+
+Owner call, validated by the code: preset load and canvas clear push an undo point first (single undo restores the whole canvas), so their confirm buttons were overclaiming with danger red. Replace (preset + Auto Workflow) and Clear (new workflow) confirms now use the standard blue primary button - the modal itself is the caution signal; color is reserved for consequence. The three deletes ("cannot be undone") keep danger red and the focus-Cancel safe default.
+
+- [x] danger:false on the three undoable confirms; deletes unchanged
