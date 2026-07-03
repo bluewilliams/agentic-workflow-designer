@@ -9,10 +9,17 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (model-param block, hint honesty, four memory variants, execution directives, defaults, genDurableRecordProtocol + genDurableRecordComment, groundingLookupSteps + consumeRecordsHint, help modal), tests.html (6 migrations + 35 new), .workflow/sidebar-collapse.md (exemplar retrofit)
 - status: current | date: 2026-07-03 | note: 1350 -> 1385. A8 (first-run collapse curation) implemented then dropped by scope change - deferred to its own dogfood run.
 
+## sidebar-first-run
+
+- record: .workflow/sidebar-first-run.md
+- intent: first-run experience - on first boot (absent awd_sidebarCollapsed) initSidebarCollapse seeds a curated collapse state (13 collapsed, requirements + presets open, persisted once; existing keys never re-seeded); the empty canvas is a two-step quick start (requirements link expands + scrolls like the preset link, panel hides with nodes); Workflow Name placeholder says optional; empty name derives the slug from the requirements text via deriveSlugFromStory/effectiveNameSlug at all three slug sites (memory path, record path, export slug; untitled only when both empty; explicit name wins byte-identically; live path updates while typing).
+- files: index.html (initSidebarCollapse seed, deriveSlugFromStory/effectiveNameSlug, getMemoryPath/getDefaultArtifactPath/serializeWorkflow, validateStoryInput, #emptyState, #workflowName), tests.html (harness boot normalization + 13 tests)
+- status: current | date: 2026-07-03 | note: 1385 -> 1398. Second dogfood run - built by the designer's own generated workflow, both gates cycle 1.
+
 ## sidebar-collapse
 
 - record: .workflow/sidebar-collapse.md
-- intent: collapsible left-sidebar sections with persistence - every section header is a chevron click-toggle (CSS child-hiding, zero visual change expanded), state persists in awd_sidebarCollapsed (absent = expanded; try/catch, bad-JSON degrades to expanded), Expand All / Collapse All control above the first section, and every programmatic reveal auto-expands first (selectNode -> node-config inside its genuine-change guard BEFORE the instant scroll - the node-config-ux invariant holds by construction; empty-canvas preset link likewise). 15 stable literal data-collapse-ids.
+- intent: collapsible left-sidebar sections with persistence - every section header is a chevron click-toggle (CSS child-hiding, zero visual change expanded), state persists in awd_sidebarCollapsed (absent = expanded; try/catch, bad-JSON degrades to expanded; on a true FIRST boot the key is seeded curated by sidebar-first-run - 13 collapsed, requirements + presets open), Expand All / Collapse All control above the first section, and every programmatic reveal auto-expands first (selectNode -> node-config inside its genuine-change guard BEFORE the instant scroll - the node-config-ux invariant holds by construction; empty-canvas preset link likewise). 15 stable literal data-collapse-ids.
 - files: index.html (collapse CSS + module + 15 ids + selectNode/preset-link guards + boot hook + help line), tests.html (10-test suite, mandated afterEach cleanup)
 - work-item: designer-generated workflow run (first live dogfood) | status: current | date: 2026-07-03 | note: 1340 -> 1350; both gates cycle 1; run report embedded in the record.
 

@@ -8,7 +8,7 @@ Workflow: sidebar-collapse. Branch: main. Status: finalized, committable.
 
 ## Current behavior
 
-Every left-sidebar section header is a click toggle with a chevron (CSS ::before on an empty span, so h3.textContent stays clean); collapsing hides the section body via `.sidebar-section.collapsed > :not(.collapse-header){display:none !important}`. Collapsed state persists in localStorage `awd_sidebarCollapsed` (object of collapsed ids; absent = expanded, so default is all-expanded; try/catch on read and write, bad or non-object JSON degrades to expanded). An Expand All / Collapse All control sits above the first section (its wrapper is not a `.sidebar-section`, so it never self-decorates). Programmatic reveals auto-expand first: selectNode expands node-config inside its existing genuine-change guard before the instant scroll (the node-config-ux invariant holds by construction), and the empty-canvas preset link expands the presets section before its scroll. All 15 sections carry stable literal `data-collapse-id` keys. Expanded sections render exactly as before; the feature is invisible until used.
+Every left-sidebar section header is a click toggle with a chevron (CSS ::before on an empty span, so h3.textContent stays clean); collapsing hides the section body via `.sidebar-section.collapsed > :not(.collapse-header){display:none !important}`. Collapsed state persists in localStorage `awd_sidebarCollapsed` (object of collapsed ids; absent = expanded; try/catch on read and write, bad or non-object JSON degrades to expanded). On FIRST boot (key absent), `initSidebarCollapse` seeds a curated state - every section collapsed except requirements and presets - and persists it, so the all-expanded default now applies only after storage degradation, never on a true first visit; an existing key (including `{}`) is never re-seeded, and `loadCollapsedState` semantics are untouched (the seed lives at init, added by sidebar-first-run). An Expand All / Collapse All control sits above the first section (its wrapper is not a `.sidebar-section`, so it never self-decorates). Programmatic reveals auto-expand first: selectNode expands node-config inside its existing genuine-change guard before the instant scroll (the node-config-ux invariant holds by construction), and the empty-canvas preset link expands the presets section before its scroll. All 15 sections carry stable literal `data-collapse-id` keys. Expanded sections render exactly as before; the feature is invisible until used.
 
 ## Why and scope
 
@@ -92,6 +92,7 @@ The sidebar's length was an audited usability defect (Node Configuration measure
 
 - 2026-07-03: created - built live by the first dogfood run of the designer's own generated workflow (by sidebar-collapse)
 - 2026-07-03: History section and Grounds-on line added as the record-format v2.1 exemplar; no behavior change (by dogfood-run-fixes)
+- 2026-07-03: first-boot curated seeding added at initSidebarCollapse (13 collapsed, requirements + presets open, persisted once; storage semantics untouched) - Current behavior updated in place, status stays current (by sidebar-first-run)
 
 ## Outcome
 

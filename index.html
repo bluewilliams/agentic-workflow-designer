@@ -457,7 +457,7 @@ svg.canvas{width:100%;height:100%;display:block}
       <button class="btn text-btn danger-subtle" onclick="clearCanvas()"
         title="Clear all nodes, connections, and inputs">New Workflow</button>
     </div>
-    <input type="text" id="workflowName" class="story-input" style="min-height:auto;padding:8px 10px;font-family:var(--font);font-weight:600" placeholder="e.g. PROJ-12345 User Auth Flow" oninput="updateMemoryPath();updatePrompt();autoSaveWorkflow()"/>
+    <input type="text" id="workflowName" class="story-input" style="min-height:auto;padding:8px 10px;font-family:var(--font);font-weight:600" placeholder="optional - auto-named from your requirements" oninput="updateMemoryPath();updatePrompt();autoSaveWorkflow()"/>
   </div>
 
   <div class="sidebar-section" data-collapse-id="requirements">
@@ -851,7 +851,8 @@ svg.canvas{width:100%;height:100%;display:block}
     </svg>
     <div class="empty-state" id="emptyState">
       <div class="icon">&#x1F3D7;</div>
-      <p>Paste requirements and click <strong>Auto Workflow</strong>, <a href="#" onclick="event.preventDefault();expandSection('presets');document.querySelector('.preset-list').scrollIntoView({behavior:'smooth',block:'center'})" style="color:var(--accent);pointer-events:auto;text-decoration:underline">choose a preset</a>, or add nodes manually.</p>
+      <p><strong>Two steps to your first prompt</strong></p>
+      <p style="margin-top:8px"><strong>1.</strong> <a href="#" onclick="event.preventDefault();expandSection('requirements');document.getElementById('storyInput').scrollIntoView({behavior:'smooth',block:'center'})" style="color:var(--accent);pointer-events:auto;text-decoration:underline">Paste your requirements</a> or a Jira URL, then <strong>2.</strong> <a href="#" onclick="event.preventDefault();expandSection('presets');document.querySelector('.preset-list').scrollIntoView({behavior:'smooth',block:'center'})" style="color:var(--accent);pointer-events:auto;text-decoration:underline">choose a preset</a>. Then copy your prompt.</p>
       <p style="margin-top:12px;font-size:11px;opacity:.7">
         <kbd>1</kbd> Select &nbsp; <kbd>2</kbd> Connect &nbsp; <kbd>3</kbd> Delete &nbsp; <kbd>Alt+Drag</kbd> Pan &nbsp; <kbd>Scroll</kbd> Zoom
       </p>
@@ -2254,6 +2255,25 @@ function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled';
 }
 
+// Derive a slug from the requirements text when no explicit workflow name is set.
+// Strips URLs and Jira keys, takes the first few meaningful words, and only falls back
+// to the raw story (then slugify's own 'untitled') when the prose yields nothing usable.
+function deriveSlugFromStory(story) {
+  const prose = String(story || '').replace(/https?:\/\/\S+/gi, ' ').replace(/\b[A-Z][A-Z0-9]+-\d+\b/g, ' ').trim();
+  const words = prose ? prose.split(/\s+/).slice(0, 6).join(' ') : '';
+  const s = slugify(words);
+  if (s !== 'untitled') return s;
+  return slugify(String(story || ''));
+}
+
+// The slug used for memory/record/export paths: an explicit workflow name always wins,
+// otherwise derive from the requirements so empty-name workflows do not all collide on
+// untitled.md.
+function effectiveNameSlug() {
+  const name = getName();
+  return name ? slugify(name) : deriveSlugFromStory(getStory());
+}
+
 const _WF_ADJ = ['swift','calm','bold','keen','bright','sharp','warm','cool','deep','fast',
   'clear','fresh','prime','core','iron','agile','vivid','rapid','solid','noble',
   'tidal','lunar','solar','polar','amber','azure','coral','ivory','olive','sage',
@@ -2278,12 +2298,12 @@ function ensureWorkflowName() {
 }
 
 function getMemoryPath() {
-  return '~/.claude/workflow-memory/' + slugify(getName() || 'untitled') + '/';
+  return '~/.claude/workflow-memory/' + effectiveNameSlug() + '/';
 }
 
 // Default in-repo path for the durable record (committable artifact).
 function getDefaultArtifactPath() {
-  return '.workflow/' + slugify(getName() || 'untitled') + '.md';
+  return '.workflow/' + effectiveNameSlug() + '.md';
 }
 
 // Effective durable-record path: a user override if set, else the default.
@@ -2721,7 +2741,7 @@ function renderProductDocRows() {
 function serializeWorkflow() {
   return {
     version: 1,
-    slug: slugify(getName() || 'untitled'),
+    slug: effectiveNameSlug(),
     name: getName(),
     story: $('storyInput') ? $('storyInput').value : '',
     plan: $('planInput') ? $('planInput').value : '',
@@ -3345,6 +3365,20 @@ function collapseAllSections() {
   saveCollapsedState(st);
 }
 function initSidebarCollapse() {
+  // First-boot curation: with no saved state yet, seed everything collapsed except
+  // Requirements + Presets so a brand-new user lands on the two sections that start a
+  // workflow. Gated strictly on getItem === null, so an existing key (including {}) is
+  // never re-seeded and loadCollapsedState's absent/bad-JSON = expanded semantics stand.
+  try {
+    if (localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === null) {
+      const seed = {};
+      document.querySelectorAll('.sidebar-section[data-collapse-id]').forEach(sec => {
+        const id = sec.getAttribute('data-collapse-id');
+        if (id !== 'requirements' && id !== 'presets') seed[id] = true;
+      });
+      saveCollapsedState(seed);
+    }
+  } catch (e) {}
   const collapsed = loadCollapsedState();
   document.querySelectorAll('.sidebar-section[data-collapse-id]').forEach(sec => {
     const id = sec.getAttribute('data-collapse-id');
@@ -6052,6 +6086,9 @@ function isJiraKeyOnly(text) {
 }
 function validateStoryInput() {
   autoSaveWorkflow();
+  // While the name box is empty, memory/record paths derive from the requirements text,
+  // so refresh the displayed paths live as the user types.
+  updateMemoryPath();
   const text = ($('storyInput') ? $('storyInput').value : '').trim();
   const empty = !text;
   const keyOnly = !empty && isJiraKeyOnly(text);
