@@ -5282,6 +5282,80 @@ describe('Agent craft batch', () => {
     return agents;
   }
 
+  describe('defect posture (per-node selector)', () => {
+    afterEach(() => { win.selectNode(null); resetState(); });
+    it('balanced is byte-identical: absent key and explicit balanced emit the same text', () => {
+      const absent = win.foundDefectNote({ config: { agentType: 'coder' } });
+      const explicit = win.foundDefectNote({ config: { agentType: 'coder', defectPosture: 'balanced' } });
+      expect(explicit).toBe(absent);
+      expect(absent).toContain('low-hanging fruit inside the code you are already changing');
+      expect(win.nodeDefectPosture({ config: { agentType: 'coder' } })).toBe('balanced');
+    });
+    it('the three postures emit distinct contracts, all keeping the honesty rules', () => {
+      const ro = win.foundDefectNote({ config: { agentType: 'coder', defectPosture: 'record-only' } });
+      const ag = win.foundDefectNote({ config: { agentType: 'coder', defectPosture: 'aggressive' } });
+      const ba = win.foundDefectNote({ config: { agentType: 'coder' } });
+      expect(ro).toContain('surgical diff');
+      expect(ro).toContain('BLOCKS your task');
+      expect(ro).toNotContain('low-hanging');
+      expect(ag).toContain('opportunistically heal');
+      expect(ag).toContain('balloon signal');
+      expect(ba).toNotContain('surgical diff');
+      expect(ba).toNotContain('opportunistically heal');
+      [ro, ag].forEach(t => expect(/work around|AROUND/i.test(t)).toBe(true));
+      [ro, ag].forEach(t => expect(t).toContain('declared'));
+    });
+    it('posture is per-node in generated output: each sub-agent carries its own', () => {
+      resetState();
+      const i = win.addNode('input', 80, 200, 'Req');
+      const a = win.addNode('agent', 300, 200, 'Healer', { agentType: 'coder', defectPosture: 'aggressive', prompt: 'Build A.', tools: ['Read'], maxTurns: 5 });
+      const b = win.addNode('agent', 520, 200, 'Surgeon', { agentType: 'coder', defectPosture: 'record-only', prompt: 'Build B.', tools: ['Read'], maxTurns: 5 });
+      const o = win.addNode('output', 740, 200, 'Done', { deliverable: 'Result', format: 'code' });
+      win.addConnection(i.id, a.id); win.addConnection(a.id, b.id); win.addConnection(b.id, o.id);
+      const out = win.genSubAgents();
+      expect(out).toContain('opportunistically heal');
+      expect(out).toContain('surgical diff');
+    });
+    it('Defect Posture select renders only for carrying roles', () => {
+      resetState();
+      const c = win.addNode('agent', 100, 200, 'Coder', { agentType: 'coder', prompt: 'Build it.' });
+      win.selectNode(c.id);
+      win.updateConfig();
+      expect(!!win.document.querySelector('[data-key="defectPosture"]')).toBe(true);
+      const r = win.addNode('agent', 100, 400, 'Reviewer', { agentType: 'reviewer', prompt: 'Review it.' });
+      win.selectNode(r.id);
+      win.updateConfig();
+      expect(win.document.querySelector('[data-key="defectPosture"]')).toBeNull();
+    });
+    it('explicit posture round-trips through serialize/deserialize; absent stays balanced', () => {
+      resetState();
+      win.addNode('agent', 100, 200, 'Healer', { agentType: 'coder', defectPosture: 'aggressive', prompt: 'x' });
+      win.addNode('agent', 100, 400, 'Plain', { agentType: 'coder', prompt: 'y' });
+      const wf = win.serializeWorkflow();
+      resetState();
+      expect(win.deserializeWorkflow(wf)).toBe(true);
+      const healer = win.state.nodes.find(n => n.label === 'Healer');
+      const plain = win.state.nodes.find(n => n.label === 'Plain');
+      expect(healer.config.defectPosture).toBe('aggressive');
+      expect(plain.config.defectPosture === undefined).toBe(true);
+      expect(win.nodeDefectPosture(plain)).toBe('balanced');
+    });
+    it('reviewer clause judges declared fixes against the producing step posture', () => {
+      expect(win.PROMPTS.reviewer).toContain('producing step');
+      expect(win.PROMPTS.reviewer).toContain('under record-only even a trivial in-passing fix is a scope finding');
+    });
+    it('Explain row reflects the active posture, names the selector, and its probe equals the live helper', () => {
+      resetState();
+      const n = win.addNode('agent', 100, 200, 'Healer', { agentType: 'coder', defectPosture: 'aggressive', prompt: 'x', tools: ['Read'], maxTurns: 5 });
+      const rows = win.explainNode(n, 'subagent');
+      const row = rows.find(r => r.part === 'Found-defect protocol');
+      expect(!!row).toBe(true);
+      expect(row.reason).toContain("posture 'aggressive'");
+      expect(row.reason).toContain('Defect Posture selector');
+      expect(row.probe).toBe(win.foundDefectNote(n));
+    });
+  });
+
   describe('found-defect protocol (item 1)', () => {
     it('building and testing roles carry the protocol; plan/review/critique roles do not', () => {
       ['coder', 'debugger', 'tester', 'verifier', 'backend', 'frontend', 'general'].forEach(role => {

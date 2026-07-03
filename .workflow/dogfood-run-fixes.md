@@ -3,7 +3,7 @@
 Workflow: dogfood-run-fixes. Branch: main. Status: finalized, committable.
 
 ```awd:record
-{"slug": "dogfood-run-fixes", "status": "current", "date": "2026-07-03", "files": ["index.html", "tests.html", ".workflow/sidebar-collapse.md"], "verify": ["./run-tests.sh", "git grep -niE 'XX-[0-9]|REDACTED|REDACTED|REDACTED|REDACTED|ai\\.tools|XX-[0-9]|XX-[0-9]'"], "superseded_by": null}
+{"slug": "dogfood-run-fixes", "status": "current", "date": "2026-07-03", "files": ["index.html", "tests.html", ".workflow/sidebar-collapse.md"], "verify": ["./run-tests.sh", "the private hygiene grep (CLAUDE.local.md, not committed)"], "superseded_by": null}
 ```
 
 ## Current behavior
@@ -81,7 +81,7 @@ The first live dogfood run (sidebar-collapse) surfaced six real defects in the g
 ## Verify
 
 - `./run-tests.sh` -> PASS 1385/1385 (baseline 1350 + 35 new; 6 old pins migrated to sharper contracts, none weakened; zero regressions).
-- `git grep -niE 'XX-[0-9]|REDACTED|REDACTED|REDACTED|REDACTED|REDACTED|XX-[0-9]|XX-[0-9]'` -> exit 1 (clean).
+- `the private hygiene grep (CLAUDE.local.md, not committed)` -> exit 1 (clean).
 - Em-dash grep over index.html, tests.html, .workflow/*.md -> no matches.
 
 ## Gotchas / non-obvious
