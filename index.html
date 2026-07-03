@@ -267,6 +267,10 @@ svg.canvas{width:100%;height:100%;display:block}
 .connection:hover{stroke:var(--accent);cursor:pointer}
 .connection.selected{stroke:var(--accent);stroke-width:2.5}
 .connection.back-edge{stroke-dasharray:6 3;opacity:.5}
+/* Revise-edge continuity (removable feature): solid loop-back = the execution context
+   persists across the revise (same session / same teammate); dashed = a fresh spawn. */
+.connection.revise-continues{stroke-dasharray:none}
+.connection.revise-respawns{stroke-dasharray:6 3}
 .conn-label{fill:var(--text3);font-size:10px;font-family:var(--font);
   text-anchor:middle;pointer-events:none}
 .temp-connection{fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:6 4;
@@ -1003,6 +1007,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>: Delete selected node or connection</li>
   <li><kbd>Alt+Drag</kbd>: Pan the canvas</li>
   <li><kbd>Scroll</kbd>: Zoom in/out</li>
+  <li><strong>Loop-back edges</strong> style themselves to the selected output format: <strong>solid</strong> = the worker continues with its context on a revise (same session, or the same persistent teammate); <strong>dashed</strong> = a fresh agent is spawned and briefed. Hover the edge for the exact semantics.</li>
   <li><strong>Right-click</strong> a node for its context menu: add a <strong>Skeptic review</strong> or <strong>Verification</strong> loop, duplicate, disconnect, or delete</li>
   <li><strong>Auto Layout</strong> re-arranges nodes using the Sugiyama layered algorithm (a respectable-sounding name for "untangle the arrows so you can read it")</li>
   <li><strong>Fit</strong> zooms to show all nodes</li>
@@ -3657,6 +3662,16 @@ function renderConnections() {
     const d = bezierPath(pts.x1, pts.y1, pts.x2, pts.y2, isBack, arc);
     path.setAttribute('d', d);
     path.setAttribute('class', `connection${state.selectedId === conn.id ? ' selected' : ''}${isBack ? ' back-edge' : ''}`);
+    // Revise-edge continuity (removable): consult the pure helper so the loop-back's
+    // style and hover tip reflect the ACTIVE format's revise semantics. setExportFormat
+    // already re-renders, so tab switches refresh this with zero extra coupling.
+    if (typeof reviseContinuity === 'function' && isReviseBackEdge(conn)) {
+      const rc = reviseContinuity();
+      path.classList.add(rc.solid ? 'revise-continues' : 'revise-respawns');
+      const rcTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      rcTitle.textContent = rc.tip;
+      path.appendChild(rcTitle);
+    }
     path.setAttribute('marker-end', state.selectedId === conn.id ? 'url(#arrowhead-accent)' : 'url(#arrowhead)');
     path.setAttribute('data-id', conn.id);
     layer.appendChild(path);
@@ -7953,7 +7968,8 @@ function explainDecisionNode(node, format) {
     : (format === 'subagent' || format === 'teams') ? 'max ' + cap + ' cycles' : '';
   rows.push(exRow('Revise routing', true,
     (reviseTargets.length > 0 ? 'the ' + no + ' branch re-runs ' + reviseTargets.map(t => t.label).join(', ') : 'no ' + no + '-labelled edge - generic re-run guidance')
-      + '; capped at ' + cap + ' cycles, then proceed and document remaining concerns',
+      + '; capped at ' + cap + ' cycles, then proceed and document remaining concerns'
+      + (typeof reviseContinuity === 'function' ? '. ' + reviseContinuity(format).tip : ''),
     reviseProbe));
   rows.push(exRow('Ordering semantics', true,
     node.config.reviewLoopDecisionFor !== undefined
@@ -10618,6 +10634,21 @@ function isReviseBackEdge(c) {
   const from = state.nodes.find(n => n.id === c.from);
   return !!(from && from.type === 'decision' && c.label === ((from.config && from.config.noLabel) || 'No'));
 }
+
+// === REVISE-EDGE CONTINUITY (removable) ===================================
+// The single source of what a revise loop MEANS in each output format - the
+// canvas renderer and the Explain anatomy both ask HERE, so they can never
+// disagree. Rule: solid = the execution context persists across the loop;
+// dashed = a fresh spawn. Layered disclosure: the style change on tab switch
+// is the hook, the hover tip teaches, the Explain row seals.
+function reviseContinuity(format) {
+  format = format || state.exportFormat;
+  if (format === 'teams') return { solid: true, tip: 'On revise, the SAME teammate continues, keeping their full working context (teammates persist)' };
+  if (format === 'subagent') return { solid: false, tip: 'On revise, a fresh sub-agent is re-spawned, briefed with the reviewer\'s blockers' + (state.memoryEnabled ? ' and its own memory file' : '') };
+  if (format === 'sdk') return { solid: false, tip: 'On revise, the step re-runs as a new one-shot call' };
+  return { solid: true, tip: 'On revise, the pass runs in the same session - context continues' }; // prompt (Workflow) + claude
+}
+// === end REVISE-EDGE CONTINUITY ===========================================
 
 function topologicalSort() {
   const adj = {};

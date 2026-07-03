@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## revise-edge-continuity
+
+- record: .workflow/revise-edge-continuity.md
+- intent: the revise loop-back edge styles itself to the active format's continuity semantics (solid = context persists: Workflow/Claude single-session, Teams persistent teammates; dashed = fresh spawn: Sub-Agents/SDK) with the exact meaning on hover (SVG title; memory-aware) and the same phrase in the Explain revise-routing row - one pure helper reviseContinuity() is the single source both surfaces ask, renderer consults behind a typeof guard, setExportFormat's existing render() is the whole tab coupling. Layered disclosure: the style change is the hook, the hover teaches, Explain seals.
+- files: index.html (helper block, renderer consult, CSS pair, explain row, help line), tests.html (+4)
+- status: current | date: 2026-07-03 | note: 1336 -> 1340. Owner idea from the respawn-lossiness conversation.
+
 ## prompt-overhaul-wave-c
 
 - record: .workflow/prompt-overhaul-wave-c.md
