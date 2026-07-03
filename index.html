@@ -8198,7 +8198,7 @@ function explainAgentNode(node, format) {
   const fd = foundDefectNote(node);
   rows.push(exRow('Found-defect protocol', !!fd,
     fd ? 'building/testing role - fix blocking or trivially in-path defects with declared coverage; record the rest; never work around'
-       : "role '" + node.config.agentType + "' not in FOUND_DEFECT_ROLES (plan/review/critique roles report findings rather than change code)",
+       : "built-in for code-changing roles (implementer, debugger, tester, verifier) - '" + node.config.agentType + "' reports findings rather than changing code, so it deliberately does not carry this. The one thing that changes this row: the node's agent type. No sidebar setting affects it.",
     fd));
   const rh = recordHandoffHint(node);
   rows.push(exRow('Durable-record handoff (DONE:/STATUS:)', !!rh,
