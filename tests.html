@@ -10058,6 +10058,36 @@ describe('Themed confirm modal (replaces native confirm)', () => {
     expect(win.state.nodes.length).toBe(1);
     win.__autoConfirm = true;
   });
+  it('loading a saved workflow over a non-empty canvas confirms (Replace), is vetoable, and pushes an undo point', () => {
+    resetState();
+    win.addNode('agent', 0, 0, 'Keep Me', { agentType:'coder', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:5 });
+    const wf = win.serializeWorkflow();
+    wf.name = 'Saved Twin';
+    try { win.localStorage.setItem('awd_wf_saved-twin', JSON.stringify(wf)); } catch(e) {}
+    win.__autoConfirm = false;
+    win.loadSavedWorkflow('saved-twin');
+    expect(win.state.nodes.length).toBe(1);
+    expect(win.state.nodes[0].label).toBe('Keep Me');
+    win.__autoConfirm = true;
+    win.clearUndo();
+    win.loadSavedWorkflow('saved-twin');
+    expect(win.document.getElementById('workflowName').value).toBe('Saved Twin');
+    expect(win.undoDepth()).toBe(1);
+    try { win.localStorage.removeItem('awd_wf_saved-twin'); } catch(e) {}
+    resetState();
+  });
+  it('loading a saved workflow onto an EMPTY canvas asks nothing', () => {
+    resetState();
+    const wf = win.serializeWorkflow();
+    wf.name = 'Fresh Load';
+    try { win.localStorage.setItem('awd_wf_fresh-load', JSON.stringify(wf)); } catch(e) {}
+    win.__autoConfirm = false;
+    win.loadSavedWorkflow('fresh-load');
+    expect(win.document.getElementById('workflowName').value).toBe('Fresh Load');
+    win.__autoConfirm = true;
+    try { win.localStorage.removeItem('awd_wf_fresh-load'); } catch(e) {}
+    resetState();
+  });
   it('hookless veto leaves state untouched; hookless confirm proceeds (clearCanvas + loadPreset)', async () => {
     resetState();
     const saved = win.__autoConfirm; delete win.__autoConfirm;
@@ -10072,12 +10102,13 @@ describe('Themed confirm modal (replaces native confirm)', () => {
     expect(win.state.nodes.length).toBeGreaterThan(1); // preset replaced the canvas
     win.__autoConfirm = saved;
   });
-  it('the six converted sites route through withConfirm; the two secrets-copy sites stay native (deliberate keep)', () => {
+  it('the seven converted sites route through withConfirm; the two secrets-copy sites stay native (deliberate keep)', () => {
     // native confirm() remains ONLY at the two documented secrets-copy sites
-    // (clipboard-gesture reasoning; see the source comments at those sites)
+    // (clipboard-gesture reasoning; see the source comments at those sites).
+    // Seventh site added 2026-07-03: loadSavedWorkflow replace guard.
     const src = win.document.documentElement.outerHTML;
     expect((src.match(/!confirm\(/g) || []).length).toBe(2);
-    expect((src.match(/withConfirm\('/g) || []).length).toBe(6);
+    expect((src.match(/withConfirm\('/g) || []).length).toBe(7);
   });
 });
 

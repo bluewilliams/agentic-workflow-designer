@@ -3020,9 +3020,11 @@ function saveWorkflow() {
     showToast('Save failed - storage may be full');
   }
 }
-function loadSavedWorkflow(slug) {
+function loadSavedWorkflow(slug, _confirmed) {
+  if (!_confirmed && state.nodes.length > 0) { withConfirm('This will replace your current workflow with the saved one.', { confirmLabel: 'Replace' }, () => loadSavedWorkflow(slug, true)); return; }
   try {
     const raw = localStorage.getItem('awd_wf_' + slug);
+    if (raw && state.nodes.length > 0) pushUndo();
     if (!raw) { showToast('Workflow not found'); return; }
     const data = JSON.parse(raw);
     if (deserializeWorkflow(data)) {
