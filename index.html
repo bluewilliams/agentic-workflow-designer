@@ -550,6 +550,25 @@ svg.canvas{width:100%;height:100%;display:block}
       </div>
       <button class="path-clear" id="productDocPathClear" onclick="clearProductDocPaths()" style="display:none">Clear All</button>
     </div>
+
+    <div style="margin-top:10px">
+      <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px">Verification instructions (testers / verifiers)</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:5px">(what a change must prove; routed to tester/verifier/reviewer steps)</div>
+      <div class="path-input-row">
+        <input type="text" id="verifyPathInput" placeholder="e.g. VERIFY.md or rules/E2E.md" onkeydown="if(event.key==='Enter'){event.preventDefault();addVerifyPathFromInput();}"/>
+        <button class="btn sm" onclick="addVerifyPathFromInput()">Add</button>
+      </div>
+      <div class="path-chips" id="verifyPathChips"></div>
+      <div class="path-suggest">
+        <button onclick="addVerifyPath('VERIFY.md')">VERIFY.md</button>
+        <button onclick="addVerifyPath('rules/E2E.md')">rules/E2E.md</button>
+      </div>
+      <button class="path-clear" id="verifyPathClear" onclick="clearVerifyPaths()" style="display:none">Clear All</button>
+      <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text3);margin-top:6px;cursor:pointer">
+        <input type="checkbox" id="verifyFailRunToggle" checked onchange="setVerifyFailRun(this.checked)" style="margin:0"/>
+        <span>Unmet required verifications fail the run</span>
+      </label>
+    </div>
   </div>
 
   <div class="sidebar-section" data-collapse-id="add-nodes">
@@ -1048,7 +1067,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>Two sidebar sections give agents the right context across one or many repositories:</p>
 <ul>
   <li><strong>Repositories</strong> - list each repo with its branch; the prompts tell agents to check out the right branch and pull before starting.</li>
-  <li><strong>Repo Context Paths</strong> - point agents at a repo's own rules and product docs so they honor more than the per-task spec. <strong>Rules / constitution</strong> paths (e.g. <code>.claude/rules</code>, <code>CONVENTIONS.md</code>) are binding constraints on <em>how</em> to build; <strong>Product docs</strong> (e.g. <code>docs/</code>, ADRs) are goals the work must not contradict. The lists are sticky - they persist across workflows in the same repo.</li>
+  <li><strong>Repo Context Paths</strong> - point agents at a repo's own rules and product docs so they honor more than the per-task spec. <strong>Rules / constitution</strong> paths (e.g. <code>.claude/rules</code>, <code>CONVENTIONS.md</code>) are binding constraints on <em>how</em> to build; <strong>Product docs</strong> (e.g. <code>docs/</code>, ADRs) are goals the work must not contradict; <strong>Verification instructions</strong> (e.g. <code>VERIFY.md</code>, <code>rules/E2E.md</code>) are the checks a change must prove - the orchestrator reads them and routes them into the tester, verifier, and reviewer step briefs, and each check is classified Required or Recommended by the file's own MUST/SHOULD wording (they say <em>what</em> to prove, never restrict which tools to use - tools stay suggestions). The <strong>Unmet required verifications fail the run</strong> checkbox sets the posture: on, a blocked required check fails the run; off, it is recorded but report-only. All three lists are sticky - they persist across workflows in the same repo.</li>
 </ul>
 <p><strong>Multi-repo rules - handled for you.</strong> On its own, Claude Code only auto-loads <code>CLAUDE.md</code> and <code>.claude/rules/</code> for the repo the session launched in, so it would miss the others. The generated multi-repo prompt closes that gap: it tells each agent to read every in-scope repo's own <code>CLAUDE.md</code> and <code>.claude/rules/</code> before changing it, and any <strong>Rule Paths</strong> you list (e.g. <code>.claude/rules</code>) are resolved <em>within each repo</em> and scoped to it. So with three repos selected and <code>.claude/rules</code> listed once, each repo's own rules are honored for changes made in that repo - no per-repo entry needed, and no environment variable required.</p>
 <p>The setup below is an <em>optional</em> reliability boost - it makes Claude Code <em>also</em> auto-load each added repo's <code>CLAUDE.md</code> at startup - but the prompt's explicit per-repo read works no matter how the session was launched:</p>
@@ -1380,6 +1399,8 @@ const MODELS = [
   { value: 'opus-4.7-1m',   label: 'Opus 4.7 [1M]', family: 'opus-4.7',   id: 'claude-opus-4-7' },
   { value: 'opus-4.6',      label: 'Opus 4.6',      family: 'opus-4.6',   id: 'claude-opus-4-6' },
   { value: 'opus-4.6-1m',   label: 'Opus 4.6 [1M]', family: 'opus-4.6',   id: 'claude-opus-4-6' },
+  { value: 'sonnet-5',      label: 'Sonnet 5',      family: 'sonnet-5',  id: 'claude-sonnet-5' },
+  { value: 'sonnet-5-1m',   label: 'Sonnet 5 [1M]', family: 'sonnet-5',  id: 'claude-sonnet-5' },
   { value: 'sonnet-4.6',    label: 'Sonnet 4.6',    family: 'sonnet-4.6', id: 'claude-sonnet-4-6' },
   { value: 'sonnet-4.6-1m', label: 'Sonnet 4.6 [1M]', family: 'sonnet-4.6', id: 'claude-sonnet-4-6' },
   { value: 'haiku',         label: 'Haiku 4.5',     family: 'haiku-4.5',  id: 'claude-haiku-4-5-20251001' },
@@ -1389,12 +1410,12 @@ const MODELS = [
 function getModelLabel(val) { const m = MODELS.find(m => m.value === val); return m ? m.label : val; }
 function getModelFamily(val) { const m = MODELS.find(m => m.value === val); return m ? m.family : val; }
 function getModelId(val) { const m = MODELS.find(m => m.value === val); return m ? m.id : val; }
-// Latest models (Fable 5, Opus 4.8, Sonnet 4.6) use shorthand aliases; older models use full IDs for precise version pinning
+// Latest models (Fable 5, Opus 4.8, Sonnet 5, Sonnet 4.6) use shorthand aliases; older models use full IDs for precise version pinning
 // [1M] variants append the Claude Code context window suffix for 1M token sessions
 // The Task tool model parameter accepts only base model aliases (fable, opus, sonnet,
 // haiku) - "[1m]" is not a valid parameter value (a live run had to silently fall back).
 // The 1M intent is carried as prose via modelContextNote next to each model line.
-const taskModelMap = { 'fable-5': 'fable', 'fable-5-1m': 'fable', 'opus-4.8': 'opus', 'opus-4.8-1m': 'opus', 'sonnet-4.6': 'sonnet', 'sonnet-4.6-1m': 'sonnet', 'haiku': 'haiku' };
+const taskModelMap = { 'fable-5': 'fable', 'fable-5-1m': 'fable', 'opus-4.8': 'opus', 'opus-4.8-1m': 'opus', 'sonnet-5': 'sonnet', 'sonnet-5-1m': 'sonnet', 'sonnet-4.6': 'sonnet', 'sonnet-4.6-1m': 'sonnet', 'haiku': 'haiku' };
 function getTaskModelParam(val) { return taskModelMap[val] || getModelId(val); }
 function isLongContextModel(val) { return /-1m$/.test(String(val || '')); }
 function modelContextNote(val) {
@@ -1487,6 +1508,36 @@ function productDocsHint() {
   r.push('> Snapshot the relevant intent: when you are maintaining a durable record, capture the goals and direction these docs imply into the durable record\'s Why and scope, so later steps inherit the product intent without re-reading.');
   r.push('>');
   r.push('> Multi-repo scoping: when more than one repository is in scope, resolve each listed path within each in-scope repository, and let a repository\'s own docs govern only that repository\'s work. Never carry one repository\'s product context into another repository\'s work; when repositories differ, honor each repository\'s own docs for changes made in it. A path that is absent in a given repository is simply no-extra-context there, not an error.');
+  return r.join('\n');
+}
+
+// Verification instructions: files that define what a change must PROVE before it is done - test
+// checklists, verification/E2E guides, review gates. Workflow-level orchestrator beat, peer of
+// rulesPathsHint/productDocsHint, gated on a non-empty list. The orchestrator discovers, scopes,
+// and reads them ONCE and routes them into the tester/verifier/reviewer step briefs; steps do not
+// re-crawl. Severity comes from the file\'s own MUST/SHOULD language; the checkbox posture is the
+// default when a file does not distinguish. Hyphens only, no fences, provider-neutral. Suggestion
+// semantics: these files say WHAT to prove, never restrict HOW (selected tools stay suggestions).
+function verifyInstructionsHint() {
+  if (!state.verifyPaths || !state.verifyPaths.length) return null;
+  const list = state.verifyPaths.map(p => `>   - \`${p}\``).join('\n');
+  const posture = state.verifyFailRun
+    ? '> Posture (configured): a blocked REQUIRED verification fails the run - do not report the run as successful while a required check is unmet.'
+    : '> Posture (configured): report-only - a blocked REQUIRED verification is recorded and surfaced, but it does not fail the run.';
+  const r = [];
+  r.push('> **Verification instructions (testers / verifiers).** These paths hold the checks a change must PROVE before it is done - test checklists, verification and E2E guides, and review gates. You, the orchestrator, own them: discover the configured filenames and paths, read the ones that apply, and route them into the tester, verifier, and reviewer step briefs so those steps inherit the checks instead of re-crawling for them.');
+  r.push('>');
+  r.push('> Read only what is listed below - do not blind-hunt for other verification files:');
+  r.push(list);
+  r.push('>');
+  r.push('> Scope which files apply by where the change lands: a root-level match (a listed file at a repository root) ALWAYS applies to work in that repository; a nested match (a listed file inside a subdirectory) applies only when the change\'s blast area intersects that file\'s directory subtree. A path that is absent in a given repository is simply no-extra-context there, not an error.');
+  r.push('>');
+  r.push('> Classify each step\'s checks by the file\'s OWN language: wording that says MUST or required marks a REQUIRED verification; wording that says SHOULD or recommended marks a recommended one. When a file does not distinguish, treat the configured posture below as the default severity.');
+  r.push(posture);
+  r.push('>');
+  r.push('> Surface a blocked REQUIRED verification everywhere it matters: in the responsible step\'s gate verdict line, in the durable record\'s Verify section, and in the awd:run fence notes - it never silently passes. These files mandate WHAT must be proven, never HOW; the listed tools stay suggestions, not restrictions.');
+  r.push('>');
+  r.push('> Multi-repo scoping: when more than one repository is in scope, resolve each listed path within each in-scope repository, and let a repository\'s own verification files govern only that repository\'s work. Never carry one repository\'s verification checks into another repository\'s work.');
   return r.join('\n');
 }
 
@@ -1681,6 +1732,18 @@ function codeSearchStepHint(node) {
   if (!state.mcpCodeSearch) return '';
   if (!node || !node.config || !CODE_SEARCH_STEP_ROLES.has(node.config.agentType)) return '';
   return 'Code search (MCP) is available. A code-search MCP (for example Sourcebot) is connected to this workflow. In addition to Glob, Grep, and LSP, you can use it to search across repositories at once - especially helpful for understanding the seams between systems: API contracts, shared schemas, and producer/consumer pairs that span repos and are hard to see with single-repo Grep or LSP. Reach for whichever technique fits the question.';
+}
+
+// Per-step verification-instructions hint for the roles that EXECUTE verifications: tester,
+// verifier, reviewer. The adversary/skeptic is excluded on purpose - it reasons about the work, it
+// does not run the checks. Generation-only: injected at the per-agent emission sites, NEVER in
+// getEffectivePrompt (which also drives the node-config display). Gated on a non-empty verifyPaths
+// AND the node\'s role; returns '' otherwise so nothing leaks into implementer/planner steps.
+const VERIFY_STEP_ROLES = new Set(['tester', 'verifier', 'reviewer']);
+function verifyInstructionsStepHint(node) {
+  if (!state.verifyPaths || !state.verifyPaths.length) return '';
+  if (!node || !node.config || !VERIFY_STEP_ROLES.has(node.config.agentType)) return '';
+  return 'Verification instructions apply to this step. The orchestrator has routed the applicable verification files into your brief - work through every applicable check and report each one as executed-with-result, not-applicable-with-reason, or blocked-with-reason. A blocked REQUIRED verification is a gate-failing finding: surface it in your verdict line, in the durable record\'s Verify section, and in the awd:run fence notes - never let it silently pass. These files define WHAT must be proven, not HOW; treat any tools they mention as suggestions, never restrictions.';
 }
 
 // Maps agentType to a PROMPTS key for fallback when user leaves prompt blank
@@ -1941,7 +2004,9 @@ let state = {
   clarifyFirst: false,
   mcpCustom: '',
   rulesPaths: [],
-  productDocPaths: []
+  productDocPaths: [],
+  verifyPaths: [],
+  verifyFailRun: true
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -2505,6 +2570,8 @@ function savePrefs() {
       mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : '',
       rulesPaths: state.rulesPaths,
       productDocPaths: state.productDocPaths,
+      verifyPaths: state.verifyPaths,
+      verifyFailRun: state.verifyFailRun,
       plibOpen: state.plibOpen || null,
       plibFavs: state.plibFavs || null
     }));
@@ -2574,6 +2641,8 @@ function restorePrefs() {
     // Repo context paths (sticky); tolerate older blobs lacking these keys (stay empty, no throw).
     if (Array.isArray(p.rulesPaths)) { state.rulesPaths = p.rulesPaths; renderRulesRows(); }
     if (Array.isArray(p.productDocPaths)) { state.productDocPaths = p.productDocPaths; renderProductDocRows(); }
+    if (Array.isArray(p.verifyPaths)) { state.verifyPaths = p.verifyPaths; renderVerifyRows(); }
+    if (typeof p.verifyFailRun === 'boolean') { state.verifyFailRun = p.verifyFailRun; const _vft = $('verifyFailRunToggle'); if (_vft) _vft.checked = p.verifyFailRun; }
     if (Array.isArray(p.plibOpen)) state.plibOpen = p.plibOpen;
     if (Array.isArray(p.plibFavs)) state.plibFavs = p.plibFavs;
   } catch(e) { /* ignore */ }
@@ -2735,6 +2804,57 @@ function renderProductDocRows() {
   });
   const clr = $('productDocPathClear');
   if (clr) clr.style.display = (state.productDocPaths && state.productDocPaths.length) ? 'inline' : 'none';
+}
+function addVerifyPath(path) {
+  const v = (path || '').trim();
+  if (!v) return;
+  if (!Array.isArray(state.verifyPaths)) state.verifyPaths = [];
+  if (state.verifyPaths.indexOf(v) === -1) state.verifyPaths.push(v);
+  renderVerifyRows();
+  savePrefsDebounced();
+  updatePrompt();
+}
+function addVerifyPathFromInput() {
+  const inp = $('verifyPathInput');
+  if (!inp) return;
+  addVerifyPath(inp.value);
+  inp.value = '';
+  inp.focus();
+}
+function removeVerifyPath(path) {
+  if (!Array.isArray(state.verifyPaths)) return;
+  state.verifyPaths = state.verifyPaths.filter(p => p !== path);
+  renderVerifyRows();
+  savePrefsDebounced();
+  updatePrompt();
+}
+function clearVerifyPaths() {
+  state.verifyPaths = [];
+  renderVerifyRows();
+  savePrefsDebounced();
+  updatePrompt();
+}
+function renderVerifyRows() {
+  const list = $('verifyPathChips');
+  if (!list) return;
+  list.innerHTML = '';
+  (state.verifyPaths || []).forEach(p => {
+    const chip = document.createElement('span');
+    chip.className = 'path-chip';
+    chip.innerHTML = '<span></span><button class="path-chip-remove" title="Remove">&times;</button>';
+    chip.querySelector('span').textContent = p;
+    chip.querySelector('button').onclick = () => removeVerifyPath(p);
+    list.appendChild(chip);
+  });
+  const clr = $('verifyPathClear');
+  if (clr) clr.style.display = (state.verifyPaths && state.verifyPaths.length) ? 'inline' : 'none';
+}
+// The fail-the-run posture is a sticky boolean pref (not a per-workflow value): update state,
+// persist, and refresh the prompt so the workflow-level beat re-renders with the new posture text.
+function setVerifyFailRun(on) {
+  state.verifyFailRun = !!on;
+  savePrefsDebounced();
+  updatePrompt();
 }
 
 // -- Workflow serialization --
@@ -7526,9 +7646,10 @@ function clearCanvas(skipConfirm) {
   const _crt = $('consumeRecordsToggle'); if (_crt) _crt.checked = true;
   const _clt = $('clarifyFirstToggle'); if (_clt) _clt.checked = false;
   const _mcn = $('mcpCustomNotes'); if (_mcn) _mcn.value = '';
-  // state.rulesPaths and state.productDocPaths are intentionally NOT reset here: they are
-  // sticky repo-level context that carries across workflows in the same repo. Only the
-  // Clear-all controls (clearRulesPaths / clearProductDocPaths) empty them.
+  // state.rulesPaths, state.productDocPaths, and state.verifyPaths are intentionally NOT reset
+  // here: they are sticky repo-level context that carries across workflows in the same repo. Only
+  // the Clear-all controls (clearRulesPaths / clearProductDocPaths / clearVerifyPaths) empty them.
+  // state.verifyFailRun (the fail-the-run posture) is likewise a sticky pref, left untouched here.
   render();
   updateConfig();
   updateMemoryPath();
@@ -8029,6 +8150,12 @@ function explainAgentNode(node, format) {
        : (!state.mcpCodeSearch ? 'Code search toggle off'
           : "role '" + node.config.agentType + "' not in CODE_SEARCH_STEP_ROLES (writer stays out - docs work rarely spans repo seams)"),
     cs));
+  const veStep = verifyInstructionsStepHint(node);
+  rows.push(exRow('Verification-instructions step hint', !!veStep,
+    veStep ? 'verification paths configured and role is in VERIFY_STEP_ROLES (tester / verifier / reviewer)'
+       : ((!state.verifyPaths || !state.verifyPaths.length) ? 'no verification paths configured'
+          : "role '" + node.config.agentType + "' not in VERIFY_STEP_ROLES (only tester / verifier / reviewer execute verifications; the adversary reasons but does not run them)"),
+    veStep));
   const rh = recordHandoffHint();
   rows.push(exRow('Durable-record handoff (DONE:/STATUS:)', !!rh,
     rh ? 'durable-record toggle on - the step reports transcribe-ready lines naming its exact checklist items' : 'durable-record toggle off',
@@ -8331,6 +8458,8 @@ function explainWorkflow(format) {
   rows.push(exRow('Repo rules / constitution', !!ru, ru ? 'rules paths configured (BINDING constraints)' : 'no rules paths configured', ru));
   const pd = productDocsHint();
   rows.push(exRow('Product / architecture docs', !!pd, pd ? 'doc paths configured (goals to SERVE)' : 'no product-doc paths configured', pd));
+  const ve = verifyInstructionsHint();
+  rows.push(exRow('Verification instructions', !!ve, ve ? 'verification paths configured (routed to tester/verifier/reviewer; posture ' + (state.verifyFailRun ? 'fails the run' : 'report-only') + ')' : 'no verification paths configured', ve));
   const cr = consumeRecordsHint(format);
   rows.push(exRow('Grounding in prior records', !!cr, cr ? 'consumeRecords toggle on - three-tier lookup, Current behavior first' : 'Ground-in-prior-records toggle off', cr));
   const cl = clarifyFirstHint();
@@ -8854,6 +8983,8 @@ function genWorkflow() {
   if (_wfRu) { p.push(_wfRu); p.push(''); }
   const _wfPd = productDocsHint();
   if (_wfPd) { p.push(_wfPd); p.push(''); }
+  const _wfVe = verifyInstructionsHint();
+  if (_wfVe) { p.push(_wfVe); p.push(''); }
   const _wfCr = consumeRecordsHint('prompt');
   if (_wfCr) { p.push(_wfCr); p.push(''); }
   const _wfCl = clarifyFirstHint();
@@ -8899,6 +9030,7 @@ function genWorkflow() {
           const _scS = toolScopeNote(s.config.tools); if (_scS) p.push('  - ' + _scS);
           const _ddS = datadogStepHint(s); if (_ddS) p.push('  ' + _ddS);
           const _csS = codeSearchStepHint(s); if (_csS) p.push('  ' + _csS);
+          const _veS = verifyInstructionsStepHint(s); if (_veS) p.push('  ' + _veS);
           const _rhS = recordHandoffHint(); if (_rhS) p.push('  ' + _rhS);
           p.push(`  - Instructions: ${getEffectivePrompt(s)}`);
           if (s.config.notes && s.config.notes.trim()) p.push(`  - Agent Context: ${s.config.notes.trim()}`);
@@ -8921,6 +9053,7 @@ function genWorkflow() {
         const _scN = toolScopeNote(node.config.tools); if (_scN) p.push('- ' + _scN);
         const _ddN = datadogStepHint(node); if (_ddN) p.push('- ' + _ddN);
         const _csN = codeSearchStepHint(node); if (_csN) p.push('- ' + _csN);
+        const _veN = verifyInstructionsStepHint(node); if (_veN) p.push('- ' + _veN);
         const _rhN = recordHandoffHint(); if (_rhN) p.push('- ' + _rhN);
         p.push(`- Instructions: ${getEffectivePrompt(node)}`);
         if (node.config.notes && node.config.notes.trim()) p.push(`- Agent Context: ${node.config.notes.trim()}`);
@@ -9052,6 +9185,8 @@ function genSubAgents() {
   if (_saRu) { p.push(_saRu); p.push(''); }
   const _saPd = productDocsHint();
   if (_saPd) { p.push(_saPd); p.push(''); }
+  const _saVe = verifyInstructionsHint();
+  if (_saVe) { p.push(_saVe); p.push(''); }
   const _saCr = consumeRecordsHint('subagent');
   if (_saCr) { p.push(_saCr); p.push(''); }
   const _saCl = clarifyFirstHint();
@@ -9126,6 +9261,7 @@ function genSubAgents() {
     promptLines.push(getEffectivePrompt(node));
     const _ddSa = datadogStepHint(node); if (_ddSa) { promptLines.push(''); promptLines.push(_ddSa); }
     const _csSa = codeSearchStepHint(node); if (_csSa) { promptLines.push(''); promptLines.push(_csSa); }
+    const _veSa = verifyInstructionsStepHint(node); if (_veSa) { promptLines.push(''); promptLines.push(_veSa); }
     const _rhSa = recordHandoffHint(); if (_rhSa) { promptLines.push(''); promptLines.push(_rhSa); }
     promptLines.push('');
 
@@ -9340,6 +9476,8 @@ function genAgentTeams() {
   if (_atRu) { p.push(_atRu); p.push(''); }
   const _atPd = productDocsHint();
   if (_atPd) { p.push(_atPd); p.push(''); }
+  const _atVe = verifyInstructionsHint();
+  if (_atVe) { p.push(_atVe); p.push(''); }
   const _atCr = consumeRecordsHint('teams');
   if (_atCr) { p.push(_atCr); p.push(''); }
   const _atCl = clarifyFirstHint();
@@ -9394,6 +9532,7 @@ function genAgentTeams() {
     effectivePrompt.split('\n').forEach(line => lines.push(`${pre}  ${line}`));
     const _ddAt = datadogStepHint(node); if (_ddAt) lines.push(`${pre}  ${_ddAt}`);
     const _csAt = codeSearchStepHint(node); if (_csAt) lines.push(`${pre}  ${_csAt}`);
+    const _veAt = verifyInstructionsStepHint(node); if (_veAt) lines.push(`${pre}  ${_veAt}`);
     const _rhAt = recordHandoffHint(); if (_rhAt) lines.push(`${pre}  ${_rhAt}`);
     lines.push('');
 
@@ -9669,6 +9808,25 @@ function genAgentSDK() {
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
+  if (state.verifyPaths && state.verifyPaths.length) {
+    p.push('# ── Verification instructions (testers / verifiers) ──────────────────────────');
+    p.push('# The checks a change must PROVE before it is done. The orchestrator (this harness)');
+    p.push('# discovers, scopes, and reads them, then routes them into the tester/verifier/reviewer');
+    p.push('# briefs; those steps report each check as executed / not-applicable / blocked.');
+    p.push('# Read only what is listed (no blind-hunt):');
+    state.verifyPaths.forEach(pth => p.push(`#   - ${pth}`));
+    p.push('# Scope: a root-level match always applies in that repo; a nested match applies only when');
+    p.push('# the change\'s blast area intersects that file\'s directory subtree.');
+    p.push('# Severity: the file\'s own MUST/required vs SHOULD/recommended language classifies a check;');
+    if (state.verifyFailRun) {
+      p.push('# posture (configured): a blocked REQUIRED verification fails the run.');
+    } else {
+      p.push('# posture (configured): report-only - a blocked REQUIRED verification is recorded, not failed.');
+    }
+    p.push('# These files mandate WHAT to prove, never HOW - the tools stay suggestions, not restrictions.');
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
   const _sdkCmNotes = ($('mcpCustomNotes') ? $('mcpCustomNotes').value : state.mcpCustom || '').trim();
   if (_sdkCmNotes) {
     p.push('# ── Custom MCP Tools ──────────────────────────────────────────────────────');
@@ -9908,6 +10066,8 @@ function genClaudePrompt() {
   if (_cpRu) { p.push(_cpRu); p.push(''); }
   const _cpPd = productDocsHint();
   if (_cpPd) { p.push(_cpPd); p.push(''); }
+  const _cpVe = verifyInstructionsHint();
+  if (_cpVe) { p.push(_cpVe); p.push(''); }
   const _cpCr = consumeRecordsHint('claude');
   if (_cpCr) { p.push(_cpCr); p.push(''); }
   const _cpCl = clarifyFirstHint();
@@ -9956,6 +10116,7 @@ function genClaudePrompt() {
           p.push(getEffectivePrompt(s));
           const _ddCpS = datadogStepHint(s); if (_ddCpS) p.push(_ddCpS);
           const _csCpS = codeSearchStepHint(s); if (_csCpS) p.push(_csCpS);
+          const _veCpS = verifyInstructionsStepHint(s); if (_veCpS) p.push(_veCpS);
           const _rhCpS = recordHandoffHint(); if (_rhCpS) p.push(_rhCpS);
           p.push('');
           if (s.config.notes && s.config.notes.trim()) {
@@ -9984,6 +10145,7 @@ function genClaudePrompt() {
         p.push(getEffectivePrompt(node));
         const _ddCpN = datadogStepHint(node); if (_ddCpN) p.push(_ddCpN);
         const _csCpN = codeSearchStepHint(node); if (_csCpN) p.push(_csCpN);
+        const _veCpN = verifyInstructionsStepHint(node); if (_veCpN) p.push(_veCpN);
         const _rhCpN = recordHandoffHint(); if (_rhCpN) p.push(_rhCpN);
         p.push('');
         if (node.config.notes && node.config.notes.trim()) {
@@ -10148,10 +10310,12 @@ function openSpecContextBlock() {
   // (kept compact - the full prompt-style guidance would bloat the schema if repeated per-step).
   const rules = (state.rulesPaths || []).filter(Boolean);
   const docs = (state.productDocPaths || []).filter(Boolean);
-  if (!rules.length && !docs.length) return '';
+  const verify = (state.verifyPaths || []).filter(Boolean);
+  if (!rules.length && !docs.length && !verify.length) return '';
   const lines = ['Repo context to read and honor (resolve each path in each repo in scope; read only what is listed):'];
   if (rules.length) lines.push('- Rules / constitution (BINDING - follow them): ' + rules.join(', '));
   if (docs.length) lines.push('- Product / architecture docs (serve, do not contradict): ' + docs.join(', '));
+  if (verify.length) lines.push('- Verification instructions (testers / verifiers - report each check as executed / not-applicable / blocked): ' + verify.join(', '));
   return lines.join('\n');
 }
 function openSpecGroundingBlock() {
@@ -10249,6 +10413,9 @@ function openSpecAdoptContextPaths(meta) {
   }
   if (meta && Array.isArray(meta.productDocPaths) && meta.productDocPaths.length && !(state.productDocPaths || []).length) {
     meta.productDocPaths.forEach(p => addProductDocPath(p)); adopted += meta.productDocPaths.length;
+  }
+  if (meta && Array.isArray(meta.verifyPaths) && meta.verifyPaths.length && !(state.verifyPaths || []).length) {
+    meta.verifyPaths.forEach(p => addVerifyPath(p)); adopted += meta.verifyPaths.length;
   }
   return adopted;
 }
@@ -10486,7 +10653,7 @@ function buildOpenSpecSchema() {
   L.push('');
   L.push('# Round-trip metadata for the Agentic Workflow Designer (ignored by openspec validate).');
   L.push('# Re-import this file into the designer to edit the workflow visually.');
-  L.push('# awd:meta ' + JSON.stringify({ format: 'agentic-workflow-designer', version: 1, rulesPaths: state.rulesPaths || [], productDocPaths: state.productDocPaths || [], ...serializeWorkflow() }));
+  L.push('# awd:meta ' + JSON.stringify({ format: 'agentic-workflow-designer', version: 1, rulesPaths: state.rulesPaths || [], productDocPaths: state.productDocPaths || [], verifyPaths: state.verifyPaths || [], verifyFailRun: state.verifyFailRun, ...serializeWorkflow() }));
 
   // Graph position for each artifact's record (task-inclusive, straight off the requires we built).
   const idLabel = {};
@@ -10981,7 +11148,7 @@ function genTuningPrompt() {
   L.push('## Current workflow definition (awd JSON)');
   L.push('');
   L.push('```json');
-  L.push(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, rulesPaths: state.rulesPaths || [], productDocPaths: state.productDocPaths || [], ...serializeWorkflow() }, null, 2));
+  L.push(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, rulesPaths: state.rulesPaths || [], productDocPaths: state.productDocPaths || [], verifyPaths: state.verifyPaths || [], verifyFailRun: state.verifyFailRun, ...serializeWorkflow() }, null, 2));
   L.push('```');
   return L.join('\n');
 }

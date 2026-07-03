@@ -9,6 +9,20 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (model-param block, hint honesty, four memory variants, execution directives, defaults, genDurableRecordProtocol + genDurableRecordComment, groundingLookupSteps + consumeRecordsHint, help modal), tests.html (6 migrations + 35 new), .workflow/sidebar-collapse.md (exemplar retrofit)
 - status: current | date: 2026-07-03 | note: 1350 -> 1385. A8 (first-run collapse curation) implemented then dropped by scope change - deferred to its own dogfood run.
 
+## verification-instructions
+
+- record: .workflow/verification-instructions.md
+- intent: team-mandated verification files for testers/verifiers/reviewers - third sticky Repo Context Paths group (verifyPaths add-chips + verifyFailRun checkbox, default ON) emitting an orchestrator discovery/scoping/routing beat at all FIVE formats (verifyInstructionsHint) and a role-gated per-step execute-and-report contract (verifyInstructionsStepHint, VERIFY_STEP_ROLES = tester/verifier/reviewer; executed/na/blocked, blocked-required surfaces in verdict + record Verify + awd:run and fails the run when posture ON); openSpecContextBlock forwards; silence-when-empty structural; suggestion semantics preserved (mandates WHAT, never restricts tools).
+- files: index.html (verifyInstructionsHint/verifyInstructionsStepHint/VERIFY_STEP_ROLES, state+prefs+clearCanvas, sidebar third block + chip twins, 5 workflow-level + 4 per-step emit sites, openSpecContextBlock, explain rows, help, awd:meta+adoptMeta), tests.html (23 + run-level matrix)
+- status: current | date: 2026-07-03 | note: third dogfood run (fork + verifier), plan gate passed cycle 2 after a real parity-gap block.
+
+## sonnet-5-models
+
+- record: .workflow/sonnet-5-models.md
+- intent: Sonnet 5 + Sonnet 5 [1M] model support - MODELS rows (family sonnet-5, id claude-sonnet-5) + taskModelMap base alias sonnet for both variants; every picker generic from MODELS; 1M machinery generalizes by the -1m suffix with zero special-casing; SDK full id, prose base alias + 1M note.
+- files: index.html (MODELS array, taskModelMap, latest-models comment), tests.html (8 pins)
+- status: current | date: 2026-07-03 | note: sibling of verification-instructions (same run); both plan-gate claims verified, zero logic changes.
+
 ## sidebar-first-run
 
 - record: .workflow/sidebar-first-run.md
