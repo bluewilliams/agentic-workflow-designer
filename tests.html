@@ -245,6 +245,8 @@ function resetState() {
   win.state.mcpDatadog = false;    // app default is OFF (opt-in)
   win.state.rulesPaths = [];       // repo context paths default empty (or undefined in tests)
   win.state.productDocPaths = [];
+  win.state.verifyPaths = [];      // verification instructions default empty
+  win.state.verifyFailRun = true;  // fail-the-run posture default ON (app default)
   // Reset DOM inputs
   const wfName = win.document.getElementById('workflowName');
   if (wfName) wfName.value = '';
@@ -494,6 +496,14 @@ describe('Pure Utilities', () => {
       expect(win.getModelId('fable-5-1m')).toBe('claude-fable-5');
       expect(win.getModelFamily('fable-5-1m')).toBe('fable-5');
     });
+    it('should return correct label, id and family for Sonnet 5 (and 1M variant)', () => {
+      expect(win.getModelLabel('sonnet-5')).toBe('Sonnet 5');
+      expect(win.getModelLabel('sonnet-5-1m')).toBe('Sonnet 5 [1M]');
+      expect(win.getModelId('sonnet-5')).toBe('claude-sonnet-5');
+      expect(win.getModelId('sonnet-5-1m')).toBe('claude-sonnet-5');
+      expect(win.getModelFamily('sonnet-5')).toBe('sonnet-5');
+      expect(win.getModelFamily('sonnet-5-1m')).toBe('sonnet-5');
+    });
   });
 
   describe('default model', () => {
@@ -504,6 +514,40 @@ describe('Pure Utilities', () => {
       expect(win.getModelLabel('opus-4.8')).toBe('Opus 4.8');
       // Fable 5 is present as a separate, non-default option.
       expect(win.getModelLabel('fable-5')).toBe('Fable 5');
+    });
+    it('offers Sonnet 5 and Sonnet 5 [1M] in the default-model dropdown', () => {
+      // The default-model select populates its options from MODELS at init.
+      const optsHtml = win.document.getElementById('defaultModelOptions').innerHTML;
+      expect(optsHtml).toContain('data-value="sonnet-5"');
+      expect(optsHtml).toContain('data-value="sonnet-5-1m"');
+      expect(optsHtml).toContain('Sonnet 5');
+      expect(optsHtml).toContain('Sonnet 5 [1M]');
+    });
+    it('offers Sonnet 5 and Sonnet 5 [1M] in the per-node model picker (config panel reads MODELS)', () => {
+      // The node-config Model dropdown must expose every MODELS entry, not just the default-model select.
+      resetState();
+      const node = win.addNode('agent', 100, 200, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.selectNode(node.id);
+      win.updateConfig();
+      const modelSelect = win.document.querySelector('.config-select[data-key="model"]');
+      expect(!!modelSelect).toBe(true);
+      const optsHtml = modelSelect.innerHTML;
+      expect(optsHtml).toContain('data-value="sonnet-5"');
+      expect(optsHtml).toContain('data-value="sonnet-5-1m"');
+      expect(optsHtml).toContain('Sonnet 5');
+      expect(optsHtml).toContain('Sonnet 5 [1M]');
+      // cleanup: drop selection so configPanel loses .visible for unrelated suites
+      win.selectNode(null); win.updateConfig();
+    });
+    it('offers Sonnet 5 and Sonnet 5 [1M] in the custom-agent model dropdown', () => {
+      // The Agent Library preset form populates its Model <select> from MODELS too.
+      win.openAgentForm();
+      const optsHtml = win.document.getElementById('customAgentModel').innerHTML;
+      expect(optsHtml).toContain('value="sonnet-5"');
+      expect(optsHtml).toContain('value="sonnet-5-1m"');
+      expect(optsHtml).toContain('>Sonnet 5<');
+      expect(optsHtml).toContain('>Sonnet 5 [1M]<');
+      win.closeAgentForm();
     });
   });
 });
@@ -4240,6 +4284,23 @@ describe('Model Version Handling', () => {
       expect(output).toNotContain('model="sonnet[1m]"');
       expect(output).toContain('1M context intended');
     });
+    it('should use sonnet shorthand for Sonnet 5', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'sonnet-5';
+      const output = win.genSubAgents();
+      expect(output).toContain('model="sonnet"');
+    });
+    it('should emit a base model param plus the 1M prose note for Sonnet 5 [1M]', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'sonnet-5-1m';
+      const output = win.genSubAgents();
+      expect(output).toContain('model="sonnet"');
+      expect(output).toNotContain('model="sonnet[1m]"');
+      expect(output).toContain('1M context intended');
+      expect(output).toNotContain('sonnet-5-1m');
+    });
     it('should use fable shorthand for Fable 5', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
@@ -4768,6 +4829,385 @@ describe('Repo context paths', () => {
       // a missing path is no-extra-context, not an error
       expect(rules).toContain('no-extra-context');
       expect(docs).toContain('no-extra-context');
+    });
+  });
+});
+
+// ─── Suite 12c: Verification instructions ───────────────────
+describe('Verification instructions', () => {
+  beforeEach(() => { resetState(); });
+
+  // Distinctive assertable markers (grepped absent elsewhere before use).
+  const BEAT_MARK = 'Verification instructions (testers / verifiers)';
+  const STEP_MARK = 'executed-with-result';
+
+  // Minimal input -> agent -> output workflow with a single agent node of the given config.
+  function workflowWith(agentLabel, agentConfig) {
+    resetState();
+    const input = win.addNode('input', 100, 200, 'Requirements');
+    const agent = win.addNode('agent', 350, 200, agentLabel, agentConfig);
+    const output = win.addNode('output', 600, 200, 'Done', { deliverable: 'Result', format: 'code' });
+    win.addConnection(input.id, agent.id);
+    win.addConnection(agent.id, output.id);
+    return agent;
+  }
+
+  describe('UI', () => {
+    it('DOM ids exist: verifyPathInput, verifyPathChips, verifyPathClear, verifyFailRunToggle, with label text', () => {
+      const doc = win.document;
+      expect(!!doc.getElementById('verifyPathInput')).toBe(true);
+      expect(!!doc.getElementById('verifyPathChips')).toBe(true);
+      expect(!!doc.getElementById('verifyPathClear')).toBe(true);
+      expect(!!doc.getElementById('verifyFailRunToggle')).toBe(true);
+      const html = doc.querySelector('body').innerHTML;
+      expect(html).toContain('Verification instructions (testers / verifiers)');
+      expect(html).toContain('Unmet required verifications fail the run');
+    });
+    it('verifyFailRunToggle is checked by default in the shipped DOM', () => {
+      expect(win.document.getElementById('verifyFailRunToggle').checked).toBe(true);
+    });
+  });
+
+  describe('state', () => {
+    it('defaults: verifyPaths empty and verifyFailRun true after resetState', () => {
+      expect(Array.isArray(win.state.verifyPaths)).toBe(true);
+      expect(win.state.verifyPaths.length).toBe(0);
+      expect(win.state.verifyFailRun).toBe(true);
+    });
+    it('addVerifyPath / removeVerifyPath / clearVerifyPaths mutate state.verifyPaths', () => {
+      win.addVerifyPath('VERIFY.md');
+      expect(win.state.verifyPaths).toContain('VERIFY.md');
+      win.addVerifyPath('VERIFY.md'); // dedupe
+      expect(win.state.verifyPaths.length).toBe(1);
+      win.addVerifyPath('rules/E2E.md');
+      expect(win.state.verifyPaths.length).toBe(2);
+      win.removeVerifyPath('VERIFY.md');
+      expect(win.state.verifyPaths).toNotContain('VERIFY.md');
+      win.clearVerifyPaths();
+      expect(win.state.verifyPaths.length).toBe(0);
+    });
+    it('setVerifyFailRun updates state both ways', () => {
+      win.setVerifyFailRun(false);
+      expect(win.state.verifyFailRun).toBe(false);
+      win.setVerifyFailRun(true);
+      expect(win.state.verifyFailRun).toBe(true);
+    });
+    it('quick-add chips add their path', () => {
+      win.addVerifyPath('VERIFY.md');
+      win.addVerifyPath('rules/E2E.md');
+      expect(win.state.verifyPaths).toContain('VERIFY.md');
+      expect(win.state.verifyPaths).toContain('rules/E2E.md');
+    });
+  });
+
+  describe('persistence', () => {
+    it('savePrefs then restorePrefs round-trips verifyPaths and verifyFailRun', () => {
+      win.state.verifyPaths = ['VERIFY.md', 'rules/E2E.md'];
+      win.state.verifyFailRun = false;
+      win.savePrefs();
+      win.state.verifyPaths = [];
+      win.state.verifyFailRun = true;
+      win.restorePrefs();
+      expect(win.state.verifyPaths).toContain('VERIFY.md');
+      expect(win.state.verifyPaths).toContain('rules/E2E.md');
+      expect(win.state.verifyFailRun).toBe(false);
+    });
+    it('clearCanvas keeps verifyPaths (sticky, not reset)', () => {
+      win.state.verifyPaths = ['VERIFY.md'];
+      win.clearCanvas();
+      expect(win.state.verifyPaths).toContain('VERIFY.md');
+    });
+    it('restorePrefs tolerates an older awd_prefs blob lacking verify keys (empty list, verifyFailRun stays true)', () => {
+      resetState();
+      localStorage.setItem('awd_prefs', JSON.stringify({ defaultModel: 'opus-4.6', mcpCodeSearch: true }));
+      win.restorePrefs();
+      expect(win.state.verifyPaths.length).toBe(0);
+      expect(win.state.verifyFailRun).toBe(true);
+    });
+  });
+
+  describe('workflow-level emission', () => {
+    it('beat appears at all five exporters when verifyPaths non-empty', () => {
+      workflowWith('Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.state.verifyPaths = ['VERIFY.md'];
+      expect(win.genWorkflow()).toContain(BEAT_MARK);
+      expect(win.genSubAgents()).toContain(BEAT_MARK);
+      expect(win.genAgentTeams()).toContain(BEAT_MARK);
+      expect(win.genClaudePrompt()).toContain(BEAT_MARK);
+      expect(win.genAgentSDK()).toContain(BEAT_MARK);
+      // the listed path is named in the output
+      expect(win.genWorkflow()).toContain('VERIFY.md');
+    });
+    it('openSpecContextBlock forwards verify paths compactly when non-empty', () => {
+      win.state.verifyPaths = ['VERIFY.md'];
+      const ctx = win.openSpecContextBlock();
+      expect(ctx).toContain('Verification instructions (testers / verifiers');
+      expect(ctx).toContain('VERIFY.md');
+      win.state.verifyPaths = [];
+    });
+    it('silence when empty: beat absent from all five exporters and from openSpecContextBlock', () => {
+      workflowWith('Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.state.verifyPaths = [];
+      ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt', 'genAgentSDK'].forEach(fn => {
+        expect(win[fn]()).toNotContain(BEAT_MARK);
+      });
+      expect(win.openSpecContextBlock()).toBe('');
+    });
+    it('checkbox posture: ON -> beat carries fail-the-run language; OFF -> report-only language', () => {
+      win.state.verifyPaths = ['VERIFY.md'];
+      win.state.verifyFailRun = true;
+      const on = win.verifyInstructionsHint();
+      expect(on).toContain('fails the run');
+      expect(on).toNotContain('report-only');
+      win.state.verifyFailRun = false;
+      const off = win.verifyInstructionsHint();
+      expect(off).toContain('report-only');
+      expect(off).toNotContain('fails the run');
+      win.state.verifyPaths = [];
+    });
+    it('beat carries the discovery/scoping/routing/severity/surfacing contract, hyphens only', () => {
+      win.state.verifyPaths = ['VERIFY.md'];
+      const h = win.verifyInstructionsHint();
+      expect(h).toContain('root-level match');
+      expect(h).toContain('blast area intersects');
+      expect(h).toContain('route them into the tester, verifier, and reviewer');
+      expect(h).toContain('MUST or required');
+      expect(h).toContain('durable record');
+      expect(h).toContain('awd:run fence notes');
+      expect(h).toContain('suggestions, not restrictions');
+      expect(h).toNotContain('—');
+      expect(h).toNotContain('–');
+      expect(h).toNotContain('```');
+      win.state.verifyPaths = [];
+    });
+    it('beat is null when list empty', () => {
+      win.state.verifyPaths = [];
+      expect(win.verifyInstructionsHint()).toBe(null);
+    });
+  });
+
+  describe('per-step role targeting', () => {
+    beforeEach(() => { win.state.verifyPaths = ['VERIFY.md']; });
+    afterEach(() => { win.state.verifyPaths = []; });
+
+    it('tester / verifier / reviewer receive the step hint', () => {
+      expect(win.verifyInstructionsStepHint({ config: { agentType: 'tester' } })).toContain(STEP_MARK);
+      expect(win.verifyInstructionsStepHint({ config: { agentType: 'verifier' } })).toContain(STEP_MARK);
+      expect(win.verifyInstructionsStepHint({ config: { agentType: 'reviewer' } })).toContain(STEP_MARK);
+    });
+    it('planner / coder / architect / writer / adversary do NOT receive the step hint', () => {
+      ['planner', 'coder', 'architect', 'writer', 'adversary'].forEach(role => {
+        expect(win.verifyInstructionsStepHint({ config: { agentType: role } })).toBe('');
+      });
+    });
+    it('empty list -> step hint is empty even for a tester', () => {
+      win.state.verifyPaths = [];
+      expect(win.verifyInstructionsStepHint({ config: { agentType: 'tester' } })).toBe('');
+    });
+    it('VERIFY_STEP_ROLES excludes adversary (skeptic reasons, does not execute verifications)', () => {
+      expect(win.VERIFY_STEP_ROLES.has('adversary')).toBe(false);
+      expect(win.VERIFY_STEP_ROLES.has('tester')).toBe(true);
+      expect(win.VERIFY_STEP_ROLES.has('verifier')).toBe(true);
+      expect(win.VERIFY_STEP_ROLES.has('reviewer')).toBe(true);
+    });
+    it('step hint is generation-only: node-config display omits it even with paths set', () => {
+      const node = win.addNode('agent', 350, 200, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      expect(win.classifyAgentPrompt(node).text).toNotContain(STEP_MARK);
+    });
+  });
+
+  describe('per-step end-to-end (implementer never carries the step hint)', () => {
+    it('a tester-only workflow carries the step hint in the generated prompt', () => {
+      workflowWith('Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.state.verifyPaths = ['VERIFY.md'];
+      expect(win.genWorkflow()).toContain(STEP_MARK);
+    });
+    it('a coder-only (implementer) workflow does NOT carry the step hint, even though the beat is present', () => {
+      workflowWith('Coder', { agentType:'coder', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
+      win.state.verifyPaths = ['VERIFY.md'];
+      const out = win.genWorkflow();
+      expect(out).toContain(BEAT_MARK);   // workflow-level beat still fires
+      expect(out).toNotContain(STEP_MARK); // but the implementer step never gets the per-step hint
+    });
+  });
+
+  describe('meta parity', () => {
+    it('awd:meta serialize carries verifyPaths and verifyFailRun; adopt fills them when local list empty', () => {
+      win.state.verifyPaths = [];
+      const adopted = win.openSpecAdoptContextPaths({ verifyPaths: ['VERIFY.md'] });
+      expect(adopted).toBe(1);
+      expect(win.state.verifyPaths).toContain('VERIFY.md');
+      win.state.verifyPaths = [];
+    });
+  });
+});
+
+// ─── Suite 12d: Verification instructions - run-level Tester matrix ──
+// Covers the reviewer's routed gaps: per-step end-to-end across every per-step
+// format, real-DOM sidebar interaction, renderVerifyRows, and the awd:meta
+// posture-serialization guard (explicit false).
+describe('Verification instructions (run-level matrix)', () => {
+  const BEAT_MARK = 'Verification instructions (testers / verifiers)';
+  const STEP_MARK = 'executed-with-result';
+
+  function workflowWith(agentLabel, agentConfig) {
+    resetState();
+    const input = win.addNode('input', 100, 200, 'Requirements');
+    const agent = win.addNode('agent', 350, 200, agentLabel, agentConfig);
+    const output = win.addNode('output', 600, 200, 'Done', { deliverable: 'Result', format: 'code' });
+    win.addConnection(input.id, agent.id);
+    win.addConnection(agent.id, output.id);
+    return agent;
+  }
+
+  // ── Gap 1: per-step STEP_MARK end-to-end across all four per-step formats ──
+  describe('per-step end-to-end across every per-step format (tester carries, coder never does)', () => {
+    const FORMATS = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt'];
+    FORMATS.forEach(fn => {
+      it(fn + ': a tester step carries the per-step hint AND the workflow beat', () => {
+        workflowWith('Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+        win.state.verifyPaths = ['VERIFY.md'];
+        const out = win[fn]();
+        expect(out).toContain(BEAT_MARK);
+        expect(out).toContain(STEP_MARK);
+        win.state.verifyPaths = [];
+      });
+      it(fn + ': a coder (implementer) step does NOT carry the per-step hint, though the beat still fires', () => {
+        workflowWith('Coder', { agentType:'coder', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
+        win.state.verifyPaths = ['VERIFY.md'];
+        const out = win[fn]();
+        expect(out).toContain(BEAT_MARK);      // workflow-level beat still present
+        expect(out).toNotContain(STEP_MARK);   // but the implementer never gets the per-step hint
+        win.state.verifyPaths = [];
+      });
+    });
+  });
+
+  // ── Gap 5: awd:meta serialization locks verifyFailRun with an explicit false ──
+  describe('awd:meta posture serialization (explicit false round-trips; no defensive default)', () => {
+    it('verifyFailRun false survives into awd:meta as strict boolean false (not dropped, not defaulted to true)', () => {
+      resetState();
+      win.addNode('agent', 100, 100, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.state.verifyPaths = ['VERIFY.md'];
+      win.state.verifyFailRun = false;
+      const meta = win.openSpecExtractMeta(win.buildOpenSpecSchema().schemaYaml);
+      expect(meta.verifyFailRun).toBe(false);
+      expect(meta.verifyPaths.join(',')).toBe('VERIFY.md');
+      win.state.verifyPaths = []; win.state.verifyFailRun = true;
+    });
+    it('verifyFailRun true serializes into awd:meta as strict boolean true', () => {
+      resetState();
+      win.addNode('agent', 100, 100, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.state.verifyPaths = ['VERIFY.md'];
+      win.state.verifyFailRun = true;
+      const meta = win.openSpecExtractMeta(win.buildOpenSpecSchema().schemaYaml);
+      expect(meta.verifyFailRun).toBe(true);
+      win.state.verifyPaths = [];
+    });
+  });
+
+  // ── Gaps 2 + 3: real-DOM sidebar interaction + renderVerifyRows ──
+  // Collapse + awd_ storage cleanup discipline: the verify block lives inside the
+  // repo-context-paths sidebar section, so honor expandAllSections + collapse-key
+  // handling and leave the verify DOM/state pristine for unrelated suites.
+  describe('DOM interaction and renderVerifyRows', () => {
+    const COLLAPSE_KEY = 'awd_sidebarCollapsed';
+    const doc = () => win.document;
+    beforeEach(() => {
+      resetState();
+      win.expandAllSections();
+      win.localStorage.removeItem(COLLAPSE_KEY);
+      win.state.verifyPaths = [];
+      win.clearVerifyPaths();                 // sync chips + Clear-All to empty
+      win.state.verifyFailRun = true;
+      const t = doc().getElementById('verifyFailRunToggle'); if (t) t.checked = true;
+    });
+    afterEach(() => {
+      win.state.verifyPaths = [];
+      win.clearVerifyPaths();
+      win.state.verifyFailRun = true;
+      const t = doc().getElementById('verifyFailRunToggle'); if (t) t.checked = true;
+      win.selectNode(null);
+      win.expandAllSections();
+      win.localStorage.removeItem(COLLAPSE_KEY);
+    });
+
+    it('pressing Enter in verifyPathInput adds the typed path and clears the input', () => {
+      const inp = doc().getElementById('verifyPathInput');
+      inp.value = 'rules/E2E.md';
+      inp.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      expect(win.state.verifyPaths).toContain('rules/E2E.md');
+      expect(inp.value).toBe('');
+    });
+
+    it('a blank verifyPathInput + Enter adds nothing (empty/boundary case)', () => {
+      const inp = doc().getElementById('verifyPathInput');
+      inp.value = '   ';
+      inp.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      expect(win.state.verifyPaths.length).toBe(0);
+    });
+
+    it('clicking a quick-add suggest chip adds its path', () => {
+      const chip = doc().querySelector("button[onclick=\"addVerifyPath('VERIFY.md')\"]");
+      expect(!!chip).toBe(true);
+      chip.click();
+      expect(win.state.verifyPaths).toContain('VERIFY.md');
+    });
+
+    it('clicking a rendered chip remove button removes just that path', () => {
+      win.addVerifyPath('VERIFY.md');
+      win.addVerifyPath('rules/E2E.md');
+      const chips = doc().getElementById('verifyPathChips');
+      const target = [...chips.querySelectorAll('.path-chip')].find(c => c.querySelector('span').textContent === 'VERIFY.md');
+      expect(!!target).toBe(true);
+      target.querySelector('.path-chip-remove').click();
+      expect(win.state.verifyPaths).toNotContain('VERIFY.md');
+      expect(win.state.verifyPaths).toContain('rules/E2E.md');
+    });
+
+    it('Clear All is hidden when empty, shown once a path exists, and clicking it empties the list', () => {
+      const clr = doc().getElementById('verifyPathClear');
+      expect(clr.style.display).toBe('none');       // empty -> hidden
+      win.addVerifyPath('VERIFY.md');
+      expect(clr.style.display).toBe('inline');      // non-empty -> shown
+      clr.click();
+      expect(win.state.verifyPaths.length).toBe(0);
+      expect(clr.style.display).toBe('none');        // emptied -> hidden again
+    });
+
+    it('renderVerifyRows renders exactly one chip per path, each carrying its path text', () => {
+      win.state.verifyPaths = ['VERIFY.md', 'rules/E2E.md'];
+      win.renderVerifyRows();
+      const chips = [...doc().getElementById('verifyPathChips').querySelectorAll('.path-chip')];
+      expect(chips.length).toBe(2);
+      const labels = chips.map(c => c.querySelector('span').textContent);
+      expect(labels).toContain('VERIFY.md');
+      expect(labels).toContain('rules/E2E.md');
+    });
+
+    it('renderVerifyRows toggles verifyPathClear display with list emptiness', () => {
+      const clr = doc().getElementById('verifyPathClear');
+      win.state.verifyPaths = [];
+      win.renderVerifyRows();
+      expect(clr.style.display).toBe('none');
+      win.state.verifyPaths = ['VERIFY.md'];
+      win.renderVerifyRows();
+      expect(clr.style.display).toBe('inline');
+    });
+
+    it('toggling verifyFailRunToggle onchange live-refreshes the generated prompt (posture text flips)', () => {
+      workflowWith('Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      const toggle = doc().getElementById('verifyFailRunToggle');
+      toggle.checked = true; win.state.verifyFailRun = true;   // workflowWith reset state; re-sync ON
+      win.state.verifyPaths = ['VERIFY.md'];
+      win.updatePrompt();
+      const out = doc().getElementById('promptOutput');
+      expect(out.textContent).toContain('fails the run');
+      expect(out.textContent).toNotContain('report-only');
+      toggle.click();                                          // real click -> onchange -> setVerifyFailRun(false) -> updatePrompt
+      expect(win.state.verifyFailRun).toBe(false);
+      expect(out.textContent).toContain('report-only');
+      expect(out.textContent).toNotContain('fails the run');
     });
   });
 });
@@ -9863,6 +10303,18 @@ describe('Dogfood-run fixes: valid model params, honest hints, memory kickoff an
     expect(win.getTaskModelParam('sonnet-4.6-1m')).toBe('sonnet');
     expect(win.getTaskModelParam('fable-5-1m')).toBe('fable');
   });
+  it('B: Sonnet 5 and Sonnet 5 [1M] both map to the sonnet base alias for the Task param', () => {
+    expect(win.getTaskModelParam('sonnet-5')).toBe('sonnet');
+    expect(win.getTaskModelParam('sonnet-5-1m')).toBe('sonnet');
+  });
+  it('B: SDK keeps the full claude-sonnet-5 id and emits no 1M note for the 1M variant', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.model = 'sonnet-5-1m';
+    const out = win.genAgentSDK();
+    expect(out).toContain('claude-sonnet-5');
+    expect(out).toNotContain('1M context intended');
+  });
 
   it('A2: general Atlassian hint is conditional, not an availability assertion', () => {
     win.state.mcpAtlassian = true;
@@ -10084,7 +10536,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_STEP_ROLES = VERIFY_STEP_ROLES; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
