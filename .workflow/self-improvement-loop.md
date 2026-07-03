@@ -118,3 +118,9 @@ Follow-ons from first hosted use. The folder picker now passes id 'awd-run-repor
 - [x] Connect Reports Folder rename (+ README/help/strong refs + test pin)
 - [x] Title Case sweep across 7 buttons
 - [x] Settled on "Connect Folder" after seeing it in situ (owner + me converged: the section header already says RUN REPORTS, so the button restating Reports only cost width); 6px breathing room between the status line and the buttons
+
+## Update (same day): connect guidance for Chrome's home-directory refusal
+
+First real connect attempt hit Chrome's File System Access blocklist: picking the home directory root is refused outright ("contains system files") - only subfolders can be granted. And ~/.awd does not exist before the first run writes there (runs create it; a pre-first-run connect finds nothing to pick). Tooltip + help now teach the working path: create ~/.awd first (mkdir -p), pick the folder ITSELF via Cmd+Shift+G, never the home root. Copy-only change.
+
+- [x] Tooltip + help modal guidance (home-root refusal, mkdir-first, Cmd+Shift+G path)
