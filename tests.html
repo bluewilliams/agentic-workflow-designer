@@ -9617,7 +9617,7 @@ describe('Collapsible sidebar sections (toggle, persistence, auto-expand reveal 
     win.setSectionCollapsed('presets', true);
     const sec = win.sectionEl('presets');
     expect(sec.classList.contains('collapsed')).toBe(true);
-    const link = win.document.querySelector('#emptyState a[onclick]');
+    const link = win.document.querySelector('#emptyState a[onclick*="presets"]');
     expect(!!link).toBe(true);
     expect(link.textContent).toContain('choose a preset');
     link.click(); // runs the inline onclick: expandSection('presets') before scrollIntoView
@@ -9639,6 +9639,194 @@ describe('Collapsible sidebar sections (toggle, persistence, auto-expand reveal 
     try { win.initSidebarCollapse(); } catch (e) { threw = true; }
     expect(threw).toBe(false);
     expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(0);
+  });
+
+  it('first boot (no saved key) seeds every section collapsed except Requirements and Presets, and persists the seeded object', () => {
+    win.localStorage.removeItem(KEY); // absent -> first boot
+    win.expandAllSections();          // undecorated/expanded DOM
+    win.localStorage.removeItem(KEY); // expandAllSections wrote {}, re-clear so getItem === null
+    win.initSidebarCollapse();
+    const st = storedIds();
+    expect(st && typeof st === 'object').toBe(true);
+    // exactly the 13 non-open ids are seeded true; requirements + presets stay open
+    expect(Object.keys(st).length).toBe(13);
+    expect('requirements' in st).toBe(false);
+    expect('presets' in st).toBe(false);
+    ALL_IDS.filter(id => id !== 'requirements' && id !== 'presets').forEach(id => expect(st[id]).toBe(true));
+    // DOM reflects the seed: 13 collapsed, requirements + presets expanded
+    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(13);
+    expect(win.sectionEl('requirements').classList.contains('collapsed')).toBe(false);
+    expect(win.sectionEl('presets').classList.contains('collapsed')).toBe(false);
+  });
+
+  it('an existing saved key (including empty {}) is never re-seeded on init', () => {
+    // present-but-empty means the user has explicitly expanded everything; init must respect it
+    win.expandAllSections(); // writes {}
+    win.localStorage.setItem(KEY, '{}');
+    win.initSidebarCollapse();
+    expect(Object.keys(storedIds()).length).toBe(0); // still {}, no seed injected
+    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(0);
+    // a non-empty existing key is preserved verbatim, not overwritten by the seed set
+    win.localStorage.setItem(KEY, JSON.stringify({ 'add-nodes': true }));
+    win.initSidebarCollapse();
+    const st = storedIds();
+    expect(Object.keys(st).length).toBe(1);
+    expect(st['add-nodes']).toBe(true);
+    expect('workflow-context' in st).toBe(false); // seed set NOT merged in
+  });
+
+  it('the empty-canvas requirements link expands a collapsed Requirements section', () => {
+    win.setSectionCollapsed('requirements', true);
+    const sec = win.sectionEl('requirements');
+    expect(sec.classList.contains('collapsed')).toBe(true);
+    const link = win.document.querySelector('#emptyState a[onclick*="requirements"]');
+    expect(!!link).toBe(true);
+    expect(link.textContent.toLowerCase()).toContain('requirements');
+    link.click(); // inline onclick: expandSection('requirements') before scrollIntoView
+    expect(sec.classList.contains('collapsed')).toBe(false); // requirements revealed
+  });
+});
+
+// ─── Suite: Derived workflow slug (empty name -> requirements-derived path) ────────
+describe('Derived workflow slug: empty name derives the path from requirements, explicit name always wins', () => {
+  beforeEach(() => { resetState(); });
+  afterEach(() => { resetState(); });
+
+  const setName = v => { win.document.getElementById('workflowName').value = v; };
+  const setStory = v => { win.document.getElementById('storyInput').value = v; };
+
+  it('empty name + prose story derives a first-words slug at getMemoryPath, getDefaultArtifactPath, and serializeWorkflow.slug', () => {
+    setName('');
+    setStory('Add dark mode toggle to settings page');
+    // all three sites route through the same derived slug and drop the untitled collision
+    expect(win.getMemoryPath()).toContain('add-dark-mode-toggle');
+    expect(win.getMemoryPath()).toNotContain('untitled');
+    expect(win.getDefaultArtifactPath()).toContain('add-dark-mode-toggle');
+    expect(win.getDefaultArtifactPath()).toNotContain('untitled');
+    expect(win.serializeWorkflow().slug).toContain('add-dark-mode-toggle');
+    expect(win.serializeWorkflow().slug).toNotContain('untitled');
+  });
+
+  it('empty name + empty story falls back to untitled at all three sites', () => {
+    setName('');
+    setStory('');
+    expect(win.getMemoryPath()).toBe('~/.claude/workflow-memory/untitled/');
+    expect(win.getDefaultArtifactPath()).toBe('.workflow/untitled.md');
+    expect(win.serializeWorkflow().slug).toBe('untitled');
+  });
+
+  it('empty name + punctuation-only story yields untitled (no usable prose to derive from)', () => {
+    setName('');
+    setStory('@#$ %^& ...');
+    expect(win.serializeWorkflow().slug).toBe('untitled');
+    expect(win.getMemoryPath()).toContain('untitled');
+  });
+
+  it('an explicit workflow name always wins over a non-empty story at all three sites', () => {
+    setName('PROJ-42 Billing Retry');
+    setStory('Add dark mode toggle to settings page'); // would derive a different slug if it leaked
+    expect(win.getMemoryPath()).toContain('proj-42-billing-retry');
+    expect(win.getMemoryPath()).toNotContain('dark-mode');
+    expect(win.getDefaultArtifactPath()).toBe('.workflow/proj-42-billing-retry.md');
+    expect(win.serializeWorkflow().slug).toBe('proj-42-billing-retry');
+  });
+
+  it('empty name + a story that is only a Jira URL still derives a non-untitled, non-colliding slug', () => {
+    // Assumption (b) from the plan: a bare URL/key with no prose must not collapse to untitled.md.
+    setName('');
+    setStory('https://acme.atlassian.net/browse/PROJ-1234');
+    const slug = win.serializeWorkflow().slug;
+    expect(slug).toNotContain('untitled');
+    expect(slug).toContain('proj-1234'); // URL survives as the fallback slug source
+    expect(win.getMemoryPath()).toNotContain('untitled');
+  });
+});
+
+// ─── Suite: Live path update as requirements are typed (empty name) ────────
+describe('Live path update: typing requirements with an empty name refreshes the displayed paths', () => {
+  beforeEach(() => { resetState(); });
+  afterEach(() => { resetState(); });
+
+  it('validateStoryInput refreshes memoryPathDisplay.textContent and the artifact placeholder from the story', () => {
+    win.document.getElementById('workflowName').value = '';
+    const disp = win.document.getElementById('memoryPathDisplay');
+    const art = win.document.getElementById('artifactPathInput');
+    // baseline: empty story -> displayed path shows untitled
+    win.document.getElementById('storyInput').value = '';
+    win.validateStoryInput();
+    expect(disp.textContent).toContain('untitled');
+    // type prose -> both the memory display and the artifact placeholder derive from it live
+    win.document.getElementById('storyInput').value = 'Migrate auth service to token sessions';
+    win.validateStoryInput();
+    expect(disp.textContent).toContain('migrate-auth-service');
+    expect(disp.textContent).toNotContain('untitled');
+    expect(art.placeholder).toContain('migrate-auth-service');
+    expect(art.placeholder).toNotContain('untitled');
+  });
+
+  it('an explicit name pins the displayed path so typing requirements does not move it', () => {
+    win.document.getElementById('workflowName').value = 'PROJ-9 Named Flow';
+    const disp = win.document.getElementById('memoryPathDisplay');
+    win.document.getElementById('storyInput').value = 'Add dark mode toggle to settings page';
+    win.validateStoryInput();
+    expect(disp.textContent).toContain('proj-9-named-flow');
+    expect(disp.textContent).toNotContain('dark-mode');
+  });
+});
+
+// ─── Suite: Empty-canvas quick-start visibility ────────
+describe('Empty-canvas quick start: two anchors present when empty, whole panel hidden when nodes exist', () => {
+  beforeEach(() => { resetState(); });
+  afterEach(() => { win.selectNode(null); resetState(); });
+
+  it('shows both quick-start anchors on an empty canvas and hides the panel once a node exists', () => {
+    const es = win.document.getElementById('emptyState');
+    // empty canvas -> panel visible, both anchors present
+    win.state.nodes = [];
+    win.render();
+    expect(es.style.display).toBe('flex');
+    expect(!!es.querySelector('a[onclick*="requirements"]')).toBe(true);
+    expect(!!es.querySelector('a[onclick*="presets"]')).toBe(true);
+    // add a node -> render hides the whole empty-state panel
+    win.addNode('agent', 0, 0, 'X', { agentType:'coder', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:5 });
+    win.render();
+    expect(es.style.display).toBe('none');
+    // anchors are still authored in the DOM (feature intact), only hidden with the panel
+    expect(!!es.querySelector('a[onclick*="requirements"]')).toBe(true);
+    expect(!!es.querySelector('a[onclick*="presets"]')).toBe(true);
+  });
+});
+
+// ─── Suite: Cross-suite contamination guard (collapse discipline + boot normalization) ────────
+describe('Cross-suite contamination guard: collapse cleanup and boot normalization leave the sidebar expanded and storage clean', () => {
+  const KEY = 'awd_sidebarCollapsed';
+  beforeEach(() => { resetState(); });
+  afterEach(() => { win.selectNode(null); win.expandAllSections(); win.localStorage.removeItem(KEY); resetState(); });
+
+  it('the collapse-suite afterEach discipline (expandAll + remove key) restores every section and cannot leak collapsed state', () => {
+    // Simulate a collapse-suite test that left sections collapsed AND persisted them.
+    win.collapseAllSections();
+    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(15);
+    expect(win.localStorage.getItem(KEY)).toContain('true'); // persisted collapsed ids
+    // Apply the mandated cleanup discipline.
+    win.selectNode(null);
+    win.expandAllSections();
+    win.localStorage.removeItem(KEY);
+    // No collapsed section survives into a subsequent suite's DOM reads,
+    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(0);
+    // and the persisted state reads clean, so nothing stale can re-decorate the sidebar.
+    expect(Object.keys(win.loadCollapsedState()).length).toBe(0);
+  });
+
+  it('the harness boot normalization strips the first-boot seed so a non-collapse suite starts all-expanded', () => {
+    // Reproduce the iframe-load sequence: initSidebarCollapse (first-boot seed) then expandAllSections.
+    win.localStorage.removeItem(KEY); // absent -> init will seed
+    win.initSidebarCollapse();        // first-boot seed collapses the 13 non-open sections
+    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(13);
+    win.expandAllSections();          // boot normalization the load handler performs
+    // Post-normalization baseline is fully expanded with clean storage.
+    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(0);
+    expect(Object.keys(win.loadCollapsedState()).length).toBe(0);
   });
 });
 
@@ -9905,6 +10093,10 @@ document.getElementById('app').addEventListener('load', function() {
   // Clear localStorage to start fresh
   clearStorage();
   resetState();
+  // initSidebarCollapse runs at iframe load (before clearStorage), first-boot seeding 13
+  // sections .collapsed in the DOM. Strip those classes and write {} so every suite starts
+  // from the all-expanded baseline it expects.
+  win.expandAllSections();
   // Run tests
   runAll(win);
 });
