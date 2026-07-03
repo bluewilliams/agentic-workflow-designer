@@ -49,3 +49,29 @@ Wave C of the prompt-overhaul campaign (see prompt-overhaul-wave-a/b): the deep 
 The deferred judgment was overridden by the coordinator: the shallow-PASS risk that justified raising the Skeptic default to 8 applies equally to the older presets' explicit maxTurns:5 skeptics - "left as calibrated" described their age, not a decision. All four preset skeptic nodes swept 5 -> 8.
 
 - [x] 4 preset skeptic maxTurns 5 -> 8
+
+## Update (same day): orchestration craft - the conductor gets the expertise treatment
+
+Owner asked whether the orchestrator itself was in best shape for the three core formats; review verdict: the agents got expertise-first treatment while the conductor kept mechanics ("evaluate the output against the criteria" was the deepest line). New orchestratorCraft(format, hasParallels) content helper (one source, per-format containers) emits five judgment bullets in Workflow/Sub-Agents/Teams: brief down do not dump (generalizes the Atlassian one-coherent-spec rule to all step briefing - pass signal, not transcripts); grade gates on evidence honestly (never soften a failure because the run is long - the gate exists because passing bad work downstream costs more than one more cycle); surgical revise briefs (critic blockers verbatim + what was already acceptable so the step fixes rather than rewrites + cycle count); step-failure handling format-fitted (sub-agents/teams: ONE re-run with a sharpened brief, then record-and-decide, never silently absorb the step's job; workflow single-session: one fresh attempt informed by the failure, then record-and-decide); reconcile fan-in (only emitted when a fork exists - concatenated contradictions are not a synthesis). SDK and Claude.ai deliberately excluded (programmatic / single-conversation - the delegation craft does not apply; Claude.ai keeps its inline gate instructions). Also fixed a real contradiction the review surfaced: genWorkflow's Implementation Notes told the orchestrator to "spawn sub-agents for each step" while its execution model directive says single-session - the bullet now matches the model (run steps yourself; Task only for parallel-marked steps). Explain anatomy gained an "Orchestration craft" row (emitted core formats with live probe, skipped claude with reason).
+
+- [x] orchestratorCraft() helper (one source; failure bullet format-fitted; fan-in gated on forks)
+- [x] Injected: genWorkflow Implementation Notes, genSubAgents pre-delivery, genAgentTeams post-protocol
+- [x] genWorkflow single-session contradiction fixed
+- [x] Explain row with agreement probe
+- [x] +5 tests (presence x3 formats, absence x2, fan-in gating, failure variants, contradiction pin, explain row); suite green; content-lint
+
+## Update (final coherence read): the last seam
+
+A fresh-eyes end-to-end read of four complete generated documents (~295k chars: feature preset in all three core formats + Incident RCA) verdicted everything executable and found ONE emission defect + one cosmetic: (1) getDepNodes counted gate failure back-edges as dependencies, so step-1 agents were told to await reviewers that run after them (the RCA Investigator awaited its own Verifier; the Implementer's Input named the Skeptic's verdict but never the Planner's plan). Fixed with the same isReviseBackEdge predicate topologicalSort uses (the two now agree by construction) PLUS review-loop resolution now also surfaces the reviewed work source alongside the critic. (2) genWorkflow emitted step hints after the Instructions line so they rendered as items inside the template's handoff list - hints now emit before Instructions in both sequential and parallel blocks. +2 tests. Everything else across the read came up clean: no contradictions, no stale pre-campaign ghosts, no ordering problems.
+
+- [x] isReviseBackEdge exclusion in getDepNodes + reviewed-source resolution through review-loop gates
+- [x] genWorkflow hints before Instructions (both blocks)
+- [x] Regression tests (RCA investigator deps, planner deps, implementer sees Planner, hint ordering)
+
+## Update (morning): revise-loop continuity per format
+
+Owner question - "respawning on each verifier finding seems lossy, no?" - surfaced a per-format truth worth encoding. Workflow format: single session, nothing lost. Agent Teams: teammates PERSIST - the revise instruction said "re-assign," ambiguous enough to invite spawning a replacement; now explicit: "send the feedback back to the SAME teammate, who keeps their full working context; do not spawn a replacement." Sub-Agents: Task agents are one-shot by runtime - respawn is the mechanism - but the loss is mitigated by design: the surgical revise brief plus (when memory is on) the agent's own memory file; the revise line now points the re-spawned agent at its prior working state explicitly. One teams pin migrated to the sharper contract.
+
+- [x] Teams: same-teammate continuity explicit
+- [x] Sub-Agents: memory-recovery clause (memoryEnabled-gated)
+- [x] Pin migration; suite green; content-lint
