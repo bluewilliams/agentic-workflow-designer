@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## mobile-viewport-scaling
+
+- record: .workflow/mobile-viewport-scaling.md
+- intent: phones clipped the app because the viewport meta promised a responsive layout (width=device-width) the fixed desktop grid never delivers. Now `width=1280`: mobile scales the whole page to fit (tiny but complete, pinch-zoomable), desktop ignores the tag. Deliberately a one-line scale-to-fit, not a responsive redesign.
+- files: index.html (viewport meta)
+- status: current | date: 2026-07-03 | note: no test surface; real-device check after deploy.
+
 Record anatomy v2: each record opens with an `awd:record` JSON fence (slug, status current|superseded, date, files, exact verify commands, superseded_by) and a present-tense "Current behavior" section - read that first for the living truth, and the history below it only for the why. Records dated before 2026-07-01 migrate to v2 on touch. Superseded entries move to the Archive section at the bottom of this file; the durable system is exactly three surfaces (record + this index + _timeline.md), never any companion documents.
 
 ## explain-workflow
