@@ -168,7 +168,7 @@ If you are new to this file, this is the map. There are six generators, each a p
 | `*Directive()` | a short imperative line (rendered as a blockquote) | `executionModelDirective` | one-line policy at the top of a format |
 | content helper | shared WORDS only (no container) | `toolAccessText`, `getEffectivePrompt`, `groundingLookupSteps` | reused wording; the caller owns the shape |
 
-**The governing rule: DRY the words, not the shape.** A content helper returns the phrasing that must stay identical across formats; each generator keeps its own container (bullet vs `**bold**` vs indent vs trailing period vs YAML vs Python). Example: `toolAccessText(tools)` returns `"You have access to these tools: X"`; `genWorkflow` prefixes `- `, `buildTeammateBlock` prefixes `${pre}- `, `buildAgentPrompt` appends `.`, and `genAgentSDK` ignores it entirely (it uses the real param). One wording edit updates every prose format at once, without forcing them to look alike. The read-path grounding is the fuller version of the same pattern: `groundingLookupSteps()` is the one source feeding the prompt formats (`consumeRecordsHint`), the SDK (via `wrapComment`), and the OpenSpec export (`openSpecGroundingBlock`).
+**The governing rule: DRY the words, not the shape.** A content helper returns the phrasing that must stay identical across formats; each generator keeps its own container (bullet vs `**bold**` vs indent vs trailing period vs YAML vs Python). Example: `toolAccessText(tools)` returns `"Suggested tools for this step: X"` (a strong recommendation, never a restriction - the owner ruling that superseded the earlier closed-enumeration semantics); `genWorkflow` prefixes `- `, `buildTeammateBlock` prefixes `${pre}- `, `buildAgentPrompt` appends `.`, and `genAgentSDK` carries it as a comment plus an instruction line (no hard tools param). One wording edit updates every prose format at once, without forcing them to look alike. The read-path grounding is the fuller version of the same pattern: `groundingLookupSteps()` is the one source feeding the prompt formats (`consumeRecordsHint`), the SDK (via `wrapComment`), and the OpenSpec export (`openSpecGroundingBlock`).
 
 **Where to make a change:**
 - Reword something that must match across formats -> edit the shared helper (one place).
@@ -236,7 +236,7 @@ A smart banner above the output tabs analyzes the current workflow shape and sug
 The banner updates live as nodes are added or removed. Clicking the recommended format name switches tabs.
 
 ### Requirements Scaffolding
-When a preset is loaded and the requirements field is empty, the textarea placeholder changes to a preset-specific template. All 14 presets have tailored templates (e.g. Bug Fix shows "Steps to reproduce / Expected behavior / Actual behavior", Feature shows "User story / Acceptance criteria / Relevant files"). Templates are placeholders only and never overwrite user content.
+When a preset is loaded and the requirements field is empty, the textarea placeholder changes to a preset-specific template. All 16 presets have tailored templates (e.g. Bug Fix shows "Steps to reproduce / Expected behavior / Actual behavior", Feature shows "User story / Acceptance criteria / Relevant files"). Templates are placeholders only and never overwrite user content.
 
 ### Acceptance Criteria Extraction
 `extractAcceptanceCriteria(text)` parses the story text for structured criteria:
@@ -728,7 +728,7 @@ JavaScript:
 - **Memory protocol**: path generation, TOON notation, slug collisions, auto-enable logic
 - **Export generators**: all 5 formats (Workflow, Sub-Agents, Agent Teams, Agent SDK, Claude.ai) with memory on/off
 - **Workflow generation**: keyword scoring, structural properties, AC extraction, agent count feedback
-- **Preset loading**: agent count verification for all 14 presets, memory auto-enable behavior
+- **Preset loading**: agent count verification for all presets, memory auto-enable behavior
 - **Format recommendations**: agent count and parallel fork heuristics
 - **Workflow auto-naming**: name generation format, variety, empty-field population, user name preservation
 - **Writer Agent Type**: config panel interactions, writing style switching, prompt/tool updates, export output

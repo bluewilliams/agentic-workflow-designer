@@ -8,7 +8,7 @@ Branch: main. Status: current.
 
 ## Current behavior
 
-genAgentSDK renders the clarifyFirst and mcpDatadog toggles as orchestrator-level # banners from the same shared hint sources the prose formats use. Per-step Datadog/code-search hints stay out of SDK agent instructions deliberately: the hard tools=[...] param grants no MCP access (pinned by tests R3/C5, rationale comment at the site).
+genAgentSDK renders the clarifyFirst and mcpDatadog toggles as orchestrator-level # banners from the same shared hint sources the prose formats use. Per-step Datadog/code-search hints stay out of SDK agent instructions deliberately: the format is kept minimal by owner priority (pinned by tests R3/C5; the original hard-tools-param rationale died with the param - see tool-suggestion-semantics.md).
 
 ## Why and scope
 

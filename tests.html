@@ -437,7 +437,7 @@ describe('Pure Utilities', () => {
     it('should fall back to agent type template', () => {
       const node = { label:'Test', config:{ prompt:'', agentType:'planner', notes:'' }};
       const result = win.getEffectivePrompt(node);
-      expect(result).toContain('implementation plan');
+      expect(result).toContain('execute without re-planning');
     });
     it('should use generic fallback for unmapped agent types', () => {
       const node = { label:'My Agent', config:{ prompt:'', agentType:'unknown_type_xyz', notes:'' }};
@@ -451,7 +451,7 @@ describe('Pure Utilities', () => {
       const writer = win.AGENT_TYPES.find(a => a.id === 'writer');
       expect(!!writer).toBe(true);
       expect(writer.name).toBe('Writer');
-      expect(win.AGENT_TYPES.length).toBe(13);
+      expect(win.AGENT_TYPES.length).toBe(14);
     });
     it('should return technical prompt for default style', () => {
       const node = { label:'Writer', config:{ prompt:'', agentType:'writer', notes:'' }};
@@ -1477,22 +1477,22 @@ describe('Durable artifacts v2 (fence, Current behavior, archive, self-lint)', (
 });
 
 describe('Tool availability wording (aligned across formats)', () => {
-  // Per-node tool selection surfaces as "You have access to these tools: ..." everywhere it
+  // Per-node tool selection surfaces as "Suggested tools for this step: ..." everywhere it
   // appears as prose - a closed enumeration (availability, not a floor) so a deselected tool
   // reads as not-granted. The Agent SDK enforces via the real tools=[...] param instead.
   it('toolAccessText is the single source for the phrasing (pure content helper)', () => {
-    expect(win.toolAccessText(['Read', 'Grep'])).toBe('You have access to these tools: Read, Grep');
-    expect(win.toolAccessText([])).toBe('You have access to these tools: ');   // bare label, caller guards emission
+    expect(win.toolAccessText(['Read', 'Grep'])).toBe('Suggested tools for this step: Read, Grep');
+    expect(win.toolAccessText([])).toBe('Suggested tools for this step: ');   // bare label, caller guards emission
   });
-  it('every prose generator uses the same "You have access to these tools:" phrasing', () => {
+  it('every prose generator uses the same "Suggested tools for this step:" phrasing', () => {
     buildTestWorkflow('linear');  // Planner has tools [Read, Grep, Glob]
     ['genWorkflow', 'genSubAgents', 'genAgentTeams'].forEach(fn => {
       const out = win[fn]();
-      expect(out).toContain('You have access to these tools:');
+      expect(out).toContain('Suggested tools for this step:');
       expect(out).toContain('Read, Grep, Glob');
     });
     // golden: the exact rendered line (prefix + content) so the helper can't drift the container
-    expect(win.genWorkflow()).toContain('- You have access to these tools: Read, Grep, Glob');
+    expect(win.genWorkflow()).toContain('- Suggested tools for this step: Read, Grep, Glob');
   });
   it('the old bare "- Tools:" / "**Tools**:" label is gone from the prose formats', () => {
     buildTestWorkflow('parallel');
@@ -1505,7 +1505,7 @@ describe('Tool availability wording (aligned across formats)', () => {
   it('OpenSpec export intent uses the aligned phrasing too', () => {
     buildTestWorkflow('linear');
     const s = win.buildOpenSpecSchema();
-    expect(s.schemaYaml).toContain('You have access to these tools:');
+    expect(s.schemaYaml).toContain('Suggested tools for this step:');
   });
 });
 
@@ -2003,8 +2003,8 @@ describe('Code search step awareness', () => {
   // Substring UNIQUE to the step hint (the standing codeSearchHint also contains "Code search (MCP)").
   const MARK = 'Code search (MCP) is available. A code-search MCP (for example Sourcebot)';
 
-  // The 12 roles in CODE_SEARCH_STEP_ROLES (review/critic roles included by design).
-  const STEP_ROLES = ['planner', 'architect', 'researcher', 'debugger', 'coder', 'backend', 'frontend', 'general', 'reviewer', 'tester', 'adversary', 'verifier'];
+  // The 13 roles in CODE_SEARCH_STEP_ROLES (review/critic roles included by design).
+  const STEP_ROLES = ['planner', 'architect', 'researcher', 'debugger', 'coder', 'backend', 'frontend', 'general', 'reviewer', 'tester', 'adversary', 'verifier', 'analyst'];
 
   // Build a minimal input -> agent -> output workflow with a single agent node of the given config.
   function workflowWith(agentLabel, agentConfig) {
@@ -2032,7 +2032,7 @@ describe('Code search step awareness', () => {
     expect(win.genClaudePrompt()).toContain(MARK);
   });
 
-  it('C2 all 12 roles in CODE_SEARCH_STEP_ROLES receive a non-empty hint containing the mark', () => {
+  it('C2 all 13 roles in CODE_SEARCH_STEP_ROLES receive a non-empty hint containing the mark', () => {
     win.state.mcpCodeSearch = true;
     STEP_ROLES.forEach(role => {
       const h = win.codeSearchStepHint({ config: { agentType: role } });
@@ -2077,19 +2077,19 @@ describe('Code search step awareness', () => {
     expect(win.genAgentSDK()).toNotContain(MARK);
   });
 
-  it('C6 additive guard: in-scope planner keeps its template Glob/Grep/LSP steps in BOTH toggle states', () => {
+  it('C6 additive guard: in-scope planner keeps its template content in BOTH toggle states', () => {
     workflowWith('Planner', { agentType:'planner', model:'opus-4.6', tools:['Read','Grep'], prompt:win.PROMPTS.planner, maxTurns:5 });
-    // Toggle ON: template steps present AND the hint is added.
+    // Toggle ON: template content present AND the hint is added.
     win.state.mcpCodeSearch = true;
     const on = win.genWorkflow();
-    expect(on).toContain('Use `Grep`');
-    expect(on).toContain('LSP workspaceSymbol');
+    expect(on).toContain('findReferences on a shared type');
+    expect(on).toContain('Decompose by risk');
     expect(on).toContain(MARK);
-    // Toggle OFF: template steps still present, hint gone.
+    // Toggle OFF: template content still present, hint gone.
     win.state.mcpCodeSearch = false;
     const off = win.genWorkflow();
-    expect(off).toContain('Use `Grep`');
-    expect(off).toContain('LSP workspaceSymbol');
+    expect(off).toContain('findReferences on a shared type');
+    expect(off).toContain('Decompose by risk');
     expect(off).toNotContain(MARK);
   });
 
@@ -4495,7 +4495,11 @@ describe('MCP Integrations', () => {
     });
     it('reviewer template flags narrating comments and keeps the conventions line', () => {
       expect(win.PROMPTS.reviewer).toContain('comment the why, not the what');
-      expect(win.PROMPTS.reviewer).toContain('Follows project patterns and style');
+      expect(win.PROMPTS.reviewer).toContain('CURRENT direction, not its oldest habits');
+      expect(win.PROMPTS.reviewer).toContain('Flag reinvention');
+      expect(win.PROMPTS.implementer).toContain('reuse before you invent');
+      expect(win.PROMPTS.frontend).toContain('newest deliberate pattern');
+      expect(win.PROMPTS.backend).toContain('search for the concept before you build it');
     });
     it('should include custom MCP hint in sub-agents export when populated', () => {
       buildTestWorkflow('linear');
@@ -5754,11 +5758,11 @@ describe('Usability & Help', () => {
   });
 
   describe('adversary role', () => {
-    it('should register the Skeptic (adversary) in AGENT_TYPES (length 13)', () => {
+    it('should register the Skeptic (adversary) in AGENT_TYPES (length 14)', () => {
       const adv = win.AGENT_TYPES.find(a => a.id === 'adversary');
       expect(!!adv).toBe(true);
       expect(adv.name).toBe('Skeptic');
-      expect(win.AGENT_TYPES.length).toBe(13);
+      expect(win.AGENT_TYPES.length).toBe(14);
     });
     it('should map adversary to its PROMPTS key', () => {
       expect(win.AGENT_TYPE_PROMPT_MAP.adversary).toBe('adversary');
@@ -5800,9 +5804,10 @@ describe('Usability & Help', () => {
     it('should gate the verdict on Critical/High severity only', () => {
       expect(t()).toContain('ONLY Critical or High findings make the verdict NEEDS REVISION');
     });
-    it('should encode convergence (proceed after the cap)', () => {
-      expect(t()).toContain('after the cap');
-      expect(t()).toContain('rather than blocking the workflow forever');
+    it('should encode convergence (honest verdicts, delta-scoped re-review)', () => {
+      expect(t()).toContain('never PASS work that has Critical or High findings');
+      expect(t()).toContain('do not re-litigate what you already passed');
+      expect(t()).toContain('your documented blockers become the record of what was accepted');
     });
   });
 
@@ -6029,7 +6034,8 @@ describe('Usability & Help', () => {
     it('ends on a VERIFIED / NOT VERIFIED verdict with convergence', () => {
       expect(t()).toContain('VERDICT: VERIFIED');
       expect(t()).toContain('VERDICT: NOT VERIFIED');
-      expect(t()).toContain('after the cap');
+      expect(t()).toContain('never report VERIFIED while an objective is unmet');
+      expect(t()).toContain('anything the fixes could have disturbed');
     });
   });
 
@@ -7133,7 +7139,7 @@ describe('OpenSpec schema export', () => {
     const rev = artBlock(s.schemaYaml, 'reviewer');
     expect(rev).toContain('Role:');
     expect(rev).toContain('Model:');
-    expect(rev).toContain('You have access to these tools:');
+    expect(rev).toContain('Suggested tools for this step:');
     expect(rev).toContain('Max turns:');
     expect(rev).toContain('Gate');
     expect(rev).toContain('Revise');
@@ -7777,6 +7783,77 @@ describe('Closing-order note for stacked end-of-response contracts', () => {
   });
 });
 
+describe('Preset review gates (no dead-end verdicts)', () => {
+  const gateOf = (presetName, gateLabel) => {
+    resetState();
+    win.loadPreset(presetName);
+    return win.state.nodes.find(n => n.type === 'decision' && n.label === gateLabel);
+  };
+  it('review preset gates the Validator verdict, revise re-runs the Improver', () => {
+    const d = gateOf('review', 'Validation passed?');
+    expect(!!d).toBe(true);
+    const revise = win.state.connections.filter(c => c.from === d.id && c.label === 'Revise')
+      .map(c => win.state.nodes.find(n => n.id === c.to).label);
+    expect(revise.join(',')).toBe('Improver');
+  });
+  it('fullstack preset gates the Reviewer verdict, revise re-runs Backend and Frontend', () => {
+    const d = gateOf('fullstack', 'Review passed?');
+    expect(!!d).toBe(true);
+    const revise = win.state.connections.filter(c => c.from === d.id && c.label === 'Revise')
+      .map(c => win.state.nodes.find(n => n.id === c.to).label).sort();
+    expect(revise.join(',')).toBe('Backend,Frontend');
+    const approved = win.state.connections.filter(c => c.from === d.id && c.label === 'Approved')
+      .map(c => win.state.nodes.find(n => n.id === c.to).label);
+    expect(approved.join(',')).toBe('Tester');
+  });
+  it('ui_component preset gates the UI Reviewer verdict, revise re-runs the UI Implementer', () => {
+    const d = gateOf('ui_component', 'UI review passed?');
+    expect(!!d).toBe(true);
+    const revise = win.state.connections.filter(c => c.from === d.id && c.label === 'Revise')
+      .map(c => win.state.nodes.find(n => n.id === c.to).label);
+    expect(revise.join(',')).toBe('UI Implementer');
+  });
+});
+
+describe('Auto Workflow: security path revise loop targets the builders', () => {
+  it('with a security story, the review gate Revise edge re-runs the implementer, not Security Review', () => {
+    resetState();
+    win.document.getElementById('storyInput').value = 'Build a login endpoint with security hardening, authentication, and encryption of stored credentials';
+    win.generateFromStory();
+    const sec = win.state.nodes.find(n => n.label === 'Security Review');
+    expect(!!sec).toBe(true);
+    const decision = win.state.nodes.find(n => n.type === 'decision' && n.label === 'Review OK?');
+    const reviseTargets = win.state.connections
+      .filter(c => c.from === decision.id && c.label === 'Revise')
+      .map(c => win.state.nodes.find(n => n.id === c.to));
+    expect(reviseTargets.length).toBeGreaterThan(0);
+    reviseTargets.forEach(t => {
+      expect(t.label === 'Security Review').toBe(false);
+      expect(['coder', 'backend', 'frontend', 'general'].includes(t.config.agentType)).toBe(true);
+    });
+  });
+  it('generated gate text instructs passing the revise cycle index to the reviewer', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const d = win.addNode('decision', 200, 0, 'Gate', { condition:'ok', yesLabel:'Yes', noLabel:'Revise', maxRevisions:3 });
+    win.addConnection(a.id, d.id); win.addConnection(d.id, a.id, 'Revise');
+    expect(win.genWorkflow()).toContain('tell the reviewer which revise cycle this is');
+    expect(win.genSubAgents()).toContain('tell the reviewer which revise cycle this is');
+    expect(win.genAgentTeams()).toContain('tell the reviewer which revise cycle this is');
+  });
+  it('non-security stories keep the revise edge on the builders (unchanged)', () => {
+    resetState();
+    win.document.getElementById('storyInput').value = 'Build a settings page for user profile preferences';
+    win.generateFromStory();
+    const decision = win.state.nodes.find(n => n.type === 'decision' && n.label === 'Review OK?');
+    const reviseTargets = win.state.connections
+      .filter(c => c.from === decision.id && c.label === 'Revise')
+      .map(c => win.state.nodes.find(n => n.id === c.to));
+    expect(reviseTargets.length).toBeGreaterThan(0);
+    reviseTargets.forEach(t => expect(t.type).toBe('agent'));
+  });
+});
+
 describe('Auto Workflow tailored research prompts', () => {
   it('research intent: Options Researcher and Tradeoff Analyzer get mode-aware prompts matching their tools', () => {
     resetState();
@@ -7802,39 +7879,30 @@ describe('Auto Workflow tailored research prompts', () => {
       expect(win.PROMPTS[k] === undefined).toBe(true);
     });
   });
-  it('toolSubstitutionNote flags template-taught tools missing from the selection, in every agent-facing format', () => {
+  it('tool selection reads as suggestions, never limits, in every agent-facing format', () => {
     resetState();
-    const r = win.addNode('agent', 0, 0, 'Scout', { agentType:'researcher', model:'opus-4.8', tools:['Read','Grep','Glob'], prompt:'', maxTurns:10 });
-    const note = win.toolSubstitutionNote(r);
-    expect(note).toContain('your instructions mention');
-    expect(note).toContain('LSP');
-    expect(win.genWorkflow()).toContain('your instructions mention');
-    expect(win.genSubAgents()).toContain('your instructions mention');
-    expect(win.genAgentTeams()).toContain('your instructions mention');
-    expect(win.genAgentSDK()).toContain('your instructions mention');
-  });
-  it('toolScopeNote names withheld core tools and un-forbids the unmodeled world', () => {
-    resetState();
-    const note = win.toolScopeNote(['Read','Grep','Glob']);
-    expect(note).toContain('deliberately withheld');
-    expect(note).toContain('Write');
-    expect(note).toContain('MCP tools connected to your session');
-    const fullNote = win.toolScopeNote(win.ALL_TOOLS.slice());
-    expect(fullNote).toNotContain('deliberately withheld');
-    expect(fullNote).toContain('remain available as normal');
+    const clause = win.toolScopeNote(['Read','Grep','Glob']);
+    expect(clause).toContain('suggestions, not limits');
+    expect(clause).toContain('any other tool available to you');
+    expect(clause).toContain('MCP servers connected to your session');
+    expect(clause).toNotContain('withheld');
+    // Full and partial selections read the SAME - no withheld-list variant
+    expect(win.toolScopeNote(win.ALL_TOOLS.slice())).toBe(clause);
     expect(win.toolScopeNote([])).toBe('');
     const r = win.addNode('agent', 0, 0, 'Scout', { agentType:'planner', model:'opus-4.8', tools:['Read','Grep','Glob','LSP'], prompt:'', maxTurns:10 });
-    expect(win.genWorkflow()).toContain('deliberately withheld');
-    expect(win.genSubAgents()).toContain('deliberately withheld');
-    expect(win.genAgentTeams()).toContain('deliberately withheld');
-    expect(win.genAgentSDK()).toContain('not restricted by it and remain available');
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genAgentSDK()].forEach(out => {
+      expect(out).toContain('Suggested tools for this step:');
+      expect(out).toContain('suggestions, not limits');
+      expect(out).toNotContain('withheld');
+      expect(out).toNotContain('You have access to these tools');
+    });
   });
-  it('toolSubstitutionNote stays silent when the selection covers the prompt, and on empty tool lists', () => {
+  it('the Agent SDK emits no hard tools param - the suggestion rides as a comment', () => {
     resetState();
-    const full = win.addNode('agent', 0, 0, 'Full', { agentType:'coder', model:'opus-4.8', tools:['Read','Write','Edit','Bash','Grep','Glob','WebSearch','WebFetch','LSP'], prompt:'', maxTurns:10 });
-    expect(win.toolSubstitutionNote(full)).toBe('');
-    const bare = win.addNode('agent', 200, 0, 'Bare', { agentType:'researcher', model:'opus-4.8', tools:[], prompt:'', maxTurns:10 });
-    expect(win.toolSubstitutionNote(bare)).toBe('');
+    win.addNode('agent', 0, 0, 'Scout', { agentType:'planner', model:'opus-4.8', tools:['Read','Grep','Glob','LSP'], prompt:'', maxTurns:10 });
+    const sdk = win.genAgentSDK();
+    expect(sdk).toNotContain('tools=[');
+    expect(sdk).toContain('# Suggested tools: Read, Grep, Glob, LSP');
   });
   it('preset testers carry Edit (templates instruct modifying test files)', () => {
     resetState();
@@ -7858,8 +7926,6 @@ describe('Auto Workflow tailored research prompts', () => {
     expect(gather.config.notes).toBe('');   // interim Agent Context license retired - guidance lives in the prompt
     expect(analyst.config.prompt).toBe(win.PROMPTS.analysisSynthesizer);
     expect(analyst.config.prompt).toContain('assumption');
-    expect(win.toolSubstitutionNote(gather)).toBe('');   // prompt mentions only selected tools
-    expect(win.toolSubstitutionNote(analyst)).toBe('');
   });
 });
 
@@ -7874,6 +7940,9 @@ describe('Agent-type default tool sets', () => {
   it('researcher defaults include the web tools; planner/reviewer defaults are read-only', () => {
     expect(win.AGENT_TYPE_TOOL_DEFAULTS.researcher.includes('WebSearch')).toBe(true);
     expect(win.AGENT_TYPE_TOOL_DEFAULTS.researcher.includes('WebFetch')).toBe(true);
+    expect(win.AGENT_TYPE_TOOL_DEFAULTS.planner.includes('WebSearch')).toBe(true);   // prior-art lookup (owner ruling)
+    expect(win.AGENT_TYPE_TOOL_DEFAULTS.architect.includes('WebFetch')).toBe(true);  // verify capabilities in docs
+    expect(win.toolScopeNote(['Read'])).toContain('prefer reporting findings over changing things');
     ['planner', 'reviewer'].forEach(t => {
       expect(win.AGENT_TYPE_TOOL_DEFAULTS[t].includes('Write')).toBe(false);
       expect(win.AGENT_TYPE_TOOL_DEFAULTS[t].includes('Edit')).toBe(false);
@@ -7983,8 +8052,8 @@ describe('General agent template (distinct from Researcher)', () => {
 });
 
 describe('Memory write authorization (read-only-task agents)', () => {
-  const NOTE = 'it does not restrict the memory protocol';
-  it('prose formats state that memory writes are exempt from the task tool list when memory is on', () => {
+  const NOTE = 'whether or not `Write` is among its suggested tools';
+  it('prose formats state that memory writes are protocol-level regardless of the suggested set', () => {
     resetState();
     win.state.memoryEnabled = true;
     win.addNode('agent', 100, 100, 'Code Skeptic', { agentType:'adversary', model:'opus-4.8', tools:['Read','Grep','Glob','LSP'], prompt:'', maxTurns:8 });
@@ -7992,31 +8061,22 @@ describe('Memory write authorization (read-only-task agents)', () => {
     expect(win.genSubAgents()).toContain(NOTE);
     expect(win.genAgentTeams()).toContain(NOTE);
   });
-  it('emits no authorization note and no SDK Write union when memory is off', () => {
+  it('emits no authorization note when memory is off; SDK carries no Write machinery either way', () => {
     resetState();
     win.state.memoryEnabled = false;
     win.addNode('agent', 100, 100, 'Code Skeptic', { agentType:'adversary', model:'opus-4.8', tools:['Read','Grep','Glob','LSP'], prompt:'', maxTurns:8 });
     expect(win.genWorkflow()).toNotContain(NOTE);
     expect(win.genSubAgents()).toNotContain(NOTE);
     expect(win.genAgentTeams()).toNotContain(NOTE);
-    const sdk = win.genAgentSDK();
-    expect(sdk).toContain('tools=["Read", "Grep", "Glob", "LSP"],');
+    let sdk = win.genAgentSDK();
+    expect(sdk).toContain('# Suggested tools: Read, Grep, Glob, LSP');
     expect(sdk).toNotContain('# Write added for the memory protocol');
-  });
-  it('SDK unions Write into the hard tools param for a Write-less agent when memory is on', () => {
-    resetState();
+    // Memory ON adds the protocol text but never mutates the suggestion (no union - suggestions are not enforcement)
     win.state.memoryEnabled = true;
-    win.addNode('agent', 100, 100, 'Code Skeptic', { agentType:'adversary', model:'opus-4.8', tools:['Read','Grep','Glob','LSP'], prompt:'', maxTurns:8 });
-    expect(win.genAgentSDK()).toContain('tools=["Read", "Grep", "Glob", "LSP", "Write"],  # Write added for the memory protocol');
-  });
-  it('SDK leaves an agent that already has Write untouched (no duplicate, no comment)', () => {
-    resetState();
-    win.state.memoryEnabled = true;
-    win.addNode('agent', 100, 100, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write','Edit'], prompt:'', maxTurns:10 });
-    const sdk = win.genAgentSDK();
-    expect(sdk).toContain('tools=["Read", "Write", "Edit"],');
-    expect(sdk).toNotContain('"Write", "Write"');
-    expect(sdk).toNotContain('# Write added for the memory protocol');
+    sdk = win.genAgentSDK();
+    expect(sdk).toContain('# Suggested tools: Read, Grep, Glob, LSP');
+    expect(sdk).toNotContain('LSP, Write');
+    expect(sdk).toContain(NOTE);
   });
 });
 
@@ -8153,14 +8213,107 @@ describe('Workflow advisor (non-blocking suggestions)', () => {
     expect(list.textContent).toContain('SUGGESTIONS');
     win.closeValidation();
   });
-  it('every preset yields zero suggestions (calibration pin - all 15 audited, none nags)', () => {
+  it('rule g: a review-role verdict routing nowhere is flagged; gated or tester verdicts are not', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'x', maxTurns:10 });
+    const r = win.addNode('agent', 200, 0, 'Reviewer', { agentType:'reviewer', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:8 });
+    const o = win.addNode('output', 400, 0, 'Out', { format:'report' });
+    win.addConnection(a.id, r.id); win.addConnection(r.id, o.id);
+    const msgs = win.adviseWorkflow().map(x => x.msg).join(' | ');
+    expect(msgs).toContain('emits a verdict that routes nowhere');
+    const d = win.addNode('decision', 300, 0, 'Gate', { condition:'ok', yesLabel:'Pass', noLabel:'Revise', maxRevisions:3 });
+    win.addConnection(r.id, d.id);
+    expect(win.adviseWorkflow().map(x => x.msg).join(' | ')).toNotContain('routes nowhere');
+  });
+  it('every preset yields zero suggestions (calibration pin - all 17 audited, none nags)', () => {
     cleanRunReports();
-    ['feature','bugfix','fullstack','ui_component','refactoring','documentation','devops','performance','data_migration','testing','test_automation','review','parallel_research','swarm','delivery_swarm'].forEach(p2 => {
+    ['feature','bugfix','fullstack','ui_component','refactoring','documentation','devops','performance','data_migration','testing','test_automation','review','parallel_research','swarm','delivery_swarm','analysis_forecast','incident_rca'].forEach(p2 => {
       resetState();
       win.loadPreset(p2);
       const sugs = win.adviseWorkflow();
       expect(sugs.length + 0).toBe(0);
     });
+  });
+});
+
+describe('New presets: Analysis & Forecast, Incident RCA', () => {
+  it('analysis_forecast: analyst pair, analysis-lens skeptic gate, business finisher', () => {
+    resetState();
+    win.loadPreset('analysis_forecast');
+    const nodes = win.state.nodes;
+    const g = nodes.find(n => n.label === 'Data Gatherer'), an = nodes.find(n => n.label === 'Analyst');
+    expect(g.config.agentType).toBe('analyst');
+    expect(an.config.agentType).toBe('analyst');
+    const sk = nodes.find(n => n.config && n.config.agentType === 'adversary');
+    expect(sk.config.adversaryRole).toBe('analyst');
+    expect(win.getEffectivePrompt(sk)).toContain('measurement or forecasting work');
+    const d = nodes.find(n => n.type === 'decision');
+    expect(d.label).toBe('Numbers hold up?');
+    expect(win.state.connections.some(c => c.from === d.id && c.to === an.id && c.label === 'Needs revision')).toBe(true);
+    const w = nodes.find(n => n.label === 'Report Writer');
+    expect(w.config.writingStyle).toBe('business');
+    expect(nodes.find(n => n.type === 'output').config.format).toBe('report');
+  });
+  it('incident_rca: investigator with write tools, verifier gate, RCA-shaped writer context', () => {
+    resetState();
+    win.loadPreset('incident_rca');
+    const nodes = win.state.nodes;
+    const inv = nodes.find(n => n.label === 'Investigator');
+    expect(inv.config.tools.includes('Write') && inv.config.tools.includes('Edit')).toBe(true);
+    const v = nodes.find(n => n.config && n.config.agentType === 'verifier');
+    expect(v.config.reviewLoopFor).toBe(inv.id);
+    const d = nodes.find(n => n.type === 'decision');
+    expect(d.config.yesLabel).toBe('Verified');
+    expect(win.state.connections.some(c => c.from === d.id && c.to === inv.id && c.label === 'Not verified')).toBe(true);
+    const w = nodes.find(n => n.label === 'RCA Writer');
+    expect(w.config.notes).toContain('failure mechanism');
+    expect(win.validateWorkflow().length).toBe(0);
+  });
+  it('smoke: both presets generate and explain cleanly', () => {
+    resetState();
+    win.loadPreset('analysis_forecast');
+    const wf = win.genSubAgents();
+    expect(wf).toContain('measurement or forecasting work');
+    expect(wf).toContain('Numbers hold up?');
+    const an = win.state.nodes.find(n => n.label === 'Analyst');
+    const rows = win.explainNode(an, 'subagent');
+    expect(rows.find(r => r.part === 'Role instructions').reason).toContain('unmodified Analyst role template');
+    expect(rows.find(r => r.part === 'Datadog step hint').reason).toContain('toggle off');
+    win.loadPreset('incident_rca', true);
+    const wf2 = win.genWorkflow();
+    expect(wf2).toContain('Root cause verified?');
+    expect(wf2).toContain('cycle');
+  });
+});
+
+describe('Analyst agent type', () => {
+  it('is fully wired: template, tools, lenses, step roles, OpenSpec group', () => {
+    expect(win.AGENT_TYPES.some(a => a.id === 'analyst')).toBe(true);
+    expect(win.AGENT_TYPE_PROMPT_MAP.analyst).toBe('analysisSynthesizer');
+    expect(win.toolSetsEqual(win.AGENT_TYPE_TOOL_DEFAULTS.analyst, ['Read','Bash','Grep','Glob','WebFetch','LSP'])).toBe(true);
+    expect(win.ADVERSARY_LENS_BY_ROLE.analyst).toBe('analysis');
+    expect(win.ADVERSARY_LENSES.analysis).toContain('units carried');
+    expect(win.DATADOG_STEP_ROLES.has('analyst')).toBe(true);
+    expect(win.CODE_SEARCH_STEP_ROLES.has('analyst')).toBe(true);
+    expect(win.OPENSPEC_ROLE_GROUP.analyst).toBe('analysis');
+    expect(win.OPENSPEC_RECORD_SECTIONS.analysis.map(x => x.h)).toContain('Assumptions');
+  });
+  it('a Skeptic attached to an analyst node carries the analysis lens', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Analyst', { agentType:'analyst', model:'opus-4.8', tools:['Read','Bash'], prompt:'', maxTurns:10 });
+    const p = win.buildAdversaryPrompt('analyst');
+    expect(p).toContain('measurement or forecasting work');
+    expect(p).toContain('sanity check genuinely constrain');
+  });
+  it('auto-builder analysis nodes are analyst-typed (gatherer keeps its explicit prompt)', () => {
+    resetState();
+    win.document.getElementById('storyInput').value = 'Measure usage and forecast the monthly cost for the ingestion service';
+    win.generateFromStory(true);
+    const g = win.state.nodes.find(n => n.label === 'Data Gatherer');
+    const an = win.state.nodes.find(n => n.label === 'Analyst');
+    expect(g.config.agentType).toBe('analyst');
+    expect(an.config.agentType).toBe('analyst');
+    expect(g.config.prompt).toBe(win.PROMPTS.analysisGatherer);
   });
 });
 
@@ -8741,9 +8894,9 @@ describe('Explain this workflow (anatomy vs generated output agreement)', () => 
     ['prompt','subagent','teams'].forEach(fmt => {
       const out = gens[fmt]();
       const rows = agree(r, fmt, out);
-      expect(rowOf(rows,'Tool availability').status).toBe('emitted');
-      expect(rowOf(rows,'Tool scope note').status).toBe('emitted');
-      expect(rowOf(rows,'Tool substitution note').status).toBe('emitted');
+      expect(rowOf(rows,'Suggested tools').status).toBe('emitted');
+      expect(rowOf(rows,'Suggested tools').reason).toContain('never a restriction');
+      expect(rowOf(rows,'Suggestion clause').status).toBe('emitted');
       expect(rowOf(rows,'Datadog step hint').status).toBe('skipped');
       expect(rowOf(rows,'Datadog step hint').reason).toContain('toggle off');
       expect(rowOf(rows,'Code-search step hint').status).toBe('skipped');
@@ -8855,7 +9008,7 @@ describe('Explain this workflow (anatomy vs generated output agreement)', () => 
     const a = win.addNode('agent', 0, 0, 'X', { agentType:'coder', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:5 });
     const sdkRows = win.explainWorkflow('sdk');
     expect(sdkRows.length).toBe(1);
-    expect(sdkRows[0].reason).toContain('tools=[...]');
+    expect(sdkRows[0].reason).toContain('never a restriction');
     expect(win.explainNode(a, 'sdk').length).toBe(1);
     const o = win.addNode('output', 200, 0, 'Ship', { format:'pr', targetBranch:'main', branchName:'' });
     win.addConnection(a.id, o.id);
@@ -9181,7 +9334,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.toolSubstitutionNote = toolSubstitutionNote; window.toolScopeNote = toolScopeNote; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

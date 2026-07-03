@@ -151,7 +151,7 @@ CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 claude --add-dir ../repo-b ../rep
 
 ## Built-in Presets
 
-Fourteen ready-made pipelines. Each one is a strong opinion you can override.
+Sixteen ready-made pipelines. Each one is a strong opinion you can override.
 
 - **Feature Build** - Planner > (Skeptic reviews the plan) > Implementer > Reviewer > Decision gate > Tester
 - **Bug Fix** - Investigator > Fixer > Tester > Verification gate
@@ -164,6 +164,8 @@ Fourteen ready-made pipelines. Each one is a strong opinion you can override.
 - **UI Design & Development** - Design System Analyzer > UI Implementer > (Verifier proves it works in a browser) > UI Reviewer
 - **Refactoring** - Planner > Code Analyzer > Refactorer > Reviewer > Decision gate > Tester
 - **Documentation** - Planner > Researcher > Doc Writer (Writer: Technical) > (Skeptic reviews the docs)
+- **Analysis & Forecast** - Data Gatherer (Analyst) > Analyst > (Skeptic checks the arithmetic, units, and assumptions) > Report Writer (Writer: Business) - measurement and forecasting with visible methodology
+- **Incident RCA** - Investigator (anti-anchoring, writes the failing repro) > (Verifier proves the root cause by execution) > RCA Writer - a root cause is demonstrated, never assumed
 - **DevOps** - Planner > DevOps Engineer > Reviewer > Decision gate > Tester
 - **Performance** - Planner > Profiler > Optimizer > Reviewer > Decision gate > Tester
 - **Testing** - Planner > Code Analyzer > Test Suite Writer > Reviewer > Decision gate > Tester

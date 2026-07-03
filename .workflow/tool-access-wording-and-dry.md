@@ -1,6 +1,12 @@
 # Aligned tool-availability wording + extracted it into one content helper
 
-Branch: main. Status: current.
+Branch: main. Status: superseded.
+
+```awd:record
+{"slug": "tool-access-wording", "status": "superseded", "date": "2026-06-30", "files": ["index.html", "tests.html"], "verify": ["./run-tests.sh"], "superseded_by": ".workflow/tool-suggestion-semantics.md"}
+```
+
+> SUPERSEDED 2026-07-03 by `tool-suggestion-semantics.md`: the owner ruled tool selections are strong suggestions, never restrictions - the closed-enumeration semantics this record decided (and the SDK hard-param non-goal it preserved) no longer hold. The DRY architecture it built (toolAccessText as the single wording source) survives and carried the new wording in one edit, exactly as designed.
 
 ## Why and scope
 

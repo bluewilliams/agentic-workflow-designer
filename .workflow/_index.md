@@ -2,6 +2,34 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## prompt-overhaul-wave-c
+
+- record: .workflow/prompt-overhaul-wave-c.md
+- intent: wave C of the prompt overhaul. Specialized templates expertise-first (securityAuditor threat-model + reachability bar, perfProfiler hypothesis-first, migrationEngineer expand-contract, devopsEngineer least-privilege/idempotence, codeAnalyzer churn-x-complexity + actionability bar, archReviewer traced-evidence, writerBusiness figure provenance); test-automation family discovers its stack from the repo (C#/SpecFlow/Appium demoted to examples); NEW Analyst agent type fully wired (analysisSynthesizer template, gatherer tools, dedicated analysis Skeptic lens, both hint sets, bespoke OpenSpec analysis sections, auto-builder retyped); NEW presets Analysis & Forecast (analysis-lens Skeptic gate -> business writer) and Incident RCA (Verifier proves the root cause by execution); advisor rule (g) flags review-role verdicts routing nowhere (type-gated; calibration-clean at 17 presets).
+- files: index.html, tests.html, README.md, TECHNICAL.md
+- status: current | date: 2026-07-03 | note: 1322 -> 1329. Content-lint.
+
+## prompt-overhaul-wave-b
+
+- record: .workflow/prompt-overhaul-wave-b.md
+- intent: the philosophy sweep - core templates teach role craft, not tool mechanics (owner's organizing insight; critic prompts = house style). Six deep rewrites: planner (decompose-by-risk, resume units, decisions-vs-assumptions, out-of-scope, stop condition), researcher (verified-vs-inferred, triangulation, negative findings, confidence, stop), architect (options-and-why-losers-lost, simplest guard, failure/scale, rollout), investigator (anti-anchoring: two hypotheses + disconfirming evidence + correlation-vs-causation), reviewer (materiality bar + evidence rule + risk-based depth + tests-as-hard-as-code), tester (good-test bar: behavior-not-implementation, delete-if-nothing-would-fail-it). Strong set compressed to craft-first parentheticals (implementer/backend/frontend/fixer/writerTechnical/writerApi). Researcher defaults +Bash. Zero pure tool-tutorial steps remain in the core set; composed size +3.6% (expertise costs tokens; ratio target met).
+- files: index.html (12 templates + researcher defaults), tests.html (3 pins)
+- status: current | date: 2026-07-03 | note: 1322/1322 throughout; handoff names stable, new fields additive.
+
+## prompt-overhaul-wave-a
+
+- record: .workflow/prompt-overhaul-wave-a.md
+- intent: mechanical bugs from the three-fork deep prompt review. Auto-builder security path re-ran the REVIEWER on Revise (builders now captured pre-reassignment); review/fullstack/ui_component presets had dead-end reviewer verdicts (now gated with revise edges); Skeptic/Verifier Convergence corrupted verdicts (PASS-despite-blockers keyed to an unknowable cycle index) - now honest-verdict + delta-scoped re-review, with every generator's revise instruction passing "cycle X of the max" to the reviewer; phantom-role handoffs ("for the Fixer") rephrased; analysis chain finishes with writerBusiness; auto r1 research parity closed; 11 unjustified planner/architect WebSearch grants removed (testPlanner kept, reasoned); PROMPTS.general codebase-conditional; writerUserguide +WebFetch; 4 formatter nodes writer-typed.
+- files: index.html, tests.html
+- status: current | date: 2026-07-03 | note: 1316 -> 1322 (+6). Content-lint. Waves B/C (philosophy sweep, specialized infusion) follow.
+
+## tool-suggestion-semantics
+
+- record: .workflow/tool-suggestion-semantics.md
+- intent: (UPDATED: planner/architect regained web-tool suggestions + conditional craft lines; clause gained a role-intent guard - investigative/review steps prefer reporting over changing.) OWNER RULING (supersedes tool-access-wording): tool selections are STRONG SUGGESTIONS, never restrictions - agents are never limited or blocked from any tool available to them. `Suggested tools for this step: X` + one suggestions-not-limits clause, uniform across full/partial selections; toolSubstitutionNote removed; the Agent SDK emits NO hard tools=[...] param (suggestion rides as comment + instruction lines; Write-union machinery deleted; R3/C5 exclusion kept, re-rationalized as owner-priority minimalism). Ride-alongs from the deep prompt review: verifier +Write in both pinned sets, skeptic maxTurns 8, debugger defaults +Write/Edit. Explain rows renamed (Suggested tools / Suggestion clause).
+- files: index.html, tests.html, TECHNICAL.md
+- status: current | date: 2026-07-03 | note: 1319 -> 1316 (substitution/union tests removed, uniformity + SDK-no-param added). Content-lint. First real supersession in the archive.
+
 ## mobile-viewport-scaling
 
 - record: .workflow/mobile-viewport-scaling.md
@@ -49,14 +77,14 @@ Record anatomy v2: each record opens with an `awd:record` JSON fence (slug, stat
 ## analysis-branch-prompts
 
 - record: .workflow/analysis-branch-prompts.md
-- intent: bespoke prompts for the Auto Workflow analysis branch (measure/forecast/cost). PROMPTS.analysisGatherer (numbers with sources: Bash repo metrics, LSP usage surfaces, WebFetch pricing/benchmarks under conditional phrasing; measured-vs-estimated first-class) + PROMPTS.analysisSynthesizer (visible arithmetic, justified assumptions, low/expected/high ranges, sanity anchor, per-number confidence; Findings/Methodology/Assumptions/Recommendation handoff). Data Gatherer's interim Agent Context license line RETIRED - guidance lives in the prompt proper, per the tool-selection-consistency plan.
+- intent: the Auto Workflow analysis branch and the Analysis & Forecast preset run bespoke analysisGatherer (numbers with sources, Bash repo metrics, conditional WebFetch, measured-vs-estimated tagged at collection) and analysisSynthesizer (visible arithmetic with units, justified assumptions, low/expected/high ranges, sanity anchor, per-number confidence). Both nodes are ANALYST-typed (wave C): the analysisSynthesizer is the analyst type's template, the Skeptic reviews analysis work under the dedicated analysis lens, and OpenSpec exports use the analysis record sections.
 - files: index.html (two PROMPTS entries + analysis-branch wiring), tests.html (analysis-intent test rewritten)
 - status: current | date: 2026-07-01 | note: 1246/1246 (rewrite in place). Content-lint.
 
 ## tool-selection-consistency
 
 - record: .workflow/tool-selection-consistency.md
-- intent: closes the owner's tool model end-to-end. Preset testers gain Edit (9 arrays; templates instruct modifying test files; Validator/Feature Writer left curated). New toolSubstitutionNote(node): when a node's effective prompt backtick-mentions a tool outside its selection (deselected LSP on a researcher), the five agent-facing surfaces emit one note naming the missing tools ("skip those steps or achieve the same goal with the tools you do have") - reconciles static shared templates with the closed enumeration without selection-aware template surgery. Silent when covered or on empty tool lists. UPDATE same day: toolScopeNote(tools) scopes the enumeration to the MODELED set - names withheld core tools explicitly, declares MCP/task-tracking/runtime utilities outside the ten chips unrestricted (owner: the closed list must not forbid tools we do not model); SDK gets the outside-clause only.
+- intent: preset testers carry Edit (9 arrays; Validator/Feature Writer curated exceptions). Its two reconciliation devices resolved under suggestion semantics (tool-suggestion-semantics.md): toolSubstitutionNote REMOVED; toolScopeNote is now the uniform suggestions-not-limits clause. Record retains the closed-enumeration history.
 - files: index.html (tester arrays, toolSubstitutionNote + 5 injections), tests.html (3 tests + exposure)
 - status: current | date: 2026-07-01 | note: 1237 -> 1240 (+3). Content-lint.
 
@@ -84,14 +112,14 @@ Record anatomy v2: each record opens with an `awd:record` JSON fence (slug, stat
 ## auto-workflow-tailored-prompts
 
 - record: .workflow/auto-workflow-tailored-prompts.md
-- intent: Auto Workflow's research branch now actually mirrors the Parallel Research preset (its comment claimed it already did): inferResearchMode/detectNamedOptions from the story, researchDocPrompt for Options Researcher (Read/WebSearch/WebFetch - no more 7 LSP steps without LSP), researchPatternPrompt for Tradeoff Analyzer, researchSynthesizerPrompt for the Synthesizer (planner type, Read/Write, like the preset); fork carries researchMode so the mode editor works on auto-built workflows. Documentation tail gets the preset's writer-lens Skeptic review loop ("Docs accurate?" gate) with a linear writer-lens fallback for multi-branch tails; the omit-decision-gate structural test rewritten to pin the new sharper contract. Data Gatherer WebFetch: dropped, then RESTORED same day by owner ruling (availability is a floor; never shrink prior capability for prompt coherence) with an Agent Context line licensing Bash+WebFetch instead of a shared-template edit (bespoke analysis prompt = named follow-up; see record Update section). Four dead PROMPTS keys deleted (synthesizer, docResearcher, patternAnalyzer, codebaseExplorer).
+- intent: Auto Workflow's research branch now actually mirrors the Parallel Research preset (its comment claimed it already did): inferResearchMode/detectNamedOptions from the story, researchDocPrompt for Options Researcher (Read/WebSearch/WebFetch - no more 7 LSP steps without LSP), researchPatternPrompt for Tradeoff Analyzer, researchSynthesizerPrompt for the Synthesizer (planner type, Read/Write, like the preset); fork carries researchMode so the mode editor works on auto-built workflows. Documentation tail gets the preset's writer-lens Skeptic review loop ("Docs accurate?" gate) with a linear writer-lens fallback for multi-branch tails; the omit-decision-gate structural test rewritten to pin the new sharper contract. Data Gatherer WebFetch: dropped, then RESTORED same day by owner ruling (availability is a floor; never shrink prior capability for prompt coherence) with an Agent Context line licensing Bash+WebFetch instead of a shared-template edit (bespoke analysis prompts landed 2026-07-01; wave A 2026-07-03 closed r1 explorer parity and swapped the analysis finisher to writerBusiness - see record Updates). Four dead PROMPTS keys deleted (synthesizer, docResearcher, patternAnalyzer, codebaseExplorer).
 - files: index.html (research branch, documentation tail, analysis tools, PROMPTS), tests.html (tailored-prompts describe, doc-gate test, Atlassian-regression list)
 - status: current | date: 2026-07-01 | note: 1219 -> 1221. Content-lint.
 
 ## sdk-toggle-parity
 
 - record: .workflow/sdk-toggle-parity.md
-- intent: genAgentSDK silently dropped the clarifyFirst and mcpDatadog toggles - both now render as orchestrator-level # comment banners from the SAME shared hint sources the prose formats use (wrapComment pattern, markdown stripped). KEY DISCOVERY: per-step Datadog/code-search hints are deliberately EXCLUDED from SDK agent instructions - tests R3/C5 pin it, rationale: the hard tools=[...] param grants no MCP access so the hint would be un-executable; an injection attempt was caught by those tests and reverted, with a source comment at the site so it is not retried.
+- intent: genAgentSDK renders clarifyFirst + mcpDatadog as orchestrator-level # banners from the shared hint sources. Per-step Datadog/code-search hints stay OUT of SDK instructions - kept minimal by owner priority (tests R3/C5; the original hard-tools-param rationale died with the param, see tool-suggestion-semantics.md).
 - files: index.html (genAgentSDK banners + rationale comment), tests.html (SDK toggle parity describe)
 - status: current | date: 2026-07-01 | note: 1215 -> 1219 (+4). Content-lint.
 
@@ -126,7 +154,7 @@ Record anatomy v2: each record opens with an `awd:record` JSON fence (slug, stat
 ## memory-write-authorization
 
 - record: .workflow/memory-write-authorization.md
-- intent: the memory protocol mandates per-agent file appends but the closed tool enumeration made a Write-less agent (Skeptic/Verifier/preset Reviewer) read its tool list as forbidding them - and the SDK's hard `tools=[...]` made compliance impossible. Ruling: memory writes are PROTOCOL-level, not task-level. New `memoryWriteAuthNote()` sentence injected at every per-agent memory-write emission (genMemoryProtocol, postamble, Sub-Agents header, teammate WRITE LAST); genAgentSDK unions `"Write"` into the emitted tools param when memory is on and the node lacks it (with a generated-code comment). Direct per-agent writes kept deliberately (orchestrator-transcribes belongs to the durable-record layer, not memory). All behind existing memoryEnabled gates; off = byte-identical output.
+- intent: memory writes are PROTOCOL-level, not task-level: memoryWriteAuthNote() at every per-agent memory-write emission - every agent appends to its memory files whether or not Write is among its SUGGESTED tools. The former SDK Write-union machinery is gone with the hard tools param (tool-suggestion-semantics.md); all behind memoryEnabled gates.
 - files: index.html (memoryWriteAuthNote + 4 injections + genAgentSDK tools union), tests.html ("Memory write authorization" describe)
 - status: current | date: 2026-07-01 | note: 1195 -> 1199 (+4). Content-lint.
 
@@ -157,13 +185,6 @@ Record anatomy v2: each record opens with an `awd:record` JSON fence (slug, stat
 - intent: importing a workflow now FITS the view (was overflowing until a manual Fit click; presets already fit via loadPreset->autoLayout). Fit added to `importWorkflowFile`'s 3 success branches ONLY - deliberately NOT in the shared `deserializeWorkflow` (undo/redo + autosave-restore also use it, where an auto re-fit would fight the user's view). Decision: `zoomFit` now SELF-DEFERS via setTimeout(0), so every caller just calls `zoomFit()` - no wrapper, no raw-setTimeout sprinkle. Safe because the fit MATH is sync-correct (node w/h are static NODE_DEFAULTS, getBoundingClientRect forces layout - proven headlessly a sync fit took a 2140px/8-node import 1 -> 0.392), so a one-macrotask defer is strictly safe; confirmed no caller needs a synchronous fit (only the Fit button + the mutation sites call it; no test references it). A named `fitViewSoon()` wrapper (pure zoomFit + explicit defer at call sites) was considered then dropped for the simpler single-function surface. Tradeoff accepted: zoomFit is now fire-and-forget async (no instant sync fit; nothing needs one today).
 - files: index.html (`zoomFit` self-defer via setTimeout(0); 3 fit calls in importWorkflowFile; autoLayout/addFanIn/addFanOut simplified from raw setTimeout(zoomFit) to zoomFit()). No test change - the import path is async FileReader; verified via headless harness (7-artifact foreign schema -> 8 nodes, 2140px vs 1280px viewport, auto-fits zoom 1 -> 0.392, re-confirmed after baking in the defer).
 - status: current | date: 2026-06-30 | note: 1181/1181 (call-site simplifications behavior-preserving - zoomFit was already effectively deferred at every mutation site - plus the new import fit). Content-lint. Temp harness files removed.
-
-## tool-access-wording
-
-- record: .workflow/tool-access-wording-and-dry.md
-- intent: align the per-node tool line on ONE phrasing ("You have access to these tools: X") across Workflow / Sub-Agents / Agent Teams / OpenSpec-export intent, replacing the two prior variants (bare "- Tools:" label + the sentence form). The SDK is untouched - it emits the real `tools=[...]` param, the only hard enforcement point. Semantics decided: availability, a CLOSED enumeration (deliberately NO "minimally"/"at least" - that makes the list a floor and re-authorizes a deselected tool like WebSearch); prose in the copy-paste formats is a strong DIRECTIONAL signal, not a sandbox. Then DRY: extracted the wording into a pure content helper `toolAccessText(tools)` (returns the WORDS only; each generator keeps its own container shape + emit guard, so output is byte-identical), routed through all 7 call sites. Rejected a monolithic `renderAgent(node,{format})` (leaky - formats should drift independently); the model line was deliberately left divergent (label+param vs getModelId vs raw).
-- files: index.html (`toolAccessText` helper + 7 call sites; old label variants removed), tests.html ("Tool availability wording (aligned across formats)" describe: helper-direct + aligned-across-3-prose-formats + old-labels-gone + OpenSpec-carries-it + golden exact-line pin)
-- status: current | date: 2026-06-30 | note: 1177 -> 1181 (+4). Byte-identical extraction (pre-existing round-trip `toBe` guard + substring tests stayed green through it). Parked next candidates: the dependency line and the max-turns line (same "shared words, divergent shape" pattern); model line NOT a candidate.
 
 ## refine-plan-clipboard
 
@@ -279,14 +300,14 @@ Record anatomy v2: each record opens with an `awd:record` JSON fence (slug, stat
 ## adversarial-review
 
 - record: .workflow/generic-adversarial-critic-agent-with-one-click-attach.md
-- intent: a generic refute-first `adversary` agent role (one template + role-aware lens + strict materiality bar: default PASS, NEEDS REVISION only for Critical/High material defects, never nitpicks) plus a one-click context-menu action that attaches/detaches a critic + Decision + back-edge revise loop on any Agent/Task node in a single undoable step, reusing the existing Decision/maxRevisions loop so all five generators render it unchanged
+- intent: a generic refute-first `adversary` agent role (one template + role-aware lens + strict materiality bar: default PASS, NEEDS REVISION only for Critical/High material defects, never nitpicks) plus a one-click context-menu action that attaches/detaches a critic + Decision + back-edge revise loop on any Agent/Task node in a single undoable step, reusing the existing Decision/maxRevisions loop so all five generators render it unchanged CONVERGENCE REWRITTEN 2026-07-03: honest verdicts always (never PASS with Critical/High findings; orchestrator owns proceed-after-cap), delta-scoped re-reviews, cycle index passed by generators - see prompt-overhaul-wave-a.
 - files: index.html (AGENT_TYPES +adversary, AGENT_TYPE_PROMPT_MAP, ADVERSARY_LENSES + ADVERSARY_LENS_BY_ROLE + buildAdversaryPrompt, getEffectivePrompt/classifyAgentPrompt adversary branch, attachAdversary/detachAdversary/toggleAdversarialReview/hasAdversaryAttached/canAttachAdversary via batchUndo, ctxAdversary markup + showContextMenu, feature + documentation preset demos), tests.html (5 new suites / 23 tests; AGENT_TYPES length 11->12; feature 4->5 agents; documentation memory-enabled; AGENT_TYPE_PROMPT_MAP added to win.* bridge)
 - status: current | date: 2026-06-18 | note: independent review PASS; lens travels via config.adversaryRole (parallels writer/writingStyle); demoed sparsely in 2 presets (Feature->Planner = plan, Documentation->Doc Writer = docs); deleting a target leaves its critic+decision orphaned; debate panel deferred. SUPERSEDED-IN-PART by verifier-and-review-loop-family.md (2026-06-19): the display name became "Skeptic", markers became reviewLoopFor/reviewLoopKind/reviewLoopDecisionFor, and the attach was generalized into a kind-parameterized family - the behavior here is unchanged, see that record for current code.
 
 - record: .workflow/verifier-and-review-loop-family.md
 - intent: a second one-click review kind, a Verifier that PROVES the outcome meets the objective with evidence (run it, call the API, drive a browser, follow doc steps) - distinct from the Skeptic which critiques by inspection; plus generalizing the one-click attach into a kind-parameterized review-loop family (REVIEW_LOOP_KINDS + generic functions/markers) so a third kind is trivial; plus renaming the Skeptic's display (id stays 'adversary')
 - files: index.html (AGENT_TYPES Skeptic rename +verifier=13, AGENT_TYPE_PROMPT_MAP +verifier, PROMPTS.verifier, REVIEW_LOOP_KINDS + attachReviewLoop/detachReviewLoop/toggleReviewLoop/getReviewLoop/hasReviewLoop/canAttachReviewLoop + 5 back-compat aliases, ctxSkeptic+ctxVerifier + showContextMenu setReviewItem, feature+documentation preset markers/labels), tests.html (+16 tests: verifier role/prompt/family; length 12->13; Adversary->Skeptic; marker renames)
-- work-item: backlog #7 follow-on | status: current | date: 2026-06-19 | builds-on: .workflow/generic-adversarial-critic-agent-with-one-click-attach.md | note: 697/697 tests; independent reviews PASS (x2); verifier has NO lens (one strong default prompt, method self-selected per artifact); verifier gets Bash+WebFetch; one review loop per node; review nodes (Skeptic/Verifier) cannot be review targets; demoed in ui_component preset; ALSO includes the reroute feature (setReviewLoopBackTarget + a dropdown on the review-loop decision to re-point the failure back-edge to any work node, edge-only/no new state, canvas redraws live)
+- work-item: backlog #7 follow-on | status: current | date: 2026-06-19 | builds-on: .workflow/generic-adversarial-critic-agent-with-one-click-attach.md | note: 697/697 tests; independent reviews PASS (x2); verifier has NO lens (one strong default prompt, method self-selected per artifact); verifier gets Bash+WebFetch; one review loop per node; review nodes (Skeptic/Verifier) cannot be review targets; demoed in ui_component preset; ALSO includes the reroute feature (setReviewLoopBackTarget + a dropdown on the review-loop decision to re-point the failure back-edge to any work node, edge-only/no new state, canvas redraws live). CONVERGENCE REWRITTEN 2026-07-03 (verifier: never VERIFIED while unmet; delta-scoped re-verify) + verifier gained Write (suggestion-semantics ride-along) - see prompt-overhaul-wave-a / tool-suggestion-semantics
 
 ## auto-workflow-detection
 
@@ -479,4 +500,6 @@ Record anatomy v2: each record opens with an `awd:record` JSON fence (slug, stat
 
 ## Archive (superseded)
 
-Superseded entries move here as one-line pointers (record path + superseded_by) so the active sections above track only the current capability surface. Empty so far.
+Superseded entries move here as one-line pointers (record path + superseded_by) so the active sections above track only the current capability surface.
+
+- tool-access-wording -> .workflow/tool-access-wording-and-dry.md - closed-enumeration tool semantics + the toolAccessText DRY extraction (2026-06-30); superseded_by .workflow/tool-suggestion-semantics.md (owner ruling: selections are suggestions, never restrictions - the DRY helper survives and carried the new wording).

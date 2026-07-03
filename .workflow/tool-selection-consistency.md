@@ -8,7 +8,7 @@ Branch: main. Status: current.
 
 ## Current behavior
 
-Preset testers carry Edit. toolSubstitutionNote() reconciles static templates with the closed tool enumeration: when a node's effective prompt mentions a tool outside its selection, the five agent-facing surfaces emit one note naming the gap. toolScopeNote() scopes the enumeration to the ten modeled chips - withheld core tools are named explicitly, and everything unmodeled (MCP tools, task tracking, runtime utilities) is declared unrestricted; the SDK carries the outside-clause only.
+Preset testers carry Edit. Under the tool-suggestion semantics (see tool-suggestion-semantics.md): toolScopeNote() emits one uniform suggestions-not-limits clause after the suggested-tools line; toolSubstitutionNote no longer exists (a template mentioning an unselected tool is not a contradiction when the selection is a suggestion). The scope/substitution behaviors this record originally built are historical below.
 
 ## Why and scope
 
@@ -46,3 +46,9 @@ Owner raised the sharp edge of the closed enumeration: the real runtime has many
 - [x] toolScopeNote helper (withheld-naming + outside-clause; ALL_TOOLS-derived)
 - [x] 5 surface injections incl. SDK outside-clause variant
 - [x] Test: withheld naming, full-set variant, empty silence, all-format presence; suite green; content-lint
+
+## Update (2026-07-03): suggestion semantics land
+
+The owner ruled tool selections are strong suggestions, never restrictions (tool-suggestion-semantics.md). This record's two reconciliation devices resolved accordingly: toolSubstitutionNote REMOVED (nothing to reconcile when nothing is forbidden); toolScopeNote reduced to the uniform suggestions-not-limits clause (no withheld-list naming). The preset-tester Edit work stands unchanged.
+
+- [x] Current behavior rewritten; devices resolved per the new semantics
