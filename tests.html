@@ -7839,7 +7839,8 @@ describe('Auto Workflow: security path revise loop targets the builders', () => 
     win.addConnection(a.id, d.id); win.addConnection(d.id, a.id, 'Revise');
     expect(win.genWorkflow()).toContain('tell the reviewer which revise cycle this is');
     expect(win.genSubAgents()).toContain('tell the reviewer which revise cycle this is');
-    expect(win.genAgentTeams()).toContain('tell the reviewer which revise cycle this is');
+    expect(win.genAgentTeams()).toContain('the SAME teammate, who keeps their full working context');
+    expect(win.genAgentTeams()).toContain('tell them which revise cycle this is');
   });
   it('non-security stories keep the revise edge on the builders (unchanged)', () => {
     resetState();
@@ -8048,6 +8049,58 @@ describe('General agent template (distinct from Researcher)', () => {
     const eff = win.getEffectivePrompt(u);
     expect(eff).toContain('Complete the task: Custom Step: do the special thing.');
     expect(eff.slice(eff.indexOf('\n'))).toBe(win.PROMPTS.general.slice(win.PROMPTS.general.indexOf('\n')));
+  });
+});
+
+describe('Orchestration craft (conductor judgment in the three core formats)', () => {
+  it('emits the craft block in workflow, sub-agents, and teams - not claude or SDK', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const b = win.addNode('agent', 200, 0, 'Reviewer', { agentType:'reviewer', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:8 });
+    win.addConnection(a.id, b.id);
+    ['genWorkflow', 'genSubAgents', 'genAgentTeams'].forEach(g => {
+      const out = win[g]();
+      expect(out).toContain('Orchestration craft');
+      expect(out).toContain('Brief down, do not dump');
+      expect(out).toContain('Grade gates on evidence, honestly');
+      expect(out).toContain('blockers verbatim');
+    });
+    expect(win.genClaudePrompt()).toNotContain('Orchestration craft');
+    expect(win.genAgentSDK()).toNotContain('Orchestration craft');
+  });
+  it('fan-in reconciliation appears only when the workflow has a parallel fork', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Solo', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    expect(win.genSubAgents()).toNotContain('Reconcile fan-in');
+    const f = win.addNode('parallel', 200, 0, 'Fork', {});
+    const w1 = win.addNode('agent', 400, 0, 'W1', { agentType:'coder', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:10 });
+    const w2 = win.addNode('agent', 400, 200, 'W2', { agentType:'coder', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(a.id, f.id); win.addConnection(f.id, w1.id); win.addConnection(f.id, w2.id);
+    expect(win.genSubAgents()).toContain('Reconcile fan-in');
+    expect(win.genSubAgents()).toContain('Concatenated contradictions are not a synthesis');
+  });
+  it('failure handling is format-fitted: retry-with-learning in workflow, no-absorption in sub-agents/teams', () => {
+    resetState();
+    win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    expect(win.genWorkflow()).toContain('learn before you retry');
+    expect(win.genWorkflow()).toNotContain('without absorbing it');
+    expect(win.genSubAgents()).toContain('Handle step failure without absorbing it');
+    expect(win.genAgentTeams()).toContain('Handle step failure without absorbing it');
+  });
+  it('genWorkflow implementation notes match the single-session execution model (contradiction fixed)', () => {
+    resetState();
+    win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const wf = win.genWorkflow();
+    expect(wf).toContain('Run each step yourself in order');
+    expect(wf).toNotContain('spawn sub-agents for each step');
+  });
+  it('the explain anatomy shows the craft row (emitted core formats, skipped claude)', () => {
+    resetState();
+    win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const row = win.explainWorkflow('subagent').find(r => r.part === 'Orchestration craft');
+    expect(row.status).toBe('emitted');
+    expect(win.genSubAgents()).toContain(row.probe);
+    expect(win.explainWorkflow('claude').find(r => r.part === 'Orchestration craft').status).toBe('skipped');
   });
 });
 
@@ -8318,6 +8371,33 @@ describe('Analyst agent type', () => {
 });
 
 describe('Generated-output consistency', () => {
+  it('revise back-edges are not dependencies: step-1 agents never await their own reviewers', () => {
+    resetState();
+    win.loadPreset('incident_rca') || win.loadPreset('rca');
+    const inv = win.state.nodes.find(n => n.label.toLowerCase().includes('investigator'));
+    if (inv) {
+      const deps = win.getDepsWithType(inv.id);
+      expect(deps.join(',')).toNotContain('Verifier');
+    }
+    resetState();
+    win.loadPreset('feature');
+    const planner = win.state.nodes.find(n => (n.config||{}).agentType === 'planner');
+    expect(win.getDepsWithType(planner.id).join(',')).toNotContain('Skeptic');
+    const impl = win.state.nodes.find(n => (n.config||{}).agentType === 'coder');
+    const implDeps = win.getDepsWithType(impl.id).join(',');
+    expect(implDeps).toContain('Planner');   // the reviewed work, not just the verdict on it
+  });
+  it('genWorkflow emits step hints before Instructions (not inside the handoff list)', () => {
+    resetState();
+    win.state.mcpCodeSearch = true;
+    win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const wf = win.genWorkflow();
+    const hintIdx = wf.indexOf('Code search (MCP)');
+    const instrIdx = wf.indexOf('- Instructions:');
+    expect(hintIdx).toBeGreaterThan(-1);
+    expect(instrIdx).toBeGreaterThan(hintIdx);
+  });
+
   it('genWorkflow parallel siblings carry Agent Context, Max turns, and Success gate like sequential steps', () => {
     resetState();
     const f = win.addNode('parallel', 0, 0, 'Fork', {});

@@ -1478,6 +1478,26 @@ function orchestratorIdentity(fmt) {
 // early so the runtime sets the right model from the start instead of inferring it from later role
 // vocabulary (which is how a Sub-Agents prompt could get mis-run as a team). Keyed on the export
 // format; returns [label, body].
+
+// Orchestrator craft - the conductor's judgment, shared by the three core formats
+// (the SDK is programmatic and Claude.ai is single-conversation; delegation craft
+// does not apply there). ONE source for the words; each format keeps its container.
+// hasParallels gates the fan-in line: no fork, no reconciliation to teach.
+function orchestratorCraft(format, hasParallels) {
+  const failure = format === 'prompt'
+    ? '**When a step fails, learn before you retry.** A step whose approach fails gets one fresh attempt informed by what the failure taught you; if it fails again, record the gap and decide - proceed if later steps can succeed without it, stop if they cannot.'
+    : '**Handle step failure without absorbing it.** A step that errors, stalls, or returns something unusable gets ONE re-run with a sharpened brief naming exactly what was unusable. If it fails again, record the gap and decide: proceed if downstream steps can succeed without it, stop if they cannot. Do not quietly do the step\'s job yourself - a silently absorbed step corrupts the run\'s record and buries the failure.';
+  const lines = [
+    '**Orchestration craft.** Conducting this pipeline is a role of its own - the judgment that makes the steps add up:',
+    '- **Brief down, do not dump.** Each step gets a focused brief: its task plus exactly what it needs from prior outputs. The handoff summaries exist so you can pass SIGNAL, not transcripts - forwarding everything is not thoroughness, it buries the one thing the step needed. One coherent brief per step, never a pile of raw upstream.',
+    '- **Grade gates on evidence, honestly.** Evaluate each gate against what is actually in the step\'s output - the verdict line, the named criteria - not against your hopes for the pipeline. Never soften a failure because the run is long or the fix feels close: the gate exists because passing bad work downstream costs more than one more cycle.',
+    '- **Make revise briefs surgical.** On a gate failure, the re-run brief carries the critic\'s blockers verbatim, names what was already acceptable (so the step fixes rather than rewrites), and states the cycle count.',
+    '- ' + failure
+  ];
+  if (hasParallels) lines.push('- **Reconcile fan-in.** When parallel branches disagree or overlap, reconcile before moving on: name the conflict and pick with a reason, or carry it into the next step\'s brief as an explicit open question. Concatenated contradictions are not a synthesis.');
+  return lines;
+}
+
 function executionModelDirective(fmt) {
   fmt = fmt || state.exportFormat;
   const m = {
@@ -8125,6 +8145,10 @@ function explainWorkflow(format) {
     snippet: _rp.summary, probe: '', full: 'Run plan (derived from this exact configuration):\n' + _rp.plan });
   const em = executionModelDirective(format);
   rows.push(exRow('Execution model', true, 'always emitted first - tells the runtime HOW to execute this format', em[0]));
+  const _ocPar = state.nodes.some(n => n.type === 'parallel');
+  rows.push(exRow('Orchestration craft', format !== 'claude',
+    format !== 'claude' ? ('the conductor\'s judgment - briefing discipline, evidence-honest gates, surgical revise briefs, failure handling' + (_ocPar ? ', fan-in reconciliation' : '')) : 'single-conversation format - the delegation craft does not apply',
+    format !== 'claude' ? orchestratorCraft(format, _ocPar) : ''));
   const story = getStory();
   rows.push(exRow('Requirements', !!story, story ? 'from the Requirements field' : 'Requirements field empty - section omitted', story));
   const plan = getPlan();
@@ -8506,11 +8530,23 @@ function getDepNodes(nodeId) {
   const seenLabels = new Set();
   (function walk(id) {
     state.connections.filter(c => c.to === id).forEach(c => {
+      // A gate's failure branch is a revision path, not a dependency: without this
+      // exclusion, step-1 agents are told to await reviewers that run AFTER them
+      // (the same predicate topologicalSort uses - the two must agree).
+      if (isReviseBackEdge(c)) return;
       if (seen.has(c.from)) return;
       seen.add(c.from);
       const from = state.nodes.find(n => n.id === c.from);
       if (!from) return;
-      if (from.type === 'agent') { if (!seenLabels.has(from.label)) { seenLabels.add(from.label); out.push(from); } }
+      if (from.type === 'agent') {
+        if (!seenLabels.has(from.label)) { seenLabels.add(from.label); out.push(from); }
+        // Resolving through a review-loop gate lands on the critic; the step ALSO
+        // needs the reviewed work itself (the plan, not just the verdict on it).
+        if (from.config && from.config.reviewLoopFor) {
+          const reviewed = state.nodes.find(n => n.id === from.config.reviewLoopFor);
+          if (reviewed && reviewed.type === 'agent' && !seenLabels.has(reviewed.label)) { seenLabels.add(reviewed.label); out.push(reviewed); }
+        }
+      }
       else if (from.type === 'parallel' || from.type === 'decision') walk(from.id);
       // input / output nodes are not dependencies
     });
@@ -8700,10 +8736,10 @@ function genWorkflow() {
           p.push(`  - Model: ${getModelLabel(s.config.model)} (\`${getTaskModelParam(s.config.model)}\`)`);
           if (s.config.tools.length > 0) p.push('  - ' + toolAccessText(s.config.tools));
           const _scS = toolScopeNote(s.config.tools); if (_scS) p.push('  - ' + _scS);
-          p.push(`  - Instructions: ${getEffectivePrompt(s)}`);
           const _ddS = datadogStepHint(s); if (_ddS) p.push('  ' + _ddS);
           const _csS = codeSearchStepHint(s); if (_csS) p.push('  ' + _csS);
           const _rhS = recordHandoffHint(); if (_rhS) p.push('  ' + _rhS);
+          p.push(`  - Instructions: ${getEffectivePrompt(s)}`);
           if (s.config.notes && s.config.notes.trim()) p.push(`  - Agent Context: ${s.config.notes.trim()}`);
           if (s.config.maxTurns) p.push(`  - Max turns: ${s.config.maxTurns}`);
           const sDec = getDownstreamDecisions(s.id);
@@ -8721,10 +8757,10 @@ function genWorkflow() {
         p.push(`- Model: ${getModelLabel(node.config.model)} (\`${getTaskModelParam(node.config.model)}\`)`);
         if (node.config.tools.length > 0) p.push('- ' + toolAccessText(node.config.tools));
         const _scN = toolScopeNote(node.config.tools); if (_scN) p.push('- ' + _scN);
-        p.push(`- Instructions: ${getEffectivePrompt(node)}`);
         const _ddN = datadogStepHint(node); if (_ddN) p.push('- ' + _ddN);
         const _csN = codeSearchStepHint(node); if (_csN) p.push('- ' + _csN);
         const _rhN = recordHandoffHint(); if (_rhN) p.push('- ' + _rhN);
+        p.push(`- Instructions: ${getEffectivePrompt(node)}`);
         if (node.config.notes && node.config.notes.trim()) p.push(`- Agent Context: ${node.config.notes.trim()}`);
         if (node.config.maxTurns) p.push(`- Max turns: ${node.config.maxTurns}`);
         if (deps.length > 0) p.push(`- Depends on: ${deps.join(', ')}`);
@@ -8787,11 +8823,11 @@ function genWorkflow() {
 
   p.push('### Implementation Notes');
   p.push('');
-  p.push('- Use Claude Code Task tool to spawn sub-agents for each step');
-  p.push('- Each agent receives the output from its dependencies as input context');
-  p.push('- At each decision point, evaluate the agent output against the criteria before proceeding');
+  p.push('- Run each step yourself in order, adopting its role (single-session model above); spawn Task sub-agents only for steps marked parallel');
+  p.push('- Each step builds on the outputs of its dependencies');
   if (parallels.length > 0) p.push('- Launch parallel steps simultaneously using multiple Task calls in the same message');
-  p.push('- Review each agent output before passing it downstream');
+  p.push('');
+  orchestratorCraft('prompt', parallels.length > 0).forEach(l => p.push(l));
 
   if (state.memoryEnabled) {
     p.push('');
@@ -9062,13 +9098,16 @@ function genSubAgents() {
         p.push(`- If **${d.config.yesLabel || 'Yes'}**: proceed to the next step`);
       }
       if (reviseTargets.length > 0) {
-        p.push(`- If **${d.config.noLabel || 'Revise'}**: re-spawn **${reviseTargets.map(t => t.label).join(', ')}** with the reviewer's feedback as additional context (max ${d.config.maxRevisions || 3} cycles; when re-running, tell the reviewer which revise cycle this is (cycle X of the max))`);
+        p.push(`- If **${d.config.noLabel || 'Revise'}**: re-spawn **${reviseTargets.map(t => t.label).join(', ')}** with the reviewer's feedback as additional context${state.memoryEnabled ? ' (the re-spawned agent recovers its own prior working state from its memory file - point it there)' : ''} (max ${d.config.maxRevisions || 3} cycles; when re-running, tell the reviewer which revise cycle this is (cycle X of the max))`);
       } else {
-        p.push(`- If **${d.config.noLabel || 'Revise'}**: re-spawn the relevant agent with feedback (max ${d.config.maxRevisions || 3} cycles; when re-running, tell the reviewer which revise cycle this is (cycle X of the max))`);
+        p.push(`- If **${d.config.noLabel || 'Revise'}**: re-spawn the relevant agent with feedback${state.memoryEnabled ? ' (the re-spawned agent recovers its own prior working state from its memory file - point it there)' : ''} (max ${d.config.maxRevisions || 3} cycles; when re-running, tell the reviewer which revise cycle this is (cycle X of the max))`);
       }
       p.push('');
     });
   }
+
+  orchestratorCraft('subagent', parallels.length > 0).forEach(l => p.push(l));
+  p.push('');
 
   // Delivery runs ONCE here at the orchestrator level; agents carry branch
   // discipline only (deliveryAgentNote in buildAgentPrompt).
@@ -9279,7 +9318,7 @@ function genAgentTeams() {
       const _rcT = state.connections.filter(c => c.from === d.id && c.label === (d.config.noLabel || 'Revise'));
       const _rtT = _rcT.map(c => state.nodes.find(n => n.id === c.to)).filter(Boolean);
       if (_rtT.length > 0) {
-        p.push(`- If **${d.config.noLabel || 'No'}**: re-assign to **${_rtT.map(t => t.label).join(', ')}** with specific feedback on what needs to change (max ${d.config.maxRevisions || 3} cycles; when re-running, tell the reviewer which revise cycle this is (cycle X of the max) - after that, proceed and document remaining issues)`);
+        p.push(`- If **${d.config.noLabel || 'No'}**: send the feedback back to **${_rtT.map(t => t.label).join(', ')}** - the SAME teammate, who keeps their full working context; do not spawn a replacement (max ${d.config.maxRevisions || 3} cycles; tell them which revise cycle this is (cycle X of the max) - after that, proceed and document remaining issues)`);
       } else {
         p.push(`- If **${d.config.noLabel || 'No'}**: re-assign to the relevant teammate with specific feedback on what needs to change (max ${d.config.maxRevisions || 3} cycles; when re-running, tell the reviewer which revise cycle this is (cycle X of the max) - after that, proceed and document remaining issues)`);
       }
@@ -9305,6 +9344,8 @@ function genAgentTeams() {
   p.push('5. At decision gates, evaluate the output and either proceed or re-assign with feedback');
   p.push('6. If a teammate gets stuck or produces poor output, provide guidance and re-scope');
   p.push('7. When all steps complete, send shutdown_request to all teammates and report final status');
+  p.push('');
+  orchestratorCraft('teams', parallels.length > 0).forEach(l => p.push(l));
 
   if (state.memoryEnabled) {
     p.push('');
