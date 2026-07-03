@@ -45,3 +45,10 @@ Owner ruling reversed the drop: do not shrink a node's prior capability to satis
 
 - [x] WebFetch restored + Agent Context license line (no shared-template edit)
 - [x] Test pinning tools + license; suite green; content-lint
+
+## Update (2026-07-03): r1 parity closed + business finisher (wave A)
+
+Correction to this record's own claim: the research branch did NOT fully mirror the preset - r1 ('Codebase Researcher') kept generic PROMPTS.researcher, 10 turns, no advisory Bash. Now mirrored: researchExplorerPrompt(rMode), 15 turns, +Bash in landscape-advisory mode. Also the analysis branch's Report Writer swapped writerTechnical -> writerBusiness (a cost/usage forecast wants the executive-summary writer, not the developer-docs one).
+
+- [x] r1 mode-aware parity (the record previously overclaimed; now true)
+- [x] Analysis finisher writerBusiness + business tool defaults

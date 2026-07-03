@@ -8,7 +8,7 @@ Branch: main. Status: current.
 
 ## Current behavior
 
-Memory-file writes are protocol-level, not task-level: every per-agent memory-write emission carries memoryWriteAuthNote(), so an agent whose task tools omit Write is still authorized and expected to append to its memory files. The Agent SDK format unions "Write" into the emitted tools=[...] param when memory is on and the node lacks it, with a generated-code comment. Everything sits behind the existing memoryEnabled gates; memory off emits nothing.
+Memory-file writes are protocol-level, not task-level: every per-agent memory-write emission carries memoryWriteAuthNote() ("whether or not `Write` is among its suggested tools"). Under the tool-suggestion semantics (tool-suggestion-semantics.md) the Agent SDK emits no hard tools param, so the former Write-union machinery is gone - nothing blocks, so nothing needs un-blocking. Everything sits behind the existing memoryEnabled gates; memory off emits nothing.
 
 ## Why and scope
 
