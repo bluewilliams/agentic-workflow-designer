@@ -876,6 +876,23 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 </div>
 
+<!-- Themed confirm (replaces native confirm(); z-index above every other overlay) -->
+<div class="help-overlay" id="confirmOverlay" style="z-index:600" onclick="if(event.target===this)confirmModalResolve(false)">
+  <div class="help-modal" style="max-width:440px">
+    <div class="help-header">
+      <h2>Confirm</h2>
+      <button class="help-close" onclick="confirmModalResolve(false)">&times;</button>
+    </div>
+    <div class="help-body">
+      <p id="confirmMessage" style="margin:0 0 14px"></p>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn sm" id="confirmCancelBtn" onclick="confirmModalResolve(false)">Cancel</button>
+        <button class="btn sm primary" id="confirmOkBtn" onclick="confirmModalResolve(true)">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Explain This Workflow Modal (removable with the explain block) -->
 <div class="help-overlay" id="explainOverlay" onclick="if(event.target===this)closeExplain()">
   <div class="help-modal" style="max-width:640px">
@@ -2777,9 +2794,9 @@ function loadSavedWorkflow(slug) {
     }
   } catch(e) { showToast('Failed to load workflow'); }
 }
-function deleteSavedWorkflow(slug, event) {
+function deleteSavedWorkflow(slug, event, _confirmed) {
   if (event) event.stopPropagation();
-  if (!confirm('Delete this saved workflow?')) return;
+  if (!_confirmed) { withConfirm('Delete this saved workflow?', { danger: true, confirmLabel: 'Delete' }, () => deleteSavedWorkflow(slug, null, true)); return; }
   try {
     localStorage.removeItem('awd_wf_' + slug);
     let index = getWorkflowIndex().filter(e => e.slug !== slug);
@@ -3290,7 +3307,7 @@ function genDurableRecordProtocol(fmt) {
   p.push('- (d) Write or update this record\'s entry in the `.workflow/_index.md` breadcrumb index (see Durable Record Index), AND prepend a one-line entry to the chronological `.workflow/_timeline.md` (see Durable Record Index). Add the Contents index if the record grew long.');
   p.push('- (e) Make it the best durable artifact - fill the gaps a cold reader would hit: add any Success criterion, assumption, Risk, follow-up, or navigational aid the work revealed but no single step recorded, and strengthen the Why or a decision\'s rationale if it is thinner than a future maintainer would need. Adding durable context here is as valid as removing transcript noise.');
   p.push('- (f) Strip the in-progress scaffolding (the "Current state / next action" line and the "Resume / handoff" section) and compress the transcript accretion - distilling rather than deleting anything that tells a future reader why a choice was made or shows the work was independently checked. The committed artifact is the requirements (with verifying tests), the approach and decisions, the completed checklist, the Verify results, and the outcome. In short, the orchestrator compresses Verify and Gotchas from running commentary into the durable facts: collapse a verbose per-agent verdict to a single durable line - that an independent review or verification ran, and what it confirmed or changed - rather than dropping it (the fact the work was adversarially checked is durable signal, not noise); collapse duplicate scan-line restatements to one line each; soften line-number references to durable anchors (the symbol, function, or section name, which does not rot as the file changes); distill any transient implementation scaffolding (paste-ready strings, a pre-implementation test plan, step-by-step working notes) into the durable section it belongs in - the file map into Surface area, the decisions into Approach, the realized tests into Verify - and drop whatever the committed code now carries verbatim, so no paste-ready working scaffolding survives; and keep the final facts plus the Built-with provenance line. Compress the transcript accretion, not the reasoning: the committed record must still read like an authored spec (as clean and complete as an OpenSpec or spec-kit document), so a maintainer reading it cold can see what changed and why; never compress away the Why, the decisions and their rejected alternatives, or the durable gotchas. When a detail sits between noise and context, keep it in distilled form - a future agent re-deriving the why costs far more than a couple of retained lines.');
-  p.push('- (g) Completion gate - finalize is not done until ALL of these are true: no in-progress scaffolding remains (no "Current state / next action", no "Resume / handoff"); the status line reads finalized or committable, NOT "in progress"; every Task checklist item is ticked or explicitly marked deferred with a reason; the Outcome is filled; each Requirement scenario names its verifying test; no bare line numbers remain (every code reference is a durable anchor - a symbol, function, or section name); no transient or paste-ready scaffolding remains (it has been distilled into the durable sections or dropped where the committed code now carries it); the `awd:record` fence is present with a status consistent with the checklist and record body; the Current behavior section reads as present-tense truth of the shipped behavior; the fence\'s `verify` commands were ACTUALLY run this session with their real results in the Verify section; no companion documents were created (record + index + timeline are the only durable surfaces); and the `.workflow/_index.md` capability entry is written AND a one-line entry is prepended to the chronological `.workflow/_timeline.md`. If any is false, finalize is incomplete - finish it. A half-finalized record is a failure: it misleads a future reader into thinking the work is still underway. There is no external validator for this system - the agent IS the linter, and this gate is the validation.');
+  p.push('- (g) Completion gate - finalize is not done until ALL of these are true: no in-progress scaffolding remains (no "Current state / next action", no "Resume / handoff"); the status line reads finalized or committable, NOT "in progress"; every Task checklist item is ticked or explicitly marked deferred with a reason; the Outcome is filled; each Requirement scenario names its verifying test; no bare line numbers remain (every code reference is a durable anchor - a symbol, function, or section name); no transient or paste-ready scaffolding remains (it has been distilled into the durable sections or dropped where the committed code now carries it); the `awd:record` fence is present with a status consistent with the checklist and record body; the Current behavior section reads as present-tense truth of the shipped behavior; the fence\'s `verify` commands were ACTUALLY run this session with their real results in the Verify section; no companion documents were created (record + index + timeline are the only durable surfaces); and the `.workflow/_index.md` capability entry is written AND a one-line entry is prepended to the chronological `.workflow/_timeline.md`. This applies to UPDATES of an existing record too: an Update section always gets its own `_timeline.md` line, and the record\'s `_index.md` intent line is REWRITTEN whenever the update changes what a scanner should know - the timeline is the history lens, the index line is current truth, and a stale index line silently hides the newest capability from every future grounding scan. If any is false, finalize is incomplete - finish it. A half-finalized record is a failure: it misleads a future reader into thinking the work is still underway. There is no external validator for this system - the agent IS the linter, and this gate is the validation.');
   p.push('');
   p.push('### Where it lives');
   p.push('- **Single repository**: write it to `' + apath + '` in that repo so it versions with the code (the change to this file lands in the same PR as the implementation).');
@@ -5017,11 +5034,11 @@ function saveCustomPromptForm() {
   rerenderPromptLib();
   showToast(editing ? 'Prompt updated' : 'Prompt added to your library');
 }
-function deleteCustomPrompt(id) {
+function deleteCustomPrompt(id, _confirmed) {
   const arr = getCustomPrompts();
   const p = arr.find(x => x.id === id);
   if (!p) return;
-  if (!confirm('Delete "' + p.title + '"? This cannot be undone.')) return;
+  if (!_confirmed) { withConfirm('Delete "' + p.title + '"? This cannot be undone.', { danger: true, confirmLabel: 'Delete' }, () => deleteCustomPrompt(id, true)); return; }
   saveCustomPrompts(arr.filter(x => x.id !== id));
   rerenderPromptLib();
   showToast('Prompt deleted');
@@ -5242,11 +5259,11 @@ function saveAgentForm() {
   renderAgentPalette(); // a favorited agent's name/role may have changed
   showToast(editing ? 'Agent updated' : 'Agent saved to your library');
 }
-function deleteCustomAgent(id) {
+function deleteCustomAgent(id, _confirmed) {
   const arr = getCustomAgents();
   const a = arr.find(x => x.id === id);
   if (!a) return;
-  if (!confirm('Delete agent "' + a.name + '"? This cannot be undone.')) return;
+  if (!_confirmed) { withConfirm('Delete agent "' + a.name + '"? This cannot be undone.', { danger: true, confirmLabel: 'Delete' }, () => deleteCustomAgent(id, true)); return; }
   saveCustomAgents(arr.filter(x => x.id !== id));
   saveAgentFavs(getAgentFavs().filter(f => f !== id)); // drop any stale favorite
   rerenderAgentLib();
@@ -6189,7 +6206,7 @@ function denoiseForScoring(text) {
   // Safety net: if an unconventional ticket got mostly stripped, score the original instead.
   return result.length >= Math.min(40, text.trim().length * 0.3) ? result : text;
 }
-function generateFromStory() {
+function generateFromStory(_confirmed) {
   const story = $('storyInput').value.trim();
   if (!story) return;
 
@@ -6206,7 +6223,7 @@ function generateFromStory() {
     return;
   }
 
-  if (state.nodes.length > 0 && !confirm('This will replace your current workflow with a generated one. Continue?')) return;
+  if (!_confirmed && state.nodes.length > 0) { withConfirm('This will replace your current workflow with a generated one.', { danger: true, confirmLabel: 'Replace' }, () => generateFromStory(true)); return; }
   pushUndo(); // Single undo point for the entire generation
   _undoBatch = true;
   // Only clear nodes and connections, preserve all user inputs (name, story, repos, app source)
@@ -6896,14 +6913,14 @@ function toggleMorePresets() {
   btn.textContent = open ? 'Fewer presets' : 'More presets\u2026';
 }
 
-function loadPreset(preset) {
+function loadPreset(preset, _confirmed) {
   // Auto-expand the "more" section if the selected preset lives there
   const moreSection = $('presetMore');
   if (moreSection && moreSection.querySelector(`[data-preset="${preset}"]`)) {
     moreSection.classList.add('open');
     $('presetToggle').textContent = 'Fewer presets';
   }
-  if (state.nodes.length > 0 && !confirm('This will replace your current workflow with the selected preset. Continue?')) return;
+  if (!_confirmed && state.nodes.length > 0) { withConfirm('This will replace your current workflow with the selected preset.', { danger: true, confirmLabel: 'Replace' }, () => loadPreset(preset, true)); return; }
   pushUndo(); // Single undo point for the entire preset load
   _undoBatch = true;
   // Only clear nodes and connections, preserve all user inputs (name, story, repos, app source)
@@ -7245,7 +7262,7 @@ function updateStoryPlaceholder(preset) {
 }
 
 function clearCanvas(skipConfirm) {
-  if (!skipConfirm && state.nodes.length > 0 && !confirm('Start a new workflow? This clears all nodes, connections, and inputs.')) return;
+  if (!skipConfirm && state.nodes.length > 0) { withConfirm('Start a new workflow? This clears all nodes, connections, and inputs.', { danger: true, confirmLabel: 'Clear' }, () => clearCanvas(true)); return; }
   if (state.nodes.length > 0) pushUndo();
   state.nodes = [];
   state.connections = [];
@@ -7606,6 +7623,47 @@ function showValidation() {
   $('validationOverlay').classList.add('show');
 }
 function closeValidation() { $('validationOverlay').classList.remove('show'); }
+
+// ── Themed confirm - replaces native confirm(), the last stock-browser UI ──
+// appConfirm(message, opts) -> Promise<boolean>. opts: { confirmLabel, danger }.
+// danger styles the OK button red and focuses CANCEL on open (safe default).
+// Keyboard while open: Enter confirms (unless Cancel is focused), Escape cancels;
+// a capture-phase listener traps all other keys so canvas shortcuts cannot fire.
+// TEST HOOK: when window.__autoConfirm is defined, resolves with it immediately
+// (the headless rig sets true, mirroring the old win.confirm stub). withConfirm()
+// is the call-site helper: under the hook it short-circuits SYNCHRONOUSLY so the
+// suite's sync call sites stay valid; without it, modal round-trip then proceed().
+let _confirmResolve = null;
+function appConfirm(message, opts) {
+  opts = opts || {};
+  if (typeof window.__autoConfirm !== 'undefined') return Promise.resolve(!!window.__autoConfirm);
+  return new Promise(resolve => {
+    const overlay = $('confirmOverlay');
+    $('confirmMessage').innerHTML = escHtml(message).replace(/\n/g, '<br>');
+    const okBtn = $('confirmOkBtn'), cancelBtn = $('confirmCancelBtn');
+    okBtn.textContent = opts.confirmLabel || 'OK';
+    okBtn.className = 'btn sm ' + (opts.danger ? 'danger' : 'primary');
+    const keyHandler = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); confirmModalResolve(false); return; }
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirmModalResolve(document.activeElement !== cancelBtn); return; }
+      if (e.key !== 'Tab') e.stopPropagation();
+    };
+    _confirmResolve = (v) => {
+      _confirmResolve = null;
+      window.removeEventListener('keydown', keyHandler, true);
+      overlay.classList.remove('show');
+      resolve(v);
+    };
+    window.addEventListener('keydown', keyHandler, true);
+    overlay.classList.add('show');
+    (opts.danger ? cancelBtn : okBtn).focus();
+  });
+}
+function confirmModalResolve(v) { if (_confirmResolve) _confirmResolve(v); }
+function withConfirm(message, opts, proceed) {
+  if (typeof window.__autoConfirm !== 'undefined') { if (window.__autoConfirm) proceed(); return; }
+  appConfirm(message, opts).then(ok => { if (ok) proceed(); });
+}
 
 // ═══════════════════════════════════════════════════════════
 // EXPLAIN THIS WORKFLOW (removable block)
@@ -10673,6 +10731,9 @@ function copyTuningPrompt() {
   const text = genTuningPrompt();
   if (!text) { showToast('No run reports imported for this workflow yet - import an awd:run report first'); return; }
   const secrets = scanForSecrets(state.nodes.map(n => (n.config.prompt || '') + (n.config.notes || '')).join('\n'));
+  // Deliberate native confirm(): a themed-modal round-trip would move the clipboard
+  // write out of the original gesture's task, and the headless rig stubs the clipboard
+  // so the change is not provable there. The stock dialog stays until verified in real browsers.
   if (secrets.length > 0 && !confirm('Possible secrets detected in your inputs: ' + secrets.join(', ') + '.\n\nThese will be included in the copied prompt. Continue?')) return;
   navigator.clipboard.writeText(text)
     .then(() => showToast('Tuning prompt copied - paste it to Claude, then import the returned JSON'))
@@ -10893,6 +10954,7 @@ function copyPrompt() {
     $('planInput') ? $('planInput').value : ''
   ].concat(state.nodes.map(n => (n.config.prompt || '') + (n.config.notes || '')));
   const secrets = scanForSecrets(allInput.join('\n'));
+  // Deliberate native confirm(): same clipboard-gesture reasoning as copyTuningPrompt.
   if (secrets.length > 0 && !confirm('Possible secrets detected in your inputs: ' + secrets.join(', ') + '.\n\nThese will be included in the copied prompt. Continue?')) return;
   navigator.clipboard.writeText(text).then(() => {
     if (emptyAgents.length > 0) {
