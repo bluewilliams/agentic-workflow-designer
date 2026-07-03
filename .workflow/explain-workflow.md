@@ -54,3 +54,19 @@ Two owner-driven refinements after first use. (1) Truncated rows now unfold IN P
 Follow-on within the same update: the unfold check missed single-line rows truncated at the 120-char snippet cap (a long one-line Requirements had an unreachable tail) - expandable now also triggers on a truncated snippet; and the workflow-level Memory/Durable protocol rows carried header-only literals as their text, so they had nothing to unfold - they now pass the real protocol text (genMemoryProtocol / genSingleAgentMemoryProtocol / genDurableRecordProtocol; the sub-agent memory header stays literal, its block is inline in the generator). Probes unchanged, agreement tests green. +1 test (workflow-level unfold: requirements tail + shared.md reachable). 1303 -> 1304.
 
 - [x] Truncated-single-line unfold + full protocol text on workflow-level rows
+
+## Update (same day): The orchestrator capstone row
+
+Owner asked where the orchestrator lives in the anatomy - and the honest answer was "everywhere, unlabeled": the workflow-level Explain IS the orchestrator's brief, but nothing said so. explainWorkflow now leads with a capstone row, "The orchestrator": not a canvas node, it is <orchestratorIdentity(format)> - the top-level agent this entire document programs; every row below is part of its brief, and the canvas nodes are the steps it <spawns as sub-agents / delegates as team lead / plays in turn / executes in sequence>. The reason line summarizes its duties in THIS configuration (gate count, delivery ownership, durable-record maintenance or memory anchoring when toggled, run-report emission) - all derived from the same state the generators read. Empty snippet by design (conceptual row; nothing verbatim to probe, so the agreement matrix is untouched). +1 test pinning the row, its format verbs, and duty toggling.
+
+- [x] Capstone row + per-format execution verb + configuration-derived duties
+- [x] Test: leads the rows, duties reflect toggles/gates; suite green; content-lint
+
+## Update (same day): the orchestrator run plan
+
+Owner asked for something dynamic that makes the orchestrator row as browseable as the rest. New pure builder orchestratorRunPlan(format) derives the itinerary the orchestrator will actually follow from the SAME sources the generators read: conditional kickoff items (Atlassian resolve-once when URLs present, the .workflow grounding scan when consumeRecords, the bounded Datadog read when mcpDatadog, record creation + up-front checklist when durable), an execution sequence that mirrors the generators' emitted-set walk exactly (format-appropriate verb per step, parallel groups launched once with their strategyJoinPhrase, gate lines after their feeders with the generators' label fallbacks and revise routing + cycle caps, deduped per gate), and close-out (delivery winner, record finalize when on, the awd:run fence always). The capstone row's snippet is now a summary line (N steps, P parallel groups, G gates with worst-case +K revise spawns, critical path D - D from the revise-edge-excluded DAG via isReviseBackEdge, cycle-guarded; zero clauses omitted, critical path shown only when it differs from N) and [view full] unfolds the numbered plan. Built by hand rather than exRow so probe stays '' - the plan is synthesized prose, and the agreement matrix must never grep generated output for it (all matrix tests guard on probe truthiness, verified). One test-authoring correction: consumeRecords defaults ON, so a fresh workflow legitimately has a kickoff item - the no-kickoff assertion now turns the toggle off first (test fixed, not code). +3 tests. 1311 -> 1314.
+
+- [x] orchestratorRunPlan builder (kickoff / execution walk / close-out / summary numbers)
+- [x] Capstone row wiring (snippet=summary, full=plan, probe='' - no agreement leakage)
+- [x] Tests: topo+gate order, parallel once + join phrase + critical path, toggle tracking, DOM unfold, format verbs
+- [x] Help modal clause; suite green; content-lint

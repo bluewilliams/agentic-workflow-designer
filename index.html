@@ -1078,7 +1078,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <h3>Workflow Advisor</h3>
 <p>Click the health indicator to open the review modal. Below any issues, a lightbulb <b>Suggestions</b> group offers non-blocking advice: unreviewed build paths (one-click <b>Attach Skeptic</b>), fan-outs that never synthesize, solo agents shipping code, read-only roles holding write tools, starved turn budgets - and, once run reports are ingested, telemetry-informed tuning (gates that loop, steps that cap out or fail). Suggestions never affect the badge count and never block generation.</p>
 <h3>Explain This Workflow</h3>
-<p>Generated prompts are compositions - templates, tool lines, hints, protocols, gates - each with its own firing condition. <strong>Explain</strong> (next to Copy) opens the anatomy of the selected format at the workflow level; <strong>Explain Step</strong> (beside it) shows the per-step parts for the node selected on the canvas: emitted or skipped, why (which toggle, which role set, which condition), and a snippet of what is emitted. The statuses come from the same helpers the generators use, and agreement tests pin them to the real output.</p>
+<p>Generated prompts are compositions - templates, tool lines, hints, protocols, gates - each with its own firing condition. <strong>Explain</strong> (next to Copy) opens the anatomy of the selected format at the workflow level; <strong>Explain Step</strong> (beside it) shows the per-step parts for the node selected on the canvas: emitted or skipped, why (which toggle, which role set, which condition), and a snippet of what is emitted. The statuses come from the same helpers the generators use, and agreement tests pin them to the real output. The workflow view opens with the orchestrator's run plan: a numbered kickoff / execution / close-out itinerary derived from your exact configuration, with a summary of steps, parallel groups, gates (worst-case revise spawns), and critical path.</p>
 
 <h3>Prompt Library</h3>
 <p>Click the <strong>Prompts</strong> button in the toolbar for a library of ready-to-use prompts. Use the search box to filter by title or description. Star your favorites and they float to the top. Prompts that need your input (like a file path or bug description) show a popup before copying so the prompt is ready to paste.</p>
@@ -7879,12 +7879,133 @@ function explainNode(node, format) {
   return [exRow('Note', true, node.type + ' nodes shape the plan sections; see the workflow-level Explain for the orchestrator anatomy', '')];
 }
 
+// The orchestrator's RUN PLAN: the numbered itinerary it will actually follow, derived
+// from the SAME sources the generators read (topo order, the fork grouping and
+// emitted-set walk, direct gate routing with the generators' label fallbacks, the
+// kickoff/close-out toggles). Pure: returns {summary, plan}. The plan is synthesized
+// prose, not emitted text - the capstone row carries it with probe:'' so the agreement
+// matrix never greps generated output for it.
+function orchestratorRunPlan(format) {
+  format = format || state.exportFormat;
+  const ordered = topologicalSort();
+  const agents = ordered.filter(nd => nd.type === 'agent');
+  const decisions = state.nodes.filter(nd => nd.type === 'decision');
+  const verb = format === 'subagent' ? 'Spawn' : format === 'teams' ? 'Delegate to' : 'Run';
+  const lines = [];
+  let num = 1;
+  const item = t => lines.push('  ' + (num++) + '. ' + t);
+
+  const kick = [];
+  if (getWorkflowAtlassianUrls().length > 0) kick.push('Resolve the Atlassian ticket(s) once, up front - the resolved spec becomes the source for the plan');
+  if (state.consumeRecords) kick.push('Ground in prior records: scan .workflow/ (timeline, then index, then only the matched records)');
+  if (state.mcpDatadog) kick.push('Bounded Datadog read to shape the plan (self-gated on telemetry relevance)');
+  if (state.memoryEnabled && state.durableRecord) kick.push('Create the durable record and author its task checklist up front');
+  if (kick.length) { lines.push('Kickoff:'); kick.forEach(item); }
+
+  const parallelChildren = new Set();
+  const nodeToForkId = {};
+  state.nodes.filter(nd => nd.type === 'parallel').forEach(par => {
+    state.connections.filter(c => c.from === par.id).forEach(c => {
+      parallelChildren.add(c.to);
+      nodeToForkId[c.to] = par.id;
+    });
+  });
+  const gateDone = new Set();
+  const emitGates = a => {
+    getDownstreamDecisions(a.id).forEach(d => {
+      if (gateDone.has(d.id)) return;
+      gateDone.add(d.id);
+      const yes = d.config.yesLabel || 'Yes', no = d.config.noLabel || 'No';
+      const passT = state.connections.filter(c => c.from === d.id && c.label === yes).map(c => state.nodes.find(x => x.id === c.to)).filter(x => x && x.type === 'agent');
+      const revT = state.connections.filter(c => c.from === d.id && c.label === no).map(c => state.nodes.find(x => x.id === c.to)).filter(Boolean);
+      item("Evaluate '" + (d.config.condition || d.label) + "': " + yes + ' -> ' + (passT.length ? passT.map(t => t.label).join(', ') : 'continue') + '; ' + no + ' -> re-run ' + (revT.length ? revT.map(t => t.label).join(', ') : 'the previous step') + ' with feedback (max ' + (d.config.maxRevisions || 3) + ' cycles)');
+    });
+  };
+  if (agents.length) lines.push('Execution:');
+  const emitted = new Set();
+  let i = 0;
+  while (i < agents.length) {
+    const node = agents[i];
+    if (emitted.has(node.id)) { i++; continue; }
+    if (parallelChildren.has(node.id)) {
+      const siblings = agents.filter(a => nodeToForkId[a.id] === nodeToForkId[node.id]);
+      item('Launch ' + siblings.map(s => s.label).join(', ') + ' together - ' + strategyJoinPhrase(forkStrategyOf(nodeToForkId[node.id])));
+      siblings.forEach(s => { emitted.add(s.id); });
+      siblings.forEach(emitGates);
+    } else {
+      item(verb + ' ' + node.label + ' (' + getAgentTypeName(node.config.agentType) + ')');
+      emitted.add(node.id);
+      emitGates(node);
+    }
+    i++;
+  }
+
+  lines.push('Close-out:');
+  const dfmts = deliveryFormats();
+  const dwinner = dfmts.includes('pr') ? 'Pull Request Creation' : dfmts.includes('commit') ? 'Commit' : dfmts.includes('report') ? 'Report' : dfmts.includes('docs') ? 'Documentation' : 'no-commit discipline (leave changes uncommitted for review)';
+  item('Deliver via ' + dwinner);
+  if (state.memoryEnabled && state.durableRecord) item('Finalize the durable record: tick remaining boxes, rewrite Current behavior as shipped truth, run the self-lint gate');
+  item('End the final message with the awd:run report fence');
+
+  // Summary numbers. Critical path = longest agent-count chain over the revise-edge-
+  // excluded DAG (same exclusion the ordering uses); cycle-guarded for hand-built loops.
+  const N = agents.length;
+  const P = new Set(agents.filter(a => nodeToForkId[a.id]).map(a => nodeToForkId[a.id])).size;
+  const G = decisions.length;
+  const K = decisions.reduce((sum, d) => {
+    const hasRevise = state.connections.some(c => c.from === d.id && c.label === (d.config.noLabel || 'No'));
+    return sum + (hasRevise ? (d.config.maxRevisions || 3) : 0);
+  }, 0);
+  const adj = {};
+  state.nodes.forEach(nd => { adj[nd.id] = []; });
+  state.connections.forEach(c => { if (!isReviseBackEdge(c) && adj[c.from]) adj[c.from].push(c.to); });
+  const memo = {}, onStack = {};
+  const longest = id => {
+    if (memo[id] !== undefined) return memo[id];
+    if (onStack[id]) return 0;
+    onStack[id] = true;
+    const nd = state.nodes.find(x => x.id === id);
+    let best = 0;
+    adj[id].forEach(t => { best = Math.max(best, longest(t)); });
+    onStack[id] = false;
+    memo[id] = ((nd && nd.type === 'agent') ? 1 : 0) + best;
+    return memo[id];
+  };
+  const D = state.nodes.length ? Math.max(0, ...state.nodes.map(nd => longest(nd.id))) : 0;
+  const parts = [N + ' step' + (N === 1 ? '' : 's')];
+  if (P > 0) parts.push(P + ' parallel group' + (P === 1 ? '' : 's'));
+  if (G > 0) parts.push(G + ' gate' + (G === 1 ? '' : 's') + (K > 0 ? ' (worst case +' + K + ' revise spawn' + (K === 1 ? '' : 's') + ')' : ''));
+  if (D > 0 && D !== N) parts.push('critical path ' + D + ' steps');
+  return { summary: parts.join(', '), plan: lines.join('\n') };
+}
+
 function explainWorkflow(format) {
   format = format || state.exportFormat;
   if (format === 'sdk') {
     return [exRow('Agent SDK', true, 'Python skeleton: the tools=[...] param is the only true enforcement point; per-step MCP hints are deliberately excluded (pinned by tests); clarify/Datadog toggles render as comment banners', '')];
   }
   const rows = [];
+  // Capstone framing row: the orchestrator is not a canvas node, and users go looking
+  // for it (owner asked "where is the orchestrator?"). This whole document IS its brief;
+  // the row says so and summarizes its duties in THIS workflow's configuration.
+  const _oExec = format === 'subagent' ? 'spawns as sub-agents via the Task tool'
+    : format === 'teams' ? 'delegates to teammates as the team lead'
+    : format === 'claude' ? 'plays in turn within one conversation'
+    : 'executes in sequence in one context';
+  const _oGates = state.nodes.filter(n => n.type === 'decision').length;
+  const _oDuties = [];
+  if (_oGates > 0) _oDuties.push('evaluates ' + _oGates + ' decision gate' + (_oGates > 1 ? 's' : ''));
+  _oDuties.push('owns the delivery');
+  if (state.memoryEnabled && state.durableRecord) _oDuties.push('creates and maintains the durable record, transcribing each step\'s DONE lines');
+  else if (state.memoryEnabled) _oDuties.push('anchors the memory protocol');
+  _oDuties.push('emits the run-report fence at the end');
+  // Built by hand (not exRow): the run plan is synthesized prose, so probe stays ''
+  // and the agreement matrix never greps generated output for it; snippet/full still
+  // drive the standard [view full] unfold.
+  const _rp = orchestratorRunPlan(format);
+  rows.push({ part: 'The orchestrator', status: 'emitted',
+    reason: 'not a canvas node: it is ' + orchestratorIdentity(format) + ' - the top-level agent this entire document programs. Every row below is part of its brief; the canvas nodes are the steps it ' + _oExec + '. In this workflow it ' + _oDuties.join(', ') + '.',
+    snippet: _rp.summary, probe: '', full: 'Run plan (derived from this exact configuration):\n' + _rp.plan });
   const em = executionModelDirective(format);
   rows.push(exRow('Execution model', true, 'always emitted first - tells the runtime HOW to execute this format', em[0]));
   const story = getStory();
