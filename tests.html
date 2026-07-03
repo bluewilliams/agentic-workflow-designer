@@ -4838,7 +4838,7 @@ describe('Verification instructions', () => {
   beforeEach(() => { resetState(); });
 
   // Distinctive assertable markers (grepped absent elsewhere before use).
-  const BEAT_MARK = 'Verification instructions (testers / verifiers)';
+  const BEAT_MARK = 'Verification instructions (verifier / tester owned)';
   const STEP_MARK = 'executed-with-result';
 
   // Minimal input -> agent -> output workflow with a single agent node of the given config.
@@ -4852,6 +4852,22 @@ describe('Verification instructions', () => {
     return agent;
   }
 
+  // input -> a1 -> a2 -> ... -> output chain; returns the agent nodes in order.
+  function workflowChain(agentTypes) {
+    resetState();
+    const input = win.addNode('input', 100, 200, 'Requirements');
+    let prev = input;
+    const agents = agentTypes.map((t, i) => {
+      const a = win.addNode('agent', 300 + i * 200, 200, t + ' ' + i, { agentType: t, model: 'opus-4.6', tools: ['Read'], prompt: 'Do ' + t + ' work.', maxTurns: 5 });
+      win.addConnection(prev.id, a.id);
+      prev = a;
+      return a;
+    });
+    const output = win.addNode('output', 300 + agentTypes.length * 200, 200, 'Done', { deliverable: 'Result', format: 'code' });
+    win.addConnection(prev.id, output.id);
+    return agents;
+  }
+
   describe('UI', () => {
     it('DOM ids exist: verifyPathInput, verifyPathChips, verifyPathClear, verifyFailRunToggle, with label text', () => {
       const doc = win.document;
@@ -4860,7 +4876,7 @@ describe('Verification instructions', () => {
       expect(!!doc.getElementById('verifyPathClear')).toBe(true);
       expect(!!doc.getElementById('verifyFailRunToggle')).toBe(true);
       const html = doc.querySelector('body').innerHTML;
-      expect(html).toContain('Verification instructions (testers / verifiers)');
+      expect(html).toContain('Verification instructions (verifier / tester owned)');
       expect(html).toContain('Unmet required verifications fail the run');
     });
     it('verifyFailRunToggle is checked by default in the shipped DOM', () => {
@@ -4941,7 +4957,7 @@ describe('Verification instructions', () => {
     it('openSpecContextBlock forwards verify paths compactly when non-empty', () => {
       win.state.verifyPaths = ['VERIFY.md'];
       const ctx = win.openSpecContextBlock();
-      expect(ctx).toContain('Verification instructions (testers / verifiers');
+      expect(ctx).toContain('Verification instructions (verifier / tester owned');
       expect(ctx).toContain('VERIFY.md');
       win.state.verifyPaths = [];
     });
@@ -4970,7 +4986,8 @@ describe('Verification instructions', () => {
       const h = win.verifyInstructionsHint();
       expect(h).toContain('root-level match');
       expect(h).toContain('blast area intersects');
-      expect(h).toContain('route them into the tester, verifier, and reviewer');
+      expect(h).toContain('OWNING verification step');
+      expect(h).toContain('never replace it');
       expect(h).toContain('MUST or required');
       expect(h).toContain('durable record');
       expect(h).toContain('awd:run fence notes');
@@ -4986,29 +5003,61 @@ describe('Verification instructions', () => {
     });
   });
 
-  describe('per-step role targeting', () => {
+  describe('per-step owner resolution (mandates go to exactly ONE step)', () => {
     beforeEach(() => { win.state.verifyPaths = ['VERIFY.md']; });
     afterEach(() => { win.state.verifyPaths = []; });
 
-    it('tester / verifier / reviewer receive the step hint', () => {
-      expect(win.verifyInstructionsStepHint({ config: { agentType: 'tester' } })).toContain(STEP_MARK);
-      expect(win.verifyInstructionsStepHint({ config: { agentType: 'verifier' } })).toContain(STEP_MARK);
-      expect(win.verifyInstructionsStepHint({ config: { agentType: 'reviewer' } })).toContain(STEP_MARK);
+    it('the verifier owns the mandates when the workflow has one - the upstream tester receives nothing', () => {
+      const [tester, verifier] = workflowChain(['tester', 'verifier']);
+      win.state.verifyPaths = ['VERIFY.md'];
+      expect(win.resolveVerifyOwnerId()).toBe(verifier.id);
+      expect(win.verifyInstructionsStepHint(verifier)).toContain(STEP_MARK);
+      expect(win.verifyInstructionsStepHint(tester)).toBe('');
     });
-    it('planner / coder / architect / writer / adversary do NOT receive the step hint', () => {
+    it('with no verifier, the LAST tester owns the mandates; an earlier tester receives nothing', () => {
+      const [t1, t2] = workflowChain(['tester', 'tester']);
+      win.state.verifyPaths = ['VERIFY.md'];
+      expect(win.resolveVerifyOwnerId()).toBe(t2.id);
+      expect(win.verifyInstructionsStepHint(t2)).toContain(STEP_MARK);
+      expect(win.verifyInstructionsStepHint(t1)).toBe('');
+    });
+    it('reviewers never receive the mandates - they audit, they do not execute', () => {
+      const [reviewer, tester] = workflowChain(['reviewer', 'tester']);
+      win.state.verifyPaths = ['VERIFY.md'];
+      expect(win.verifyInstructionsStepHint(reviewer)).toBe('');
+      expect(win.verifyInstructionsStepHint(tester)).toContain(STEP_MARK);
+    });
+    it('planner / coder / architect / writer / adversary never own the mandates', () => {
       ['planner', 'coder', 'architect', 'writer', 'adversary'].forEach(role => {
-        expect(win.verifyInstructionsStepHint({ config: { agentType: role } })).toBe('');
+        const [roleNode, tester] = workflowChain([role, 'tester']);
+        win.state.verifyPaths = ['VERIFY.md'];
+        expect(win.verifyInstructionsStepHint(roleNode)).toBe('');
+        expect(win.verifyInstructionsStepHint(tester)).toContain(STEP_MARK);
       });
     });
-    it('empty list -> step hint is empty even for a tester', () => {
-      win.state.verifyPaths = [];
-      expect(win.verifyInstructionsStepHint({ config: { agentType: 'tester' } })).toBe('');
+    it('a workflow with no verification-class step has no owner and emits no step hint anywhere', () => {
+      const [coder] = workflowChain(['coder']);
+      win.state.verifyPaths = ['VERIFY.md'];
+      expect(win.resolveVerifyOwnerId()).toBe(null);
+      expect(win.verifyInstructionsStepHint(coder)).toBe('');
     });
-    it('VERIFY_STEP_ROLES excludes adversary (skeptic reasons, does not execute verifications)', () => {
-      expect(win.VERIFY_STEP_ROLES.has('adversary')).toBe(false);
-      expect(win.VERIFY_STEP_ROLES.has('tester')).toBe(true);
-      expect(win.VERIFY_STEP_ROLES.has('verifier')).toBe(true);
-      expect(win.VERIFY_STEP_ROLES.has('reviewer')).toBe(true);
+    it('empty list -> step hint is empty even for the owner', () => {
+      const [tester] = workflowChain(['tester']);
+      win.state.verifyPaths = [];
+      expect(win.verifyInstructionsStepHint(tester)).toBe('');
+    });
+    it('VERIFY_OWNER_ROLES: verifier and tester own; reviewer and adversary do not (they audit or critique)', () => {
+      expect(win.VERIFY_OWNER_ROLES.has('verifier')).toBe(true);
+      expect(win.VERIFY_OWNER_ROLES.has('tester')).toBe(true);
+      expect(win.VERIFY_OWNER_ROLES.has('reviewer')).toBe(false);
+      expect(win.VERIFY_OWNER_ROLES.has('adversary')).toBe(false);
+    });
+    it('the owner hint states the mandates are additive, not a substitute for its own method', () => {
+      const [tester] = workflowChain(['tester']);
+      win.state.verifyPaths = ['VERIFY.md'];
+      const h = win.verifyInstructionsStepHint(tester);
+      expect(h).toContain('IN ADDITION to your own verification method');
+      expect(h).toContain('extend the definition of done, they do not narrow it');
     });
     it('step hint is generation-only: node-config display omits it even with paths set', () => {
       const node = win.addNode('agent', 350, 200, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
@@ -5047,7 +5096,7 @@ describe('Verification instructions', () => {
 // format, real-DOM sidebar interaction, renderVerifyRows, and the awd:meta
 // posture-serialization guard (explicit false).
 describe('Verification instructions (run-level matrix)', () => {
-  const BEAT_MARK = 'Verification instructions (testers / verifiers)';
+  const BEAT_MARK = 'Verification instructions (verifier / tester owned)';
   const STEP_MARK = 'executed-with-result';
 
   function workflowWith(agentLabel, agentConfig) {
@@ -5213,6 +5262,177 @@ describe('Verification instructions (run-level matrix)', () => {
 });
 
 // ─── Suite 13: Implementation Plan ──────────────────────────
+// ─── Suite 12e: Agent craft batch (found-defect protocol, spot-mutation, verifier
+// strengthening, Verification ledger, Found bugs, polish) ─────────────────────
+describe('Agent craft batch', () => {
+  beforeEach(() => { resetState(); });
+
+  function chain(agentTypes) {
+    resetState();
+    const input = win.addNode('input', 100, 200, 'Requirements');
+    let prev = input;
+    const agents = agentTypes.map((t, i) => {
+      const a = win.addNode('agent', 300 + i * 200, 200, t + ' ' + i, { agentType: t, model: 'opus-4.6', tools: ['Read'], prompt: 'Do ' + t + ' work.', maxTurns: 5 });
+      win.addConnection(prev.id, a.id);
+      prev = a;
+      return a;
+    });
+    const output = win.addNode('output', 300 + agentTypes.length * 200, 200, 'Done', { deliverable: 'Result', format: 'code' });
+    win.addConnection(prev.id, output.id);
+    return agents;
+  }
+
+  describe('found-defect protocol (item 1)', () => {
+    it('building and testing roles carry the protocol; plan/review/critique roles do not', () => {
+      ['coder', 'debugger', 'tester', 'verifier', 'backend', 'frontend', 'general'].forEach(role => {
+        expect(win.foundDefectNote({ config: { agentType: role } })).toContain('never work around');
+      });
+      ['planner', 'architect', 'reviewer', 'adversary', 'writer', 'researcher', 'analyst'].forEach(role => {
+        expect(win.foundDefectNote({ config: { agentType: role } })).toBe('');
+      });
+    });
+    it('carries the three tiers: blocking fix, in-passing fix with real coverage, record-and-defer', () => {
+      const n = win.foundDefectNote({ config: { agentType: 'coder' } });
+      expect(n).toContain('BLOCKS your task');
+      expect(n).toContain('one assertion or an entire suite');
+      expect(n).toContain('low-hanging fruit');
+      expect(n).toContain('balloon into its own project');
+      expect(n).toContain('Found bugs section');
+      expect(n).toContain('fixes ride your declared diff');
+      expect(n).toNotContain('—');
+    });
+    it('a coder step carries the protocol end-to-end in generated prompts; a planner step does not', () => {
+      chain(['coder']);
+      expect(win.genSubAgents()).toContain('Found a pre-existing defect');
+      chain(['planner']);
+      expect(win.genSubAgents()).toNotContain('Found a pre-existing defect');
+    });
+    it('the reviewer template treats a DECLARED pre-existing-defect fix as in scope', () => {
+      expect(win.PROMPTS.reviewer).toContain('DECLARED pre-existing-defect fix');
+      expect(win.PROMPTS.reviewer).toContain('judge its correctness, not its presence');
+    });
+  });
+
+  describe('spot-mutation tester default (item 3)', () => {
+    it('the tester template closes by proving its tests can fail', () => {
+      expect(win.PROMPTS.tester).toContain('prove your tests can fail');
+      expect(win.PROMPTS.tester).toContain('confirm the suite goes red, then revert');
+      expect(win.PROMPTS.tester).toContain('mutation-proofed');
+      expect(win.PROMPTS.tester).toContain('say you skipped');
+    });
+    it('the help modal names full mutation testing as a repo-mandated verification check', () => {
+      expect(win.document.body.innerHTML).toContain('stryker');
+    });
+  });
+
+  describe('verifier strengthening (item 4)', () => {
+    it('names the escalation-tier intent', () => {
+      expect(win.PROMPTS.verifier).toContain('escalation tier');
+      expect(win.PROMPTS.verifier).toContain('beyond the tester');
+    });
+    it('provided verification steps are additive, never a replacement for judgment', () => {
+      expect(win.PROMPTS.verifier).toContain('IN ADDITION to, never instead of');
+      expect(win.PROMPTS.verifier).toContain('extend the definition of done, they do not narrow it');
+    });
+    it('enumerates the definition of done as a checklist before exercising', () => {
+      expect(win.PROMPTS.verifier).toContain('CHECKLIST before exercising anything');
+      expect(win.PROMPTS.verifier).toContain('command-and-output evidence');
+    });
+    it('bootstraps a harness from the repo rig and always removes scratch artifacts', () => {
+      expect(win.PROMPTS.verifier).toContain('test rig or harness pattern');
+      expect(win.PROMPTS.verifier).toContain('remove scratch artifacts before finishing');
+    });
+    it('asserts the precise contract form, never a loose substring', () => {
+      expect(win.PROMPTS.verifier).toContain('precise contract form');
+      expect(win.PROMPTS.verifier).toContain('look-alike strings');
+    });
+    it('demands the largest executable slice when the whole system cannot run - never wholesale trace-only', () => {
+      expect(win.PROMPTS.verifier).toContain('exercise the largest slice you CAN');
+      expect(win.PROMPTS.verifier).toContain('expanding minimally beyond the changed surface');
+      expect(win.PROMPTS.verifier).toContain('one criterion at a time, never wholesale');
+    });
+    it('degrades honestly under budget pressure: highest-risk first, remainder reported not-verified', () => {
+      expect(win.PROMPTS.verifier).toContain('highest-risk criteria first');
+    });
+  });
+
+  describe('Verification ledger + Found bugs record sections (items 2 and 5)', () => {
+    function durableOn() { win.state.memoryEnabled = true; win.state.durableRecord = true; }
+
+    it('Found bugs is part of the record anatomy whenever the durable record is on', () => {
+      chain(['coder']);
+      durableOn();
+      const proto = win.genDurableRecordProtocol();
+      expect(proto).toContain('**Found bugs**');
+      expect(proto).toContain('a found bug is work someone should do');
+      expect(proto).toContain('deferred pre-existing defect');
+    });
+    it('the Verification ledger emits when the workflow runs a verifier', () => {
+      chain(['coder', 'verifier']);
+      durableOn();
+      const proto = win.genDurableRecordProtocol();
+      expect(proto).toContain('**Verification ledger**');
+      expect(proto).toContain('append-and-tick');
+      expect(proto).toContain('re-confirmed by X');
+      expect(proto).toContain('independent verification ran (see Verification ledger)');
+    });
+    it('the ledger also emits when repo mandates are configured, even without a verifier', () => {
+      chain(['tester']);
+      durableOn();
+      win.state.verifyPaths = ['VERIFY.md'];
+      const proto = win.genDurableRecordProtocol();
+      expect(proto).toContain('**Verification ledger**');
+      expect(proto).toNotContain('independent verification ran');
+      win.state.verifyPaths = [];
+    });
+    it('no verifier and no mandates -> no ledger, no spec-quality verification box; Found bugs stays', () => {
+      chain(['coder']);
+      durableOn();
+      win.state.verifyPaths = [];
+      const proto = win.genDurableRecordProtocol();
+      expect(proto).toNotContain('**Verification ledger**');
+      expect(proto).toNotContain('independent verification ran');
+      expect(proto).toContain('**Found bugs**');
+    });
+    it('durable record OFF -> none of it emits anywhere', () => {
+      chain(['coder', 'verifier']);
+      win.state.memoryEnabled = true;
+      win.state.durableRecord = false;
+      const out = win.genSubAgents();
+      expect(out).toNotContain('**Verification ledger**');
+      expect(out).toNotContain('**Found bugs**');
+      expect(out).toNotContain('Verification ledger lines');
+    });
+    it('the verifier step handoff asks for ledger lines; other steps get only DONE:/STATUS:', () => {
+      const [coder, verifier] = chain(['coder', 'verifier']);
+      durableOn();
+      expect(win.recordHandoffHint(verifier)).toContain('Verification ledger lines');
+      expect(win.recordHandoffHint(coder)).toNotContain('Verification ledger lines');
+      expect(win.recordHandoffHint(coder)).toContain('DONE:');
+      win.state.durableRecord = false;
+      expect(win.recordHandoffHint(verifier)).toBe('');
+    });
+    it('mutability and finalize wiring: ledger appends-and-ticks, Found bugs consistency in the gate', () => {
+      chain(['coder', 'verifier']);
+      durableOn();
+      const proto = win.genDurableRecordProtocol();
+      expect(proto).toContain('Verification ledger is append-and-tick like the checklist');
+      expect(proto).toContain('Found bugs section is consistent with the step handoffs');
+      expect(proto).toContain('Verification ledger is consistent with the verifying steps');
+    });
+  });
+
+  describe('polish (item 6)', () => {
+    it('the awd:run example fence names the connected repo, falling back to my-app', () => {
+      win.state.repositories = [{ path: '/Users/dev/proj-app', branch: 'main' }];
+      expect(win.runReportDirective()).toContain('"repo": "proj-app"');
+      win.state.repositories = [];
+      expect(win.runReportDirective()).toContain('"repo": "my-app"');
+    });
+  });
+});
+
+
 describe('Implementation Plan', () => {
   beforeEach(() => { resetState(); });
 
@@ -10536,7 +10756,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_STEP_ROLES = VERIFY_STEP_ROLES; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
