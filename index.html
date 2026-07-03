@@ -6226,7 +6226,7 @@ function generateFromStory(_confirmed) {
     return;
   }
 
-  if (!_confirmed && state.nodes.length > 0) { withConfirm('This will replace your current workflow with a generated one.', { danger: true, confirmLabel: 'Replace' }, () => generateFromStory(true)); return; }
+  if (!_confirmed && state.nodes.length > 0) { withConfirm('This will replace your current workflow with a generated one.', { confirmLabel: 'Replace' }, () => generateFromStory(true)); return; }
   pushUndo(); // Single undo point for the entire generation
   _undoBatch = true;
   // Only clear nodes and connections, preserve all user inputs (name, story, repos, app source)
@@ -6923,7 +6923,7 @@ function loadPreset(preset, _confirmed) {
     moreSection.classList.add('open');
     $('presetToggle').textContent = 'Fewer presets';
   }
-  if (!_confirmed && state.nodes.length > 0) { withConfirm('This will replace your current workflow with the selected preset.', { danger: true, confirmLabel: 'Replace' }, () => loadPreset(preset, true)); return; }
+  if (!_confirmed && state.nodes.length > 0) { withConfirm('This will replace your current workflow with the selected preset.', { confirmLabel: 'Replace' }, () => loadPreset(preset, true)); return; }
   pushUndo(); // Single undo point for the entire preset load
   _undoBatch = true;
   // Only clear nodes and connections, preserve all user inputs (name, story, repos, app source)
@@ -7265,7 +7265,7 @@ function updateStoryPlaceholder(preset) {
 }
 
 function clearCanvas(skipConfirm) {
-  if (!skipConfirm && state.nodes.length > 0) { withConfirm('Start a new workflow? This clears all nodes, connections, and inputs.', { danger: true, confirmLabel: 'Clear' }, () => clearCanvas(true)); return; }
+  if (!skipConfirm && state.nodes.length > 0) { withConfirm('Start a new workflow? This clears all nodes, connections, and inputs.', { confirmLabel: 'Clear' }, () => clearCanvas(true)); return; }
   if (state.nodes.length > 0) pushUndo();
   state.nodes = [];
   state.connections = [];
