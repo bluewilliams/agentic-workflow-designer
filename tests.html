@@ -9467,6 +9467,166 @@ describe('Agent Context label (matches the UI field name across all outputs)', (
   });
 });
 
+describe('Collapsible sidebar sections (toggle, persistence, auto-expand reveal paths)', () => {
+  const KEY = 'awd_sidebarCollapsed';
+  const ALL_IDS = ['workflow-name','requirements','workflow-context','default-model','repositories',
+    'repo-context-paths','add-nodes','presets','app-under-test','ui-context','workflow-management',
+    'mcp-integrations','memory-durable-record','run-reports','node-config'];
+  function storedIds() {
+    const raw = win.localStorage.getItem(KEY);
+    return raw ? JSON.parse(raw) : null;
+  }
+  // Mandated cleanup: a left-collapsed node-config puts display:none!important on configPanel
+  // children and would contaminate visibility assertions in unrelated suites. Also drop the
+  // selection so configPanel loses its .visible class.
+  beforeEach(() => {
+    resetState();
+    win.expandAllSections();
+    win.localStorage.removeItem(KEY);
+  });
+  afterEach(() => {
+    win.selectNode(null);
+    win.expandAllSections();
+    win.localStorage.removeItem(KEY);
+  });
+
+  it('decorates exactly 15 sidebar sections, each with a stable literal id, a collapse-header, and a chevron span', () => {
+    const secs = Array.from(win.document.querySelectorAll('.sidebar-section[data-collapse-id]'));
+    expect(secs.length).toBe(15);
+    const ids = secs.map(s => s.getAttribute('data-collapse-id'));
+    ALL_IDS.forEach(id => expect(ids).toContain(id));
+    // no duplicate ids
+    expect(new Set(ids).size).toBe(15);
+    // every section has a decorated header carrying a chevron element (state shown via CSS, not text)
+    secs.forEach(s => {
+      expect(!!s.querySelector('.collapse-header')).toBe(true);
+      expect(!!s.querySelector('.collapse-chevron')).toBe(true);
+    });
+    // the expand/collapse-all control is NOT itself a decorated sidebar-section
+    const controls = win.document.querySelector('.sidebar-collapse-controls');
+    expect(!!controls).toBe(true);
+    expect(controls.classList.contains('sidebar-section')).toBe(false);
+  });
+
+  it('clicking a section header toggles its collapsed class and hides/shows the body; clicking again restores it', () => {
+    const sec = win.sectionEl('requirements');
+    const header = sec.querySelector('.collapse-header');
+    // Body = every direct child except the always-visible collapse-header. The CSS contract
+    // `.collapsed > :not(.collapse-header){display:none!important}` must hide all of them.
+    const body = () => Array.from(sec.children).filter(c => !c.classList.contains('collapse-header'));
+    expect(sec.classList.contains('collapsed')).toBe(false);
+    expect(body().some(c => win.getComputedStyle(c).display !== 'none')).toBe(true); // some content visible
+    header.click();
+    expect(sec.classList.contains('collapsed')).toBe(true);
+    expect(body().every(c => win.getComputedStyle(c).display === 'none')).toBe(true); // whole body hidden
+    header.click();
+    expect(sec.classList.contains('collapsed')).toBe(false);
+    expect(body().some(c => win.getComputedStyle(c).display !== 'none')).toBe(true); // content restored
+  });
+
+  it('clicking the New Workflow button inside the Workflow Name header does NOT toggle the section', () => {
+    const sec = win.sectionEl('workflow-name');
+    expect(sec.classList.contains('collapsed')).toBe(false);
+    const btn = sec.querySelector('.section-heading button');
+    expect(btn.textContent).toContain('New Workflow');
+    btn.click(); // clearCanvas is short-circuited by the __autoConfirm test hook
+    expect(sec.classList.contains('collapsed')).toBe(false); // interactive-child guard held
+  });
+
+  it('Collapse All collapses all 15 sections and persists them; Expand All restores every section and clears storage', () => {
+    win.collapseAllSections();
+    const collapsed = Array.from(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]'));
+    expect(collapsed.length).toBe(15);
+    const st = storedIds();
+    expect(Object.keys(st).length).toBe(15);
+    ALL_IDS.forEach(id => expect(st[id]).toBe(true));
+    win.expandAllSections();
+    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(0);
+    expect(Object.keys(storedIds()).length).toBe(0); // {} written, no ids linger
+  });
+
+  it('toggling a section writes an awd_sidebarCollapsed round-trip that loadCollapsedState reads back (and expanding removes the key)', () => {
+    win.toggleSection('requirements'); // expanded -> collapsed
+    expect(win.sectionEl('requirements').classList.contains('collapsed')).toBe(true);
+    expect(storedIds().requirements).toBe(true);
+    expect(win.loadCollapsedState().requirements).toBe(true);
+    // an untouched section is neither collapsed nor stored
+    expect(win.sectionEl('add-nodes').classList.contains('collapsed')).toBe(false);
+    expect('add-nodes' in win.loadCollapsedState()).toBe(false);
+    win.toggleSection('requirements'); // collapsed -> expanded, key removed
+    expect(win.sectionEl('requirements').classList.contains('collapsed')).toBe(false);
+    expect('requirements' in storedIds()).toBe(false);
+  });
+
+  it('default is all-expanded when storage is empty or absent', () => {
+    win.localStorage.removeItem(KEY); // absent
+    expect(Object.keys(win.loadCollapsedState()).length).toBe(0);
+    win.localStorage.setItem(KEY, '{}'); // present-but-empty
+    expect(Object.keys(win.loadCollapsedState()).length).toBe(0);
+    // no section should be collapsed under either condition
+    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(0);
+  });
+
+  it('bad JSON and non-object storage values degrade to all-expanded without throwing', () => {
+    const bad = ['not valid json {{{', '[1,2,3]', '"a string"', '42', 'null', 'true'];
+    bad.forEach(v => {
+      win.localStorage.setItem(KEY, v);
+      let threw = false, result;
+      try { result = win.loadCollapsedState(); } catch (e) { threw = true; }
+      expect(threw).toBe(false);
+      expect(typeof result).toBe('object');
+      expect(Array.isArray(result)).toBe(false);
+      expect(Object.keys(result).length).toBe(0); // degrades to expanded
+    });
+  });
+
+  it('selecting a canvas node auto-expands a collapsed Node Configuration section and reveals its fields (before the scroll)', () => {
+    const n = win.addNode('agent', 0, 0, 'Cfg', { agentType:'coder', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:5 });
+    win.selectNode(null); // clear selection so the next select is a genuine change
+    win.setSectionCollapsed('node-config', true);
+    const sec = win.sectionEl('node-config');
+    const fields = win.document.getElementById('configFields');
+    expect(sec.classList.contains('collapsed')).toBe(true); // precondition: collapsed
+    win.selectNode(n.id); // genuine change -> expandSection('node-config') fires before scroll
+    expect(sec.classList.contains('collapsed')).toBe(false); // auto-expanded
+    expect(win.getComputedStyle(fields).display).toNotContain('none'); // fields actually visible
+    // prove the collapse mechanism genuinely bites, then a re-select recovers it
+    win.setSectionCollapsed('node-config', true);
+    expect(win.getComputedStyle(fields).display).toBe('none'); // collapse hides the fields
+    win.selectNode(null); win.selectNode(n.id);
+    expect(sec.classList.contains('collapsed')).toBe(false); // re-select auto-expands again
+    expect(win.getComputedStyle(fields).display).toNotContain('none');
+  });
+
+  it('the empty-canvas preset link expands a collapsed Presets section', () => {
+    win.setSectionCollapsed('presets', true);
+    const sec = win.sectionEl('presets');
+    expect(sec.classList.contains('collapsed')).toBe(true);
+    const link = win.document.querySelector('#emptyState a[onclick]');
+    expect(!!link).toBe(true);
+    expect(link.textContent).toContain('choose a preset');
+    link.click(); // runs the inline onclick: expandSection('presets') before scrollIntoView
+    expect(sec.classList.contains('collapsed')).toBe(false); // presets revealed
+  });
+
+  it('initSidebarCollapse re-applies persisted collapsed state on reload and ignores bad JSON (degrades to expanded)', () => {
+    // reload round-trip: a persisted collapsed id must be re-applied when init runs again
+    win.setSectionCollapsed('requirements', true);
+    expect(storedIds().requirements).toBe(true);
+    win.sectionEl('requirements').classList.remove('collapsed'); // simulate a fresh, undecorated DOM
+    win.initSidebarCollapse();
+    expect(win.sectionEl('requirements').classList.contains('collapsed')).toBe(true); // re-applied from storage
+    expect(win.sectionEl('add-nodes').classList.contains('collapsed')).toBe(false); // unstored -> expanded
+    // bad JSON on reload must not throw and must leave everything expanded
+    win.expandAllSections();
+    win.localStorage.setItem(KEY, 'corrupt}{');
+    let threw = false;
+    try { win.initSidebarCollapse(); } catch (e) { threw = true; }
+    expect(threw).toBe(false);
+    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(0);
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
