@@ -91,11 +91,16 @@ Three dogfood runs produced evidence-based craft gaps: agents had no channel for
 
 - 2026-07-03: created (by agent-craft-batch)
 - 2026-07-03: largest-executable-slice rule added to the verifier evidence ladder + test pin (director refinement, post-finalize dated addendum) (by agent-craft-batch)
+- 2026-07-03: loadSavedWorkflow gains the Replace confirm + undo point (parity with preset load; source invariant migrated 6 -> 7 sites) (by agent-craft-batch)
 - 2026-07-03: addendum - item 9 docs sweep landed post-finalize (README/TECHNICAL/help coverage for runs 2-3 and this wave, in the repo voice); two pre-existing TECHNICAL en dashes fixed in passing (by agent-craft-batch)
 
 ## Update 2026-07-03: largest-executable-slice rule (director refinement)
 
 The verifier's evidence ladder gains a middle rung between execute-everything and trace-only: when the whole system cannot run, exercise the largest slice that CAN (call the changed function directly, throwaway harness, the one locally-runnable endpoint, component in isolation), expanding minimally beyond the changed surface when blast radius warrants - judgment stated in the report; trace-only is taken one criterion at a time, never wholesale. Test-pinned in the verifier template suite. Suite 1471 -> 1472.
+
+## Update 2026-07-03: saved-workflow load parity (director catch)
+
+`loadSavedWorkflow` replaced a non-empty canvas with no confirm and no undo point while every sibling destructive-replace (preset, Auto Workflow, New Workflow) had both. Now: the same `withConfirm` Replace guard (blue primary per the color-semantics ruling - undoable replace, modal is the caution signal) gated on `nodes.length > 0`, plus a `pushUndo()` before deserialize. Empty canvas asks nothing. Tests: vetoable + undo-point + empty-canvas-silent; the six-site `withConfirm` source invariant deliberately migrated to seven with the new site named. 1472 -> 1474.
 
 ## Outcome
 
