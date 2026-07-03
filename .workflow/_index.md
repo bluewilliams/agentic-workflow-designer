@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## sidebar-collapse
+
+- record: .workflow/sidebar-collapse.md
+- intent: collapsible left-sidebar sections with persistence - every section header is a chevron click-toggle (CSS child-hiding, zero visual change expanded), state persists in awd_sidebarCollapsed (absent = expanded; try/catch, bad-JSON degrades to expanded), Expand All / Collapse All control above the first section, and every programmatic reveal auto-expands first (selectNode -> node-config inside its genuine-change guard BEFORE the instant scroll - the node-config-ux invariant holds by construction; empty-canvas preset link likewise). 15 stable literal data-collapse-ids.
+- files: index.html (collapse CSS + module + 15 ids + selectNode/preset-link guards + boot hook + help line), tests.html (10-test suite, mandated afterEach cleanup)
+- work-item: designer-generated workflow run (first live dogfood) | status: current | date: 2026-07-03 | note: 1340 -> 1350; both gates cycle 1; run report embedded in the record.
+
 ## revise-edge-continuity
 
 - record: .workflow/revise-edge-continuity.md

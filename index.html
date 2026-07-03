@@ -56,6 +56,15 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 .btn.sm{padding:5px 10px;font-size:11px}
 .section-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .section-heading h3{margin-bottom:0}
+/* Collapsible sidebar sections (decorated at boot; expanded renders exactly as before) */
+.collapse-header{cursor:pointer;user-select:none}
+.collapse-chevron{display:inline-block;font-size:9px;color:var(--text3);margin-right:6px;
+  transition:transform .15s;vertical-align:middle}
+.collapse-chevron::before{content:'\25BE'}
+.sidebar-section.collapsed .collapse-chevron{transform:rotate(-90deg)}
+.collapse-header:hover .collapse-chevron{color:var(--text2)}
+.sidebar-section.collapsed > :not(.collapse-header){display:none !important}
+.sidebar-collapse-controls{padding:8px 16px;display:flex;gap:6px;border-bottom:1px solid var(--border)}
 .btn.danger-subtle{color:var(--text3);border-color:transparent;background:transparent;font-size:10px;padding:2px 8px}
 .btn.danger-subtle:hover{color:#ef4444;background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3)}
 .input-hint{font-size:10px;color:#f59e0b;margin-top:4px;line-height:1.4;display:none}
@@ -437,7 +446,12 @@ svg.canvas{width:100%;height:100%;display:block}
     <span class="badge">AI</span>
   </div>
 
-  <div class="sidebar-section">
+  <div class="sidebar-collapse-controls">
+    <button class="btn sm" onclick="expandAllSections()" title="Expand every sidebar section">Expand All</button>
+    <button class="btn sm" onclick="collapseAllSections()" title="Collapse every sidebar section">Collapse All</button>
+  </div>
+
+  <div class="sidebar-section" data-collapse-id="workflow-name">
     <div class="section-heading">
       <h3>Workflow Name</h3>
       <button class="btn text-btn danger-subtle" onclick="clearCanvas()"
@@ -446,7 +460,7 @@ svg.canvas{width:100%;height:100%;display:block}
     <input type="text" id="workflowName" class="story-input" style="min-height:auto;padding:8px 10px;font-family:var(--font);font-weight:600" placeholder="e.g. PROJ-12345 User Auth Flow" oninput="updateMemoryPath();updatePrompt();autoSaveWorkflow()"/>
   </div>
 
-  <div class="sidebar-section">
+  <div class="sidebar-section" data-collapse-id="requirements">
     <h3>Requirements</h3>
     <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Auto Workflow to auto-build a workflow from keywords." oninput="validateStoryInput()"></textarea>
     <div id="storyHint" class="input-hint"></div>
@@ -473,7 +487,7 @@ svg.canvas{width:100%;height:100%;display:block}
     <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5"><strong style="color:var(--text2)">Quick start</strong>: paste requirements above, pick a preset below, copy the prompt. <strong style="color:var(--text2)">Generate Refine Prompt</strong> (optional): generates an interview prompt - run it in Claude Code, then paste the refined spec back into Requirements (Claude copies it to your clipboard) replacing the original.</div>
   </div>
 
-  <div class="sidebar-section">
+  <div class="sidebar-section" data-collapse-id="workflow-context">
     <h3>Workflow Context <span style="color:var(--text3);font-weight:400;font-size:11px">optional</span></h3>
     <div style="font-size:10px;color:var(--text3);margin:-2px 0 6px;line-height:1.4">Added to every agent's prompt - an implementation plan, file paths, an MCP hint, constraints, anything.</div>
     <textarea class="story-input" id="planInput" placeholder="Paste context for the whole workflow here. Often an implementation plan (file paths, patterns, architecture decisions), but any guidance works.&#10;&#10;Used as a starting point, not a constraint - agents adapt based on what they discover during research." oninput="autoSaveWorkflow()" style="min-height:60px"></textarea>
@@ -484,7 +498,7 @@ svg.canvas{width:100%;height:100%;display:block}
     <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5"><strong style="color:var(--text2)">Optional</strong>: click <strong style="color:var(--text2)">Generate Plan Prompt</strong> to create a planning prompt - run it in Claude Code and paste the result into the Workflow Context box above (Claude copies it to your clipboard). Best used after refining your requirements. Or paste a plan from <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">/plan</code> mode directly.</div>
   </div>
 
-  <div class="sidebar-section">
+  <div class="sidebar-section" data-collapse-id="default-model">
     <h3>Default Model</h3>
     <div class="custom-select" id="defaultModelSelect">
       <div class="custom-select-trigger" id="defaultModelTrigger">Opus 4.8</div>
@@ -493,14 +507,14 @@ svg.canvas{width:100%;height:100%;display:block}
     <div style="font-size:10px;color:var(--text3);margin-top:6px">New nodes, presets, and generated workflows will use this model.</div>
   </div>
 
-  <div class="sidebar-section">
+  <div class="sidebar-section" data-collapse-id="repositories">
     <h3>Repositories <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
     <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Repos this workflow touches. Agents will check out the branch and pull latest before starting.</div>
     <div id="repoList"></div>
     <button class="btn sm" onclick="addRepoRow()">+ Add Repository</button>
   </div>
 
-  <div class="sidebar-section">
+  <div class="sidebar-section" data-collapse-id="repo-context-paths">
     <h3>Repo Context Paths <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
     <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Paths the agents should read and honor across this repo. CLAUDE.md auto-loads for the repo you launch in (in multi-repo runs the generated prompt has agents read each other repo's CLAUDE.md too); these add extra context. Sticky: they carry across workflows and survive New Workflow.</div>
 
@@ -538,7 +552,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
   </div>
 
-  <div class="sidebar-section">
+  <div class="sidebar-section" data-collapse-id="add-nodes">
     <h3>Add Nodes</h3>
     <div class="palette-grid">
       <div class="palette-item" onclick="addNode('agent')">
@@ -572,7 +586,7 @@ svg.canvas{width:100%;height:100%;display:block}
     <div id="customAgentPalette"></div>
   </div>
 
-  <div class="sidebar-section">
+  <div class="sidebar-section" data-collapse-id="presets">
     <h3>Presets</h3>
     <div class="preset-list">
       <div class="preset-item" data-preset="feature" onclick="loadPreset('feature')">
@@ -649,20 +663,20 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
   </div>
 
-  <div class="sidebar-section" id="appSourceSection" style="display:none">
+  <div class="sidebar-section" id="appSourceSection" data-collapse-id="app-under-test" style="display:none">
     <h3>App Under Test <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
     <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Local path to the app being tested. Agents will explore it for selectors and screen structure.</div>
     <input type="text" id="appSourcePath" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px" placeholder="/path/to/app/repo" oninput="updatePrompt();savePrefsDebounced()"/>
     <input type="text" id="appSourceBranch" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px" placeholder="Branch (optional, e.g. feature/PROJ-123)" oninput="updatePrompt();savePrefsDebounced()"/>
   </div>
 
-  <div class="sidebar-section" id="uiContextSection" style="display:none">
+  <div class="sidebar-section" id="uiContextSection" data-collapse-id="ui-context" style="display:none">
     <h3>UI Context <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
     <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Styling preferences or migration notes. Leave blank and the agent will discover your design system automatically.</div>
     <textarea id="uiContextNotes" class="story-input" style="min-height:48px;padding:6px 8px;font-size:12px" placeholder="e.g. Use vanilla-extract + clsx, avoid SCSS and MUI v4" oninput="updatePrompt();savePrefsDebounced()"></textarea>
   </div>
 
-  <div class="sidebar-section">
+  <div class="sidebar-section" data-collapse-id="workflow-management">
     <h3>Workflow Management</h3>
     <div class="btn-row">
       <button class="btn sm primary" onclick="saveWorkflow()">Save</button>
@@ -692,7 +706,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </span>
   </div>
 
-  <div class="sidebar-section memory-section">
+  <div class="sidebar-section memory-section" data-collapse-id="mcp-integrations">
     <h3>MCP Integrations <span style="color:var(--text3);font-weight:400;font-size:11px">prompt hints</span></h3>
     <label class="memory-toggle">
       <input type="checkbox" id="mcpAtlassianToggle" onchange="toggleMcpAtlassian()" checked/>
@@ -711,7 +725,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
   </div>
 
-  <div class="sidebar-section memory-section">
+  <div class="sidebar-section memory-section" data-collapse-id="memory-durable-record">
     <h3>Memory &amp; Durable Record</h3>
     <label class="memory-toggle">
       <input type="checkbox" id="consumeRecordsToggle" onchange="toggleConsumeRecords()" checked/>
@@ -742,7 +756,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
   </div>
 
-  <div class="sidebar-section memory-section" id="runReportSection">
+  <div class="sidebar-section memory-section" id="runReportSection" data-collapse-id="run-reports">
     <h3>Run Reports <span style="color:var(--text3);font-weight:400;font-size:11px">self-improvement</span></h3>
     <p class="memory-help" id="runReportStatus" style="margin-bottom:6px">No run reports yet - connect ~/.awd once to catch every workflow's reports automatically (or a repo's .workflow folder for just that repo's; paste into Import works everywhere).</p>
     <div class="btn-row">
@@ -751,7 +765,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
   </div>
 
-  <div class="sidebar-section config-panel" id="configPanel">
+  <div class="sidebar-section config-panel" id="configPanel" data-collapse-id="node-config">
     <h3>Node Configuration</h3>
     <div id="configFields"></div>
     <div class="btn-row mt">
@@ -837,7 +851,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </svg>
     <div class="empty-state" id="emptyState">
       <div class="icon">&#x1F3D7;</div>
-      <p>Paste requirements and click <strong>Auto Workflow</strong>, <a href="#" onclick="event.preventDefault();document.querySelector('.preset-list').scrollIntoView({behavior:'smooth',block:'center'})" style="color:var(--accent);pointer-events:auto;text-decoration:underline">choose a preset</a>, or add nodes manually.</p>
+      <p>Paste requirements and click <strong>Auto Workflow</strong>, <a href="#" onclick="event.preventDefault();expandSection('presets');document.querySelector('.preset-list').scrollIntoView({behavior:'smooth',block:'center'})" style="color:var(--accent);pointer-events:auto;text-decoration:underline">choose a preset</a>, or add nodes manually.</p>
       <p style="margin-top:12px;font-size:11px;opacity:.7">
         <kbd>1</kbd> Select &nbsp; <kbd>2</kbd> Connect &nbsp; <kbd>3</kbd> Delete &nbsp; <kbd>Alt+Drag</kbd> Pan &nbsp; <kbd>Scroll</kbd> Zoom
       </p>
@@ -1013,6 +1027,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Fit</strong> zooms to show all nodes</li>
   <li><strong>Quick Patterns</strong> in the palette (Fork 2/3/4, Fan-Out) scaffold a parallel agent group in one click</li>
   <li>You are not limited to presets - add any nodes from the palette and wire them up however you like; the generators handle the scaffolding</li>
+  <li><strong>Collapsible sidebar</strong>: click any section header (or use <strong>Expand All</strong> / <strong>Collapse All</strong> at the sidebar top) to fold sections you are not using. Your choices persist across visits; selecting a node always re-opens Node Configuration.</li>
 </ul>
 
 <h3>Toolbar Features</h3>
@@ -3269,6 +3284,66 @@ function genSingleAgentMemoryProtocol() {
 // SVG HELPERS
 // ═══════════════════════════════════════════════════════════
 const $ = id => document.getElementById(id);
+
+/* ---- Collapsible sidebar sections ---- */
+const SIDEBAR_COLLAPSE_KEY = 'awd_sidebarCollapsed';
+function loadCollapsedState() {
+  try {
+    const o = JSON.parse(localStorage.getItem(SIDEBAR_COLLAPSE_KEY) || '{}');
+    return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+  } catch (e) { return {}; }
+}
+function saveCollapsedState(obj) {
+  try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, JSON.stringify(obj)); } catch (e) {}
+}
+function sectionEl(id) { return document.querySelector('.sidebar-section[data-collapse-id="' + id + '"]'); }
+function setSectionCollapsed(id, collapsed) {
+  const sec = sectionEl(id);
+  if (sec) sec.classList.toggle('collapsed', collapsed);
+  const st = loadCollapsedState();
+  if (collapsed) st[id] = true; else delete st[id];
+  saveCollapsedState(st);
+}
+function toggleSection(id) {
+  const sec = sectionEl(id);
+  setSectionCollapsed(id, sec ? !sec.classList.contains('collapsed') : false);
+}
+function expandSection(id) { setSectionCollapsed(id, false); }
+function expandAllSections() {
+  document.querySelectorAll('.sidebar-section[data-collapse-id]').forEach(s => s.classList.remove('collapsed'));
+  saveCollapsedState({});
+}
+function collapseAllSections() {
+  const st = {};
+  document.querySelectorAll('.sidebar-section[data-collapse-id]').forEach(s => {
+    s.classList.add('collapsed');
+    st[s.getAttribute('data-collapse-id')] = true;
+  });
+  saveCollapsedState(st);
+}
+function initSidebarCollapse() {
+  const collapsed = loadCollapsedState();
+  document.querySelectorAll('.sidebar-section[data-collapse-id]').forEach(sec => {
+    const id = sec.getAttribute('data-collapse-id');
+    const header = sec.querySelector(':scope > .section-heading') || sec.querySelector(':scope > h3');
+    if (!header) return;
+    header.classList.add('collapse-header');
+    const h3 = header.matches('h3') ? header : header.querySelector('h3');
+    if (h3 && !h3.querySelector('.collapse-chevron')) {
+      const chev = document.createElement('span');
+      chev.className = 'collapse-chevron';
+      chev.setAttribute('aria-hidden', 'true');
+      h3.insertBefore(chev, h3.firstChild);
+    }
+    header.addEventListener('click', (e) => {
+      // Skip clicks on interactive controls inside the header (e.g. New Workflow button).
+      if (e.target.closest('button, a, input, select, textarea')) return;
+      toggleSection(id);
+    });
+    if (collapsed[id]) sec.classList.add('collapsed');
+  });
+}
+
 const svg = () => $('canvas');
 const nodesLayer = () => $('nodesLayer');
 const connsLayer = () => $('connectionsLayer');
@@ -3897,6 +3972,9 @@ function selectNode(id, skipRender) {
   if (!skipRender) render();
   updateConfig();
   if (changed && id !== null) {
+    // Auto-expand the Node Configuration section before revealing it, so a user who
+    // collapsed it still sees the fields on a genuine selection change (reveal-path guard).
+    expandSection('node-config');
     const panel = $('configPanel');
     if (panel && panel.classList.contains('visible') && panel.scrollIntoView) {
       panel.scrollIntoView({ block: 'nearest' });
@@ -11107,6 +11185,7 @@ function copyPrompt() {
   });
 })();
 initDefaultModelSelect();
+initSidebarCollapse();
 restorePrefs();
 const _autoRestored = restoreAutoSave();
 if (!_autoRestored) { updateTransform(); render(); }
