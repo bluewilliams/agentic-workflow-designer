@@ -5,7 +5,7 @@ Scan-then-open: read this index first, match an entry against the files or capab
 ## mobile-viewport-scaling
 
 - record: .workflow/mobile-viewport-scaling.md
-- intent: phones clipped the app because the viewport meta promised a responsive layout (width=device-width) the fixed desktop grid never delivers. Now `width=1280`: mobile scales the whole page to fit (tiny but complete, pinch-zoomable), desktop ignores the tag. Deliberately a one-line scale-to-fit, not a responsive redesign.
+- intent: phones clipped the app because the viewport meta promised a responsive layout (width=device-width) the fixed desktop grid never delivers. Now `width=1280`: mobile scales the whole page to fit (tiny but complete, pinch-zoomable), desktop ignores the tag. Deliberately a one-line scale-to-fit, not a responsive redesign. UPDATE: app grid height is 100dvh (visible-viewport tracking; 100vh fallback) so the output panel no longer hides behind mobile Safari's bottom bar.
 - files: index.html (viewport meta)
 - status: current | date: 2026-07-03 | note: no test surface; real-device check after deploy.
 

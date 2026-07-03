@@ -26,3 +26,9 @@ The page declared `width=device-width, initial-scale=1.0` - the responsive-layou
 
 - [x] Viewport meta swapped with explanatory comment
 - [x] Suite green; content-lint
+
+## Update (same day): dvh for the iOS bottom-bar strip
+
+Owner's phone still clipped the bottom: 100vh on mobile Safari includes the strip behind the browser's bottom bar, and the app suppresses page scroll, so the output panel hid underneath with no way to reach it. The app grid now uses height:100dvh (dynamic viewport height, tracks the visible area as browser bars show/hide) with 100vh kept as the fallback line for older engines. Desktop treats dvh as vh; zero impact.
+
+- [x] height:100vh;height:100dvh on the body grid
