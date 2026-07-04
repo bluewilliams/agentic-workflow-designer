@@ -7517,7 +7517,7 @@ function loadPreset(preset, _confirmed) {
       const appIn = addNode('input', 80, 380, 'App Source', { source:'freeform', description:'Path to the app under test (set in sidebar)' });
       const planFork = addNode('parallel', 340, 286, 'Parallel Analysis', { strategy:'all' });
       const plan = addNode('agent', 620, 200, 'Test Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.testPlanner, maxTurns:10 });
-      const appExp = addNode('agent', 620, 380, 'App Explorer', { agentType:'appExplorer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','Bash'], prompt:PROMPTS.uiAppExplorer, maxTurns:15 });
+      const appExp = addNode('agent', 620, 380, 'UI Explorer', { agentType:'appExplorer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','Bash'], prompt:PROMPTS.uiAppExplorer, maxTurns:15 });
       const planJoin = addNode('parallel', 900, 286, 'Combine', { strategy:'all' });
       const authFork = addNode('parallel', 1120, 286, 'Parallel Authoring', { strategy:'all' });
       const feat = addNode('agent', 1400, 150, 'Feature Writer', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Grep','Glob','LSP'], prompt:PROMPTS.featureWriter, maxTurns:10 });
