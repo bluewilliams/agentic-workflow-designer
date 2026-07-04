@@ -1129,7 +1129,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Keep a durable record</strong> - a committable spec + state document. It is a strict superset that builds on memory, written to <code>.workflow/{slug}.md</code> in your repo so it versions with the code.</li>
 </ul>
 <p>The <strong>orchestrator</strong> (the top-level agent driving the workflow and spawning its steps) owns the record: it creates it at kickoff, folds in each step's findings as the run proceeds, and finalizes it for commit - compressing the running per-agent commentary into a clean spec without dropping the why or the decisions.</p>
-<p>Each record leads with a machine-readable <code>awd:record</code> fence and a present-tense <strong>Current behavior</strong> section, and its task checklist is authored up front and ticked live as tasks complete - so an interrupted run resumes from the first unchecked box, and Connect Repo can read run fences straight out of the record. An append-only <strong>History</strong> ledger (one dated line per amendment) keeps provenance reconstructible without git archaeology, and section mutability rules keep it honest: only Current behavior and the in-progress scaffolding are rewritten in place, everything else grows by appending. When the workflow runs a Verifier (or repo verification mandates are configured), a <strong>Verification ledger</strong> section records one ticked checkbox per verification act performed - a blocked required check stays visibly unticked with its reason - and a <strong>Found bugs</strong> section keeps the pre-existing defects a run found but deferred, so they feed the next grounding scan instead of being forgotten. How eagerly agents fix what they find is a per-node <strong>Defect Posture</strong> selector on building/testing agents: Balanced (the default), Record-only for surgical diffs, or Aggressive for opportunistic healing - all three tested, declared, and honest about what they touched. One record per unit of work, always: phases become sections, never sibling records.</p>
+<p>Each record leads with a machine-readable <code>awd:record</code> fence and a present-tense <strong>Current behavior</strong> section, and its task checklist is authored up front and ticked live as tasks complete - so an interrupted run resumes from the first unchecked box, and Connect Repo can read run fences straight out of the record. An append-only <strong>History</strong> ledger (one dated line per amendment) keeps provenance reconstructible without git archaeology, and section mutability rules keep it honest: only Current behavior and the in-progress scaffolding are rewritten in place, everything else grows by appending. When the workflow runs a Verifier (or repo verification mandates are configured), a <strong>Verification ledger</strong> section records one ticked checkbox per verification act performed - a blocked required check stays visibly unticked with its reason - and a <strong>Found bugs</strong> section keeps the pre-existing defects a run found but deferred, so they feed the next grounding scan instead of being forgotten. How eagerly agents fix what they find is a per-node <strong>Defect Posture</strong> selector with two homes: on coder-family agents it tunes fix-vs-record (Balanced default, Record-only for surgical diffs, Aggressive for opportunistic healing - all tested, declared, and honest), and on Reviewer agents it tunes flag-back intensity for pre-existing defects the review spots (note them, ignore them, or aggressively sweep near the diff and flag them to the orchestrator as follow-up work - never fixing, never failing the gate). One record per unit of work, always: phases become sections, never sibling records.</p>
 <p>A breadcrumb index at <code>.workflow/_index.md</code> keeps one entry per record, grouped by capability. It is scanned first (scan-then-open) so future work reads only the relevant records instead of all of them. Supersession lineage keeps history one hop away: a re-worked capability leaves the old record marked superseded with the new one linked, so the index always points at current behavior. Partial changes are right-sized: an amendment updates the old record in place (plus a one-line History entry naming the amending record) instead of archiving it.</p>
 
 <h3>Ground in Prior Records</h3>
@@ -1724,13 +1724,51 @@ function recordHandoffHint(node) {
 // fix what blocks you or what is trivially in-path (declared, with the coverage
 // the fix deserves); record everything else; never work around a defect.
 const FOUND_DEFECT_ROLES = new Set(['coder', 'backend', 'frontend', 'general', 'debugger', 'tester', 'verifier']);
+// The posture KNOB is narrower than the protocol: only the coder family tunes fix-vs-record
+// (debugger nodes are investigator-shaped in this app's presets - read-mostly tools - and
+// testers/verifiers carry the balanced protocol without a knob, so their config.defectPosture
+// is ignored; stale values from an earlier type are tolerated, same as stale collapse keys).
+const DEFECT_KNOB_ROLES = new Set(['coder', 'backend', 'frontend', 'general']);
 function nodeDefectPosture(node) { return (node && node.config && node.config.defectPosture) || 'balanced'; }
 function foundDefectNote(node) {
-  if (!node || !node.config || !FOUND_DEFECT_ROLES.has(node.config.agentType)) return '';
-  const posture = nodeDefectPosture(node);
+  if (!node || !node.config) return '';
+  if (node.config.agentType === 'reviewer') {
+    // Reviewer posture is a DIFFERENT knob: flag-back intensity for pre-existing defects it
+    // SPOTS - it never fixes, and flags never touch the gate verdict. Balanced emits nothing
+    // (byte-identical to the pre-knob reviewer).
+    const rp = nodeDefectPosture(node);
+    if (rp === 'surgical') return '**Pre-existing defects: surgical review posture.** Judge ONLY the change under review. Do not report pre-existing defects you notice in the surrounding code unless they interact with the correctness of this change - the diff is your entire jurisdiction.';
+    if (rp === 'aggressive') return '**Pre-existing defects: aggressive flag-back posture.** In addition to your review of the change, actively sweep the immediate neighborhood of the diff for pre-existing defects. Report what you find in a dedicated "Flagged pre-existing defects (for the orchestrator)" section of your report - one line each: symptom, location by durable anchor, evidence. You never fix anything, and these flags NEVER affect your verdict: the gate judges the change under review, not the neighborhood - a pre-existing defect can never make the verdict NEEDS REVISION.';
+    return '';
+  }
+  if (!FOUND_DEFECT_ROLES.has(node.config.agentType)) return '';
+  const posture = DEFECT_KNOB_ROLES.has(node.config.agentType) ? nodeDefectPosture(node) : 'balanced';
   if (posture === 'record-only') return '**Found a pre-existing defect? Record it - this step runs the record-only posture.** Report every defect you find in your handoff (symptom, location by durable anchor, evidence, one line) so it lands in the record\'s Found bugs section - with ONE exception: a defect that outright BLOCKS your task gets fixed, covered with the tests correctness actually demands, and reported as a separately-declared item (pre-existing, fixed - blocked X). No in-passing fixes even when trivial: this workflow wants a surgical diff. Never work around a defect silently - if a workaround is truly unavoidable to proceed, declare it in your handoff and record the defect it papers over.';
   if (posture === 'aggressive') return '**Found a pre-existing defect? Fix what you responsibly can - this step runs the aggressive posture.** A defect that BLOCKS your task gets fixed, covered with the tests correctness actually demands, and reported as a separately-declared item. Beyond blockers, actively fix low-hanging defects in and near the code you are changing - opportunistically heal the working area - each fix tested as real work and separately declared. The balloon signal still applies: if proper coverage would grow into its own project, the defect was never low-hanging - record it instead of half-fixing it. Working AROUND a defect remains the worst outcome: fix it or record it, never mask it. Everything you do not fix is still reported in your handoff (symptom, durable anchor, evidence, one line) for the record\'s Found bugs section. The diff may grow, but every extra change is declared and tested; an undeclared drive-by change is a review finding even when the fix is right.';
   return '**Found a pre-existing defect? Fix, or record - never work around, never silently fix.** If it BLOCKS your task: fix it, cover it with the tests correctness actually demands - one assertion or an entire suite, whatever the behavior needs - and report it in your handoff as a separately-declared item (pre-existing, fixed - blocked X). If it is low-hanging fruit inside the code you are already changing (trivial, obviously correct, low blast radius - a null guard, an off-by-one, a stale reference): fix it in passing and test it as you would your own change - the coverage the fix deserves, not a token assertion; and use that coverage as a signal - if proper testing would balloon into its own project, the bug was never low-hanging, so record it instead of half-fixing it. Working AROUND a defect to make your change pass is the worst outcome: it entrenches the bug and hides it from review. Anything else (non-trivial, outside your change\'s area, or wide blast radius): do NOT fix it - report it in your handoff (symptom, location by durable anchor, evidence, one line) so it lands in the record\'s Found bugs section for the director\'s call. The line: fixes ride your declared diff or they do not happen; an undeclared drive-by change is a review finding even when the fix is right.';
+}
+// Orchestrator handling line for reviewer flag-back: emitted in every format's orchestrator
+// guidance ONLY when some reviewer-type node runs the aggressive posture (generation-time check).
+function reviewerFlagHandlingNote(fmt) {
+  const aggressiveReviewers = state.nodes.filter(n => n.type === 'agent' && n.config && n.config.agentType === 'reviewer' && nodeDefectPosture(n) === 'aggressive');
+  if (!aggressiveReviewers.length) return '';
+  // The dispatch option exists ONLY when the canvas draws it: the review gate downstream of
+  // the aggressive reviewer must have a revise edge (the workflow's own fixer path). The
+  // orchestrator never invents an undrawn route.
+  const hasDrawnFixerPath = aggressiveReviewers.some(r =>
+    getDownstreamDecisions(r.id).some(d => state.connections.some(c => c.from === d.id && isReviseBackEdge(c))));
+  const head = fmt === 'claude'
+    ? '> **Flagged pre-existing defects (your Reviewer step runs the aggressive flag-back posture).** You play both roles here, and every path RECORDS: '
+    : '> **Flagged pre-existing defects (a Reviewer in this workflow runs the aggressive flag-back posture).** When a reviewer report carries a "Flagged pre-existing defects" section, the orchestrator owns the routing, and every path RECORDS: ';
+  if (!hasDrawnFixerPath) {
+    return head + 'this workflow draws NO revise path from the review gate, so flagged defects are RECORD-ONLY - record each flag into the durable record\'s Found bugs section when one is being maintained and surface them prominently in the final report for the director\'s call. Do NOT invent a dispatch route the canvas does not draw.';
+  }
+  const dispatch = fmt === 'teams'
+    ? 're-message the SAME implementer teammate, whose context persists'
+    : (fmt === 'subagent'
+      ? 'spawn a fresh follow-up of that step pointed at its own memory file for context recovery'
+      : 'continue with that step in this same session, whose context is still live');
+  return head + '(a) when the flags are small and in-area, dispatch them to the fixer step the review gate\'s revise edge already names - the follow-up travels the workflow\'s own revise path, re-used AFTER the gate passes as a follow-up brief: outside the revise loop, never consuming gate cycles (the gate judged the change; the flags are new work) - ' + dispatch + '; (b) otherwise record each flag into the durable record\'s Found bugs section when one is being maintained and surface them prominently in the final report for the director\'s call. Path (a) still records the flags it dispatches.';
 }
 function datadogStepHint(node) {
   if (!state.mcpDatadog) return '';
@@ -3802,7 +3840,12 @@ function renderNodes() {
         const ws = WRITING_STYLES.find(s => s.id === node.config.writingStyle);
         if (ws) typeName = 'Writer: ' + ws.name;
       }
-      sub.textContent = typeName + ' \u00B7 ' + getModelFamily(node.config.model);
+      let subText = typeName + ' \u00B7 ' + getModelFamily(node.config.model);
+      // A configured deviation from the balanced defect posture is visible on the graph
+      // itself - both knobs (coder-family fix posture, reviewer flag-back posture).
+      const _dpApplies = DEFECT_KNOB_ROLES.has(node.config.agentType) || node.config.agentType === 'reviewer';
+      if (_dpApplies && nodeDefectPosture(node) !== 'balanced') subText += ' \u00B7 ' + nodeDefectPosture(node) + ' defects';
+      sub.textContent = subText;
       g.appendChild(sub);
     }
 
@@ -4504,12 +4547,19 @@ function updateConfig() {
     }
     fields.innerHTML += configSelect('Model', 'model', node.config.model,
       MODELS.map(m => ({ value: m.value, label: m.label })));
-    // Defect posture: only the roles that carry the found-defect protocol get the knob.
-    if (FOUND_DEFECT_ROLES.has(node.config.agentType)) {
+    // Defect posture: two knobs, two homes. The coder family tunes fix-vs-record; the
+    // reviewer tunes flag-back intensity (spot-and-report to the orchestrator, never fix,
+    // never gate-failing). Testers/verifiers carry the balanced protocol without a knob.
+    if (DEFECT_KNOB_ROLES.has(node.config.agentType)) {
       fields.innerHTML += configSelect('Defect Posture', 'defectPosture', nodeDefectPosture(node),
         [{ value: 'balanced', label: 'Balanced (default) - fix blockers + low-hanging fruit in your path' },
          { value: 'record-only', label: 'Record-only - surgical: report everything, fix only true blockers' },
          { value: 'aggressive', label: 'Aggressive - opportunistically heal the working area (tested + declared)' }]);
+    } else if (node.config.agentType === 'reviewer') {
+      fields.innerHTML += configSelect('Defect Posture', 'defectPosture', nodeDefectPosture(node),
+        [{ value: 'balanced', label: 'Balanced (default) - note pre-existing defects, never gate on them' },
+         { value: 'surgical', label: 'Surgical - judge only the change; ignore pre-existing defects' },
+         { value: 'aggressive', label: 'Aggressive - sweep near the diff, flag pre-existing defects to the orchestrator' }]);
     }
     fields.innerHTML += configTextarea('Agent Prompt', 'prompt', node.config.prompt,
       'Instructions for this agent...', 'class="agent-prompt-textarea"');
@@ -8207,10 +8257,20 @@ function explainAgentNode(node, format) {
           : 'not the owning verification step (mandates go to ONE step - the last verifier-type node, else the last tester - so an expensive check never runs twice; reviewers audit, they do not execute)'),
     veStep));
   const fd = foundDefectNote(node);
-  rows.push(exRow('Found-defect protocol', !!fd,
-    fd ? 'building/testing role at posture \'' + nodeDefectPosture(node) + '\' (balanced = fix blockers + low-hanging in-path; record-only = surgical, report everything; aggressive = heal the working area, tested + declared) - the lever: the node\'s Defect Posture selector'
-       : "built-in for code-changing roles (implementer, debugger, tester, verifier) - '" + node.config.agentType + "' reports findings rather than changing code, so it deliberately does not carry this. The one thing that changes this row: the node's agent type. No sidebar setting affects it.",
-    fd));
+  const _fdType = node.config.agentType;
+  let _fdStatus;
+  if (fd && _fdType === 'reviewer') {
+    _fdStatus = 'reviewer flag-back posture \'' + nodeDefectPosture(node) + '\' - pre-existing defects it spots are ' + (nodeDefectPosture(node) === 'aggressive' ? 'actively swept near the diff and flagged to the orchestrator' : 'ignored unless they interact with the change') + '; flags never fix anything and never fail the gate. The lever: this node\'s Defect Posture selector.';
+  } else if (fd) {
+    _fdStatus = DEFECT_KNOB_ROLES.has(_fdType)
+      ? 'code-changing role at posture \'' + nodeDefectPosture(node) + '\' (balanced = fix blockers + low-hanging in-path; record-only = surgical, report everything; aggressive = heal the working area, tested + declared) - the lever: the node\'s Defect Posture selector'
+      : 'built-in at the balanced default - ' + _fdType + ' carries the protocol without a knob (fix blockers + low-hanging in-path, record the rest)';
+  } else if (_fdType === 'reviewer') {
+    _fdStatus = 'reviewer at the balanced default: pre-existing defects it spots become non-blocking notes for the record\'s Found bugs section, never gate failures (the static template also judges other steps\' DECLARED fixes against their declared posture). The lever: this node\'s Defect Posture selector (surgical ignores them; aggressive sweeps and flags them to the orchestrator).';
+  } else {
+    _fdStatus = "built-in for code-changing roles - '" + _fdType + "' reports findings or plans rather than changing code, so it deliberately does not carry the protocol. What changes this row: the node's agent type (the Defect Posture selector lives on coder-family and reviewer nodes). No sidebar setting affects it.";
+  }
+  rows.push(exRow('Found-defect protocol', !!fd, _fdStatus, fd));
   const rh = recordHandoffHint(node);
   rows.push(exRow('Durable-record handoff (DONE:/STATUS:)', !!rh,
     rh ? 'durable-record toggle on - the step reports transcribe-ready lines naming its exact checklist items' : 'durable-record toggle off',
@@ -9190,6 +9250,8 @@ function genWorkflow() {
     }
   }
 
+  const _rfhWf = reviewerFlagHandlingNote('prompt');
+  if (_rfhWf) { p.push(''); p.push(_rfhWf); }
   p.push('');
   p.push(runReportDirective());
 
@@ -9473,6 +9535,8 @@ function genSubAgents() {
   // discipline only (deliveryAgentNote in buildAgentPrompt).
   deliveryBlock('##').forEach(l => p.push(l));
 
+  const _rfhSa = reviewerFlagHandlingNote('subagent');
+  if (_rfhSa) { p.push(_rfhSa); p.push(''); }
   p.push(runReportDirective());
   p.push('');
 
@@ -9722,6 +9786,8 @@ function genAgentTeams() {
     }
   }
 
+  const _rfhAt = reviewerFlagHandlingNote('teams');
+  if (_rfhAt) { p.push(''); p.push(_rfhAt); }
   p.push('');
   p.push(runReportDirective());
 
@@ -10285,6 +10351,8 @@ function genClaudePrompt() {
     }
   }
 
+  const _rfhCp = reviewerFlagHandlingNote('claude');
+  if (_rfhCp) { p.push(''); p.push(_rfhCp); }
   p.push('');
   p.push(runReportDirective());
 
