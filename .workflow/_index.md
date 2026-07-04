@@ -23,6 +23,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (foundDefectNote/FOUND_DEFECT_ROLES, PROMPTS.reviewer/tester/verifier, resolveVerifyOwnerId/VERIFY_OWNER_ROLES, genDurableRecordProtocol, recordHandoffHint(node), genDurableRecordComment, importWorkflowFile, runReportDirective), tests.html (suite 12e + owner-resolution migration), CLAUDE.md (new)
 - status: current | date: 2026-07-03 | note: 1447 -> 1471. Three mid-wave director refinements folded in (owner-only routing; mandates additive; repo-mandated terminology).
 
+## context-agent-types
+
+- record: .workflow/context-agent-types.md
+- intent: App Explorer and Design Analyzer are first-class agent types (16 total) - full registry wiring (prompt map, read-only tool floors without Write/Edit, researcher skeptic lens, OpenSpec research group, code-search step hint); the App Under Test / UI Context sections reveal by TYPE with the legacy template match as fallback (an edited prompt no longer hides them) and auto-expand on the hidden-to-shown transition past the first-run collapse seed; test_automation/ui_component presets + Auto Workflow retyped; advisor rule (h) points a fresh App Explorer at its missing App Source path (calibration pins the one-suggestion lifecycle); Explain rows name the summoning type as the lever.
+- files: index.html (AGENT_TYPES/AGENT_TYPE_TOOL_DEFAULTS/AGENT_TYPE_PROMPT_MAP/ADVERSARY_LENS_BY_ROLE/OPENSPEC_ROLE_GROUP/CODE_SEARCH_STEP_ROLES, render reveal + transition trackers, presets, adviseWorkflow rule h, explain rows, help), tests.html (13 + 4 migrations), README.md
+- status: current | date: 2026-07-03 | note: 1492 -> 1505. Kills the smuggled-template discoverability defects structurally.
+
 ## verification-instructions
 
 - record: .workflow/verification-instructions.md
@@ -47,7 +54,7 @@ Scan-then-open: read this index first, match an entry against the files or capab
 ## sidebar-collapse
 
 - record: .workflow/sidebar-collapse.md
-- intent: collapsible left-sidebar sections with persistence - every section header is a chevron click-toggle (CSS child-hiding, zero visual change expanded), state persists in awd_sidebarCollapsed (absent = expanded; try/catch, bad-JSON degrades to expanded; on a true FIRST boot the key is seeded curated by sidebar-first-run - 13 collapsed, requirements + presets open), Expand All / Collapse All control above the first section, and every programmatic reveal auto-expands first (selectNode -> node-config inside its genuine-change guard BEFORE the instant scroll - the node-config-ux invariant holds by construction; empty-canvas preset link likewise). 15 stable literal data-collapse-ids.
+- intent: collapsible left-sidebar sections with persistence - every section header is a chevron click-toggle (CSS child-hiding, zero visual change expanded), state persists in awd_sidebarCollapsed (absent = expanded; try/catch, bad-JSON degrades to expanded; on a true FIRST boot the key is seeded curated by sidebar-first-run - 13 collapsed, requirements + presets open), Expand All / Collapse All control above the first section, and every programmatic reveal auto-expands first (selectNode -> node-config inside its genuine-change guard BEFORE the instant scroll - the node-config-ux invariant holds by construction; empty-canvas preset link likewise; the conditional App Under Test / UI Context sections on their hidden-to-shown reveal transition, by context-agent-types). 15 stable literal data-collapse-ids.
 - files: index.html (collapse CSS + module + 15 ids + selectNode/preset-link guards + boot hook + help line), tests.html (10-test suite, mandated afterEach cleanup)
 - work-item: designer-generated workflow run (first live dogfood) | status: current | date: 2026-07-03 | note: 1340 -> 1350; both gates cycle 1; run report embedded in the record.
 

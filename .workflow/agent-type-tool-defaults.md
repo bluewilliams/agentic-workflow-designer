@@ -8,7 +8,7 @@ Branch: main. Status: current.
 
 ## Current behavior
 
-Every agent type resolves a default tool set through agentTypeToolDefaults() (AGENT_TYPE_TOOL_DEFAULTS; writer per style via WRITER_TOOL_DEFAULTS; general derived from NODE_DEFAULTS; adversary/verifier mirroring REVIEW_LOOP_KINDS). Type changes pristine-swap tools by the matches-any-default rule in both the node panel and the Agent Library form (applyAgentTypeChange), and never touch customized sets. Coder/frontend/backend/debugger/researcher defaults include WebSearch/WebFetch, licensed by conditional web steps in their templates.
+Every agent type resolves a default tool set through agentTypeToolDefaults() (AGENT_TYPE_TOOL_DEFAULTS; writer per style via WRITER_TOOL_DEFAULTS; general derived from NODE_DEFAULTS; adversary/verifier mirroring REVIEW_LOOP_KINDS; appExplorer/designAnalyzer read-only floors of Read/Grep/Glob/LSP/Bash - no Write or Edit). Type changes pristine-swap tools by the matches-any-default rule in both the node panel and the Agent Library form (applyAgentTypeChange), and never touch customized sets - note the old pre-web-tools debugger set is now exactly the appExplorer default, so it counts as pristine under matches-ANY-default. Coder/frontend/backend/debugger/researcher defaults include WebSearch/WebFetch, licensed by conditional web steps in their templates.
 
 ## Why and scope
 
@@ -60,3 +60,8 @@ Owner license: "if our defaults are limiting for any agent type... make things t
 - [x] Outdated-set consequence pinned (old-coder swaps via tester match; old-debugger kept as customized)
 - [x] applyAgentTypeChange full parity (tools pristine-swap + template re-bake); 2 old-clobber tests rewritten, 2 added
 - [x] Suite 1241 -> 1246, content-lint
+
+## History
+
+- 2026-07-01: created (by agent-type-tool-defaults)
+- 2026-07-03: registry gains appExplorer/designAnalyzer read-only defaults; the old debugger set became an owned default under matches-ANY-default (by context-agent-types)
