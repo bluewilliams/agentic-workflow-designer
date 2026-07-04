@@ -72,6 +72,7 @@ index.html: `nodeDefectPosture` + the three-branch `foundDefectNote` (beside FOU
 
 - 2026-07-03: created (by defect-posture)
 - 2026-07-03: reshaped per two director rulings - DECLUTTERED (knob narrowed to the coder family; debugger/tester/verifier keep balanced emission without UI) and the REVIEWER gained its own flag-back posture (spot-and-report to the orchestrator, never fix, never gate-failing) with a topology-grounded dispatch line (drawn revise edge only, outside gate cycles, format-aware continuity; record-only when no edge is drawn) and posture-on-subtitle canvas visibility (by defect-posture)
+- 2026-07-03: dispatch handling gains the reconcile clause - flagged defects an earlier step recorded with a considered deferral reason keep their disposition; a louder flag never overrides a recorded judgment (director scenario: balanced implementer defers, aggressive reviewer re-flags) (by defect-posture)
 
 ## Outcome
 
