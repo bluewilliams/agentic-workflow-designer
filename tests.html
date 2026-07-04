@@ -5415,6 +5415,13 @@ describe('Agent craft batch', () => {
       expect(out).toNotContain('outside the revise loop, never consuming gate cycles');
       expect(out).toNotContain('its own memory file');
     });
+    it('the dispatch-form handling line reconciles against recorded deferrals before re-dispatching', () => {
+      buildReviewerWorkflow('aggressive', true);
+      const out = win.genSubAgents();
+      expect(out).toContain('reconcile');
+      expect(out).toContain('considered deferral reason');
+      expect(out).toContain('honored, not overridden by a louder flag');
+    });
     it('a non-balanced posture renders on the node subtitle; balanced stays clean (both knobs)', () => {
       buildReviewerWorkflow('aggressive');
       win.render();
