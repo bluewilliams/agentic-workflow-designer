@@ -16,6 +16,7 @@ These rules are binding for every agent working in this repository.
 - localStorage keys use the `awd_` prefix with try/catch on read and write.
 - Prompt-emission changes respect the toggles: memory-gated text only when `memoryEnabled`, durable-record text only when `durableRecord`, grounding only when `consumeRecords`, verification-instructions only when `verifyPaths` is non-empty. Every gated emission gets an OFF/empty test assertion.
 - Tool selections are suggestions, never restrictions - emitted prompts must not forbid tools.
+- Corollary (standing guard): ZERO emitted contracts consult tool selections today - explicit configuration (like the App Source Access selector) is the sanctioned way to vary a contract. If a selection-consulting contract is ever proposed, it may only GRANT (a selected tool signals intent), never revoke or forbid (absence never restricts), and each one is an individual, deliberate design decision - never a pattern to extend by drift.
 
 ## Durable records
 

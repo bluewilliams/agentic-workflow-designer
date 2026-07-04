@@ -5477,24 +5477,77 @@ describe('Agent craft batch', () => {
   });
 
   describe('Context agent types (App Explorer / Design Analyzer)', () => {
-    it('app source stays READ-ONLY by default, flips to a named write exception when an App Explorer carries Write, and never touches the memory-write guarantee', () => {
+    it('app source sync: pinned branch fetch/checkout/ff-only with graceful degradation, current-branch ff-only when unpinned, SHA provenance always', () => {
       resetState();
       win.document.getElementById('appSourcePath').value = '/tmp/proj-app';
-      const ex = win.addNode('agent', 100, 100, 'App Explorer', { agentType: 'appExplorer', tools: ['Read', 'Grep', 'Glob'], prompt: '', maxTurns: 5 });
+      win.document.getElementById('appSourceBranch').value = 'release/2.4';
       let block = win.appSourceBlock().join('\n');
-      expect(block).toContain('READ-ONLY, do NOT modify files in this repo');
-      expect(block).toNotContain('deliberate exception');
-      ex.config.tools = ['Read', 'Grep', 'Glob', 'Write'];
+      expect(block).toContain('checkout release/2.4');
+      expect(block).toContain('pull --ff-only');
+      expect(block).toContain('proceed with the current state and say so');
+      expect(block).toContain('version maintenance, not modification');
+      win.document.getElementById('appSourceBranch').value = '';
       block = win.appSourceBlock().join('\n');
-      expect(block).toContain('deliberate exception');
-      expect(block).toContain('"App Explorer" was granted write tools');
-      expect(block).toContain('Every other step still treats this path as READ-ONLY');
-      expect(block).toContain('declared in the handoff');
+      expect(block).toContain('only if the tree is clean and an upstream exists');
+      expect(block).toContain('skip silently');
+      expect(block).toContain('rev-parse --short HEAD');
+      win.document.getElementById('appSourcePath').value = '';
+      resetState();
+    });
+    it('app source access is explicit config: read-only default is byte-identical, Writable is unconditional on tools, memory-write guarantee untouched', () => {
+      resetState();
+      win.document.getElementById('appSourcePath').value = '/tmp/proj-app';
+      win.document.getElementById('appSourceAccess').value = 'readonly';
+      const ex = win.addNode('agent', 100, 100, 'App Explorer', { agentType: 'appExplorer', tools: ['Read', 'Grep', 'Glob', 'Write', 'Edit'], prompt: '', maxTurns: 5 });
+      let block = win.appSourceBlock().join('\n');
+      expect(block).toContain('This is the application under test - **READ-ONLY, do NOT modify files in this repo.**');
+      expect(block).toNotContain('writable by deliberate configuration');
+      win.document.getElementById('appSourceAccess').value = 'writable';
+      ex.config.tools = ['Read', 'Grep', 'Glob'];
+      block = win.appSourceBlock().join('\n');
+      expect(block).toContain('writable by deliberate configuration');
+      expect(block).toContain('declared in the handoff like any other change');
+      expect(block).toContain('Steps with no cause to modify it still treat it as read-only');
       expect(block).toNotContain('READ-ONLY, do NOT modify files in this repo');
       win.document.getElementById('memoryToggle').checked = true; win.toggleMemory();
       const out = win.genSubAgents();
       expect(out).toContain('whether or not `Write` is among its suggested tools');
       win.document.getElementById('appSourcePath').value = '';
+      win.document.getElementById('appSourceAccess').value = 'readonly';
+      resetState();
+    });
+    it('app source access persists via prefs (absent key = readonly) and resets with New Workflow', () => {
+      resetState();
+      win.document.getElementById('appSourceAccess').value = 'writable';
+      win.savePrefs();
+      win.document.getElementById('appSourceAccess').value = 'readonly';
+      win.restorePrefs();
+      expect(win.document.getElementById('appSourceAccess').value).toBe('writable');
+      win.clearCanvas(true);
+      expect(win.document.getElementById('appSourceAccess').value).toBe('readonly');
+      const raw = JSON.parse(win.localStorage.getItem('awd_prefs') || '{}');
+      delete raw.appSourceAccess;
+      win.localStorage.setItem('awd_prefs', JSON.stringify(raw));
+      win.restorePrefs();
+      expect(win.getAppSourceAccess()).toBe('readonly');
+      win.savePrefs();
+      resetState();
+    });
+    it('the App Source Explain row reflects the access mode and names the Access selector as its lever', () => {
+      resetState();
+      win.document.getElementById('appSourcePath').value = '/tmp/proj-app';
+      win.document.getElementById('appSourceAccess').value = 'readonly';
+      win.addNode('agent', 100, 100, 'Explorer', { agentType: 'appExplorer', tools: ['Read'], prompt: '', maxTurns: 5 });
+      let rows = win.explainWorkflow('subagent');
+      let row = rows.find(r => r.part === 'App Source');
+      expect(row.reason).toContain('read-only exploration target');
+      expect(row.reason).toContain('lever: the Access selector');
+      win.document.getElementById('appSourceAccess').value = 'writable';
+      rows = win.explainWorkflow('subagent');
+      row = rows.find(r => r.part === 'App Source');
+      expect(row.reason).toContain('WRITABLE by deliberate configuration');
+      win.document.getElementById('appSourcePath').value = '';
+      win.document.getElementById('appSourceAccess').value = 'readonly';
       resetState();
     });
     afterEach(() => {
@@ -5527,49 +5580,57 @@ describe('Agent craft batch', () => {
         expect(tools.indexOf('Edit')).toBe(-1);
       });
     });
-    it('reveals the App Under Test section by TYPE even with an edited prompt (the old fragility)', () => {
+    // The reveal machinery (type-based + legacy template fallback + transition auto-expand)
+    // was deleted when App Under Test and UI Context became always-present sections: a
+    // collapsed section is a visible advertisement; a hidden one can never teach a user
+    // the capability exists. These tests pin the always-visible contract instead.
+    it('App Under Test and UI Context are always-present sections with consumer hints (no summoning node required)', () => {
       resetState();
-      win.render();
-      expect(win.document.getElementById('appSourceSection').style.display).toBe('none');
-      win.addNode('agent', 100, 200, 'Explorer', { agentType: 'appExplorer', prompt: 'my own edited exploration prompt', tools: ['Read'], maxTurns: 5 });
       win.render();
       expect(win.document.getElementById('appSourceSection').style.display).toBe('');
-    });
-    it('legacy fallback: a researcher-typed node carrying the pristine template still reveals (older saves)', () => {
-      resetState();
-      win.render();
-      win.addNode('agent', 100, 200, 'Old Explorer', { agentType: 'researcher', prompt: win.PROMPTS.appExplorer, tools: ['Read'], maxTurns: 5 });
-      win.render();
-      expect(win.document.getElementById('appSourceSection').style.display).toBe('');
-      resetState();
-      win.render();
-      win.addNode('agent', 100, 200, 'Old Analyzer', { agentType: 'researcher', prompt: win.PROMPTS.designSystemAnalyzer, tools: ['Read'], maxTurns: 5 });
-      win.render();
       expect(win.document.getElementById('uiContextSection').style.display).toBe('');
-    });
-    it('a section revealed by the run auto-expands past the first-run collapse seed, once, never fighting the user', () => {
-      resetState();
-      win.render(); // no explorer nodes -> transition trackers reset to hidden
-      win.expandAllSections();
-      // The first-run seed leaves app-under-test collapsed; set that state directly rather
-      // than re-running initSidebarCollapse (headers decorate at boot ONCE - re-init
-      // double-binds their click handlers and corrupts later suites).
+      expect(win.document.getElementById('appSourceSection').textContent).toContain('Used by App Explorer steps');
+      expect(win.document.getElementById('uiContextSection').textContent).toContain('Used by Design Analyzer');
+      // always-visible changes DISCOVERY only - emission still gates on content
+      expect(win.document.getElementById('appSourcePath').value).toBe('');
+      expect(win.appSourceBlock().length).toBe(0);
+      expect(win.genSubAgents()).toNotContain('### App Source');
       win.setSectionCollapsed('app-under-test', true);
-      const section = win.document.querySelector('.sidebar-section[data-collapse-id="app-under-test"]');
-      expect(section.classList.contains('collapsed')).toBe(true);
-      win.addNode('agent', 100, 200, 'Explorer', { agentType: 'appExplorer', prompt: '', tools: ['Read'], maxTurns: 5 });
-      win.render(); // hidden -> shown transition: reveal AND expand
+      win.render();
       expect(win.document.getElementById('appSourceSection').style.display).toBe('');
-      expect(section.classList.contains('collapsed')).toBe(false);
-      win.setSectionCollapsed('app-under-test', true); // the user folds it away
-      win.render(); // no transition -> their choice stands
-      expect(section.classList.contains('collapsed')).toBe(true);
+      win.setSectionCollapsed('app-under-test', false);
+    });
+    it('the frozen uiAppExplorer template is byte-identical to the pre-split selector text', () => {
+      const frozen = 'Explore the app source code for test automation.\n\n\nExtract the element selectors, screen structure, and navigation flows the test agents need.\n\n**IMPORTANT - Branch setup**: If an app branch is specified, run `git -C {appPath} fetch && git -C {appPath} checkout {branch} && git -C {appPath} pull` before exploring. If no branch is specified, use whatever is currently checked out. If the path is not a valid git repo, skip branch operations and proceed with what exists.\n\n1. Use `Glob` on the app source path to map the project structure - identify UI component directories, screen/view files, navigation configs, and asset directories\n2. Use `Grep` to search for accessibility identifiers: `accessibilityLabel`, `accessibilityIdentifier`, `testID`, `data-testid`, `contentDescription`, `resource-id`, `AutomationId`, or framework-specific equivalents\n3. Use `Grep` to find the specific screens and components related to the feature under test - search for feature names, screen names, and relevant keywords\n4. Read the relevant component/view files to extract:\n   - Element identifiers (accessibility IDs, test IDs, resource IDs)\n   - Interactive elements (buttons, inputs, toggles, pickers) and their identifiers\n   - Component hierarchy and nesting structure\n   - Conditional UI elements (shown/hidden based on state)\n5. Use `Grep` to trace navigation flows - find route definitions, navigation actions, and screen transition logic to understand how a user reaches each screen\n6. Use `LSP documentSymbol` on component files to understand their props/parameters and exported API\n7. Use `LSP findReferences` on shared UI components to understand which screens use them\n8. Identify any elements that lack accessibility identifiers - these are gaps the app team should address, and the test author will need to use fallback locator strategies for\n\nOutput a structured selector map organized by screen, with each element listing: element purpose, recommended locator strategy (accessibility ID preferred, XPath as fallback), the actual identifier value from source code, and platform notes (Android vs iOS differences if any).\n\n## Handoff Summary\nEnd your response with:\n- **Screens Mapped**: Each screen with its source file path\n- **Selector Map**: Per-screen table of element → locator strategy → identifier value\n- **Navigation Flow**: How to reach each screen from the app entry point\n- **Missing Identifiers**: Elements lacking accessibility IDs (recommend app team add them)\n- **Platform Differences**: Elements with different identifiers or behavior on iOS vs Android\n- **Branch Used**: Which branch was checked out (or "default" if none specified)';
+      expect(win.PROMPTS.uiAppExplorer === frozen).toBe(true);
+    });
+    it('the type default is the general cartographer template; the selector body lives only in the preset variant', () => {
+      const general = win.PROMPTS.appExplorer;
+      expect(general).toContain('cartographer');
+      expect(general).toContain('Read-only posture');
+      expect(general).toContain('**Surfaces Mapped**');
+      expect(general).toContain('When the task is UI test automation');
+      expect(general).toContain('## Handoff Summary');
+      expect(general).toNotContain('\u2014');
+      expect(general).toNotContain('\u2013');
+      expect(general).toNotContain('IMPORTANT - Branch setup');
+      expect(general).toNotContain('**Screens Mapped**');
+      expect(win.getEffectivePrompt({ label: 'X', config: { prompt: '', agentType: 'appExplorer' } })).toBe(general);
+    });
+    it('a node carrying the frozen preset template keeps it on type change (bugTester parity: preset-curated prompts never re-bake)', () => {
+      const cfg = { agentType: 'appExplorer', tools: ['Read'], prompt: win.PROMPTS.uiAppExplorer, writingStyle: undefined };
+      win.applyAgentTypeChange(cfg, 'researcher', cfg.prompt, 'Explorer');
+      expect(cfg.prompt).toBe(win.PROMPTS.uiAppExplorer);
+      const bt = { agentType: 'tester', tools: ['Read'], prompt: win.PROMPTS.bugTester, writingStyle: undefined };
+      win.applyAgentTypeChange(bt, 'coder', bt.prompt, 'Tester');
+      expect(bt.prompt).toBe(win.PROMPTS.bugTester);
     });
     it('the test_automation and ui_component presets carry the new types', () => {
       resetState();
       win.loadPreset('test_automation');
       const ae = win.state.nodes.find(n => n.label === 'App Explorer');
       expect(ae.config.agentType).toBe('appExplorer');
+      expect(ae.config.prompt).toBe(win.PROMPTS.uiAppExplorer);
       resetState();
       win.loadPreset('ui_component');
       const da = win.state.nodes.find(n => n.label === 'Design System Analyzer');
@@ -5581,12 +5642,16 @@ describe('Agent craft batch', () => {
       expect(cfg.prompt).toBe(win.PROMPTS.appExplorer);
       expect(win.toolSetsEqual(cfg.tools, win.agentTypeToolDefaults('appExplorer'))).toBe(true);
     });
-    it('Explain OFF rows name the summoning node type as the lever', () => {
+    it('Explain OFF rows give configuration guidance naming the section and its consumers', () => {
       resetState();
       win.addNode('agent', 100, 200, 'Solo', { agentType: 'coder', prompt: 'x', tools: ['Read'], maxTurns: 5 });
       const rows = win.explainWorkflow('subagent');
-      expect(rows.find(r => r.part === 'App Source').reason).toContain('App Explorer node');
-      expect(rows.find(r => r.part === 'UI Context').reason).toContain('Design Analyzer node');
+      const app = rows.find(r => r.part === 'App Source').reason;
+      expect(app).toContain('set the path in the App Under Test sidebar section');
+      expect(app).toContain('App Explorer steps');
+      const ui = rows.find(r => r.part === 'UI Context').reason;
+      expect(ui).toContain('UI Context sidebar section');
+      expect(ui).toContain('Design Analyzer');
     });
     it('skeptic lens: both types review under the researcher lens (grounded-in-real-sources critique)', () => {
       expect(win.buildAdversaryPrompt('appExplorer')).toBe(win.buildAdversaryPrompt('researcher'));
@@ -5600,6 +5665,21 @@ describe('Agent craft batch', () => {
       win.document.getElementById('appSourcePath').value = '/tmp/app';
       expect(win.adviseWorkflow().some(x => x.msg.indexOf('App Source') !== -1)).toBe(false);
       win.document.getElementById('appSourcePath').value = '';
+    });
+    it('advisor rule (i): a set App Source with no consuming step draws the stale-config suggestion; rules (h) and (i) are mutually exclusive', () => {
+      resetState();
+      win.document.getElementById('appSourcePath').value = '/tmp/app';
+      win.addNode('agent', 100, 200, 'Fixer', { agentType: 'coder', prompt: 'x', tools: ['Read'], maxTurns: 5 });
+      expect(win.adviseWorkflow().some(x => x.msg.indexOf('no step consumes it') !== -1)).toBe(true);
+      const legacy = win.addNode('agent', 100, 340, 'Old Explorer', { agentType: 'researcher', prompt: win.PROMPTS.uiAppExplorer, tools: ['Read'], maxTurns: 5 });
+      expect(win.adviseWorkflow().some(x => x.msg.indexOf('App Source') !== -1)).toBe(false); // legacy template counts as a consumer
+      win.deleteNodeById ? win.deleteNodeById(legacy.id) : (win.state.nodes = win.state.nodes.filter(n => n.id !== legacy.id));
+      win.addNode('agent', 100, 480, 'Explorer', { agentType: 'appExplorer', prompt: '', tools: ['Read'], maxTurns: 5 });
+      expect(win.adviseWorkflow().some(x => x.msg.indexOf('App Source') !== -1)).toBe(false); // matched: both silent
+      win.document.getElementById('appSourcePath').value = '';
+      expect(win.adviseWorkflow().some(x => x.msg.indexOf('has no App Source configured') !== -1)).toBe(true); // (h) takes over
+      expect(win.adviseWorkflow().some(x => x.msg.indexOf('no step consumes it') !== -1)).toBe(false);
+      resetState();
     });
     it('step hints: both types get code search (they explore codebases), neither gets Datadog (deliberate)', () => {
       const prevCs = win.state.mcpCodeSearch, prevDd = win.state.mcpDatadog;

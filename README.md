@@ -182,7 +182,7 @@ Click any node on the canvas to open its configuration panel. Each node type has
 
 ### Agent
 The core building block. Every agent can be individually configured:
-- **Agent Type** - Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, Writer, General, Analyst, plus **App Explorer** and **Design Analyzer** (read-only context specialists: placing one reveals its sidebar section - App Under Test and UI Context respectively - so the thing it explores has a home), plus **Skeptic** and **Verifier** (the review-loop roles - see [Review Loops](#review-loops-skeptic--verifier-one-click)). Each type has a built-in prompt template that activates when you leave the prompt blank. Writer agents have a **Writing Style** selector (Technical, User Guide, Business, API Reference, Runbook) that auto-configures tools and prompt for each discipline
+- **Agent Type** - Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, Writer, General, Analyst, plus **App Explorer** and **Design Analyzer** (context specialists: they consume the always-present App Under Test and UI Context sidebar sections respectively; App Explorer maps structure, surfaces, and contracts generally, and mines UI selectors when the work is test automation), plus **Skeptic** and **Verifier** (the review-loop roles - see [Review Loops](#review-loops-skeptic--verifier-one-click)). Each type has a built-in prompt template that activates when you leave the prompt blank. Writer agents have a **Writing Style** selector (Technical, User Guide, Business, API Reference, Runbook) that auto-configures tools and prompt for each discipline
 - **Model** - Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6, Haiku 4.5, Sonnet 4.5, Opus 4.5, plus 1M context variants for Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, and Sonnet 4.6. The default stays Opus 4.8; set a different default in the sidebar or override per-node as needed. Max plan users get 1M context by default. API and Pro users can select 1M variants for research-heavy or long-running agents where the extra context window makes a difference
 - **Tools** - Toggle individual tools on/off: Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP. Presets assign sensible defaults (e.g. Reviewers get read-only tools, Coders get everything)
 - **Agent Prompt** - Custom instructions. Leave blank to use the agent type's built-in template, or write your own
@@ -224,11 +224,13 @@ The Output node's **Format** is the single delivery control - it decides what ha
 
 Other fields: **Deliverable** (what's produced), **Branch Name** (Commit and Pull Request), and **Target Branch** (Pull Request only). No preset defaults to Pull Request - commit/push/PR is always an explicit choice.
 
-### Preset-Specific Settings
+### Context Sections and Preset-Specific Settings
 
-Some presets reveal additional sidebar sections:
-- **Test Automation** shows an **App Under Test** field - specify the local path to the app being tested so agents can explore its source for DOM selectors, screen structure, and locator patterns (Selenium, Playwright, etc.)
-- **UI Design & Development** shows a **UI Context** field for styling preferences and design system notes (e.g. "Use vanilla-extract + clsx, avoid SCSS")
+Two always-present sidebar sections feed the context specialists (each says which steps consume it):
+- **App Under Test** - the local path to an app being explored, used by App Explorer steps and the Test Automation preset (DOM selectors, screen structure, locator patterns for Selenium, Playwright, etc.). An **Access** selector keeps that path read-only by default; flip it to Writable only when you deliberately want steps modifying the explored source, with every change declared
+- **UI Context** - styling preferences and design system notes (e.g. "Use vanilla-extract + clsx, avoid SCSS"), used by Design Analyzer and UI-building steps
+
+One preset reveals extra node settings:
 - **Parallel Research** shows a **Research Mode** selector on the fork node (codebase-internal / landscape-advisory / hybrid), plus an **Options to Evaluate** slot and an **Evaluation Bias / Principle** field. Mode is inferred from your requirements (our own code vs external options) and can be changed at any time; the agents re-bake to match. Advisory mode does a current-state inventory (LSP stays available but the heavy call-hierarchy tracing is gated off), enumerates the full option space including status-quo and lighter-weight alternatives, scores every option on a shared rubric, and ends with an Advisor that writes ADVISORY.md (CTO-ready summary, scored matrix, follow-up tickets, open questions). Recommending the minimal or do-nothing option is a valid conclusion.
 
 ## Review Loops: Skeptic & Verifier (one-click)

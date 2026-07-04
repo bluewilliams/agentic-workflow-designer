@@ -682,16 +682,22 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
   </div>
 
-  <div class="sidebar-section" id="appSourceSection" data-collapse-id="app-under-test" style="display:none">
+  <div class="sidebar-section" id="appSourceSection" data-collapse-id="app-under-test">
     <h3>App Under Test <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Local path to the app being tested. Agents will explore it for selectors and screen structure.</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Local path to the app being explored. Agents map its structure, screens, and (for UI test work) selectors.</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Used by App Explorer steps (and the Test Automation preset) - add one to put this path to work.</div>
     <input type="text" id="appSourcePath" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px" placeholder="/path/to/app/repo" oninput="updatePrompt();savePrefsDebounced()"/>
     <input type="text" id="appSourceBranch" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px" placeholder="Branch (optional, e.g. feature/PROJ-123)" oninput="updatePrompt();savePrefsDebounced()"/>
+    <select id="appSourceAccess" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px;width:100%" onchange="updatePrompt();savePrefsDebounced()" title="Whether steps may modify this repo. Read-only is the safe default; Writable is a deliberate grant that applies to any step whose task genuinely requires it.">
+      <option value="readonly" selected>Access: Read-only (default)</option>
+      <option value="writable">Access: Writable</option>
+    </select>
   </div>
 
-  <div class="sidebar-section" id="uiContextSection" data-collapse-id="ui-context" style="display:none">
+  <div class="sidebar-section" id="uiContextSection" data-collapse-id="ui-context">
     <h3>UI Context <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
     <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Styling preferences or migration notes. Leave blank and the agent will discover your design system automatically.</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Used by Design Analyzer and UI-building steps.</div>
     <textarea id="uiContextNotes" class="story-input" style="min-height:48px;padding:6px 8px;font-size:12px" placeholder="e.g. Use vanilla-extract + clsx, avoid SCSS and MUI v4" oninput="updatePrompt();savePrefsDebounced()"></textarea>
   </div>
 
@@ -972,7 +978,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li>Paste requirements into the <strong>Requirements</strong> field (or a Jira ticket URL)</li>
   <li>Click <strong>Auto Workflow</strong> to auto-build a workflow from keywords, or pick a <strong>Preset</strong> below</li>
   <li>Customize nodes by clicking them: change agent types, models, prompts, and tools</li>
-  <li>Two context-specialist agent types reveal their own sidebar sections when placed on the canvas: <strong>App Explorer</strong> (the App Under Test path it explores read-only for screens and selectors) and <strong>Design Analyzer</strong> (the UI Context notes it treats as authoritative styling constraints)</li>
+  <li>Two context-specialist agent types consume their own always-present sidebar sections: <strong>App Explorer</strong> (maps the App Under Test path - structure, surfaces, contracts, and, for UI test work, selectors; read-only unless its Access selector says Writable) and <strong>Design Analyzer</strong> (the UI Context notes it treats as authoritative styling constraints). Each section says which steps use it, so the capability is discoverable by scanning the sidebar</li>
   <li>Pick an export format tab at the bottom, then <strong>Copy</strong> the prompt into Claude Code</li>
 </ol>
 <p><strong>Auto Workflow</strong> stays disabled until you've pasted enough prose to auto-pick a workflow - roughly a sentence (at least 6 words once any URL or ticket key is set aside). A bare Jira key (like <code>PROJ-42</code>) prompts you to paste the full URL; a ticket URL on its own opens a workflow-type picker. <strong>Generate Refine Prompt</strong> and <strong>Generate Plan Prompt</strong> are both available as soon as the box isn't empty (they work with a Jira URL too, since they fetch the ticket), so you can refine or plan before Auto Workflow lights up. Both also self-check on click as a safety net.</p>
@@ -1330,8 +1336,8 @@ const AGENT_TYPES = [
   { id: 'writer', name: 'Writer', desc: 'Documentation and content creation specialist' },
   { id: 'general', name: 'General', desc: 'General-purpose agent' },
   { id: 'analyst', name: 'Analyst', desc: 'Measures, estimates, and forecasts with visible methodology' },
-  { id: 'appExplorer', name: 'App Explorer', desc: 'Maps the app under test READ-ONLY - screens, element selectors, navigation flows - for test automation (reveals the App Under Test section)' },
-  { id: 'designAnalyzer', name: 'Design Analyzer', desc: 'Distills the design system and styling conventions into a brief, read-only (reveals the UI Context section)' },
+  { id: 'appExplorer', name: 'App Explorer', desc: 'Maps an application READ-ONLY - structure, surfaces, contracts, navigation - and mines UI selectors when the task is test automation (consumes the App Under Test section)' },
+  { id: 'designAnalyzer', name: 'Design Analyzer', desc: 'Distills the design system and styling conventions into a brief, read-only (consumes the UI Context section)' },
   { id: 'adversary', name: 'Skeptic', desc: 'Refute-first critic; reviews any step and loops back only material defects' },
   { id: 'verifier', name: 'Verifier', desc: 'Proves the outcome meets the objective with evidence; loops back what is not verified' }
 ];
@@ -2043,7 +2049,8 @@ const PROMPTS = {
   migrationEngineer: 'Implement schema changes and data migrations.\n\n\n**Migrations run against live data while yesterday\'s code is still reading it - plan for that, not for the demo database.**\n\n1. Discover the migration framework and conventions from the existing migration files, and map every consumer of the tables and types being changed (findReferences on the data models tells you the blast radius before you commit to a shape)\n2. **Prefer expand-contract over in-place mutation**: add the new column/table first (expand), backfill or dual-write, switch readers over, and remove the old shape in a LATER migration (contract) - never design a deploy where code and schema must flip in the same instant\n3. **Separate schema changes from data backfills**: schema migrations stay fast and lock-light; long-running backfills run as batched, resumable data steps. Watch lock duration on large tables - an ALTER that rewrites a big table can take production down all by itself.\n4. Make the deploy-order coupling explicit: state which code versions run safely against which schema versions, in both directions, so rollout AND rollback have a working combination at every step\n5. Every migration reversible (up and down) and idempotent (safe to run twice); test forward and rollback on a clean database\n6. Document data transformations and their edge cases - the nulls, orphans, and duplicates the new constraints will reject\n\nOutput: migration files created, schema changes, rollback verification, and data integrity considerations.\n\n## Handoff Summary\nEnd your response with:\n- **Migrations Created**: Each migration file with description\n- **Schema Changes**: Tables/columns added, modified, or removed\n- **Rollback Verified**: Confirmation that down migration works\n- **Data Integrity**: Edge cases and data transformation notes\n- **Dependencies**: Order constraints and prerequisite migrations',
 
   // --- Test Automation (SET) ---
-  appExplorer: 'Explore the app source code for test automation.\n\n\nExtract the element selectors, screen structure, and navigation flows the test agents need.\n\n**IMPORTANT - Branch setup**: If an app branch is specified, run `git -C {appPath} fetch && git -C {appPath} checkout {branch} && git -C {appPath} pull` before exploring. If no branch is specified, use whatever is currently checked out. If the path is not a valid git repo, skip branch operations and proceed with what exists.\n\n1. Use `Glob` on the app source path to map the project structure - identify UI component directories, screen/view files, navigation configs, and asset directories\n2. Use `Grep` to search for accessibility identifiers: `accessibilityLabel`, `accessibilityIdentifier`, `testID`, `data-testid`, `contentDescription`, `resource-id`, `AutomationId`, or framework-specific equivalents\n3. Use `Grep` to find the specific screens and components related to the feature under test - search for feature names, screen names, and relevant keywords\n4. Read the relevant component/view files to extract:\n   - Element identifiers (accessibility IDs, test IDs, resource IDs)\n   - Interactive elements (buttons, inputs, toggles, pickers) and their identifiers\n   - Component hierarchy and nesting structure\n   - Conditional UI elements (shown/hidden based on state)\n5. Use `Grep` to trace navigation flows - find route definitions, navigation actions, and screen transition logic to understand how a user reaches each screen\n6. Use `LSP documentSymbol` on component files to understand their props/parameters and exported API\n7. Use `LSP findReferences` on shared UI components to understand which screens use them\n8. Identify any elements that lack accessibility identifiers - these are gaps the app team should address, and the test author will need to use fallback locator strategies for\n\nOutput a structured selector map organized by screen, with each element listing: element purpose, recommended locator strategy (accessibility ID preferred, XPath as fallback), the actual identifier value from source code, and platform notes (Android vs iOS differences if any).\n\n## Handoff Summary\nEnd your response with:\n- **Screens Mapped**: Each screen with its source file path\n- **Selector Map**: Per-screen table of element → locator strategy → identifier value\n- **Navigation Flow**: How to reach each screen from the app entry point\n- **Missing Identifiers**: Elements lacking accessibility IDs (recommend app team add them)\n- **Platform Differences**: Elements with different identifiers or behavior on iOS vs Android\n- **Branch Used**: Which branch was checked out (or "default" if none specified)',
+  appExplorer: 'Map an application\'s source so other agents can act on it - you are the expedition\'s cartographer, and you modify nothing.\n\n**Read-only posture.** You chart this codebase; you never change it. Findings, maps, and gaps go in your report (and workflow memory) - never into the source.\n\n**Method: breadth first, then depth, anchored.** Survey the whole territory before drilling: entry points, top-level structure, and how the pieces are wired. Then go deep only where the task points. Every claim in your map carries an anchor (the file plus a symbol or named section) another agent can jump to without re-searching - an unanchored observation is a rumor, not a map.\n\n**What a useful map covers:**\n1. **Structure and entry points** - where execution starts, how the project is laid out, which directories own which concerns.\n2. **Surfaces** - the screens, views, API endpoints, CLI commands, or jobs the application exposes, organized by surface so downstream work navigates by what users actually touch.\n3. **Navigation and data flow** - how a user or request reaches each surface: routes, transitions, handlers, and the data that moves through them.\n4. **Public contracts** - the types, schemas, and interfaces the application promises: their shapes, where they are defined, who consumes them.\n5. **Conventions** - the patterns governing the area (state management, styling, error handling), weighted toward the most recently touched code when patterns conflict.\n6. **Gaps worth flagging** - missing identifiers, undocumented contracts, dead surfaces, inconsistencies the owning team should know about. Negative findings stated plainly: \"no route guards exist\" saves the next agent an hour.\n\n**When the task is UI test automation**, additionally extract element identifiers for the screens under test (`testID`, `data-testid`, `accessibilityLabel`, `accessibilityIdentifier`, `contentDescription`, `resource-id`, or framework equivalents), note interactive elements lacking identifiers as gaps, and recommend a locator strategy per element (accessibility ID preferred, structural fallback) - the per-screen selector map becomes part of your deliverable.\n\n**If a branch or version is pinned for the target**, check it out before exploring (skip branch operations if the path is not a git repo) and report which you actually mapped.\n\nOutput a structured map organized by surface, each entry anchored, with depth concentrated where the task needs it.\n\n## Handoff Summary\nEnd your response with:\n- **Surfaces Mapped**: each surface (screen, endpoint, command) with its source anchor\n- **Contracts / Selectors**: the public shapes downstream work consumes - or the per-screen selector map when the task is UI test automation\n- **Navigation / Flow**: how each mapped surface is reached from the entry points\n- **Conventions**: the governing patterns, recency-weighted\n- **Gaps Flagged**: missing identifiers, undocumented contracts, inconsistencies - stated plainly\n- **Target Version**: the branch or commit you actually mapped',
+  uiAppExplorer: 'Explore the app source code for test automation.\n\n\nExtract the element selectors, screen structure, and navigation flows the test agents need.\n\n**IMPORTANT - Branch setup**: If an app branch is specified, run `git -C {appPath} fetch && git -C {appPath} checkout {branch} && git -C {appPath} pull` before exploring. If no branch is specified, use whatever is currently checked out. If the path is not a valid git repo, skip branch operations and proceed with what exists.\n\n1. Use `Glob` on the app source path to map the project structure - identify UI component directories, screen/view files, navigation configs, and asset directories\n2. Use `Grep` to search for accessibility identifiers: `accessibilityLabel`, `accessibilityIdentifier`, `testID`, `data-testid`, `contentDescription`, `resource-id`, `AutomationId`, or framework-specific equivalents\n3. Use `Grep` to find the specific screens and components related to the feature under test - search for feature names, screen names, and relevant keywords\n4. Read the relevant component/view files to extract:\n   - Element identifiers (accessibility IDs, test IDs, resource IDs)\n   - Interactive elements (buttons, inputs, toggles, pickers) and their identifiers\n   - Component hierarchy and nesting structure\n   - Conditional UI elements (shown/hidden based on state)\n5. Use `Grep` to trace navigation flows - find route definitions, navigation actions, and screen transition logic to understand how a user reaches each screen\n6. Use `LSP documentSymbol` on component files to understand their props/parameters and exported API\n7. Use `LSP findReferences` on shared UI components to understand which screens use them\n8. Identify any elements that lack accessibility identifiers - these are gaps the app team should address, and the test author will need to use fallback locator strategies for\n\nOutput a structured selector map organized by screen, with each element listing: element purpose, recommended locator strategy (accessibility ID preferred, XPath as fallback), the actual identifier value from source code, and platform notes (Android vs iOS differences if any).\n\n## Handoff Summary\nEnd your response with:\n- **Screens Mapped**: Each screen with its source file path\n- **Selector Map**: Per-screen table of element → locator strategy → identifier value\n- **Navigation Flow**: How to reach each screen from the app entry point\n- **Missing Identifiers**: Elements lacking accessibility IDs (recommend app team add them)\n- **Platform Differences**: Elements with different identifiers or behavior on iOS vs Android\n- **Branch Used**: Which branch was checked out (or "default" if none specified)',
 
   testPlanner: 'Analyze the requirements and plan the test automation approach.\n\n\n**Discover the stack before you plan for it.** Identify the BDD framework, assertion library, DI mechanism, locator strategy, and logging approach from the existing test code - the most recently written tests are the convention (e.g. SpecFlow or Cucumber or behave, FluentAssertions or chai - whatever THIS suite actually uses). Every artifact you plan binds to the discovered stack, never an assumed one.\n\n1. Use `Glob "**/*"` to map the test project structure - identify feature files, step definitions, screen/page objects, utilities, and config\n2. Use `Grep` to find existing tests covering the same feature area or screen - search for feature names, screen names, and related keywords\n3. Read the most relevant existing feature files and their step definitions to understand BDD conventions, Gherkin style, and tag usage\n4. Use `LSP workspaceSymbol` to find existing screen classes, step definition classes, and service interfaces related to the feature\n5. Use `LSP goToDefinition` on base classes (e.g., ScreenBase, StepBase) to understand the patterns new code must follow\n6. Use `LSP findReferences` on shared utilities (wait helpers, context managers, driver extensions) to identify reusable infrastructure\n7. Identify which screens need new page objects vs which already exist\n8. Determine if the test requires cross-platform or cross-browser handling (e.g. iOS and Android differences), where the suite targets more than one\n9. Identify test data requirements - what entities, users, or preconditions are needed\n10. Flag any new automation-runner or device/cloud-grid configuration changes required (e.g. Appium capabilities, LambdaTest or BrowserStack config - whichever this project uses)\n\n**Scenario discipline**: Plan the MINIMUM number of scenarios that cover the acceptance criteria. Each scenario should verify a meaningful user behavior or business rule - not just that a UI element is visible or displays static text. Prefer fewer, high-confidence scenarios over many shallow ones. Avoid scenarios that only assert the presence of labels, placeholder text, or static content - these add execution time and flakiness without catching real bugs.\n\nOutput a structured test plan with: feature file outline (scenarios with Gherkin steps), screen objects needed (new vs existing), step definitions to create/extend, test data requirements, platform-specific considerations, and tags (@P1, @Dependent, etc.).\n\n## Handoff Summary\nEnd your response with:\n- **Feature File**: Planned scenarios with Gherkin step outlines\n- **Screens Needed**: New screen objects to create and existing ones to reuse (with file paths)\n- **Step Definitions**: New steps to implement and existing ones to reuse\n- **Test Data**: Required entities, users, preconditions, and data setup\n- **Platform Notes**: iOS/Android differences requiring separate implementations\n- **Risks**: Flaky element locators, timing issues, or environment dependencies',
 
@@ -2640,6 +2647,7 @@ function savePrefs() {
       artifactPath: state.artifactPath,
       appSourcePath: $('appSourcePath') ? $('appSourcePath').value : '',
       appSourceBranch: $('appSourceBranch') ? $('appSourceBranch').value : '',
+      appSourceAccess: $('appSourceAccess') ? $('appSourceAccess').value : 'readonly',
       uiContextNotes: $('uiContextNotes') ? $('uiContextNotes').value : '',
       exportFormat: state.exportFormat,
       repositories: state.repositories,
@@ -2687,6 +2695,7 @@ function restorePrefs() {
     syncDurableUI();
     if (p.appSourcePath && $('appSourcePath')) $('appSourcePath').value = p.appSourcePath;
     if (p.appSourceBranch && $('appSourceBranch')) $('appSourceBranch').value = p.appSourceBranch;
+    if (p.appSourceAccess && $('appSourceAccess')) $('appSourceAccess').value = p.appSourceAccess;
     if (p.uiContextNotes && $('uiContextNotes')) $('uiContextNotes').value = p.uiContextNotes;
     if (p.exportFormat) setExportFormat(p.exportFormat);
     if (Array.isArray(p.repositories)) { state.repositories = p.repositories; renderRepoRows(); }
@@ -3761,25 +3770,15 @@ function updateTransform() {
 // ═══════════════════════════════════════════════════════════
 // RENDERING
 // ═══════════════════════════════════════════════════════════
-let _appSourceWasShown = false, _uiContextWasShown = false;
 function render() {
   renderNodes();
   renderConnections();
   updatePrompt();
   $('emptyState').style.display = state.nodes.length === 0 ? 'flex' : 'none';
-  // Reveal by TYPE first (an edited prompt no longer hides the section); the exact-template
-  // match stays as the legacy fallback so older saves and imports still reveal.
-  const hasAppExplorer = state.nodes.some(n => n.type === 'agent' && (n.config.agentType === 'appExplorer' || n.config.prompt === PROMPTS.appExplorer));
-  $('appSourceSection').style.display = hasAppExplorer ? '' : 'none';
-  const hasDesignAnalyzer = state.nodes.some(n => n.type === 'agent' && (n.config.agentType === 'designAnalyzer' || n.config.prompt === PROMPTS.designSystemAnalyzer));
-  $('uiContextSection').style.display = hasDesignAnalyzer ? '' : 'none';
-  // Programmatic-reveal principle (sidebar-collapse record): a section the app just made
-  // visible must not appear folded behind a first-run-collapsed chevron. Expand ONLY on the
-  // hidden->shown TRANSITION so a user who later collapses it is never fought.
-  if (hasAppExplorer && !_appSourceWasShown) expandSection('app-under-test');
-  _appSourceWasShown = hasAppExplorer;
-  if (hasDesignAnalyzer && !_uiContextWasShown) expandSection('ui-context');
-  _uiContextWasShown = hasDesignAnalyzer;
+  // App Under Test and UI Context are always-present sections (like Repositories): a
+  // collapsed section is a visible one-line advertisement of the capability, where a
+  // conditionally-hidden one could never teach a user it exists. Emission still gates
+  // on actual content (path set / notes non-empty).
   document.querySelectorAll('.preset-item[data-preset]').forEach(el => {
     el.classList.toggle('active', el.dataset.preset === state.activePreset);
   });
@@ -7518,7 +7517,7 @@ function loadPreset(preset, _confirmed) {
       const appIn = addNode('input', 80, 380, 'App Source', { source:'freeform', description:'Path to the app under test (set in sidebar)' });
       const planFork = addNode('parallel', 340, 286, 'Parallel Analysis', { strategy:'all' });
       const plan = addNode('agent', 620, 200, 'Test Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.testPlanner, maxTurns:10 });
-      const appExp = addNode('agent', 620, 380, 'App Explorer', { agentType:'appExplorer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','Bash'], prompt:PROMPTS.appExplorer, maxTurns:15 });
+      const appExp = addNode('agent', 620, 380, 'App Explorer', { agentType:'appExplorer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','Bash'], prompt:PROMPTS.uiAppExplorer, maxTurns:15 });
       const planJoin = addNode('parallel', 900, 286, 'Combine', { strategy:'all' });
       const authFork = addNode('parallel', 1120, 286, 'Parallel Authoring', { strategy:'all' });
       const feat = addNode('agent', 1400, 150, 'Feature Writer', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Grep','Glob','LSP'], prompt:PROMPTS.featureWriter, maxTurns:10 });
@@ -7742,6 +7741,7 @@ function clearCanvas(skipConfirm) {
   renderRepoRows();
   if ($('appSourcePath')) $('appSourcePath').value = '';
   if ($('appSourceBranch')) $('appSourceBranch').value = '';
+  if ($('appSourceAccess')) $('appSourceAccess').value = 'readonly';
   if ($('uiContextNotes')) $('uiContextNotes').value = '';
   if ($('urlPresetPicker')) $('urlPresetPicker').style.display = 'none';
   // New-workflow defaults: memory + durable record ON (flipped 2026-07-03; grounding was already on).
@@ -8030,11 +8030,22 @@ function adviseWorkflow() {
   // (h) An App Explorer with no application to explore: the App Under Test path is the
   // one input the type cannot work without - a fresh Test Automation preset fires this
   // deliberately until the path is set (calibration pins the single expected suggestion).
+  const _appExplorerConsumers = agents.filter(n => n.config.agentType === 'appExplorer'
+    || n.config.prompt === PROMPTS.appExplorer || n.config.prompt === PROMPTS.uiAppExplorer);
   agents.forEach(n => {
     if (n.config.agentType !== 'appExplorer') return;
     if (getAppSource()) return;
     s.push({ msg: '"' + n.label + '" has no App Source configured - set the path (and optional branch) in the App Under Test section so it has an application to explore.' });
   });
+
+  // (i) The inverse mismatch: a stale App Source rides every workflow (appSourceBlock is
+  // content-gated, so a path set for last week's test run still emits into today's bugfix
+  // prompts). Deliberately does NOT gate emission - config binds; this only surfaces the
+  // mismatch. Mutually exclusive with (h) by construction: (h) = explorer without path,
+  // (i) = path without explorer; both silent when matched or when both are absent.
+  if (getAppSource() && _appExplorerConsumers.length === 0) {
+    s.push({ msg: 'App Source is set but no step consumes it - clear it in App Under Test, or add an App Explorer step if this workflow should explore the app.' });
+  }
 
   // (f) Telemetry-informed advice, only when run reports exist for this workflow.
   if (typeof hasRunReportData === 'function' && hasRunReportData()) {
@@ -8582,9 +8593,9 @@ function explainWorkflow(format) {
   rows.push(exRow('Requirements', !!story, story ? 'from the Requirements field' : 'Requirements field empty - section omitted', story));
   const plan = getPlan();
   rows.push(exRow('Workflow Context (plan)', !!plan, plan ? 'from the Workflow Context field - starting guidance, adapt-not-obey framing' : 'no Workflow Context pasted', plan ? 'Workflow Context (starting guidance - adapt based on findings)' : ''));
-  rows.push(exRow('App Source', !!getAppSource(), getAppSource() ? 'app-source path set - read-only exploration target' : 'no app source configured (the App Under Test sidebar section appears when the workflow has an App Explorer node - add one, or load the Test Automation preset)', getAppSource() ? 'App Source' : ''));
+  rows.push(exRow('App Source', !!getAppSource(), getAppSource() ? (getAppSourceAccess() === 'writable' ? 'app-source path set - WRITABLE by deliberate configuration (lever: the Access selector in App Under Test)' : 'app-source path set - read-only exploration target (lever: the Access selector in App Under Test)') : 'no app source configured - set the path in the App Under Test sidebar section; App Explorer steps (and the Test Automation preset) consume it', getAppSource() ? 'App Source' : ''));
   const uiN = $('uiContextNotes') ? $('uiContextNotes').value.trim() : '';
-  rows.push(exRow('UI Context', !!uiN, uiN ? 'UI/styling constraints set' : 'no UI context set (the UI Context sidebar section appears when the workflow has a Design Analyzer node - the UI Component preset ships one)', uiN ? 'UI Context' : ''));
+  rows.push(exRow('UI Context', !!uiN, uiN ? 'UI/styling constraints set' : 'no UI context set - add notes in the UI Context sidebar section; Design Analyzer and UI-building steps consume it', uiN ? 'UI Context' : ''));
   const dfmts = deliveryFormats();
   const dwinner = dfmts.includes('pr') ? 'Pull Request Creation' : dfmts.includes('commit') ? 'Commit' : dfmts.includes('report') ? 'Report' : dfmts.includes('docs') ? 'Documentation' : 'no-commit discipline';
   rows.push(exRow('Delivery block', true, 'orchestrator-owned, emitted once; driver by priority pr > commit > report > docs: ' + dwinner, dfmts.includes('pr') ? 'Pull Request Creation' : ''));
@@ -8783,14 +8794,10 @@ function getAppSource() {
   const branch = branchEl ? branchEl.value.trim() : '';
   return { path, branch: branch || null };
 }
-function appSourceWriteGranted() {
-  // Selection-as-intent (asymmetric by design): a user ADDING Write/Edit to an App Explorer
-  // signals it may modify the app source; ABSENCE never forbids anything - the read-only
-  // default is the role's contract, not a tool restriction. Memory-file writes are a
-  // separate protocol guarantee and are never governed by this.
-  return state.nodes.filter(n => n.type === 'agent'
-    && (n.config.agentType === 'appExplorer' || n.config.prompt === PROMPTS.appExplorer)
-    && (n.config.tools || []).some(t => t === 'Write' || t === 'Edit'));
+function getAppSourceAccess() {
+  // Explicit configuration, never tool consultation: tools stay pure suggestions everywhere.
+  const el = $('appSourceAccess');
+  return el && el.value === 'writable' ? 'writable' : 'readonly';
 }
 function appSourceBlock(heading) {
   const app = getAppSource();
@@ -8799,14 +8806,18 @@ function appSourceBlock(heading) {
   const lines = [h, '', '- **Path**: `' + app.path + '`'];
   if (app.branch) lines.push('- **Branch**: `' + app.branch + '`');
   lines.push('');
-  const granted = appSourceWriteGranted();
-  if (granted.length) {
-    lines.push('This is the application under test - **read-only by default for every step**, with one deliberate exception: ' + granted.map(n => '"' + n.label + '"').join(' and ') + ' was granted write tools, so it may modify files in this repo where its task genuinely requires it (for example adding the missing test identifiers it discovers). Every other step still treats this path as READ-ONLY, and any modification must be declared in the handoff like any other change.');
+  if (getAppSourceAccess() === 'writable') {
+    lines.push('This is the application under test - **writable by deliberate configuration**: steps may modify files in this repo where their task genuinely requires it, and every modification must be declared in the handoff like any other change. Steps with no cause to modify it still treat it as read-only.');
   } else {
     lines.push('This is the application under test - **READ-ONLY, do NOT modify files in this repo.**');
   }
   lines.push('Explore it to understand UI structure and extract element selectors for test automation:');
-  lines.push('1. If a branch is specified, run `git -C ' + app.path + ' checkout ' + (app.branch || '{branch}') + ' && git -C ' + app.path + ' pull`');
+  if (app.branch) {
+    lines.push('1. Sync the pinned version first: `git -C ' + app.path + ' fetch && git -C ' + app.path + ' checkout ' + app.branch + ' && git -C ' + app.path + ' pull --ff-only`. If the tree is dirty or the pull cannot fast-forward, do NOT force or resolve anything - proceed with the current state and say so. Syncing is version maintenance, not modification; the read-only contract governs authoring changes.');
+  } else {
+    lines.push('1. Sync the current branch first when it is safe: `git -C ' + app.path + ' pull --ff-only` (only if the tree is clean and an upstream exists; if not - or this is not a git repo - skip silently and proceed with what is checked out).');
+  }
+  lines.push('   Record the commit actually explored (`git -C ' + app.path + ' rev-parse --short HEAD`) in your handoff, so the exact version under test is never ambiguous.');
   lines.push('2. Use `Glob` and `Grep` on this path to find UI components, screens/views, and navigation structure');
   lines.push('3. Search for element selectors: `testID`, `data-testid`, `accessibilityLabel`, `accessibilityIdentifier`, `contentDescription`, `resource-id`, or framework equivalents');
   lines.push('4. Extract selectors, interactive elements, and component hierarchy to inform your test code');
