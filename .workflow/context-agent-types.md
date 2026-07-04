@@ -94,6 +94,7 @@ index.html: `AGENT_TYPES` (2 entries, read-only-explicit descs), `AGENT_TYPE_TOO
 - 2026-07-03: selection-as-intent SUPERSEDED same day by the explicit Access selector (director cohesion ruling: zero selection-consulting contracts) - appSourceWriteGranted deleted; the App Source block now keys on the appSourceAccess config (readonly default byte-identical, writable unconditional on tools, declared-in-handoff); tools return to pure suggestions everywhere; memory-write guarantee unchanged (by context-agent-types)
 - 2026-07-03: app source auto-sync - pinned branch gets fetch/checkout/pull --ff-only with a no-force degradation clause; unpinned gets a safe current-branch ff-only sync; every exploration records the commit SHA explored (version provenance). Sync framed as maintenance, not modification - the read-only contract governs authoring (by context-agent-types)
 - 2026-07-03: the test_automation preset's specialist node relabeled 'UI Explorer' (was 'App Explorer' - the label taught users the type name meant the narrow UI thing; director catch). Type name unchanged (by context-agent-types)
+- 2026-07-03: AGENT_TYPES roster alpha-sorted by display name (display-only - everything keys on ids; suite confirmed zero order dependence). Director UX catch: the new types no longer read as bottom-of-list afterthoughts (by context-agent-types)
 
 ## Outcome
 
