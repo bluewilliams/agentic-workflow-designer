@@ -5628,7 +5628,7 @@ describe('Agent craft batch', () => {
     it('the test_automation and ui_component presets carry the new types', () => {
       resetState();
       win.loadPreset('test_automation');
-      const ae = win.state.nodes.find(n => n.label === 'App Explorer');
+      const ae = win.state.nodes.find(n => n.label === 'UI Explorer');
       expect(ae.config.agentType).toBe('appExplorer');
       expect(ae.config.prompt).toBe(win.PROMPTS.uiAppExplorer);
       resetState();
