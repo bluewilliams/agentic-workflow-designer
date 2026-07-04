@@ -5316,16 +5316,21 @@ describe('Agent craft batch', () => {
       expect(out).toContain('opportunistically heal');
       expect(out).toContain('surgical diff');
     });
-    it('Defect Posture select renders only for carrying roles', () => {
+    it('Defect Posture select renders for the coder family and the reviewer; not tester/verifier/planner', () => {
       resetState();
-      const c = win.addNode('agent', 100, 200, 'Coder', { agentType: 'coder', prompt: 'Build it.' });
-      win.selectNode(c.id);
-      win.updateConfig();
-      expect(!!win.document.querySelector('[data-key="defectPosture"]')).toBe(true);
-      const r = win.addNode('agent', 100, 400, 'Reviewer', { agentType: 'reviewer', prompt: 'Review it.' });
-      win.selectNode(r.id);
-      win.updateConfig();
-      expect(win.document.querySelector('[data-key="defectPosture"]')).toBeNull();
+      const has = (type) => {
+        const n = win.addNode('agent', 100, 200, 'N-' + type, { agentType: type, prompt: 'x' });
+        win.selectNode(n.id);
+        win.updateConfig();
+        const present = !!win.document.querySelector('[data-key="defectPosture"]');
+        win.selectNode(null);
+        return present;
+      };
+      expect(has('coder')).toBe(true);
+      expect(has('reviewer')).toBe(true);
+      expect(has('tester')).toBe(false);
+      expect(has('verifier')).toBe(false);
+      expect(has('planner')).toBe(false);
     });
     it('explicit posture round-trips through serialize/deserialize; absent stays balanced', () => {
       resetState();
@@ -5339,6 +5344,114 @@ describe('Agent craft batch', () => {
       expect(healer.config.defectPosture).toBe('aggressive');
       expect(plain.config.defectPosture === undefined).toBe(true);
       expect(win.nodeDefectPosture(plain)).toBe('balanced');
+    });
+    it('reviewer balanced is byte-identical to the pre-knob reviewer: emits nothing (absent and explicit)', () => {
+      expect(win.foundDefectNote({ config: { agentType: 'reviewer' } })).toBe('');
+      expect(win.foundDefectNote({ config: { agentType: 'reviewer', defectPosture: 'balanced' } })).toBe('');
+    });
+    it('reviewer surgical and aggressive emit distinct flag-back contracts; flags can never fail the gate', () => {
+      const su = win.foundDefectNote({ config: { agentType: 'reviewer', defectPosture: 'surgical' } });
+      const ag = win.foundDefectNote({ config: { agentType: 'reviewer', defectPosture: 'aggressive' } });
+      expect(su).toContain('the diff is your entire jurisdiction');
+      expect(su).toNotContain('Flagged pre-existing defects');
+      expect(ag).toContain('Flagged pre-existing defects (for the orchestrator)');
+      expect(ag).toContain('can never make the verdict NEEDS REVISION');
+      expect(ag).toContain('never fix');
+    });
+    it('tester and verifier carry the balanced protocol without a knob: a stale posture value is ignored', () => {
+      const t = win.foundDefectNote({ config: { agentType: 'tester', defectPosture: 'aggressive' } });
+      const v = win.foundDefectNote({ config: { agentType: 'verifier', defectPosture: 'record-only' } });
+      const balanced = win.foundDefectNote({ config: { agentType: 'tester' } });
+      expect(t).toBe(balanced);
+      expect(v).toBe(balanced);
+      expect(t).toContain('low-hanging fruit inside the code you are already changing');
+      expect(t).toNotContain('opportunistically heal');
+    });
+    const buildReviewerWorkflow = (posture, withGate) => {
+      resetState();
+      const i = win.addNode('input', 80, 200, 'Req');
+      const c = win.addNode('agent', 300, 200, 'Implementer', { agentType: 'coder', prompt: 'Build it.', tools: ['Read'], maxTurns: 5 });
+      const cfg = { agentType: 'reviewer', prompt: 'Review it.', tools: ['Read'], maxTurns: 5 };
+      if (posture) cfg.defectPosture = posture;
+      const r = win.addNode('agent', 520, 200, 'Reviewer', cfg);
+      const o = win.addNode('output', 960, 200, 'Done', { deliverable: 'Result', format: 'code' });
+      win.addConnection(i.id, c.id); win.addConnection(c.id, r.id);
+      if (withGate === false) { win.addConnection(r.id, o.id); return; }
+      const d = win.addNode('decision', 740, 192, 'Review Passed?', { condition: 'Code review passed', yesLabel: 'Approved', noLabel: 'Revise' });
+      win.addConnection(r.id, d.id);
+      win.addConnection(d.id, c.id, 'Revise');
+      win.addConnection(d.id, o.id, 'Approved');
+    };
+    const FORMATS = [['genWorkflow', 'prompt'], ['genSubAgents', 'subagent'], ['genAgentTeams', 'teams'], ['genClaudePrompt', 'claude']];
+    it('aggressive reviewer posture block and orchestrator handling line emit in ALL FOUR prose formats', () => {
+      buildReviewerWorkflow('aggressive');
+      FORMATS.forEach(([fn]) => {
+        const out = win[fn]();
+        expect(out).toContain('Flagged pre-existing defects (for the orchestrator)');
+        expect(out).toContain('outside the revise loop, never consuming gate cycles');
+      });
+    });
+    it('balanced reviewer emits NEITHER the posture block NOR the handling line in any format (byte-parity)', () => {
+      buildReviewerWorkflow(null);
+      FORMATS.forEach(([fn]) => {
+        const out = win[fn]();
+        expect(out).toNotContain('Flagged pre-existing defects');
+        expect(out).toNotContain('outside the revise loop');
+        expect(out).toNotContain('entire jurisdiction');
+      });
+    });
+    it('the handling line dispatch is format-aware: teams re-messages the teammate, sub-agents respawn onto the memory file, claude self-directs', () => {
+      buildReviewerWorkflow('aggressive');
+      expect(win.genAgentTeams()).toContain('SAME implementer teammate');
+      expect(win.genSubAgents()).toContain('its own memory file');
+      expect(win.genClaudePrompt()).toContain('You play both roles here');
+      expect(win.genSubAgents()).toNotContain('SAME implementer teammate');
+    });
+    it('with NO drawn revise edge the handling line is RECORD-ONLY and forbids inventing a route', () => {
+      buildReviewerWorkflow('aggressive', false);
+      const out = win.genSubAgents();
+      expect(out).toContain('RECORD-ONLY');
+      expect(out).toContain('Do NOT invent a dispatch route the canvas does not draw');
+      expect(out).toNotContain('outside the revise loop, never consuming gate cycles');
+      expect(out).toNotContain('its own memory file');
+    });
+    it('a non-balanced posture renders on the node subtitle; balanced stays clean (both knobs)', () => {
+      buildReviewerWorkflow('aggressive');
+      win.render();
+      const subs = Array.from(win.document.querySelectorAll('.node-sublabel')).map(el => el.textContent);
+      expect(subs.some(t => t.indexOf('aggressive defects') !== -1)).toBe(true);
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      expect(subs.some(t => t.indexOf('balanced') !== -1)).toBe(false);
+      impl.config.defectPosture = 'record-only';
+      win.render();
+      const subs2 = Array.from(win.document.querySelectorAll('.node-sublabel')).map(el => el.textContent);
+      expect(subs2.some(t => t.indexOf('record-only defects') !== -1)).toBe(true);
+    });
+    it('reviewer aggressive and coder record-only coexist per-node in one generated output', () => {
+      buildReviewerWorkflow('aggressive');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.defectPosture = 'record-only';
+      const out = win.genSubAgents();
+      expect(out).toContain('surgical diff');
+      expect(out).toContain('Flagged pre-existing defects (for the orchestrator)');
+    });
+    it('Explain reviewer row: posture-aware status at every posture, probe equals the live helper', () => {
+      buildReviewerWorkflow('aggressive');
+      const r = win.state.nodes.find(n => n.label === 'Reviewer');
+      let row = win.explainNode(r, 'subagent').find(x => x.part === 'Found-defect protocol');
+      expect(row.status).toBe('emitted');
+      expect(row.reason).toContain("flag-back posture 'aggressive'");
+      expect(row.reason).toContain('Defect Posture selector');
+      expect(row.probe).toBe(win.foundDefectNote(r));
+      r.config.defectPosture = 'surgical';
+      row = win.explainNode(r, 'subagent').find(x => x.part === 'Found-defect protocol');
+      expect(row.status).toBe('emitted');
+      expect(row.reason).toContain("flag-back posture 'surgical'");
+      delete r.config.defectPosture;
+      row = win.explainNode(r, 'subagent').find(x => x.part === 'Found-defect protocol');
+      expect(row.status).toBe('skipped');
+      expect(row.reason).toContain('balanced default');
+      expect(row.reason).toContain('Defect Posture selector');
     });
     it('reviewer clause judges declared fixes against the producing step posture', () => {
       expect(win.PROMPTS.reviewer).toContain('producing step');
