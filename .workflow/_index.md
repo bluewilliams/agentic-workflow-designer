@@ -30,6 +30,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (AGENT_TYPES/AGENT_TYPE_TOOL_DEFAULTS/AGENT_TYPE_PROMPT_MAP/ADVERSARY_LENS_BY_ROLE/OPENSPEC_ROLE_GROUP/CODE_SEARCH_STEP_ROLES, always-present section markup + consumer hints, presets, adviseWorkflow rules h + i, explain rows, help), tests.html, README.md
 - status: current | date: 2026-07-03 | note: 1492 -> 1510 across the unit's rulings. Kills the smuggled-template discoverability defects structurally.
 
+## explain-lever-audit
+
+- record: .workflow/explain-lever-audit.md
+- intent: the OFF-row principle enforced uniformly across Explain - every off/absent row names its lever in user language (no internal constants, no raw agentType ids, no jargon; config rows name their sidebar home); ON reasons use plain UI toggle names; Claude.ai Model row is a by-design skip; advisor rules (h)/(i) share one consumer predicate (legacy template carriers get the setup nudge); TECHNICAL/README/help staleness swept (16-type roster, uiAppExplorer split, UI Explorer label, appSourceAccess, always-present sections).
+- files: index.html (explainAgentNode/explainWorkflow/explainDecisionNode rows, adviseWorkflow rule h, help modal), tests.html (1 migration + 2 pins), TECHNICAL.md, README.md
+- status: current | date: 2026-07-04 | note: 1511 -> 1513. Findings from the overnight read-only audit, applied in three approved batches.
+
 ## verification-instructions
 
 - record: .workflow/verification-instructions.md
