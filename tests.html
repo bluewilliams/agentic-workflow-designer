@@ -5681,6 +5681,15 @@ describe('Agent craft batch', () => {
       expect(win.adviseWorkflow().some(x => x.msg.indexOf('no step consumes it') !== -1)).toBe(false);
       resetState();
     });
+    it('advisor rule (h) covers legacy template carriers: a researcher-typed explorer without a path gets the nudge; with a path, both rules stay silent', () => {
+      resetState();
+      win.addNode('agent', 100, 200, 'Old Explorer', { agentType: 'researcher', prompt: win.PROMPTS.uiAppExplorer, tools: ['Read'], maxTurns: 5 });
+      expect(win.adviseWorkflow().some(x => x.msg.indexOf('has no App Source configured') !== -1)).toBe(true);
+      win.document.getElementById('appSourcePath').value = '/tmp/app';
+      expect(win.adviseWorkflow().some(x => x.msg.indexOf('App Source') !== -1)).toBe(false);
+      win.document.getElementById('appSourcePath').value = '';
+      resetState();
+    });
     it('step hints: both types get code search (they explore codebases), neither gets Datadog (deliberate)', () => {
       const prevCs = win.state.mcpCodeSearch, prevDd = win.state.mcpDatadog;
       win.state.mcpCodeSearch = true; win.state.mcpDatadog = true;
@@ -10181,11 +10190,26 @@ describe('Explain this workflow (anatomy vs generated output agreement)', () => 
     const out = win.genSubAgents();
     const skRows = agree(sk, 'subagent', out);
     expect(rowOf(skRows,'Datadog step hint').status).toBe('skipped');
-    expect(rowOf(skRows,'Datadog step hint').reason).toContain('DATADOG_STEP_ROLES');
+    expect(rowOf(skRows,'Datadog step hint').reason).toContain('only plan-shaping roles do');
+    expect(rowOf(skRows,'Datadog step hint').reason).toContain('the node\'s Agent Type');
+    expect(rowOf(skRows,'Datadog step hint').reason).toNotContain('DATADOG_STEP_ROLES');
     expect(rowOf(skRows,'Code-search step hint').status).toBe('emitted');
     const wrRows = agree(wr, 'subagent', out);
     expect(rowOf(wrRows,'Code-search step hint').status).toBe('skipped');
-    expect(rowOf(wrRows,'Code-search step hint').reason).toContain('CODE_SEARCH_STEP_ROLES');
+    expect(rowOf(wrRows,'Code-search step hint').reason).toContain('Writer steps do not get the step hint');
+    expect(rowOf(wrRows,'Code-search step hint').reason).toNotContain('CODE_SEARCH_STEP_ROLES');
+  });
+
+  it('Claude.ai format: the Model row is a by-design skip (that generator emits no model parameter)', () => {
+    resetState();
+    const n = win.addNode('agent', 0, 0, 'Solo', { agentType:'coder', model:'opus-4.8', tools:['Read'], prompt:'', maxTurns:5 });
+    const rows = win.explainNode(n, 'claude');
+    const row = rows.find(r => r.part === 'Model');
+    expect(row.status).toBe('skipped');
+    expect(row.reason).toContain('carries no model parameter');
+    const subRows = win.explainNode(n, 'subagent');
+    expect(subRows.find(r => r.part === 'Model').status).toBe('emitted');
+    resetState();
   });
 
   it('template provenance: auto-applied vs custom vs foreign-template reasons', () => {

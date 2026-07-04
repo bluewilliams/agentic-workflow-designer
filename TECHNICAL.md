@@ -70,7 +70,7 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 
 | Key | Shape | Purpose |
 |-----|-------|---------|
-| `awd_prefs` | `{ defaultModel, memoryEnabled, appSourcePath, appSourceBranch, exportFormat, repositories, mcpAtlassian, mcpCodeSearch, mcpCustom, plibOpen, plibFavs, rulesPaths, productDocPaths, verifyPaths, verifyFailRun, ... }` | User preferences, auto-saved on change and auto-restored on load (the repo-context lists and verification posture ride along; `restorePrefs` guards each with `Array.isArray` / typeof checks so older blobs degrade cleanly) |
+| `awd_prefs` | `{ defaultModel, memoryEnabled, appSourcePath, appSourceBranch, appSourceAccess, exportFormat, repositories, mcpAtlassian, mcpCodeSearch, mcpCustom, plibOpen, plibFavs, rulesPaths, productDocPaths, verifyPaths, verifyFailRun, ... }` | User preferences, auto-saved on change and auto-restored on load (the repo-context lists and verification posture ride along; `restorePrefs` guards each with `Array.isArray` / typeof checks so older blobs degrade cleanly) |
 | `awd_workflows` | `[ { slug, name, savedAt, nodeCount, agentCount }, ... ]` | Index of saved workflows (metadata only) |
 | `awd_wf_{slug}` | `{ version, slug, name, story, savedAt, repositories, canvas: { nodes, connections, nextId, pan, zoom } }` | Full saved workflow data |
 | `awd_autosave` | Same shape as `awd_wf_{slug}` | Single-slot auto-save, debounced 1s on `render()` |
@@ -89,12 +89,12 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 | **Task** | Rounded rect | Green | A discrete unit of work with description + acceptance criteria (non-agent) |
 | **Decision** | Diamond | Amber | A conditional branch with yes/no routing, configurable max revision cycles, and explicit reasoning requirements |
 | **Parallel** | Flat rect | Purple | Fork/Join control flow. Splits into concurrent branches or collects results |
-| **Input** | Pill | Cyan | Entry point for requirements. Source framing: Freeform (default), User Story, PRD. Jira URLs are auto-resolved (content-driven, not a Source option). Optional App Source Path and App Branch fields for test automation workflows |
+| **Input** | Pill | Cyan | Entry point for requirements. Source framing: Freeform (default), User Story, PRD. Jira URLs are auto-resolved (content-driven, not a Source option). The app-under-test path, branch, and Access selector live in the App Under Test sidebar section, not on the node |
 | **Output** | Pill | Rose | Deliverable: code changes, PR, report, or documentation. When format is PR, shows Branch Name and Target Branch fields |
 
 ### Agent Node Config
 Each Agent node has:
-- **Agent Type**: Planner, Architect, Coder, Frontend, Backend, Reviewer, Tester, Debugger, Researcher, Writer, General, plus **Skeptic** and **Verifier** (the review-loop roles - see [Review Loops](#review-loops-skeptic--verifier)). 13 types total (`AGENT_TYPES`)
+- **Agent Type**: Analyst, App Explorer, Architect, Backend, Coder, Debugger, Design Analyzer, Frontend, General, Planner, Researcher, Reviewer, Tester, Writer, plus **Skeptic** and **Verifier** (the review-loop roles - see [Review Loops](#review-loops-skeptic--verifier)). 16 types total (`AGENT_TYPES`, alpha-sorted by display name)
 - **Writing Style** (Writer only): Technical, User Guide, Business, API Reference, Runbook. Auto-configures tools and prompt template per style
 - **Model**: Fable 5, Opus 4.8 (default), Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6, Sonnet 4.5, Opus 4.5, Haiku 4.5 (Fable 5 and the latest Opus/Sonnet generations also have [1M] variants; every value maps to a valid Task-tool base alias via `taskModelMap`, with `modelContextNote` carrying the 1M intent as prose)
 - **Tools**: Checkboxes for Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP
@@ -132,7 +132,7 @@ For Writer agents, the writing style (stored in `node.config.writingStyle`) is r
 - **Testing/Validation**: `tester`, `bugTester`, `e2eTester`, `validator`, `verifier` (evidence-based outcome verification; one default prompt, no lens)
 - **Research**: `codebaseExplorer`, `docResearcher`, `patternAnalyzer`, `synthesizer`
 - **Audit**: `securityAuditor`, `qualityAnalyst`, `perfProfiler`, `archReviewer`, `reportBuilder`
-- **Test Automation (SET)**: `appExplorer`, `testPlanner`, `featureWriter`, `screenObjectWriter`, `stepDefWriter`, `testReviewer`
+- **Test Automation (SET)**: `uiAppExplorer` (the frozen UI/selector specialist; the App Explorer TYPE's default `appExplorer` template is a general application cartographer with selector mining as one branch), `testPlanner`, `featureWriter`, `screenObjectWriter`, `stepDefWriter`, `testReviewer`
 - **Writer**: `writerTechnical`, `writerUserguide`, `writerBusiness`, `writerApi`, `writerRunbook`
 - **Cross-cutting**: `securityReview`, `testWriter`, `researcher`
 
@@ -305,7 +305,7 @@ Everything the designer shows reaches the schema, at the right altitude:
 Forwarding is **intent, not enforcement**: OpenSpec has no native slot for model/tools/maxTurns. Behavioral guidance (role, tools, loop, context) transfers as text the agent reads and can act on; harness controls (model, max turns) are documentation on a vanilla run.
 
 ### Templates: role-aware record skeletons
-Each `templates/<id>.md` is the skeleton of that step's record (not an empty stub), scaffolding the designer's handoff/durable-record discipline so every step leaves a clean handoff. Universal Summary + Handoff, with role-specific middle sections via `OPENSPEC_ROLE_GROUP` -> `OPENSPEC_RECORD_SECTIONS` (build: Files Changed / How to Verify; plan: Plan / Risks; review: Findings / Verdict; skeptic: the PASS/NEEDS-REVISION verdict contract mirroring `buildAdversaryPrompt`; verify; test; research; docs: Deliverable / Audience / Sources; task: acceptance checklist). All 18 agent types map; `general` is the deliberate catch-all and any unmapped type degrades to it safely. Each template also encodes node-specific context only the designer knows: graph position ("builds on X; output consumed by Y"), a per-repo checklist on build/test steps when 2+ repositories are configured, and a gate-readiness section keyed to the actual downstream condition.
+Each `templates/<id>.md` is the skeleton of that step's record (not an empty stub), scaffolding the designer's handoff/durable-record discipline so every step leaves a clean handoff. Universal Summary + Handoff, with role-specific middle sections via `OPENSPEC_ROLE_GROUP` -> `OPENSPEC_RECORD_SECTIONS` (build: Files Changed / How to Verify; plan: Plan / Risks; review: Findings / Verdict; skeptic: the PASS/NEEDS-REVISION verdict contract mirroring `buildAdversaryPrompt`; verify; test; research; docs: Deliverable / Audience / Sources; task: acceptance checklist). All 16 agent types resolve (15 mapped explicitly; `general` is the deliberate catch-all fallback, and any unmapped type degrades to it safely). Each template also encodes node-specific context only the designer knows: graph position ("builds on X; output consumed by Y"), a per-repo checklist on build/test steps when 2+ repositories are configured, and a gate-readiness section keyed to the actual downstream condition.
 
 ### Lossless round-trip (`awd:meta`)
 The full `serializeWorkflow()` JSON rides in a `# awd:meta {json}` COMMENT at the bottom of `schema.yaml` (ignored by `openspec validate`). On import, `importWorkflowFile` extracts that one line and reuses the existing `deserializeWorkflow` - no YAML parser, no parallel deserializer. Re-export is byte-identical modulo the meta line. Re-import accepts the `schema.yaml` (matched by `awd:meta`, any extension); the `.zip` itself is guarded with an "unzip and import the schema.yaml" message. The exporter's Repo Context Paths are carried in the meta too; on import they are adopted only if the importing user has none set (so a shared schema is self-contained), and never overwrite an existing user's own global config (`openSpecAdoptContextPaths`).
@@ -492,7 +492,7 @@ The code tail (review → decision → tester → output) is skipped for read-on
 | **Parallel Research** | Input → Fork → (Codebase Explorer ‖ Doc Researcher ‖ Pattern Analyzer) → Join → Synthesizer → Research Report (report) |
 | **Review Swarm** | Input → Fork → (Security Auditor ‖ Quality Analyst ‖ Perf Profiler ‖ Arch Reviewer) → Join → Report Builder → Audit Report (report) |
 | **Delivery Swarm** | Input → Fork → (Codebase Cartographer ‖ Requirements Analyst ‖ Prior-Art Researcher) → Join → Lead Planner [Skeptic loop] → Fork → (Backend ‖ Frontend) → Join → Integrator [Verifier loop] → Code Reviewer → Decision → Test Engineer → Feature Delivered (code) |
-| **Test Automation** | (Requirements + App Source) → Fork → (Test Planner ‖ App Explorer) → Join → Fork → (Feature Writer ‖ Screen Objects ‖ Step Definitions) → Join → Test Reviewer → Decision → Test Suite (code) |
+| **Test Automation** | (Requirements + App Source) → Fork → (Test Planner ‖ UI Explorer) → Join → Fork → (Feature Writer ‖ Screen Objects ‖ Step Definitions) → Join → Test Reviewer → Decision → Test Suite (code) |
 | **UI Design & Development** | Input → Design System Analyzer → UI Implementer → UI Reviewer → Component Ready (code) |
 | **Refactoring** | Input → Planner → Code Analyzer → Refactorer → Reviewer → Decision → Tester → Refactored Code (code) |
 | **Documentation** | Input → Planner → Researcher → Doc Writer (Writer: Technical) → Doc Reviewer → Documentation (docs) |
@@ -574,7 +574,7 @@ The help modal also opens via the `?` keyboard shortcut and closes with `Escape`
 | localStorage for persistence | No server needed; keeps single-file portability; auto-save + named save + JSON export covers all sharing needs |
 | Debounced auto-save (1s) | Saves on every render without impacting interaction performance |
 | Separate prefs vs. workflow storage | Preferences (model, memory, format) persist globally; workflows persist individually by slug |
-| App Under Test after Presets | Contextual placement. Appears directly below the preset that triggers it (Test Automation) |
+| App Under Test after Presets | Always present (like Repositories): a collapsed section is a visible one-line advertisement of the capability, where a conditionally-hidden one could never teach a user it exists. Emission still gates on content |
 | Repositories between Default Model and Add Nodes | Always visible. Persists across sessions (prefs) and saved workflows. Injected into all 5 export formats |
 | Undo via state snapshots (not command pattern) | Simpler implementation, easier to reason about. Each pushUndo stores a JSON deep copy of nodes + connections. 50-step limit keeps memory bounded (~250KB worst case) |
 | Undo is structural only | Text field edits use the browser's native Ctrl+Z. Canvas undo covers add/delete/connect/disconnect/drag. Separating these avoids interfering with normal text editing |
@@ -627,7 +627,7 @@ CSS styles
 HTML structure
   ├── Sidebar: Workflow Name (+ New Workflow), Story Input (+ Generate Refine Prompt, validation hint),
   │            Workflow Context (+ Generate Plan Prompt), Default Model, Repositories,
-  │            Add Nodes, Presets, App Under Test (conditional), Workflow Management, Tip, MCP Integrations, Memory, Node Config
+  │            Add Nodes, Presets, App Under Test, UI Context, Repo Context Paths, Workflow Management, Tip, MCP Integrations, Memory, Run Reports, Node Config
   ├── Canvas: Toolbar (Select, Connect, Delete, Auto Layout, Fit, Zoom, Prompts, Help), SVG canvas, Empty state
   ├── Prompt Output: 5 format tabs, Copy button
   ├── Help Modal: Quick start, flows, output formats, shortcuts, power user tips
@@ -635,7 +635,7 @@ HTML structure
   └── Prompt Input Popup: Collects user context before copying prompts that need it
 JavaScript:
   ├── STATE & CONSTANTS
-  │     ├── NODE_DEFAULTS, AGENT_TYPES (13 types), ALL_TOOLS, MODELS
+  │     ├── NODE_DEFAULTS, AGENT_TYPES (16 types), ALL_TOOLS, MODELS
   │     ├── WRITING_STYLES (5 styles), WRITER_TOOL_DEFAULTS (per-style tool sets)
   │     ├── Atlassian URL detection
   │     ├── AGENT_TYPE_PROMPT_MAP, capitalize(), getEffectivePrompt()

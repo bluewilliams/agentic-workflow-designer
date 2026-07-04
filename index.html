@@ -978,7 +978,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li>Paste requirements into the <strong>Requirements</strong> field (or a Jira ticket URL)</li>
   <li>Click <strong>Auto Workflow</strong> to auto-build a workflow from keywords, or pick a <strong>Preset</strong> below</li>
   <li>Customize nodes by clicking them: change agent types, models, prompts, and tools</li>
-  <li>Two context-specialist agent types consume their own always-present sidebar sections: <strong>App Explorer</strong> (maps the App Under Test path - structure, surfaces, contracts, and, for UI test work, selectors; read-only unless its Access selector says Writable) and <strong>Design Analyzer</strong> (the UI Context notes it treats as authoritative styling constraints). Each section says which steps use it, so the capability is discoverable by scanning the sidebar</li>
+  <li>Two context-specialist agent types consume their own always-present sidebar sections: <strong>App Explorer</strong> (maps the App Under Test path - structure, surfaces, contracts, and, for UI test work, selectors; read-only unless the App Under Test section's Access selector says Writable) and <strong>Design Analyzer</strong> (the UI Context notes it treats as authoritative styling constraints). Each section says which steps use it, so the capability is discoverable by scanning the sidebar</li>
   <li>Pick an export format tab at the bottom, then <strong>Copy</strong> the prompt into Claude Code</li>
 </ol>
 <p><strong>Auto Workflow</strong> stays disabled until you've pasted enough prose to auto-pick a workflow - roughly a sentence (at least 6 words once any URL or ticket key is set aside). A bare Jira key (like <code>PROJ-42</code>) prompts you to paste the full URL; a ticket URL on its own opens a workflow-type picker. <strong>Generate Refine Prompt</strong> and <strong>Generate Plan Prompt</strong> are both available as soon as the box isn't empty (they work with a Jira URL too, since they fetch the ticket), so you can refine or plan before Auto Workflow lights up. Both also self-check on click as a safety net.</p>
@@ -1027,6 +1027,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Using the role template</strong> - the prompt still matches the agent type's default.</li>
   <li><strong>Full template attached</strong> - the complete template is in place.</li>
   <li><strong>Edited from the {Role} template</strong> - once you change it, the status shows you've diverged from the pristine default.</li>
+  <li><strong>Unmodified template text from a different role</strong> - left over from an agent-type change; Reset applies the new role's template.</li>
 </ul>
 <p>A <strong>Reset</strong> control restores the pristine template (and the reset is undoable). <strong>Agent Context</strong> is a separate field: its contents are <strong>appended</strong> to the agent's prompt, not a replacement for it. Use the Agent Prompt to shape the role, and Agent Context to layer on extra constraints or implementation details.</p>
 <p><strong>Expand any text box.</strong> The Requirements, Workflow Context, Agent Prompt, Agent Context, and the prompt/agent editor fields each have a small <strong>expand</strong> button in their top-right corner (or press <kbd>Cmd/Ctrl</kbd>+<kbd>E</kbd> while the box is focused) that opens a large modal editor for that field - easier for writing or reviewing longer specs and prompts without leaving the app. Edits save automatically as you type; press <kbd>Esc</kbd> or <strong>Done</strong> to close. The inline boxes work exactly as before.</p>
@@ -8030,10 +8031,11 @@ function adviseWorkflow() {
   // (h) An App Explorer with no application to explore: the App Under Test path is the
   // one input the type cannot work without - a fresh Test Automation preset fires this
   // deliberately until the path is set (calibration pins the single expected suggestion).
+  // The consumer set is type OR template text, so a legacy researcher-typed node carrying
+  // an explorer template gets the same nudge as a typed one.
   const _appExplorerConsumers = agents.filter(n => n.config.agentType === 'appExplorer'
     || n.config.prompt === PROMPTS.appExplorer || n.config.prompt === PROMPTS.uiAppExplorer);
-  agents.forEach(n => {
-    if (n.config.agentType !== 'appExplorer') return;
+  _appExplorerConsumers.forEach(n => {
     if (getAppSource()) return;
     s.push({ msg: '"' + n.label + '" has no App Source configured - set the path (and optional branch) in the App Under Test section so it has an application to explore.' });
   });
@@ -8041,8 +8043,9 @@ function adviseWorkflow() {
   // (i) The inverse mismatch: a stale App Source rides every workflow (appSourceBlock is
   // content-gated, so a path set for last week's test run still emits into today's bugfix
   // prompts). Deliberately does NOT gate emission - config binds; this only surfaces the
-  // mismatch. Mutually exclusive with (h) by construction: (h) = explorer without path,
-  // (i) = path without explorer; both silent when matched or when both are absent.
+  // mismatch. Mutually exclusive with (h) by construction over the SAME consumer set:
+  // (h) = consumer without path, (i) = path without consumer; both silent when matched
+  // or when both are absent - no third state, since (h) and (i) share the predicate.
   if (getAppSource() && _appExplorerConsumers.length === 0) {
     s.push({ msg: 'App Source is set but no step consumes it - clear it in App Under Test, or add an App Explorer step if this workflow should explore the app.' });
   }
@@ -8219,7 +8222,7 @@ function explainInputNode(node, format) {
     urlOnly ? req.filter(l => l && !String(l).startsWith('#')) : srcHint));
   const atlT = atlassianTicketFetchHint(getWorkflowAtlassianUrls());
   rows.push(exRow('Atlassian ticket fetch', !!atlT,
-    atlT ? 'Atlassian URL detected in the input - resolved once, up front, by the orchestrator' : 'no Atlassian URL in the input',
+    atlT ? 'Atlassian URL detected in the input - resolved once, up front, by the orchestrator' : 'no Atlassian URL in the input - paste a ticket URL into Requirements to have the orchestrator resolve it',
     atlT || ''));
   return rows;
 }
@@ -8246,19 +8249,19 @@ function explainAgentNode(node, format) {
     'custom': 'custom prompt (user-edited; role templates not applied)'
   }[info.state];
   rows.push(exRow('Role instructions', true, roleReason, eff));
-  rows.push(exRow('Model', true, 'always emitted', format === 'claude' ? '' : getTaskModelParam(node.config.model)));
+  rows.push(exRow('Model', format !== 'claude', format === 'claude' ? 'Claude.ai format carries no model parameter' : 'always emitted', format === 'claude' ? '' : getTaskModelParam(node.config.model)));
 
   if (format === 'claude') {
     rows.push(exRow('Suggested tools', false, 'Claude.ai format carries no CLI tool lines'));
     rows.push(exRow('Suggestion clause', false, 'Claude.ai format carries no CLI tool lines'));
   } else {
     rows.push(exRow('Suggested tools', tools.length > 0,
-      tools.length > 0 ? 'the step\'s suggested toolkit - a strong recommendation, never a restriction' : 'no tools selected - the line is omitted (caller guards emission)',
+      tools.length > 0 ? 'the step\'s suggested toolkit - a strong recommendation, never a restriction (deselect all for silence; to emphasize or direct a specific tool for this step, say so in Agent Context)' : 'no tools selected - tick tools in this node\'s Node Configuration to emit a suggested toolkit, or use Agent Context to steer tool use in your own words',
       tools.length > 0 ? toolAccessText(tools) : ''));
     const scope = toolScopeNote(tools);
     rows.push(exRow('Suggestion clause', !!scope,
       scope ? 'suggestions, not limits - the agent may use any tool its runtime provides when the task calls for it'
-            : 'no suggestion line emitted, nothing to clause',
+            : 'no suggested-tools line to clause - tick tools in Node Configuration and this follows',
       scope));
   }
 
@@ -8278,20 +8281,20 @@ function explainAgentNode(node, format) {
 
   const dd = datadogStepHint(node);
   rows.push(exRow('Datadog step hint', !!dd,
-    dd ? 'mcpDatadog toggle on and role is in DATADOG_STEP_ROLES'
+    dd ? 'Datadog toggle on and this is a plan-shaping role'
        : (!state.mcpDatadog ? 'Datadog toggle off'
-          : "role '" + node.config.agentType + "' not in DATADOG_STEP_ROLES (plan-shaping roles only; implementers inherit telemetry via the orchestrator brief)"),
+          : 'Datadog is on, but this role does not get the step hint - only plan-shaping roles do (Planner, Architect, Researcher, Debugger, Tester, Analyst); implementers inherit telemetry via the orchestrator brief. What changes this row: the node\'s Agent Type.'),
     dd));
   const cs = codeSearchStepHint(node);
   rows.push(exRow('Code-search step hint', !!cs,
-    cs ? 'mcpCodeSearch toggle on and role is in CODE_SEARCH_STEP_ROLES'
+    cs ? 'Code search toggle on and this role gets the step hint'
        : (!state.mcpCodeSearch ? 'Code search toggle off'
-          : "role '" + node.config.agentType + "' not in CODE_SEARCH_STEP_ROLES (writer stays out - docs work rarely spans repo seams)"),
+          : 'Code search is on, but Writer steps do not get the step hint (docs work rarely spans repo seams). What changes this row: the node\'s Agent Type.'),
     cs));
   const veStep = verifyInstructionsStepHint(node);
   rows.push(exRow('Verification-instructions step hint', !!veStep,
     veStep ? 'verification paths configured and this step is the owning verification step (the last Verifier in execution order, else the last Tester)'
-       : ((!state.verifyPaths || !state.verifyPaths.length) ? 'no verification paths configured'
+       : ((!state.verifyPaths || !state.verifyPaths.length) ? 'no verification paths configured - add them under Repo Context Paths (Verification instructions)'
           : 'not the owning verification step (mandates go to ONE step - the last verifier-type node, else the last tester - so an expensive check never runs twice; reviewers audit, they do not execute)'),
     veStep));
   const fd = foundDefectNote(node);
@@ -8322,7 +8325,7 @@ function explainAgentNode(node, format) {
       deps.length === 0 ? 'no upstream dependencies'
         : (isParChild ? 'parallel-fork sibling - the fork header conveys the dependency, the line is deliberately omitted' : 'upstream steps whose output feeds this one'),
       deps.length > 0 && !isParChild ? 'Depends on: ' + deps.join(', ') : ''));
-    rows.push(exRow('Max turns', !!node.config.maxTurns, node.config.maxTurns ? 'turn budget for this step' : 'no maxTurns set',
+    rows.push(exRow('Max turns', !!node.config.maxTurns, node.config.maxTurns ? 'turn budget for this step' : 'no Max Turns set - give the step a turn budget in Node Configuration',
       node.config.maxTurns ? 'Max turns: ' + node.config.maxTurns : ''));
   } else if (format === 'subagent') {
     rows.push(exRow('Input (dependencies)', deps.length > 0, deps.length > 0 ? 'upstream steps whose output feeds this one' : 'no upstream dependencies',
@@ -8342,7 +8345,7 @@ function explainAgentNode(node, format) {
     : format === 'teams' ? 'output will be evaluated against: "' + gateProbe + '"'
     : 'Success criteria: "' + gateProbe + '"';
   rows.push(exRow('Success gate', gates.length > 0,
-    gates.length > 0 ? 'a downstream decision evaluates this output - the step must state an explicit verdict' : 'no downstream decision gate',
+    gates.length > 0 ? 'a downstream decision evaluates this output - the step must state an explicit verdict' : 'no downstream decision gate - add a Decision node after this step (or attach a review loop) to gate its output',
     gates.length > 0 ? gateText : ''));
   if (format === 'subagent' && gates.length === 0) {
     const downstream = getDownstream(node.id);
@@ -8397,7 +8400,7 @@ function explainDecisionNode(node, format) {
     reviseProbe));
   rows.push(exRow('Ordering semantics', true,
     node.config.reviewLoopDecisionFor !== undefined
-      ? 'attached review-loop gate: its failure back-edge is excluded from step ordering (isReviseBackEdge)'
+      ? 'attached review-loop gate: its failure back-edge is a revision path, excluded from step ordering'
       : 'manual gate: its ' + no + ' branch is a revision path, never an ordering dependency', ''));
   const feeders = state.connections.filter(c => c.to === node.id)
     .map(c => { const n = state.nodes.find(nd => nd.id === c.from); return n ? n.label : null; }).filter(Boolean);
@@ -8599,28 +8602,28 @@ function explainWorkflow(format) {
   const dfmts = deliveryFormats();
   const dwinner = dfmts.includes('pr') ? 'Pull Request Creation' : dfmts.includes('commit') ? 'Commit' : dfmts.includes('report') ? 'Report' : dfmts.includes('docs') ? 'Documentation' : 'no-commit discipline';
   rows.push(exRow('Delivery block', true, 'orchestrator-owned, emitted once; driver by priority pr > commit > report > docs: ' + dwinner, dfmts.includes('pr') ? 'Pull Request Creation' : ''));
-  rows.push(exRow('Repositories', getRepositories().length > 0, getRepositories().length > 0 ? getRepositories().length + ' repositories listed' : 'no repositories configured', getRepositories().length > 0 ? 'Repositories' : ''));
+  rows.push(exRow('Repositories', getRepositories().length > 0, getRepositories().length > 0 ? getRepositories().length + ' repositories listed' : 'no repositories listed - add them in the Repositories sidebar section', getRepositories().length > 0 ? 'Repositories' : ''));
   const atlT = atlassianTicketFetchHint(getWorkflowAtlassianUrls());
-  rows.push(exRow('Atlassian ticket fetch', !!atlT, atlT ? 'ticket URL(s) found in the requirements/nodes - toggle-independent, orchestrator fetches once' : 'no Atlassian URLs found in the workflow', atlT));
+  rows.push(exRow('Atlassian ticket fetch', !!atlT, atlT ? 'ticket URL(s) found in the requirements/nodes - toggle-independent, orchestrator fetches once' : 'no Atlassian URLs found in the workflow - paste a ticket URL into Requirements to include one', atlT));
   const atlG = atlassianGeneralHint();
-  rows.push(exRow('Atlassian (general)', !!atlG, atlG ? 'mcpAtlassian toggle on' : 'Atlassian toggle off', atlG));
+  rows.push(exRow('Atlassian (general)', !!atlG, atlG ? 'Atlassian toggle on' : 'Atlassian toggle off', atlG));
   const csH = codeSearchHint();
-  rows.push(exRow('Code search (workflow-level)', !!csH, csH ? 'mcpCodeSearch toggle on' : 'Code search toggle off', csH));
+  rows.push(exRow('Code search (workflow-level)', !!csH, csH ? 'Code search toggle on' : 'Code search toggle off', csH));
   rows.push(exRow('Conventions', true, 'always emitted - comment discipline + test-convention discovery', conventionsHint()));
   const ru = rulesPathsHint();
-  rows.push(exRow('Repo rules / constitution', !!ru, ru ? 'rules paths configured (BINDING constraints)' : 'no rules paths configured', ru));
+  rows.push(exRow('Repo rules / constitution', !!ru, ru ? 'rules paths configured (BINDING constraints)' : 'no rules paths configured - add them under Repo Context Paths (Rules / constitution)', ru));
   const pd = productDocsHint();
-  rows.push(exRow('Product / architecture docs', !!pd, pd ? 'doc paths configured (goals to SERVE)' : 'no product-doc paths configured', pd));
+  rows.push(exRow('Product / architecture docs', !!pd, pd ? 'doc paths configured (goals to SERVE)' : 'no doc paths configured - add them under Repo Context Paths (Product docs)', pd));
   const ve = verifyInstructionsHint();
-  rows.push(exRow('Verification instructions', !!ve, ve ? 'verification paths configured (routed to the owning verification step - Verifier if present, else final Tester; posture ' + (state.verifyFailRun ? 'fails the run' : 'report-only') + ')' : 'no verification paths configured', ve));
+  rows.push(exRow('Verification instructions', !!ve, ve ? 'verification paths configured (routed to the owning verification step - Verifier if present, else final Tester; posture ' + (state.verifyFailRun ? 'fails the run' : 'report-only') + ')' : 'no verification paths configured - add them under Repo Context Paths (Verification instructions)', ve));
   const cr = consumeRecordsHint(format);
-  rows.push(exRow('Grounding in prior records', !!cr, cr ? 'consumeRecords toggle on - three-tier lookup, Current behavior first' : 'Ground-in-prior-records toggle off', cr));
+  rows.push(exRow('Grounding in prior records', !!cr, cr ? 'Ground-in-prior-records toggle on - three-tier lookup, Current behavior first' : 'Ground-in-prior-records toggle off', cr));
   const cl = clarifyFirstHint();
-  rows.push(exRow('Clarify-first gate', !!cl, cl ? 'clarifyFirst toggle on - one round of focused questions before planning' : 'Clarify-first toggle off', cl));
+  rows.push(exRow('Clarify-first gate', !!cl, cl ? 'Clarify-requirements-first toggle on - one round of focused questions before planning' : 'Clarify-first toggle off', cl));
   const ddG = datadogGroundingHint();
-  rows.push(exRow('Datadog grounding', !!ddG, ddG ? 'mcpDatadog toggle on - bounded plan-shaping telemetry read' : 'Datadog toggle off', ddG));
+  rows.push(exRow('Datadog grounding', !!ddG, ddG ? 'Datadog toggle on - bounded plan-shaping telemetry read' : 'Datadog toggle off', ddG));
   const cm = customMcpHint();
-  rows.push(exRow('Custom MCP tools', !!cm, cm ? 'custom MCP notes set' : 'no custom MCP notes', cm));
+  rows.push(exRow('Custom MCP tools', !!cm, cm ? 'custom MCP notes set' : 'no custom MCP notes - describe extra MCPs in the MCP Integrations notes box', cm));
   const memOn = state.memoryEnabled;
   // Full protocol text so the row can unfold in place; probe stays the header line
   // (the sub-agent format's memory header is inline in its generator, not a callable
@@ -8635,7 +8638,7 @@ function explainWorkflow(format) {
   const durFull = durOn ? genDurableRecordProtocol(format === 'subagent' ? 'subagent' : format === 'teams' ? 'teams' : 'prompt').replace(/^---\n/, '') : '';
   rows.push(exRow('Durable record protocol', durOn,
     durOn ? 'durable-record toggle on - ONE record per unit of work, three surfaces only, Current behavior first, live-ticked checklist'
-          : (memOn ? 'durable-record toggle off' : 'requires memory (superset invariant) - both toggles off'),
+          : (memOn ? 'durable-record toggle off' : 'requires memory: turn on Enable workflow memory, then Keep a durable record (both in Memory and Durable Record)'),
     durFull));
   const decisions = state.nodes.filter(n => n.type === 'decision');
   const decHeading = format === 'prompt' ? 'Decision Points' : format === 'subagent' ? 'Decision Routing' : format === 'teams' ? 'Decision Gates' : '';
@@ -8643,7 +8646,7 @@ function explainWorkflow(format) {
     ? decisions.length > 0 && state.nodes.filter(n => n.type === 'agent').every(a => getDownstreamDecisions(a.id).length === 0)
     : decisions.length > 0;
   rows.push(exRow('Decision section', decEmitted,
-    decisions.length === 0 ? 'no decision nodes'
+    decisions.length === 0 ? 'no decision nodes - add one from Add Nodes to gate a step'
       : (decEmitted ? 'the orchestrator evaluates these gates and routes pass/revise'
                     : 'gates are carried inline on the steps in this format'),
     decEmitted ? decHeading : ''));

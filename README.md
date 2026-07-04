@@ -165,7 +165,7 @@ Sixteen ready-made pipelines. Each one is a strong opinion you can override.
 - **Parallel Research** - mode-aware. Codebase-internal: Codebase Explorer + Doc Researcher + Pattern Analyzer > Synthesizer. Landscape/advisory: Current-State Inventory + Options Researcher + Fit & Tradeoff Analyzer > Advisor (writes ADVISORY.md)
 - **Review Swarm** - parallel Security + Quality + Performance + Architecture audit > Aggregate > Report Builder > Audit Report (read-only, never touches code)
 - **Delivery Swarm** - the showcase. Discovery fan-out (Codebase Cartographer + Requirements Analyst + Prior-Art Researcher) > Synthesize > Lead Planner (Skeptic doubts the plan) > parallel Backend + Frontend > Integrator (Verifier proves it runs) > Code Review gate > Test > Feature Delivered
-- **Test Automation** - [Test Planner | App Explorer] > parallel Feature Writer + Screen Objects + Step Definitions > Test Reviewer (with app source path + branch support)
+- **Test Automation** - [Test Planner | UI Explorer] > parallel Feature Writer + Screen Objects + Step Definitions > Test Reviewer (with app source path + branch support)
 - **UI Design & Development** - Design System Analyzer > UI Implementer > (Verifier proves it works in a browser) > UI Reviewer
 - **Refactoring** - Planner > Code Analyzer > Refactorer > Reviewer > Decision gate > Tester
 - **Documentation** - Planner > Researcher > Doc Writer (Writer: Technical) > (Skeptic reviews the docs)
