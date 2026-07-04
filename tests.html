@@ -453,7 +453,7 @@ describe('Pure Utilities', () => {
       const writer = win.AGENT_TYPES.find(a => a.id === 'writer');
       expect(!!writer).toBe(true);
       expect(writer.name).toBe('Writer');
-      expect(win.AGENT_TYPES.length).toBe(14);
+      expect(win.AGENT_TYPES.length).toBe(16); // 14 + App Explorer + Design Analyzer (context-agent-types)
     });
     it('should return technical prompt for default style', () => {
       const node = { label:'Writer', config:{ prompt:'', agentType:'writer', notes:'' }};
@@ -1088,7 +1088,7 @@ describe('Durable Record: protocol content', () => {
     expect(proto).toContain('Single repository');
     expect(proto).toContain('Multiple repositories or no repository');
   });
-  it('is provider-neutral (no company or tool-specific terms)', () => {
+  it('is provider-neutral (no company- or tool-specific terms)', () => {
     const proto = win.genDurableRecordProtocol();
     expect(proto).toNotContain('Jira');
     expect(proto).toNotContain('Atlassian');
@@ -5476,6 +5476,147 @@ describe('Agent craft batch', () => {
     });
   });
 
+  describe('Context agent types (App Explorer / Design Analyzer)', () => {
+    it('app source stays READ-ONLY by default, flips to a named write exception when an App Explorer carries Write, and never touches the memory-write guarantee', () => {
+      resetState();
+      win.document.getElementById('appSourcePath').value = '/tmp/proj-app';
+      const ex = win.addNode('agent', 100, 100, 'App Explorer', { agentType: 'appExplorer', tools: ['Read', 'Grep', 'Glob'], prompt: '', maxTurns: 5 });
+      let block = win.appSourceBlock().join('\n');
+      expect(block).toContain('READ-ONLY, do NOT modify files in this repo');
+      expect(block).toNotContain('deliberate exception');
+      ex.config.tools = ['Read', 'Grep', 'Glob', 'Write'];
+      block = win.appSourceBlock().join('\n');
+      expect(block).toContain('deliberate exception');
+      expect(block).toContain('"App Explorer" was granted write tools');
+      expect(block).toContain('Every other step still treats this path as READ-ONLY');
+      expect(block).toContain('declared in the handoff');
+      expect(block).toNotContain('READ-ONLY, do NOT modify files in this repo');
+      win.document.getElementById('memoryToggle').checked = true; win.toggleMemory();
+      const out = win.genSubAgents();
+      expect(out).toContain('whether or not `Write` is among its suggested tools');
+      win.document.getElementById('appSourcePath').value = '';
+      resetState();
+    });
+    afterEach(() => {
+      win.expandAllSections();
+      try { win.localStorage.removeItem('awd_sidebarCollapsed'); } catch(e) {}
+      resetState();
+      win.render();
+    });
+    it('registers both types with read-only-explicit descriptions (length 16)', () => {
+      const ae = win.AGENT_TYPES.find(a => a.id === 'appExplorer');
+      const da = win.AGENT_TYPES.find(a => a.id === 'designAnalyzer');
+      expect(ae.name).toBe('App Explorer');
+      expect(ae.desc).toContain('READ-ONLY');
+      expect(da.name).toBe('Design Analyzer');
+      expect(da.desc).toContain('read-only');
+      expect(win.AGENT_TYPES.length).toBe(16);
+    });
+    it('maps both types to their templates and resolves via getEffectivePrompt', () => {
+      expect(win.AGENT_TYPE_PROMPT_MAP.appExplorer).toBe('appExplorer');
+      expect(win.AGENT_TYPE_PROMPT_MAP.designAnalyzer).toBe('designSystemAnalyzer');
+      expect(win.getEffectivePrompt({ label: 'X', config: { prompt: '', agentType: 'appExplorer' } })).toBe(win.PROMPTS.appExplorer);
+      expect(win.getEffectivePrompt({ label: 'X', config: { prompt: '', agentType: 'designAnalyzer' } })).toBe(win.PROMPTS.designSystemAnalyzer);
+    });
+    it('tool defaults match the preset grants and exclude Write/Edit (read-only posture in tools)', () => {
+      expect(win.toolSetsEqual(win.agentTypeToolDefaults('appExplorer'), ['Read','Grep','Glob','LSP','Bash'])).toBe(true);
+      expect(win.toolSetsEqual(win.agentTypeToolDefaults('designAnalyzer'), ['Read','Grep','Glob','Bash','LSP'])).toBe(true);
+      ['appExplorer', 'designAnalyzer'].forEach(t => {
+        const tools = win.agentTypeToolDefaults(t);
+        expect(tools.indexOf('Write')).toBe(-1);
+        expect(tools.indexOf('Edit')).toBe(-1);
+      });
+    });
+    it('reveals the App Under Test section by TYPE even with an edited prompt (the old fragility)', () => {
+      resetState();
+      win.render();
+      expect(win.document.getElementById('appSourceSection').style.display).toBe('none');
+      win.addNode('agent', 100, 200, 'Explorer', { agentType: 'appExplorer', prompt: 'my own edited exploration prompt', tools: ['Read'], maxTurns: 5 });
+      win.render();
+      expect(win.document.getElementById('appSourceSection').style.display).toBe('');
+    });
+    it('legacy fallback: a researcher-typed node carrying the pristine template still reveals (older saves)', () => {
+      resetState();
+      win.render();
+      win.addNode('agent', 100, 200, 'Old Explorer', { agentType: 'researcher', prompt: win.PROMPTS.appExplorer, tools: ['Read'], maxTurns: 5 });
+      win.render();
+      expect(win.document.getElementById('appSourceSection').style.display).toBe('');
+      resetState();
+      win.render();
+      win.addNode('agent', 100, 200, 'Old Analyzer', { agentType: 'researcher', prompt: win.PROMPTS.designSystemAnalyzer, tools: ['Read'], maxTurns: 5 });
+      win.render();
+      expect(win.document.getElementById('uiContextSection').style.display).toBe('');
+    });
+    it('a section revealed by the run auto-expands past the first-run collapse seed, once, never fighting the user', () => {
+      resetState();
+      win.render(); // no explorer nodes -> transition trackers reset to hidden
+      win.expandAllSections();
+      // The first-run seed leaves app-under-test collapsed; set that state directly rather
+      // than re-running initSidebarCollapse (headers decorate at boot ONCE - re-init
+      // double-binds their click handlers and corrupts later suites).
+      win.setSectionCollapsed('app-under-test', true);
+      const section = win.document.querySelector('.sidebar-section[data-collapse-id="app-under-test"]');
+      expect(section.classList.contains('collapsed')).toBe(true);
+      win.addNode('agent', 100, 200, 'Explorer', { agentType: 'appExplorer', prompt: '', tools: ['Read'], maxTurns: 5 });
+      win.render(); // hidden -> shown transition: reveal AND expand
+      expect(win.document.getElementById('appSourceSection').style.display).toBe('');
+      expect(section.classList.contains('collapsed')).toBe(false);
+      win.setSectionCollapsed('app-under-test', true); // the user folds it away
+      win.render(); // no transition -> their choice stands
+      expect(section.classList.contains('collapsed')).toBe(true);
+    });
+    it('the test_automation and ui_component presets carry the new types', () => {
+      resetState();
+      win.loadPreset('test_automation');
+      const ae = win.state.nodes.find(n => n.label === 'App Explorer');
+      expect(ae.config.agentType).toBe('appExplorer');
+      resetState();
+      win.loadPreset('ui_component');
+      const da = win.state.nodes.find(n => n.label === 'Design System Analyzer');
+      expect(da.config.agentType).toBe('designAnalyzer');
+    });
+    it('pristine type-swap: researcher defaults follow the node to App Explorer (template + tools)', () => {
+      const cfg = { agentType: 'researcher', tools: [...win.AGENT_TYPE_TOOL_DEFAULTS.researcher], prompt: win.PROMPTS.researcher, writingStyle: undefined };
+      win.applyAgentTypeChange(cfg, 'appExplorer', cfg.prompt, 'Explorer');
+      expect(cfg.prompt).toBe(win.PROMPTS.appExplorer);
+      expect(win.toolSetsEqual(cfg.tools, win.agentTypeToolDefaults('appExplorer'))).toBe(true);
+    });
+    it('Explain OFF rows name the summoning node type as the lever', () => {
+      resetState();
+      win.addNode('agent', 100, 200, 'Solo', { agentType: 'coder', prompt: 'x', tools: ['Read'], maxTurns: 5 });
+      const rows = win.explainWorkflow('subagent');
+      expect(rows.find(r => r.part === 'App Source').reason).toContain('App Explorer node');
+      expect(rows.find(r => r.part === 'UI Context').reason).toContain('Design Analyzer node');
+    });
+    it('skeptic lens: both types review under the researcher lens (grounded-in-real-sources critique)', () => {
+      expect(win.buildAdversaryPrompt('appExplorer')).toBe(win.buildAdversaryPrompt('researcher'));
+      expect(win.buildAdversaryPrompt('designAnalyzer')).toBe(win.buildAdversaryPrompt('researcher'));
+    });
+    it('advisor rule (h): an App Explorer with no App Source draws the one setup suggestion; setting the path clears it', () => {
+      resetState();
+      win.addNode('agent', 100, 200, 'Explorer', { agentType: 'appExplorer', prompt: '', tools: ['Read'], maxTurns: 5 });
+      const sugs = win.adviseWorkflow();
+      expect(sugs.some(x => x.msg.indexOf('has no App Source configured') !== -1)).toBe(true);
+      win.document.getElementById('appSourcePath').value = '/tmp/app';
+      expect(win.adviseWorkflow().some(x => x.msg.indexOf('App Source') !== -1)).toBe(false);
+      win.document.getElementById('appSourcePath').value = '';
+    });
+    it('step hints: both types get code search (they explore codebases), neither gets Datadog (deliberate)', () => {
+      const prevCs = win.state.mcpCodeSearch, prevDd = win.state.mcpDatadog;
+      win.state.mcpCodeSearch = true; win.state.mcpDatadog = true;
+      ['appExplorer', 'designAnalyzer'].forEach(t => {
+        const n = { label: 'X', config: { agentType: t, tools: ['Read'] } };
+        expect(win.codeSearchStepHint(n).length).toBeGreaterThan(0);
+        expect(win.datadogStepHint(n)).toBe('');
+      });
+      win.state.mcpCodeSearch = prevCs; win.state.mcpDatadog = prevDd;
+    });
+    it('both types are report-shaped: no found-defect protocol block', () => {
+      expect(win.foundDefectNote({ config: { agentType: 'appExplorer' } })).toBe('');
+      expect(win.foundDefectNote({ config: { agentType: 'designAnalyzer' } })).toBe('');
+    });
+  });
+
   describe('found-defect protocol (item 1)', () => {
     it('building and testing roles carry the protocol; plan/review/critique roles do not', () => {
       ['coder', 'debugger', 'tester', 'verifier', 'backend', 'frontend', 'general'].forEach(role => {
@@ -6627,11 +6768,11 @@ describe('Usability & Help', () => {
   });
 
   describe('adversary role', () => {
-    it('should register the Skeptic (adversary) in AGENT_TYPES (length 14)', () => {
+    it('should register the Skeptic (adversary) in AGENT_TYPES (length 16)', () => {
       const adv = win.AGENT_TYPES.find(a => a.id === 'adversary');
       expect(!!adv).toBe(true);
       expect(adv.name).toBe('Skeptic');
-      expect(win.AGENT_TYPES.length).toBe(14);
+      expect(win.AGENT_TYPES.length).toBe(16); // 14 + App Explorer + Design Analyzer (context-agent-types)
     });
     it('should map adversary to its PROMPTS key', () => {
       expect(win.AGENT_TYPE_PROMPT_MAP.adversary).toBe('adversary');
@@ -8848,13 +8989,15 @@ describe('Agent-type default tool sets', () => {
     let sel = win.document.querySelector('.config-select[data-key="agentType"]');
     selectCustomOption(sel, 'researcher');
     expect(win.toolSetsEqual(a.config.tools, win.AGENT_TYPE_TOOL_DEFAULTS.researcher)).toBe(true);
-    // Old debugger default matches no current default -> treated as customized, kept.
-    const b = win.addNode('agent', 300, 200, 'B', { agentType:'debugger', tools:['Read','Bash','Grep','Glob','LSP'], prompt:'' });
+    // A set matching no current default -> treated as customized, kept. (The old
+    // debugger default Read/Bash/Grep/Glob/LSP is no longer usable here: it is now
+    // exactly the App Explorer default, so it pristine-swaps by design.)
+    const b = win.addNode('agent', 300, 200, 'B', { agentType:'debugger', tools:['Read','Bash','Grep','Glob'], prompt:'' });
     win.selectNode(b.id);
     win.updateConfig();
     sel = win.document.querySelector('.config-select[data-key="agentType"]');
     selectCustomOption(sel, 'researcher');
-    expect(win.toolSetsEqual(b.config.tools, ['Read','Bash','Grep','Glob','LSP'])).toBe(true);
+    expect(win.toolSetsEqual(b.config.tools, ['Read','Bash','Grep','Glob'])).toBe(true);
   });
   it('pristine tools follow a type change: general -> researcher gains web tools, sheds write access', () => {
     resetState();
@@ -9147,14 +9290,26 @@ describe('Workflow advisor (non-blocking suggestions)', () => {
     win.addConnection(r.id, d.id);
     expect(win.adviseWorkflow().map(x => x.msg).join(' | ')).toNotContain('routes nowhere');
   });
-  it('every preset yields zero suggestions (calibration pin - all 17 audited, none nags)', () => {
+  it('every preset yields zero suggestions (calibration pin - all 17 audited, none nags; test_automation carries its one deliberate setup pointer)', () => {
     cleanRunReports();
-    ['feature','bugfix','fullstack','ui_component','refactoring','documentation','devops','performance','data_migration','testing','test_automation','review','parallel_research','swarm','delivery_swarm','analysis_forecast','incident_rca'].forEach(p2 => {
+    ['feature','bugfix','fullstack','ui_component','refactoring','documentation','devops','performance','data_migration','testing','review','parallel_research','swarm','delivery_swarm','analysis_forecast','incident_rca'].forEach(p2 => {
       resetState();
       win.loadPreset(p2);
       const sugs = win.adviseWorkflow();
       expect(sugs.length + 0).toBe(0);
     });
+    // test_automation is the deliberate exception: its App Explorer needs an App Source
+    // path, and rule (h) points a fresh user at exactly that - one suggestion, gone the
+    // moment the path is set. Sharper than silence: the pin asserts the full lifecycle.
+    resetState();
+    win.loadPreset('test_automation');
+    const sugs = win.adviseWorkflow();
+    expect(sugs.length).toBe(1);
+    expect(sugs[0].msg).toContain('has no App Source configured');
+    win.document.getElementById('appSourcePath').value = '/tmp/app-under-test';
+    expect(win.adviseWorkflow().length).toBe(0);
+    win.document.getElementById('appSourcePath').value = '';
+    resetState();
   });
 });
 

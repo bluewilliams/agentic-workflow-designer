@@ -972,6 +972,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li>Paste requirements into the <strong>Requirements</strong> field (or a Jira ticket URL)</li>
   <li>Click <strong>Auto Workflow</strong> to auto-build a workflow from keywords, or pick a <strong>Preset</strong> below</li>
   <li>Customize nodes by clicking them: change agent types, models, prompts, and tools</li>
+  <li>Two context-specialist agent types reveal their own sidebar sections when placed on the canvas: <strong>App Explorer</strong> (the App Under Test path it explores read-only for screens and selectors) and <strong>Design Analyzer</strong> (the UI Context notes it treats as authoritative styling constraints)</li>
   <li>Pick an export format tab at the bottom, then <strong>Copy</strong> the prompt into Claude Code</li>
 </ol>
 <p><strong>Auto Workflow</strong> stays disabled until you've pasted enough prose to auto-pick a workflow - roughly a sentence (at least 6 words once any URL or ticket key is set aside). A bare Jira key (like <code>PROJ-42</code>) prompts you to paste the full URL; a ticket URL on its own opens a workflow-type picker. <strong>Generate Refine Prompt</strong> and <strong>Generate Plan Prompt</strong> are both available as soon as the box isn't empty (they work with a Jira URL too, since they fetch the ticket), so you can refine or plan before Auto Workflow lights up. Both also self-check on click as a safety net.</p>
@@ -1329,6 +1330,8 @@ const AGENT_TYPES = [
   { id: 'writer', name: 'Writer', desc: 'Documentation and content creation specialist' },
   { id: 'general', name: 'General', desc: 'General-purpose agent' },
   { id: 'analyst', name: 'Analyst', desc: 'Measures, estimates, and forecasts with visible methodology' },
+  { id: 'appExplorer', name: 'App Explorer', desc: 'Maps the app under test READ-ONLY - screens, element selectors, navigation flows - for test automation (reveals the App Under Test section)' },
+  { id: 'designAnalyzer', name: 'Design Analyzer', desc: 'Distills the design system and styling conventions into a brief, read-only (reveals the UI Context section)' },
   { id: 'adversary', name: 'Skeptic', desc: 'Refute-first critic; reviews any step and loops back only material defects' },
   { id: 'verifier', name: 'Verifier', desc: 'Proves the outcome meets the objective with evidence; loops back what is not verified' }
 ];
@@ -1368,6 +1371,8 @@ const AGENT_TYPE_TOOL_DEFAULTS = {
   researcher: ['Read', 'Grep', 'Glob', 'Bash', 'WebSearch', 'WebFetch', 'LSP'],
   general:    NODE_DEFAULTS.agent.config.tools,
   analyst:    ['Read', 'Bash', 'Grep', 'Glob', 'WebFetch', 'LSP'],
+  appExplorer:    ['Read', 'Grep', 'Glob', 'LSP', 'Bash'],
+  designAnalyzer: ['Read', 'Grep', 'Glob', 'Bash', 'LSP'],
   adversary:  ['Read', 'Grep', 'Glob', 'LSP'],
   verifier:   ['Read', 'Write', 'Grep', 'Glob', 'Bash', 'LSP', 'WebFetch']
 };
@@ -1785,7 +1790,7 @@ function datadogStepHint(node) {
 // the hint self-gates ("Reach for whichever technique fits"). Writer stays out (docs work
 // rarely spans repo seams); DATADOG_STEP_ROLES stays narrower on purpose - plan-shaping
 // telemetry belongs to the reasoning roles, implementers inherit it via the orchestrator's brief.
-const CODE_SEARCH_STEP_ROLES = new Set(['planner', 'architect', 'researcher', 'debugger', 'coder', 'backend', 'frontend', 'general', 'reviewer', 'tester', 'adversary', 'verifier', 'analyst']);
+const CODE_SEARCH_STEP_ROLES = new Set(['planner', 'architect', 'researcher', 'debugger', 'coder', 'backend', 'frontend', 'general', 'reviewer', 'tester', 'adversary', 'verifier', 'analyst', 'appExplorer', 'designAnalyzer']);
 function codeSearchStepHint(node) {
   if (!state.mcpCodeSearch) return '';
   if (!node || !node.config || !CODE_SEARCH_STEP_ROLES.has(node.config.agentType)) return '';
@@ -1824,7 +1829,9 @@ const AGENT_TYPE_PROMPT_MAP = {
   planner: 'planner', architect: 'architect', coder: 'implementer',
   frontend: 'frontend', backend: 'backend', reviewer: 'reviewer',
   tester: 'tester', debugger: 'investigator', researcher: 'researcher',
-  writer: 'writerTechnical', general: 'general', analyst: 'analysisSynthesizer', adversary: 'adversary', verifier: 'verifier'
+  writer: 'writerTechnical', general: 'general', analyst: 'analysisSynthesizer',
+  appExplorer: 'appExplorer', designAnalyzer: 'designSystemAnalyzer',
+  adversary: 'adversary', verifier: 'verifier'
 };
 
 // Returns a quality prompt for any node - user prompt > agentType template > smart fallback
@@ -1910,7 +1917,8 @@ const ADVERSARY_LENSES = {
 const ADVERSARY_LENS_BY_ROLE = {
   planner: 'planner', architect: 'architect',
   coder: 'implementer', frontend: 'implementer', backend: 'implementer', debugger: 'implementer',
-  researcher: 'researcher', tester: 'tester', writer: 'writer', analyst: 'analysis'
+  researcher: 'researcher', tester: 'tester', writer: 'writer', analyst: 'analysis',
+  appExplorer: 'researcher', designAnalyzer: 'researcher'
 };
 // Builds the full critic prompt for a reviewed role: shared core + the matching lens.
 function buildAdversaryPrompt(reviewedRole) {
@@ -3753,15 +3761,25 @@ function updateTransform() {
 // ═══════════════════════════════════════════════════════════
 // RENDERING
 // ═══════════════════════════════════════════════════════════
+let _appSourceWasShown = false, _uiContextWasShown = false;
 function render() {
   renderNodes();
   renderConnections();
   updatePrompt();
   $('emptyState').style.display = state.nodes.length === 0 ? 'flex' : 'none';
-  const hasAppExplorer = state.nodes.some(n => n.type === 'agent' && n.config.prompt === PROMPTS.appExplorer);
+  // Reveal by TYPE first (an edited prompt no longer hides the section); the exact-template
+  // match stays as the legacy fallback so older saves and imports still reveal.
+  const hasAppExplorer = state.nodes.some(n => n.type === 'agent' && (n.config.agentType === 'appExplorer' || n.config.prompt === PROMPTS.appExplorer));
   $('appSourceSection').style.display = hasAppExplorer ? '' : 'none';
-  const hasDesignAnalyzer = state.nodes.some(n => n.type === 'agent' && n.config.prompt === PROMPTS.designSystemAnalyzer);
+  const hasDesignAnalyzer = state.nodes.some(n => n.type === 'agent' && (n.config.agentType === 'designAnalyzer' || n.config.prompt === PROMPTS.designSystemAnalyzer));
   $('uiContextSection').style.display = hasDesignAnalyzer ? '' : 'none';
+  // Programmatic-reveal principle (sidebar-collapse record): a section the app just made
+  // visible must not appear folded behind a first-run-collapsed chevron. Expand ONLY on the
+  // hidden->shown TRANSITION so a user who later collapses it is never fought.
+  if (hasAppExplorer && !_appSourceWasShown) expandSection('app-under-test');
+  _appSourceWasShown = hasAppExplorer;
+  if (hasDesignAnalyzer && !_uiContextWasShown) expandSection('ui-context');
+  _uiContextWasShown = hasDesignAnalyzer;
   document.querySelectorAll('.preset-item[data-preset]').forEach(el => {
     el.classList.toggle('active', el.dataset.preset === state.activePreset);
   });
@@ -7104,7 +7122,7 @@ function generateFromStory(_confirmed) {
   } else if (hasUI) {
     // Shape 8: Design System Analyzer → UI Implementer
     const dsAnalyzer = addNode('agent', 0, 0, 'Design System Analyzer', {
-      agentType: 'researcher', model: state.defaultModel,
+      agentType: 'designAnalyzer', model: state.defaultModel,
       tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP'],
       prompt: PROMPTS.designSystemAnalyzer,
       notes: '', maxTurns: 10
@@ -7500,7 +7518,7 @@ function loadPreset(preset, _confirmed) {
       const appIn = addNode('input', 80, 380, 'App Source', { source:'freeform', description:'Path to the app under test (set in sidebar)' });
       const planFork = addNode('parallel', 340, 286, 'Parallel Analysis', { strategy:'all' });
       const plan = addNode('agent', 620, 200, 'Test Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','WebSearch'], prompt:PROMPTS.testPlanner, maxTurns:10 });
-      const appExp = addNode('agent', 620, 380, 'App Explorer', { agentType:'researcher', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','Bash'], prompt:PROMPTS.appExplorer, maxTurns:15 });
+      const appExp = addNode('agent', 620, 380, 'App Explorer', { agentType:'appExplorer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','Bash'], prompt:PROMPTS.appExplorer, maxTurns:15 });
       const planJoin = addNode('parallel', 900, 286, 'Combine', { strategy:'all' });
       const authFork = addNode('parallel', 1120, 286, 'Parallel Authoring', { strategy:'all' });
       const feat = addNode('agent', 1400, 150, 'Feature Writer', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Grep','Glob','LSP'], prompt:PROMPTS.featureWriter, maxTurns:10 });
@@ -7522,7 +7540,7 @@ function loadPreset(preset, _confirmed) {
     ui_component: () => {
       const i = addNode('input', 80, 280, 'Component Spec');
       const dsa = addNode('agent', 380, 280, 'Design System Analyzer', {
-        agentType: 'researcher', model: state.defaultModel,
+        agentType: 'designAnalyzer', model: state.defaultModel,
         tools: ['Read', 'Grep', 'Glob', 'Bash', 'LSP'],
         prompt: PROMPTS.designSystemAnalyzer, maxTurns: 10
       });
@@ -8007,6 +8025,15 @@ function adviseWorkflow() {
     if (!emitsVerdict) return;
     if (getDownstreamDecisions(n.id).length > 0) return;
     s.push({ msg: '"' + n.label + '" emits a verdict that routes nowhere - add a decision gate after it so a failing verdict can loop back for revision instead of falling through to the output.' });
+  });
+
+  // (h) An App Explorer with no application to explore: the App Under Test path is the
+  // one input the type cannot work without - a fresh Test Automation preset fires this
+  // deliberately until the path is set (calibration pins the single expected suggestion).
+  agents.forEach(n => {
+    if (n.config.agentType !== 'appExplorer') return;
+    if (getAppSource()) return;
+    s.push({ msg: '"' + n.label + '" has no App Source configured - set the path (and optional branch) in the App Under Test section so it has an application to explore.' });
   });
 
   // (f) Telemetry-informed advice, only when run reports exist for this workflow.
@@ -8555,9 +8582,9 @@ function explainWorkflow(format) {
   rows.push(exRow('Requirements', !!story, story ? 'from the Requirements field' : 'Requirements field empty - section omitted', story));
   const plan = getPlan();
   rows.push(exRow('Workflow Context (plan)', !!plan, plan ? 'from the Workflow Context field - starting guidance, adapt-not-obey framing' : 'no Workflow Context pasted', plan ? 'Workflow Context (starting guidance - adapt based on findings)' : ''));
-  rows.push(exRow('App Source', !!getAppSource(), getAppSource() ? 'app-source path set - read-only exploration target' : 'no app source configured', getAppSource() ? 'App Source' : ''));
+  rows.push(exRow('App Source', !!getAppSource(), getAppSource() ? 'app-source path set - read-only exploration target' : 'no app source configured (the App Under Test sidebar section appears when the workflow has an App Explorer node - add one, or load the Test Automation preset)', getAppSource() ? 'App Source' : ''));
   const uiN = $('uiContextNotes') ? $('uiContextNotes').value.trim() : '';
-  rows.push(exRow('UI Context', !!uiN, uiN ? 'UI/styling constraints set' : 'no UI context set', uiN ? 'UI Context' : ''));
+  rows.push(exRow('UI Context', !!uiN, uiN ? 'UI/styling constraints set' : 'no UI context set (the UI Context sidebar section appears when the workflow has a Design Analyzer node - the UI Component preset ships one)', uiN ? 'UI Context' : ''));
   const dfmts = deliveryFormats();
   const dwinner = dfmts.includes('pr') ? 'Pull Request Creation' : dfmts.includes('commit') ? 'Commit' : dfmts.includes('report') ? 'Report' : dfmts.includes('docs') ? 'Documentation' : 'no-commit discipline';
   rows.push(exRow('Delivery block', true, 'orchestrator-owned, emitted once; driver by priority pr > commit > report > docs: ' + dwinner, dfmts.includes('pr') ? 'Pull Request Creation' : ''));
@@ -8756,6 +8783,15 @@ function getAppSource() {
   const branch = branchEl ? branchEl.value.trim() : '';
   return { path, branch: branch || null };
 }
+function appSourceWriteGranted() {
+  // Selection-as-intent (asymmetric by design): a user ADDING Write/Edit to an App Explorer
+  // signals it may modify the app source; ABSENCE never forbids anything - the read-only
+  // default is the role's contract, not a tool restriction. Memory-file writes are a
+  // separate protocol guarantee and are never governed by this.
+  return state.nodes.filter(n => n.type === 'agent'
+    && (n.config.agentType === 'appExplorer' || n.config.prompt === PROMPTS.appExplorer)
+    && (n.config.tools || []).some(t => t === 'Write' || t === 'Edit'));
+}
 function appSourceBlock(heading) {
   const app = getAppSource();
   if (!app) return [];
@@ -8763,7 +8799,12 @@ function appSourceBlock(heading) {
   const lines = [h, '', '- **Path**: `' + app.path + '`'];
   if (app.branch) lines.push('- **Branch**: `' + app.branch + '`');
   lines.push('');
-  lines.push('This is the application under test - **READ-ONLY, do NOT modify files in this repo.**');
+  const granted = appSourceWriteGranted();
+  if (granted.length) {
+    lines.push('This is the application under test - **read-only by default for every step**, with one deliberate exception: ' + granted.map(n => '"' + n.label + '"').join(' and ') + ' was granted write tools, so it may modify files in this repo where its task genuinely requires it (for example adding the missing test identifiers it discovers). Every other step still treats this path as READ-ONLY, and any modification must be declared in the handoff like any other change.');
+  } else {
+    lines.push('This is the application under test - **READ-ONLY, do NOT modify files in this repo.**');
+  }
   lines.push('Explore it to understand UI structure and extract element selectors for test automation:');
   lines.push('1. If a branch is specified, run `git -C ' + app.path + ' checkout ' + (app.branch || '{branch}') + ' && git -C ' + app.path + ' pull`');
   lines.push('2. Use `Glob` and `Grep` on this path to find UI components, screens/views, and navigation structure');
@@ -10555,6 +10596,7 @@ const OPENSPEC_ROLE_GROUP = {
   coder: 'build', backend: 'build', frontend: 'build', debugger: 'build',
   reviewer: 'review', adversary: 'skeptic', verifier: 'verify',
   tester: 'test', researcher: 'research', analyst: 'analysis',
+  appExplorer: 'research', designAnalyzer: 'research',
   // documentation/content roles (incl. the writing-style-flavored types) -> the docs skeleton
   writer: 'docs', technical: 'docs', userguide: 'docs', business: 'docs', api: 'docs', runbook: 'docs'
 };
