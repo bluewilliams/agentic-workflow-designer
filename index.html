@@ -10499,7 +10499,7 @@ function openSpecContextBlock() {
   const lines = ['Repo context to read and honor (resolve each path in each repo in scope; read only what is listed):'];
   if (rules.length) lines.push('- Rules / constitution (BINDING - follow them): ' + rules.join(', '));
   if (docs.length) lines.push('- Product / architecture docs (serve, do not contradict): ' + docs.join(', '));
-  if (verify.length) lines.push('- Verification instructions (verifier / tester owned - report each check as executed / not-applicable / blocked): ' + verify.join(', '));
+  if (verify.length) lines.push('- Verification instructions (verifier / tester owned - report each check as executed / not-applicable / blocked' + (state.verifyFailRun ? '; a blocked or failed REQUIRED check fails the run' : '; blocked checks are recorded, not run-failing') + '): ' + verify.join(', '));
   return lines.join('\n');
 }
 function openSpecGroundingBlock() {

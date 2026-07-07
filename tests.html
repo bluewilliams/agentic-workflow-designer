@@ -4954,12 +4954,19 @@ describe('Verification instructions', () => {
       // the listed path is named in the output
       expect(win.genWorkflow()).toContain('VERIFY.md');
     });
-    it('openSpecContextBlock forwards verify paths compactly when non-empty', () => {
+    it('openSpecContextBlock forwards verify paths compactly when non-empty, carrying the posture both ways', () => {
       win.state.verifyPaths = ['VERIFY.md'];
-      const ctx = win.openSpecContextBlock();
+      win.state.verifyFailRun = true;
+      let ctx = win.openSpecContextBlock();
       expect(ctx).toContain('Verification instructions (verifier / tester owned');
       expect(ctx).toContain('VERIFY.md');
+      expect(ctx).toContain('a blocked or failed REQUIRED check fails the run');
+      win.state.verifyFailRun = false;
+      ctx = win.openSpecContextBlock();
+      expect(ctx).toContain('blocked checks are recorded, not run-failing');
+      expect(ctx).toNotContain('fails the run');
       win.state.verifyPaths = [];
+      win.state.verifyFailRun = true;
     });
     it('silence when empty: beat absent from all five exporters and from openSpecContextBlock', () => {
       workflowWith('Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
