@@ -81,6 +81,7 @@ index.html: verifyInstructionsHint + verifyInstructionsStepHint + VERIFY_STEP_RO
 
 - 2026-07-03: created (by verification-instructions)
 - 2026-07-03: retargeted to owner-only routing and reframed as repo-mandated verification files - the per-step contract now goes to exactly one step (last verifier, else last tester; reviewers dropped from the execute contract; additive-not-substitute sentence added) per the director's duplication and terminology rulings (by agent-craft-batch)
+- 2026-07-07: the OpenSpec context line now carries the posture both ways (fail-the-run vs recorded-not-run-failing) - a foreign OpenSpec runner previously executed and reported the checks but was never told blocked required checks should fail the run (director question exposed the gap) (by verification-instructions)
 
 ## Outcome
 
