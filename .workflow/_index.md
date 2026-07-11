@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## prompt-library-overhaul
+
+- record: .workflow/prompt-library-overhaul.md
+- intent: the 75-entry PROMPT_LIBRARY brought to the campaign quality bar - 62 strong as-is, 13 targeted fixes (negative-findings contracts on every audit-shaped prompt, availability-safe web-research claims, suggestion-safe gh phrasing, standalone log clause, PROJ-style example keys), 0 rewrites; 5 structural tests pin the bar (dash-free surfaces, non-empty descs, negative-findings, availability-safe, fictional keys). Titles and categories preserved verbatim (favorites key on them).
+- files: index.html (PROMPT_LIBRARY, 13 entries), tests.html (+5 guards)
+- status: current | date: 2026-07-10
+
 ## unified-dropdowns
 
 - record: .workflow/unified-dropdowns.md
