@@ -16,7 +16,7 @@ Two node-configuration UX defects from the audit. (1) Selecting a node gave NO v
 
 ## Key decisions
 
-- **Selection scroll**: `selectNode` scrolls the config panel into view (`scrollIntoView({block:'nearest'})`) ONLY on a genuine selection change to a node (never on re-selects or drag-start of the already-selected node - no scroll-jacking). Instant scroll, not smooth: smooth scrolling proved unreliable headless and the reliability matters more than the animation. Headless before/after: panel top 2621px/out of view -> 341px/in view on select.
+- **Selection scroll**: `selectNode` scrolls the config panel into view (`scrollIntoView({block:'nearest'})`) ONLY on a genuine selection change to a node (never on re-selects or drag-start of the already-selected node - no scroll-jacking). Smooth scroll for users, instant under the test rig (window.__instantScroll, the __autoConfirm sync-hook precedent) and for prefers-reduced-motion users - headless smooth-scroll flakiness was the original reason for instant, and the hook removes the conflict. Headless before/after: panel top 2621px/out of view -> 341px/in view on select.
 - **Bake trap - pristine-swap rule**, generalizing the in-repo precedent the Writing Style handler already uses: on type change, an EMPTY box still bakes (unchanged); text that byte-matches (trim) ANY known role template - new `matchesAnyRoleTemplate()` covering all mapped templates, writer style variants, and every adversary-lens variant - is pristine and re-bakes to the new type's template; anything else is user work and is never touched.
 - **Truthful status line for legacy saves**: workflows saved before this fix can still hold another role's baked text. `classifyAgentPrompt` gains a `foreign-template` state ("Unmodified template text from a different role (left over from an agent-type change). Reset to apply the {role} template.") and the Reset button now shows for it, giving a one-click recovery.
 
@@ -35,3 +35,7 @@ Two node-configuration UX defects from the audit. (1) Selecting a node gave NO v
 - [x] matchesAnyRoleTemplate + pristine-swap on type change (Writing Style precedent)
 - [x] foreign-template classify state + truthful copy + Reset affordance
 - [x] Tests: re-bake, custom-survives, foreign-template; suite green
+
+## History
+
+- 2026-07-10: selection scroll made smooth for humans via the __instantScroll rig hook + reduced-motion guard; the instant-scroll rationale (headless flake) is now handled by the hook rather than by denying users the animation (by node-config-ux)

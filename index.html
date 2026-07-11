@@ -4267,7 +4267,10 @@ function selectNode(id, skipRender) {
     expandSection('node-config');
     const panel = $('configPanel');
     if (panel && panel.classList.contains('visible') && panel.scrollIntoView) {
-      panel.scrollIntoView({ block: 'nearest' });
+      // Smooth for humans; instant when the test rig asks (__instantScroll, the __autoConfirm
+      // precedent - headless smooth-scroll flakes) or the user prefers reduced motion.
+      const _smoothOk = !window.__instantScroll && !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+      panel.scrollIntoView({ block: 'nearest', behavior: _smoothOk ? 'smooth' : 'auto' });
     }
   }
 }

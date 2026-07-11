@@ -5172,6 +5172,7 @@ describe('Verification instructions (run-level matrix)', () => {
     beforeEach(() => {
       resetState();
       win.expandAllSections();
+    win.__instantScroll = true;
       win.localStorage.removeItem(COLLAPSE_KEY);
       win.state.verifyPaths = [];
       win.clearVerifyPaths();                 // sync chips + Clear-All to empty
