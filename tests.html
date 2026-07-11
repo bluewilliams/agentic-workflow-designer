@@ -6647,6 +6647,51 @@ describe('Usability & Help', () => {
       const unique = [...new Set(names)];
       expect(names.length).toBe(unique.length);
     });
+    it('every entry is em- and en-dash free across title, desc, prompt, and input fields', () => {
+      win.PROMPT_LIBRARY.forEach(cat => {
+        expect(cat.category).toNotContain('\u2014');
+        expect(cat.category).toNotContain('\u2013');
+        cat.prompts.forEach(p => {
+          const surfaces = [p.title, p.desc || '', p.prompt, (p.input && p.input.label) || '', (p.input && p.input.placeholder) || ''];
+          surfaces.forEach(t => {
+            expect(t).toNotContain('\u2014');
+            expect(t).toNotContain('\u2013');
+          });
+        });
+      });
+    });
+    it('every entry carries a non-empty description', () => {
+      win.PROMPT_LIBRARY.forEach(cat => {
+        cat.prompts.forEach(p => {
+          expect((p.desc || '').length > 20).toBe(true);
+        });
+      });
+    });
+    it('audit prompts demand negative findings, not just problems (clean coverage is signal)', () => {
+      const sec = win.PROMPT_LIBRARY.find(c => c.category === 'Security');
+      const owasp = sec.prompts.find(p => p.title === 'OWASP Top 10 Audit');
+      expect(owasp.prompt).toContain('coverage summary');
+      expect(owasp.prompt).toContain('checked - clean');
+      const auth = sec.prompts.find(p => p.title === 'Auth & Access Control Deep Dive');
+      expect(auth.prompt).toContain('coverage summary');
+      const secrets = sec.prompts.find(p => p.title === 'Secrets & Credentials Scan');
+      expect(secrets.prompt).toContain('A clean scan result is a result');
+      const cq = win.PROMPT_LIBRARY.find(c => c.category === 'Code Quality');
+      const bug = cq.prompts.find(p => p.title === 'Bug Hunter Review');
+      expect(bug.prompt).toContain('End with a one-line verdict');
+    });
+    it('capability claims are availability-safe: web-dependent research names its fallback', () => {
+      const arch = win.PROMPT_LIBRARY.find(c => c.category === 'Architecture & Design');
+      const risk = arch.prompts.find(p => p.title === 'Dependency Risk Assessment');
+      expect(risk.prompt).toContain('where web tools are available to you');
+      const impact = arch.prompts.find(p => p.title === 'Dependency Update Impact');
+      expect(impact.prompt).toContain('where web tools are available to you');
+    });
+    it('example project keys in inputs stay fictional (PROJ-style)', () => {
+      const monitors = win.PROMPT_LIBRARY.find(c => c.category === 'Live Monitors');
+      const sprint = monitors.prompts.find(p => p.title === 'Sprint Stale Work Alert');
+      expect(sprint.input.placeholder).toContain('PROJ current sprint');
+    });
   });
 
   describe('secret scanner', () => {
