@@ -6532,6 +6532,18 @@ describe('Usability & Help', () => {
       expect(cards.length > 20).toBe(true);
       win.togglePromptLib();
     });
+    it('category names are plain text; requirement badges come from the requires field', () => {
+      win.PROMPT_LIBRARY.forEach(cat => {
+        expect(/<[^>]+>/.test(cat.category)).toBe(false);
+      });
+      const withReq = win.PROMPT_LIBRARY.filter(c => c.requires);
+      expect(withReq.length >= 4).toBe(true);
+      win.togglePromptLib();
+      const btns = win.document.querySelectorAll('.plib-cat-btn');
+      const obs = Array.from(btns).find(b => b.textContent.indexOf('Observability') !== -1);
+      expect(obs.textContent).toContain('(requires Datadog MCP)');
+      win.togglePromptLib();
+    });
     it('should render a copy button for each prompt card', () => {
       const copyBtns = win.document.querySelectorAll('.plib-copy');
       const total = win.PROMPT_LIBRARY.reduce((sum, cat) => sum + cat.prompts.length, 0);
@@ -6561,7 +6573,7 @@ describe('Usability & Help', () => {
     it('should include tool guidance in code analysis prompts', () => {
       const findCat = name => win.PROMPT_LIBRARY.find(c => c.category === name);
       const findPrompt = (catName, title) => findCat(catName).prompts.find(p => p.title === title);
-      expect(findPrompt('Code Quality', 'Bug Hunter Review').prompt).toContain('Sourcebot');
+      expect(findPrompt('Code Quality', 'Bug Hunter Review').prompt).toContain('Sourcegraph');
       expect(findPrompt('Debugging & Performance', 'Root Cause Analysis').prompt).toContain('LSP');
     });
     it('should have input config on prompts with placeholders', () => {

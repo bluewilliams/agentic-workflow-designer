@@ -50,6 +50,7 @@ The library predates the prompt-overhaul campaign (waves A-C) that raised the ag
 ## History
 
 - 2026-07-10: created (by prompt-library-overhaul)
+- 2026-07-10: category data model cleaned under the director's no-compat license - requirement badges moved from HTML-in-name-strings to a requires field (names plain, defensive tag-stripping now vestigial), 'memory-mode-portable' jargon replaced with 'a personal memory/notes setup', Sourcebot requirement generalized to code-search MCP wording; titles reviewed and deliberately kept (all 75 earn their names) (by prompt-library-overhaul)
 
 ## Outcome
 
