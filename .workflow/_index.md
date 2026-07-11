@@ -2,6 +2,20 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## unified-dropdowns
+
+- record: .workflow/unified-dropdowns.md
+- intent: one dropdown aesthetic app-wide - enhanceSelect() wraps the three native selects (appSourceAccess, customAgentType, customAgentModel) in the custom-select skin with the native authoritative underneath (skin picks dispatch real change events; programmatic writes follow via refreshEnhancedSelect at restorePrefs/clearCanvas/openAgentForm); full keyboard support (combobox/listbox, arrows, Escape) with canvas-shortcut exemption; one-popup-open enforced across all species; config-selects and #defaultModelSelect already custom, unchanged.
+- files: index.html (enhancer block + CSS + exemption + refresh call sites), tests.html (8-test suite)
+- status: current | date: 2026-07-10
+
+## native-dark-scheme
+
+- record: .workflow/native-dark-scheme.md
+- intent: color-scheme dark at :root - OS widget chrome (scrollbars, control furniture) renders dark. Its interim select-option styling was superseded same-day by unified-dropdowns (natives now skinned and never open OS popups).
+- files: index.html (:root CSS)
+- status: current | date: 2026-07-10
+
 ## dogfood-run-fixes
 
 - record: .workflow/dogfood-run-fixes.md

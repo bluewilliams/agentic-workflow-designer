@@ -11238,6 +11238,114 @@ describe('Dogfood-run fixes: valid model params, honest hints, memory kickoff an
   });
 });
 
+describe('Unified dropdowns (enhanceSelect: the custom-select skin over native selects)', () => {
+  afterEach(() => {
+    win.closeAllCustomSelects(null);
+    const acc = win.document.getElementById('appSourceAccess');
+    acc.value = 'readonly'; win.refreshEnhancedSelect(acc);
+    win.document.getElementById('appSourcePath').value = '';
+    win.closeAgentForm();
+    resetState();
+  });
+  it('wraps every native select at boot: the hidden native stays authoritative inside a custom-select wrapper', () => {
+    ['appSourceAccess', 'customAgentType', 'customAgentModel'].forEach(id => {
+      const sel = win.document.getElementById(id);
+      const wrap = sel.closest('.custom-select.enhanced-select');
+      expect(!!wrap).toBe(true);
+      expect(sel.classList.contains('native-select-hidden')).toBe(true);
+      expect(sel.getAttribute('aria-hidden')).toBe('true');
+      expect(!!wrap.querySelector('.custom-select-trigger[role="combobox"]')).toBe(true);
+      expect(!!wrap.querySelector('.custom-select-options[role="listbox"]')).toBe(true);
+    });
+  });
+  it('re-running enhanceSelect never double-wraps', () => {
+    const sel = win.document.getElementById('appSourceAccess');
+    win.enhanceSelect(sel);
+    win.enhanceSelect(sel);
+    let wraps = 0, node = sel.parentElement;
+    while (node) { if (node.classList && node.classList.contains('enhanced-select')) wraps++; node = node.parentElement; }
+    expect(wraps).toBe(1);
+    expect(sel.closest('.enhanced-select').querySelectorAll('.custom-select-trigger').length).toBe(1);
+  });
+  it('clicking a skin option sets the native value, fires change handlers, and updates the trigger', () => {
+    win.document.getElementById('appSourcePath').value = '/tmp/proj-app';
+    const sel = win.document.getElementById('appSourceAccess');
+    const wrap = sel.closest('.enhanced-select');
+    wrap.querySelector('.custom-select-trigger').click();
+    expect(wrap.classList.contains('open')).toBe(true);
+    const writable = Array.from(wrap.querySelectorAll('.custom-select-option')).find(o => o.dataset.value === 'writable');
+    writable.click();
+    expect(sel.value).toBe('writable');
+    expect(win.getAppSourceAccess()).toBe('writable');
+    expect(win.appSourceBlock().join('\n')).toContain('writable by deliberate configuration');
+    expect(wrap.classList.contains('open')).toBe(false);
+    expect(wrap.querySelector('.custom-select-trigger').textContent).toBe('Access: Writable');
+  });
+  it('a skin pick on the Agent Library type select fires the inline onchange (template pristine-swap)', () => {
+    win.openAgentForm();
+    const sel = win.document.getElementById('customAgentType');
+    const wrap = sel.closest('.enhanced-select');
+    wrap.querySelector('.custom-select-trigger').click();
+    const planner = Array.from(wrap.querySelectorAll('.custom-select-option')).find(o => o.dataset.value === 'planner');
+    planner.click();
+    expect(sel.value).toBe('planner');
+    expect(win.document.getElementById('customAgentPrompt').value).toBe(win.PROMPTS.planner);
+  });
+  it('programmatic native sets follow through the refresh hook (restorePrefs / clearCanvas path)', () => {
+    const sel = win.document.getElementById('appSourceAccess');
+    const trigger = sel.closest('.enhanced-select').querySelector('.custom-select-trigger');
+    sel.value = 'writable';
+    win.refreshEnhancedSelect(sel);
+    expect(trigger.textContent).toBe('Access: Writable');
+    win.clearCanvas(true);
+    expect(sel.value).toBe('readonly');
+    expect(trigger.textContent).toBe('Access: Read-only (default)');
+  });
+  it('keyboard: Enter opens, arrows move, Enter selects, Escape closes - and never leaks to canvas shortcuts', () => {
+    win.setMode('connect');
+    const sel = win.document.getElementById('appSourceAccess');
+    const wrap = sel.closest('.enhanced-select');
+    const trigger = wrap.querySelector('.custom-select-trigger');
+    const key = k => trigger.dispatchEvent(new win.KeyboardEvent('keydown', { key: k, bubbles: true }));
+    key('Enter');
+    expect(wrap.classList.contains('open')).toBe(true);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(!!trigger.getAttribute('aria-activedescendant')).toBe(true);
+    key('ArrowDown');
+    key('Enter');
+    expect(sel.value).toBe('writable');
+    expect(wrap.classList.contains('open')).toBe(false);
+    key('Enter');
+    key('Escape');
+    expect(wrap.classList.contains('open')).toBe(false);
+    key('Escape');
+    expect(win.state.mode).toBe('connect');
+    win.setMode('select');
+  });
+  it('only one popup open at a time, across the skin and the bespoke Default Model select', () => {
+    const accWrap = win.document.getElementById('appSourceAccess').closest('.enhanced-select');
+    accWrap.querySelector('.custom-select-trigger').click();
+    expect(accWrap.classList.contains('open')).toBe(true);
+    win.document.getElementById('defaultModelTrigger').click();
+    const dm = win.document.getElementById('defaultModelSelect');
+    expect(dm.classList.contains('open')).toBe(true);
+    expect(accWrap.classList.contains('open')).toBe(false);
+    accWrap.querySelector('.custom-select-trigger').click();
+    expect(accWrap.classList.contains('open')).toBe(true);
+    expect(dm.classList.contains('open')).toBe(false);
+  });
+  it('openAgentForm rebuilds the native options and the skin refreshes in place (no double-wrap, full roster)', () => {
+    win.openAgentForm();
+    const sel = win.document.getElementById('customAgentType');
+    const wrap = sel.closest('.enhanced-select');
+    expect(wrap.querySelectorAll('.custom-select-option').length).toBe(win.AGENT_TYPES.length);
+    win.openAgentForm();
+    expect(win.document.querySelectorAll('#customAgentType').length).toBe(1);
+    expect(sel.closest('.enhanced-select').querySelectorAll('.custom-select-trigger').length).toBe(1);
+    expect(wrap.querySelectorAll('.custom-select-option').length).toBe(win.AGENT_TYPES.length);
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════

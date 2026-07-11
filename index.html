@@ -11,6 +11,7 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
+  color-scheme:dark; /* native widget chrome (select popups, scrollbars) renders in dark variants */
   --bg:#0f172a;--surface:#1e293b;--surface2:#334155;--surface3:#475569;
   --border:#334155;--border2:#475569;
   --text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
@@ -238,6 +239,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
   background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
   box-shadow:var(--shadow);z-index:100;overflow:hidden}
 .custom-select.open .custom-select-options{display:block}
+.enhanced-select .native-select-hidden{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;margin:0;padding:0;border:0}
+.custom-select-option.kb-active{background:var(--surface2)}
 .custom-select-option{padding:6px 8px;font-size:12px;cursor:pointer;transition:background .1s;
   color:var(--text)}
 .custom-select-option:hover{background:var(--surface2)}
@@ -2513,6 +2516,7 @@ function initDefaultModelSelect() {
 
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
+    closeAllCustomSelects(container);
     container.classList.toggle('open');
   });
 
@@ -2696,7 +2700,7 @@ function restorePrefs() {
     syncDurableUI();
     if (p.appSourcePath && $('appSourcePath')) $('appSourcePath').value = p.appSourcePath;
     if (p.appSourceBranch && $('appSourceBranch')) $('appSourceBranch').value = p.appSourceBranch;
-    if (p.appSourceAccess && $('appSourceAccess')) $('appSourceAccess').value = p.appSourceAccess;
+    if (p.appSourceAccess && $('appSourceAccess')) { $('appSourceAccess').value = p.appSourceAccess; refreshEnhancedSelect($('appSourceAccess')); }
     if (p.uiContextNotes && $('uiContextNotes')) $('uiContextNotes').value = p.uiContextNotes;
     if (p.exportFormat) setExportFormat(p.exportFormat);
     if (Array.isArray(p.repositories)) { state.repositories = p.repositories; renderRepoRows(); }
@@ -4688,8 +4692,7 @@ function updateConfig() {
     const optsContainer = cs.querySelector('.custom-select-options');
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
-      // Close any other open selects first
-      fields.querySelectorAll('.config-select.open').forEach(other => { if (other !== cs) other.classList.remove('open'); });
+      closeAllCustomSelects(cs); // one popup open at a time, across every dropdown species
       cs.classList.toggle('open');
     });
     optsContainer.addEventListener('click', (e) => {
@@ -5046,7 +5049,7 @@ wrap.addEventListener('contextmenu', e => e.preventDefault());
 
 // Keyboard
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || (e.target.closest && e.target.closest('.custom-select'))) return;
   // Undo/redo for canvas operations (not active when typing in fields)
   if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
   if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) { e.preventDefault(); redo(); return; }
@@ -5186,6 +5189,121 @@ function enhanceExpandableTextarea(el) {
     .forEach(function(id) { enhanceExpandableTextarea($(id)); });
 })();
 // === end Expand-to-modal text editing ===
+
+// === Unified dropdowns (enhanceSelect: the custom-select skin over native selects) - REMOVABLE ===
+// Every dropdown wears the same .custom-select look (the Default Model aesthetic - owner ruling).
+// The native <select> stays in the DOM as the single source of truth: the skin sets .value and
+// dispatches 'change' so every inline handler and every programmatic .value assignment keeps
+// working untouched (the expand-to-modal remote-control pattern, applied to selects). Node-config
+// dropdowns (configSelect) and #defaultModelSelect are already custom-selects and stay as they are.
+function closeAllCustomSelects(except) {
+  document.querySelectorAll('.custom-select.open').forEach(cs => { if (cs !== except) cs.classList.remove('open'); });
+}
+function refreshEnhancedSelect(sel) {
+  // Re-sync the skin from the native's current options + value (call after programmatic changes).
+  if (!sel) return;
+  const wrap = sel.closest && sel.closest('.enhanced-select');
+  if (!wrap) return;
+  const trigger = wrap.querySelector('.custom-select-trigger');
+  const opts = wrap.querySelector('.custom-select-options');
+  const cur = sel.options[sel.selectedIndex];
+  trigger.textContent = cur ? cur.textContent : '';
+  opts.innerHTML = Array.from(sel.options).map((o, i) =>
+    '<div class="custom-select-option' + (o.value === sel.value ? ' selected' : '') + '" role="option" id="' + sel.id + '-opt-' + i + '" aria-selected="' + (o.value === sel.value) + '" data-value="' + escHtml(o.value) + '">' + escHtml(o.textContent) + '</div>'
+  ).join('');
+  wrap.classList.remove('open');
+  trigger.setAttribute('aria-expanded', 'false');
+}
+function refreshEnhancedSelects() {
+  document.querySelectorAll('.enhanced-select select').forEach(refreshEnhancedSelect);
+}
+function enhanceSelect(sel) {
+  if (!sel || !sel.parentElement || (sel.closest && sel.closest('.enhanced-select'))) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'custom-select enhanced-select';
+  sel.parentElement.insertBefore(wrap, sel);
+  wrap.appendChild(sel);
+  sel.classList.add('native-select-hidden');
+  sel.setAttribute('aria-hidden', 'true');
+  sel.setAttribute('tabindex', '-1');
+  const trigger = document.createElement('div');
+  trigger.className = 'custom-select-trigger';
+  trigger.setAttribute('tabindex', '0');
+  trigger.setAttribute('role', 'combobox');
+  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-expanded', 'false');
+  if (sel.title) trigger.title = sel.title;
+  const opts = document.createElement('div');
+  opts.className = 'custom-select-options';
+  opts.setAttribute('role', 'listbox');
+  wrap.appendChild(trigger);
+  wrap.appendChild(opts);
+  let activeIdx = -1;
+  function setActive(i) {
+    const items = opts.children;
+    if (!items.length) return;
+    activeIdx = Math.max(0, Math.min(items.length - 1, i));
+    for (let k = 0; k < items.length; k++) items[k].classList.toggle('kb-active', k === activeIdx);
+    trigger.setAttribute('aria-activedescendant', items[activeIdx].id);
+    if (items[activeIdx].scrollIntoView) items[activeIdx].scrollIntoView({ block: 'nearest' });
+  }
+  function openList() {
+    closeAllCustomSelects(wrap);
+    wrap.classList.add('open');
+    trigger.setAttribute('aria-expanded', 'true');
+    setActive(sel.selectedIndex);
+  }
+  function closeList() {
+    wrap.classList.remove('open');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.removeAttribute('aria-activedescendant');
+  }
+  function pick(value) {
+    sel.value = value;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    refreshEnhancedSelect(sel);
+    trigger.focus();
+  }
+  trigger.addEventListener('click', e => {
+    e.stopPropagation();
+    if (wrap.classList.contains('open')) closeList(); else openList();
+  });
+  opts.addEventListener('click', e => {
+    e.stopPropagation();
+    const opt = e.target.closest('.custom-select-option');
+    if (opt) pick(opt.dataset.value);
+  });
+  trigger.addEventListener('keydown', e => {
+    const open = wrap.classList.contains('open');
+    if (e.key === 'Escape') {
+      if (open) { e.preventDefault(); e.stopPropagation(); closeList(); }
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault(); e.stopPropagation();
+      if (!open) { openList(); return; }
+      const cur = opts.children[activeIdx];
+      if (cur) pick(cur.dataset.value); else closeList();
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopPropagation();
+      if (!open) { openList(); return; }
+      setActive(activeIdx + (e.key === 'ArrowDown' ? 1 : -1));
+      return;
+    }
+    if (e.key === 'Home' && open) { e.preventDefault(); e.stopPropagation(); setActive(0); return; }
+    if (e.key === 'End' && open) { e.preventDefault(); e.stopPropagation(); setActive(opts.children.length - 1); return; }
+    if (e.key === 'Tab' && open) closeList();
+  });
+  refreshEnhancedSelect(sel);
+}
+(function initEnhancedSelects() {
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initEnhancedSelects); return; }
+  ['appSourceAccess', 'customAgentType', 'customAgentModel'].forEach(function(id) { enhanceSelect($(id)); });
+  document.addEventListener('click', function() { closeAllCustomSelects(null); });
+})();
+// === end Unified dropdowns ===
 
 // Context menu
 function showContextMenu(x, y) {
@@ -5622,6 +5740,8 @@ function openAgentForm(id, node) {
   $('customAgentVersion').value = existing ? (existing.version || '') : '1.0.0';
   $('customAgentType').innerHTML = AGENT_TYPES.map(a => '<option value="' + a.id + '"' + (a.id === base.agentType ? ' selected' : '') + '>' + a.name + '</option>').join('');
   $('customAgentModel').innerHTML = MODELS.map(m => '<option value="' + m.value + '"' + (m.value === base.model ? ' selected' : '') + '>' + m.label + '</option>').join('');
+  refreshEnhancedSelect($('customAgentType'));
+  refreshEnhancedSelect($('customAgentModel'));
   $('customAgentMaxTurns').value = base.maxTurns || 10;
   renderAgentFormTools(base.tools);
   $('customAgentPrompt').value = base.prompt || '';
@@ -7742,7 +7862,7 @@ function clearCanvas(skipConfirm) {
   renderRepoRows();
   if ($('appSourcePath')) $('appSourcePath').value = '';
   if ($('appSourceBranch')) $('appSourceBranch').value = '';
-  if ($('appSourceAccess')) $('appSourceAccess').value = 'readonly';
+  if ($('appSourceAccess')) { $('appSourceAccess').value = 'readonly'; refreshEnhancedSelect($('appSourceAccess')); }
   if ($('uiContextNotes')) $('uiContextNotes').value = '';
   if ($('urlPresetPicker')) $('urlPresetPicker').style.display = 'none';
   // New-workflow defaults: memory + durable record ON (flipped 2026-07-03; grounding was already on).
