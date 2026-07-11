@@ -1612,6 +1612,19 @@ describe('Durable Record: exporter injection', () => {
 describe('Consume prior records (read side)', () => {
   beforeEach(() => { resetState(); });
 
+  it('grounding visibility: the hint tells the user what grounding bought them; the run fence gains grounded only when the toggle is on', () => {
+    win.state.consumeRecords = true;
+    const h = win.consumeRecordsHint();
+    expect(h).toContain('Tell the user what grounding bought them');
+    expect(h).toContain('see it turning');
+    let rd = win.runReportDirective();
+    expect(rd).toContain('`grounded`');
+    expect(rd).toContain('Omit the field entirely when none did');
+    win.state.consumeRecords = false;
+    rd = win.runReportDirective();
+    expect(rd).toNotContain('`grounded`');
+    win.state.consumeRecords = true;
+  });
   it('consumeRecordsHint is null when the toggle is off, present when on', () => {
     win.state.consumeRecords = false;
     expect(win.consumeRecordsHint()).toBe(null);

@@ -38,3 +38,7 @@ The durable-record protocol now enforces per-item checklist ticking after each s
 ## Built with (provenance)
 
 Produced directly (no sub-agent fan-out) from a real cold-run's findings: two additive prompt-text sharpenings plus string-assertion tests.
+
+## History
+
+- 2026-07-10: clarify toggle UI wording reframed to user perspective - "(the workflow opens with clarifying questions)" sidebar + Explain; emitted contracts keep "before planning" (agent audience). Director catch (by cadence-granularity-and-clarify-sensitivity)
