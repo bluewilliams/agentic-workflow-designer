@@ -124,3 +124,7 @@ Follow-ons from first hosted use. The folder picker now passes id 'awd-run-repor
 First real connect attempt hit Chrome's File System Access blocklist: picking the home directory root is refused outright ("contains system files") - only subfolders can be granted. And ~/.awd does not exist before the first run writes there (runs create it; a pre-first-run connect finds nothing to pick). Tooltip + help now teach the working path: create ~/.awd first (mkdir -p), pick the folder ITSELF via Cmd+Shift+G, never the home root. Copy-only change.
 
 - [x] Tooltip + help modal guidance (home-root refusal, mkdir-first, Cmd+Shift+G path)
+
+## History
+
+- 2026-07-11: grounding made visible to the user - orchestrator narrates scan outcomes (kickoff + final report); awd:run fence gains an honest `grounded` slug array (used-only, omitted when none, toggle-gated). The flywheel now shows its owner it is turning (by self-improvement-loop)

@@ -1656,6 +1656,7 @@ function runReportDirective() {
   r.push('');
   r.push('- One `steps` entry per step, in execution order. `slug` is the step label lowercased and hyphenated (the same slug as its memory file). `status` is done, skipped, or failed.');
   r.push('- Include `turns` and `cap` only if you actually tracked them - omit any field you do not know, never invent numbers. Include `repo` (the repository name the run executed against) when there is one; omit it otherwise.');
+  if (state.consumeRecords) r.push('- Include `grounded`: an array of the record slugs that actually informed this run (matched at the grounding scan AND used - briefed into a step, cited in a decision, or re-verified). Omit the field entirely when none did; never list a record that merely appeared in the index.');
   r.push('- One `gates` entry per decision gate: the revise `cycles` actually used and the `final` verdict.');
   r.push('- ALSO append the exact same fence to `~/.awd/run-reports.md`, creating the directory and file if missing - that file is the workflow designer\'s telemetry drop and its canonical feed (a copy inside a durable record is archival context). If writing outside the working directory is not permitted, skip this silently; the response fence still stands.');
   r.push('- The fence is data, not prose - place it at the very end of the final response. If a memory breadcrumb comment is required, the breadcrumb stays the very last line and this fence goes immediately before it.');
@@ -1672,6 +1673,7 @@ function consumeRecordsHint(fmt) {
   r.push('> - **Reviewers and critics treat matched current records\' Requirements and Gotchas as review criteria**: a change that violates a documented invariant of a current record is a finding, not a style note.');
   r.push('> - **A tester step re-runs the `verify` commands of matched records whose files overlap the change** as regression confirmation, and reports the real results.');
   r.push('> - **Steps note which record informed a material decision** as they work, so (when a durable record is being maintained) its `Grounds on / touches:` line is written at finalize from the run rather than reconstructed.');
+  r.push('> - **Tell the user what grounding bought them.** After the scan, say in one visible line which records matched and what they contributed ("Grounded on payment-retry and batch-item-filter: inherited the idempotency invariant and two gotchas") - or that none matched (greenfield, expected). Repeat the payoff in your FINAL report: name the records whose decisions, gotchas, or verify commands shaped this run. The flywheel only earns its keep when its owner can see it turning.');
   return r.join('\n');
 }
 
