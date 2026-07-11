@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## agent-library-button
+
+- record: .workflow/agent-library-button.md
+- intent: Add to Canvas reclassed from the borrowed .plib-copy chip to btn sm - matches Edit/Delete height and brightness; Prompt Library chips keep their class (count-pinned, chip fits there).
+- files: index.html (renderAgentLib row markup)
+- status: current | date: 2026-07-10
+
 ## prompt-library-overhaul
 
 - record: .workflow/prompt-library-overhaul.md
