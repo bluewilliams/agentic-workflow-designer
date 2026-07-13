@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-07-13 - self-improvement-loop (update) - Run report Explain row preempts the toggles-off surprise: states its deliberate independence from memory/durable/grounding (telemetry vs work-state) and its harmless-when-unwanted design - .workflow/self-improvement-loop.md
 2026-07-11 - self-improvement-loop (update) - grounding made VISIBLE: the orchestrator narrates what the scan matched and contributed (kickoff + final report) and the awd:run fence gains an honest used-only `grounded` slug array (omitted when none, toggle-gated) - the flywheel now shows its owner it is turning - .workflow/self-improvement-loop.md
 2026-07-10 - cadence-granularity-and-clarify-sensitivity (update) - clarify toggle wording speaks user-perspective ("the workflow opens with clarifying questions" - sidebar + Explain); emitted contracts keep agent-audience "before planning" - .workflow/cadence-granularity-and-clarify-sensitivity.md
 2026-07-10 - node-config-ux (update) - selection scroll made smooth for humans via the __instantScroll rig hook (the __autoConfirm precedent) + prefers-reduced-motion guard; the original instant-scroll rationale (headless flake) is handled by the hook, not by denying the animation - .workflow/node-config-ux.md

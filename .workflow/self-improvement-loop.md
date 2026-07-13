@@ -128,3 +128,4 @@ First real connect attempt hit Chrome's File System Access blocklist: picking th
 ## History
 
 - 2026-07-11: grounding made visible to the user - orchestrator narrates scan outcomes (kickoff + final report); awd:run fence gains an honest `grounded` slug array (used-only, omitted when none, toggle-gated). The flywheel now shows its owner it is turning (by self-improvement-loop)
+- 2026-07-13: the Run report Explain row now states WHY it is always on (independent of the memory/durable/grounding toggles - telemetry about the run, not work-state; local-only, skips silently) - a director with toggles off met the directive as a possible misconfiguration (by self-improvement-loop)
