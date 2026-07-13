@@ -8775,7 +8775,7 @@ function explainWorkflow(format) {
       : (decEmitted ? 'the orchestrator evaluates these gates and routes pass/revise'
                     : 'gates are carried inline on the steps in this format'),
     decEmitted ? decHeading : ''));
-  rows.push(exRow('Run report directive', true, 'always on - one awd:run fence at the end of the run (and appended to ~/.awd/run-reports.md) feeds the designer badges and tuning prompt', runReportDirective()));
+  rows.push(exRow('Run report directive', true, 'always on, deliberately independent of the memory/durable/grounding toggles (those gate work-state; this is telemetry about the run itself) - one awd:run fence at the end of the run, appended to ~/.awd/run-reports.md, feeds the designer badges and tuning prompt; harmless when unwanted (local-only, skips silently where writes are forbidden)', runReportDirective()));
   return rows;
 }
 
