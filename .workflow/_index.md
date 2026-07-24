@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## model-roster
+
+- record: .workflow/model-roster.md
+- intent: Opus 5 added and made the default; Opus 4.7, Opus 4.6 and the dated 4.5 pair retired. The load-bearing half is taskModelMap: only the NEWEST model in a family holds the short alias, so Opus 4.8 and Sonnet 4.6 now fall through to their full API ids - leaving a superseded model mapped to a shorthand would silently run the step on its successor (the Sonnet 4.6 instance of that defect existed already and is fixed here). modelContextNote follows the same base, so a pinned [1M] note reads /model claude-opus-4-8[1m]. No compat shim for the default-model pref by ruling (the existing restorePrefs guard is now pinned). Separately fixed a real defect the retirement exposed: a node holding a retired model emitted that raw value as the Task param (getModelId falls through) while configSelect showed MODELS[0] - now migrated to the default on load, and configSelect renders an unknown value as itself.
+- files: index.html (MODELS, taskModelMap, modelContextNote clause, 4 default sites + trigger label, deserializeWorkflow migration, configSelect), tests.html (8 migrations, 7 new guards, MODELS exposure, 110 fixture sweep), README.md, TECHNICAL.md
+- status: current | date: 2026-07-24
+
 ## agent-library-button
 
 - record: .workflow/agent-library-button.md
