@@ -238,7 +238,7 @@ function resetState() {
   win.state.memoryEnabled = false;  // app default is now ON; test baseline stays OFF so memory-gating is explicit per test
   win.state.durableRecord = false;  // app default is now ON; same deliberate OFF baseline
   win.state.artifactPath = '';
-  win.state.defaultModel = 'opus-4.6';
+  win.state.defaultModel = 'opus-5';
   win.state.repositories = [];
   win.state.activePreset = null;
   win.state.mcpCodeSearch = true;  // app default is ON (index.html state init)
@@ -279,8 +279,8 @@ function buildTestWorkflow(shape) {
 
   if (shape === 'linear') {
     refs.input = win.addNode('input', 100, 200, 'Requirements');
-    refs.planner = win.addNode('agent', 350, 200, 'Planner', { agentType:'planner', model:'opus-4.6', tools:['Read','Grep','Glob'], prompt:'Plan it.', maxTurns:5 });
-    refs.implementer = win.addNode('agent', 600, 200, 'Implementer', { agentType:'coder', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
+    refs.planner = win.addNode('agent', 350, 200, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read','Grep','Glob'], prompt:'Plan it.', maxTurns:5 });
+    refs.implementer = win.addNode('agent', 600, 200, 'Implementer', { agentType:'coder', model:'opus-5', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
     refs.output = win.addNode('output', 850, 200, 'Done', { deliverable:'Tested code', format:'code' });
     win.addConnection(refs.input.id, refs.planner.id);
     win.addConnection(refs.planner.id, refs.implementer.id);
@@ -290,9 +290,9 @@ function buildTestWorkflow(shape) {
   if (shape === 'parallel') {
     refs.input = win.addNode('input', 100, 250, 'Spec');
     refs.fork = win.addNode('parallel', 350, 250, 'Fork', { strategy:'all' });
-    refs.backend = win.addNode('agent', 600, 150, 'Backend', { agentType:'backend', model:'opus-4.6', tools:['Read','Write','Edit','Bash'], prompt:'Backend work.', maxTurns:10 });
-    refs.frontend = win.addNode('agent', 600, 350, 'Frontend', { agentType:'frontend', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'Frontend work.', maxTurns:10 });
-    refs.reviewer = win.addNode('agent', 850, 250, 'Reviewer', { agentType:'reviewer', model:'opus-4.6', tools:['Read','Grep'], prompt:'Review it.', maxTurns:5 });
+    refs.backend = win.addNode('agent', 600, 150, 'Backend', { agentType:'backend', model:'opus-5', tools:['Read','Write','Edit','Bash'], prompt:'Backend work.', maxTurns:10 });
+    refs.frontend = win.addNode('agent', 600, 350, 'Frontend', { agentType:'frontend', model:'opus-5', tools:['Read','Write','Edit'], prompt:'Frontend work.', maxTurns:10 });
+    refs.reviewer = win.addNode('agent', 850, 250, 'Reviewer', { agentType:'reviewer', model:'opus-5', tools:['Read','Grep'], prompt:'Review it.', maxTurns:5 });
     refs.output = win.addNode('output', 1100, 250, 'Ready', { deliverable:'Full stack', format:'code' });
     win.addConnection(refs.input.id, refs.fork.id);
     win.addConnection(refs.fork.id, refs.backend.id);
@@ -304,10 +304,10 @@ function buildTestWorkflow(shape) {
 
   if (shape === 'decision') {
     refs.input = win.addNode('input', 100, 200, 'Bug Report');
-    refs.implementer = win.addNode('agent', 350, 200, 'Implementer', { agentType:'coder', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'Fix it.', maxTurns:10 });
-    refs.reviewer = win.addNode('agent', 600, 200, 'Reviewer', { agentType:'reviewer', model:'opus-4.6', tools:['Read','Grep'], prompt:'Review it.', maxTurns:5 });
+    refs.implementer = win.addNode('agent', 350, 200, 'Implementer', { agentType:'coder', model:'opus-5', tools:['Read','Write','Edit'], prompt:'Fix it.', maxTurns:10 });
+    refs.reviewer = win.addNode('agent', 600, 200, 'Reviewer', { agentType:'reviewer', model:'opus-5', tools:['Read','Grep'], prompt:'Review it.', maxTurns:5 });
     refs.decision = win.addNode('decision', 850, 200, 'Review OK?', { condition:'All checks pass', yesLabel:'Pass', noLabel:'Revise', maxRevisions:3 });
-    refs.tester = win.addNode('agent', 1100, 200, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:10 });
+    refs.tester = win.addNode('agent', 1100, 200, 'Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:10 });
     refs.output = win.addNode('output', 1350, 200, 'Fixed', { deliverable:'Verified fix', format:'code' });
     win.addConnection(refs.input.id, refs.implementer.id);
     win.addConnection(refs.implementer.id, refs.reviewer.id);
@@ -319,13 +319,13 @@ function buildTestWorkflow(shape) {
 
   if (shape === 'complex') {
     refs.input = win.addNode('input', 100, 300, 'Spec');
-    refs.planner = win.addNode('agent', 350, 300, 'Planner', { agentType:'planner', model:'opus-4.6', tools:['Read','Grep','Glob'], prompt:'Plan.', maxTurns:5 });
+    refs.planner = win.addNode('agent', 350, 300, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read','Grep','Glob'], prompt:'Plan.', maxTurns:5 });
     refs.fork = win.addNode('parallel', 600, 300, 'Fork', { strategy:'all' });
-    refs.backend = win.addNode('agent', 850, 200, 'Backend', { agentType:'backend', model:'opus-4.6', tools:['Read','Write','Edit','Bash'], prompt:'API.', maxTurns:15 });
-    refs.frontend = win.addNode('agent', 850, 400, 'Frontend', { agentType:'frontend', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'UI.', maxTurns:15 });
-    refs.reviewer = win.addNode('agent', 1100, 300, 'Reviewer', { agentType:'reviewer', model:'opus-4.6', tools:['Read','Grep'], prompt:'Review.', maxTurns:5 });
+    refs.backend = win.addNode('agent', 850, 200, 'Backend', { agentType:'backend', model:'opus-5', tools:['Read','Write','Edit','Bash'], prompt:'API.', maxTurns:15 });
+    refs.frontend = win.addNode('agent', 850, 400, 'Frontend', { agentType:'frontend', model:'opus-5', tools:['Read','Write','Edit'], prompt:'UI.', maxTurns:15 });
+    refs.reviewer = win.addNode('agent', 1100, 300, 'Reviewer', { agentType:'reviewer', model:'opus-5', tools:['Read','Grep'], prompt:'Review.', maxTurns:5 });
     refs.decision = win.addNode('decision', 1350, 300, 'Review OK?', { condition:'All checks pass', yesLabel:'Pass', noLabel:'Revise', maxRevisions:3 });
-    refs.tester = win.addNode('agent', 1600, 300, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test.', maxTurns:10 });
+    refs.tester = win.addNode('agent', 1600, 300, 'Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test.', maxTurns:10 });
     refs.output = win.addNode('output', 1850, 300, 'Complete', { deliverable:'Tested feature', format:'code' });
     win.addConnection(refs.input.id, refs.planner.id);
     win.addConnection(refs.planner.id, refs.fork.id);
@@ -485,7 +485,7 @@ describe('Pure Utilities', () => {
 
   describe('getModelLabel', () => {
     it('should return correct label for known models', () => {
-      expect(win.getModelLabel('opus-4.6')).toBe('Opus 4.6');
+      expect(win.getModelLabel('opus-4.8')).toBe('Opus 4.8');
       expect(win.getModelLabel('sonnet-4.6')).toBe('Sonnet 4.6');
       expect(win.getModelLabel('haiku')).toBe('Haiku 4.5');
     });
@@ -507,13 +507,61 @@ describe('Pure Utilities', () => {
   });
 
   describe('default model', () => {
-    it('ships defaulted to Opus 4.8; Fable 5 was added but is not the default', () => {
-      // Shipped default trigger (index.html) reads Opus 4.8, not Fable 5.
-      expect(win.document.getElementById('defaultModelTrigger').textContent).toContain('Opus 4.8');
-      // Opus 4.8 entry is intact - Fable was added alongside, not substituted in.
-      expect(win.getModelLabel('opus-4.8')).toBe('Opus 4.8');
+    it('ships defaulted to Opus 5; Fable 5 was added but is not the default', () => {
+      // Shipped default trigger (index.html) reads Opus 5, not Fable 5.
+      expect(win.document.getElementById('defaultModelTrigger').textContent).toContain('Opus 5');
+      // Opus 5 entry is intact - Fable was added alongside, not substituted in.
+      expect(win.getModelLabel('opus-5')).toBe('Opus 5');
       // Fable 5 is present as a separate, non-default option.
       expect(win.getModelLabel('fable-5')).toBe('Fable 5');
+    });
+    it('offers Opus 5 and Opus 5 [1M] in the default-model dropdown', () => {
+      const optsHtml = win.document.getElementById('defaultModelOptions').innerHTML;
+      expect(optsHtml).toContain('data-value="opus-5"');
+      expect(optsHtml).toContain('data-value="opus-5-1m"');
+      expect(optsHtml).toContain('Opus 5 [1M]');
+    });
+    it('retires the superseded model families from every picker', () => {
+      const optsHtml = win.document.getElementById('defaultModelOptions').innerHTML;
+      ['opus-4.7', 'opus-4.7-1m', 'opus-4.6', 'opus-4.6-1m'].forEach(v => {
+        expect(optsHtml).toNotContain('data-value="' + v + '"');
+      });
+      // The bare `opus` / `sonnet` values were the dated 4.5 pair, not shorthand entries.
+      expect(optsHtml).toNotContain('data-value="opus"');
+      expect(optsHtml).toNotContain('data-value="sonnet"');
+      expect(win.MODELS.some(m => m.id === 'claude-opus-4-5-20251001')).toBe(false);
+      expect(win.MODELS.some(m => m.id === 'claude-sonnet-4-5-20251001')).toBe(false);
+    });
+    it('a workflow saved on a retired model loads onto the default instead of emitting an invalid param', () => {
+      resetState();
+      const ok = win.deserializeWorkflow({ canvas: { nodes: [
+        { id: 1, type: 'agent', x: 100, y: 100, label: 'Legacy',
+          config: { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'Build.', maxTurns: 5 } }
+      ], connections: [], nextId: 2 } });
+      expect(ok).toBe(true);
+      const n = win.state.nodes.find(x => x.label === 'Legacy');
+      expect(n.config.model).toBe(win.state.defaultModel);
+      // The raw stored value must never reach the emitted Task param.
+      expect(win.genSubAgents()).toNotContain('model="opus-4.6"');
+    });
+    it('the config panel never shows a model the node is not holding', () => {
+      resetState();
+      const n = win.addNode('agent', 100, 100, 'Odd', { agentType:'coder', model:'some-unknown-model', tools:['Read'], prompt:'x', maxTurns:5 });
+      win.selectNode(n.id); win.updateConfig();
+      const sel = win.document.querySelector('.config-select[data-key="model"]');
+      // Previously borrowed MODELS[0]'s label, so the panel disagreed with the emitted prompt.
+      expect(sel.querySelector('.custom-select-trigger').textContent).toBe('some-unknown-model');
+      win.selectNode(null); win.updateConfig();
+    });
+    it('a stored default naming a retired model is ignored, not applied', () => {
+      // No compat shim by design; the existing MODELS guard in restorePrefs is what keeps
+      // a browser that last saved 'opus-4.6' from landing on a phantom selection.
+      resetState();
+      localStorage.setItem('awd_prefs', JSON.stringify({ defaultModel: 'opus-4.6' }));
+      win.restorePrefs();
+      expect(win.state.defaultModel === 'opus-4.6').toBe(false);
+      expect(win.MODELS.some(m => m.value === win.state.defaultModel)).toBe(true);
+      localStorage.removeItem('awd_prefs');
     });
     it('offers Sonnet 5 and Sonnet 5 [1M] in the default-model dropdown', () => {
       // The default-model select populates its options from MODELS at init.
@@ -526,7 +574,7 @@ describe('Pure Utilities', () => {
     it('offers Sonnet 5 and Sonnet 5 [1M] in the per-node model picker (config panel reads MODELS)', () => {
       // The node-config Model dropdown must expose every MODELS entry, not just the default-model select.
       resetState();
-      const node = win.addNode('agent', 100, 200, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      const node = win.addNode('agent', 100, 200, 'Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
       win.selectNode(node.id);
       win.updateConfig();
       const modelSelect = win.document.querySelector('.config-select[data-key="model"]');
@@ -789,14 +837,14 @@ describe('Persistence', () => {
       win.state.memoryEnabled = true;
       win.state.exportFormat = 'sdk';
       win.savePrefs();
-      win.state.defaultModel = 'opus-4.6';
+      win.state.defaultModel = 'opus-5';
       win.state.memoryEnabled = false;
       win.state.exportFormat = 'prompt';
       win.restorePrefs();
       expect(win.state.exportFormat).toBe('sdk');
     });
     it('should handle missing memoryEnabled in prefs gracefully', () => {
-      localStorage.setItem('awd_prefs', JSON.stringify({ defaultModel:'opus-4.6' }));
+      localStorage.setItem('awd_prefs', JSON.stringify({ defaultModel:'sonnet-5' }));
       win.restorePrefs();
     });
     it('should restore false memoryEnabled explicitly', () => {
@@ -1972,38 +2020,38 @@ describe('Datadog step escalation', () => {
   }
 
   it('R1 helper off: researcher node with toggle off returns empty', () => {
-    const node = win.addNode('agent', 350, 200, 'Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Look into it.', maxTurns:5 });
+    const node = win.addNode('agent', 350, 200, 'Researcher', { agentType:'researcher', model:'opus-5', tools:['Read','Grep'], prompt:'Look into it.', maxTurns:5 });
     win.state.mcpDatadog = false;
     expect(win.datadogStepHint(node)).toBe('');
   });
 
   it('R1 helper on: planner/architect/researcher/tester nodes all receive the hint', () => {
     win.state.mcpDatadog = true;
-    const planner = win.addNode('agent', 350, 200, 'Planner', { agentType:'planner', model:'opus-4.6', tools:['Read'], prompt:'Plan it.', maxTurns:5 });
+    const planner = win.addNode('agent', 350, 200, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'Plan it.', maxTurns:5 });
     expect(win.datadogStepHint(planner)).toContain(MARK);
-    const architect = win.addNode('agent', 350, 250, 'Architect', { agentType:'architect', model:'opus-4.6', tools:['Read'], prompt:'Design it.', maxTurns:5 });
+    const architect = win.addNode('agent', 350, 250, 'Architect', { agentType:'architect', model:'opus-5', tools:['Read'], prompt:'Design it.', maxTurns:5 });
     expect(win.datadogStepHint(architect)).toContain(MARK);
-    const researcher = win.addNode('agent', 350, 300, 'Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read'], prompt:'Research it.', maxTurns:5 });
+    const researcher = win.addNode('agent', 350, 300, 'Researcher', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'Research it.', maxTurns:5 });
     expect(win.datadogStepHint(researcher)).toContain(MARK);
-    const tester = win.addNode('agent', 350, 350, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+    const tester = win.addNode('agent', 350, 350, 'Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
     expect(win.datadogStepHint(tester)).toContain(MARK);
   });
 
   it('R1 helper on: debugger node (investigator template) receives the hint', () => {
     win.state.mcpDatadog = true;
-    const debuggr = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-4.6', tools:['Read','Grep'], prompt:win.PROMPTS.investigator, maxTurns:5 });
+    const debuggr = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-5', tools:['Read','Grep'], prompt:win.PROMPTS.investigator, maxTurns:5 });
     expect(win.datadogStepHint(debuggr)).toContain(MARK);
   });
 
   it('R1 helper on: coder node is not in the role set, returns empty', () => {
     win.state.mcpDatadog = true;
-    const coder = win.addNode('agent', 350, 200, 'Coder', { agentType:'coder', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
+    const coder = win.addNode('agent', 350, 200, 'Coder', { agentType:'coder', model:'opus-5', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
     expect(win.datadogStepHint(coder)).toBe('');
   });
 
   it('R2 wording: hint encodes prefer/judgment/skip guidance, hyphens only', () => {
     win.state.mcpDatadog = true;
-    const node = win.addNode('agent', 350, 200, 'Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read'], prompt:'Research it.', maxTurns:5 });
+    const node = win.addNode('agent', 350, 200, 'Researcher', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'Research it.', maxTurns:5 });
     const h = win.datadogStepHint(node);
     expect(h).toContain('prefer what the orchestrator');
     expect(h).toContain('differently-angled');
@@ -2014,7 +2062,7 @@ describe('Datadog step escalation', () => {
   });
 
   it('R4 toggle off: hint marker absent from all four formats', () => {
-    workflowWith('Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    workflowWith('Researcher', { agentType:'researcher', model:'opus-5', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
     win.state.mcpDatadog = false;
     expect(win.genWorkflow()).toNotContain(MARK);
     expect(win.genSubAgents()).toNotContain(MARK);
@@ -2023,7 +2071,7 @@ describe('Datadog step escalation', () => {
   });
 
   it('R6 toggle on: hint marker present in all four formats for a researcher', () => {
-    workflowWith('Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    workflowWith('Researcher', { agentType:'researcher', model:'opus-5', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
     win.state.mcpDatadog = true;
     expect(win.genWorkflow()).toContain(MARK);
     expect(win.genSubAgents()).toContain(MARK);
@@ -2032,7 +2080,7 @@ describe('Datadog step escalation', () => {
   });
 
   it('R3 SDK exporter is excluded even when toggle is on', () => {
-    workflowWith('Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    workflowWith('Researcher', { agentType:'researcher', model:'opus-5', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
     win.state.mcpDatadog = true;
     expect(win.genAgentSDK()).toNotContain(MARK);
   });
@@ -2042,7 +2090,7 @@ describe('Datadog step escalation', () => {
   });
 
   it('R5 bugfix node: toggle-on output carries the hint and has no leftover hardcoded Datadog line', () => {
-    workflowWith('Investigator', { agentType:'debugger', model:'opus-4.6', tools:['Read','Grep'], prompt:win.PROMPTS.investigator, maxTurns:5 });
+    workflowWith('Investigator', { agentType:'debugger', model:'opus-5', tools:['Read','Grep'], prompt:win.PROMPTS.investigator, maxTurns:5 });
     win.state.mcpDatadog = true;
     const out = win.genWorkflow();
     expect(out).toContain(MARK);
@@ -2050,7 +2098,7 @@ describe('Datadog step escalation', () => {
   });
 
   it('R7 display unaffected: classifyAgentPrompt text omits the hint even when toggle is on', () => {
-    const node = win.addNode('agent', 350, 200, 'Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    const node = win.addNode('agent', 350, 200, 'Researcher', { agentType:'researcher', model:'opus-5', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
     win.state.mcpDatadog = true;
     expect(win.classifyAgentPrompt(node).text).toNotContain(MARK);
   });
@@ -2084,7 +2132,7 @@ describe('Code search step awareness', () => {
   });
 
   it('C1 in-scope role, toggle on: mark present in all four injecting exporters', () => {
-    workflowWith('Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    workflowWith('Researcher', { agentType:'researcher', model:'opus-5', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
     win.state.mcpCodeSearch = true;
     expect(win.genWorkflow()).toContain(MARK);
     expect(win.genSubAgents()).toContain(MARK);
@@ -2108,7 +2156,7 @@ describe('Code search step awareness', () => {
   });
 
   it('C3 toggle off: mark absent from all four exporters', () => {
-    workflowWith('Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    workflowWith('Researcher', { agentType:'researcher', model:'opus-5', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
     win.state.mcpCodeSearch = false;
     expect(win.genWorkflow()).toNotContain(MARK);
     expect(win.genSubAgents()).toNotContain(MARK);
@@ -2123,7 +2171,7 @@ describe('Code search step awareness', () => {
   });
 
   it('C4 out-of-scope role, toggle on: mark absent from a writer node step text', () => {
-    workflowWith('Writer', { agentType:'writer', writingStyle:'technical', model:'opus-4.6', tools:['Read','Write'], prompt:'Write it.', maxTurns:5 });
+    workflowWith('Writer', { agentType:'writer', writingStyle:'technical', model:'opus-5', tools:['Read','Write'], prompt:'Write it.', maxTurns:5 });
     win.state.mcpCodeSearch = true;
     expect(win.genWorkflow()).toNotContain(MARK);
     expect(win.genSubAgents()).toNotContain(MARK);
@@ -2132,13 +2180,13 @@ describe('Code search step awareness', () => {
   });
 
   it('C5 SDK exporter is excluded even when toggle is on', () => {
-    workflowWith('Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    workflowWith('Researcher', { agentType:'researcher', model:'opus-5', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
     win.state.mcpCodeSearch = true;
     expect(win.genAgentSDK()).toNotContain(MARK);
   });
 
   it('C6 additive guard: in-scope planner keeps its template content in BOTH toggle states', () => {
-    workflowWith('Planner', { agentType:'planner', model:'opus-4.6', tools:['Read','Grep'], prompt:win.PROMPTS.planner, maxTurns:5 });
+    workflowWith('Planner', { agentType:'planner', model:'opus-5', tools:['Read','Grep'], prompt:win.PROMPTS.planner, maxTurns:5 });
     // Toggle ON: template content present AND the hint is added.
     win.state.mcpCodeSearch = true;
     const on = win.genWorkflow();
@@ -2164,7 +2212,7 @@ describe('Code search step awareness', () => {
   });
 
   it('C8 display unaffected: classifyAgentPrompt text omits the hint even when toggle is on', () => {
-    const node = win.addNode('agent', 350, 200, 'Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
+    const node = win.addNode('agent', 350, 200, 'Researcher', { agentType:'researcher', model:'opus-5', tools:['Read','Grep'], prompt:'Research it.', maxTurns:5 });
     win.state.mcpCodeSearch = true;
     expect(win.classifyAgentPrompt(node).text).toNotContain(MARK);
   });
@@ -2186,7 +2234,7 @@ describe('MCP toggle leak guard (off = no hint-body strings in any exporter)', (
   function neutralWorkflow() {
     resetState();
     const input = win.addNode('input', 100, 200, 'Requirements');
-    const agent = win.addNode('agent', 350, 200, 'Builder', { agentType:'planner', model:'opus-4.6', tools:['Read','Grep','LSP'], prompt:'Build it.', maxTurns:5 });
+    const agent = win.addNode('agent', 350, 200, 'Builder', { agentType:'planner', model:'opus-5', tools:['Read','Grep','LSP'], prompt:'Build it.', maxTurns:5 });
     const output = win.addNode('output', 600, 200, 'Done', { deliverable:'Result', format:'code' });
     win.addConnection(input.id, agent.id);
     win.addConnection(agent.id, output.id);
@@ -2237,7 +2285,7 @@ describe('Orchestrator identity is format-aware', () => {
   function bugfixWorkflow() {
     resetState();
     const input = win.addNode('input', 100, 200, 'Requirements');
-    const agent = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-4.6', tools:['Read','Grep'], prompt:'Investigate.', maxTurns:10 });
+    const agent = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-5', tools:['Read','Grep'], prompt:'Investigate.', maxTurns:10 });
     const output = win.addNode('output', 600, 200, 'Done', { deliverable:'Result', format:'code' });
     win.addConnection(input.id, agent.id);
     win.addConnection(agent.id, output.id);
@@ -2294,7 +2342,7 @@ describe('Orchestrator identity is format-aware', () => {
   it('no non-Teams format says "team lead" under any memory/durable/consume combination', () => {
     function buildNodes() {
       const input = win.addNode('input', 100, 200, 'Requirements');
-      const agent = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-4.6', tools:['Read','Grep'], prompt:'Investigate.', maxTurns:10 });
+      const agent = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-5', tools:['Read','Grep'], prompt:'Investigate.', maxTurns:10 });
       const output = win.addNode('output', 600, 200, 'Done', { deliverable:'Result', format:'code' });
       win.addConnection(input.id, agent.id);
       win.addConnection(agent.id, output.id);
@@ -2325,7 +2373,7 @@ describe('Orchestrator identity is format-aware', () => {
     const TEAM_VOCAB = ['team lead', 'TeamCreate', 'team_name', 'teammate', 'coordinate teammates', 'shutdown_request'];
     function buildNodes() {
       const input = win.addNode('input', 100, 200, 'Requirements');
-      const agent = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-4.6', tools:['Read','Grep'], prompt:'Investigate.', maxTurns:10 });
+      const agent = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-5', tools:['Read','Grep'], prompt:'Investigate.', maxTurns:10 });
       const output = win.addNode('output', 600, 200, 'Done', { deliverable:'Result', format:'code' });
       win.addConnection(input.id, agent.id);
       win.addConnection(agent.id, output.id);
@@ -2354,7 +2402,7 @@ describe('Execution-model directive is present and format-specific', () => {
 
   function buildNodes() {
     const input = win.addNode('input', 100, 200, 'Requirements');
-    const agent = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-4.6', tools:['Read','Grep'], prompt:'Investigate.', maxTurns:10 });
+    const agent = win.addNode('agent', 350, 200, 'Investigator', { agentType:'debugger', model:'opus-5', tools:['Read','Grep'], prompt:'Investigate.', maxTurns:10 });
     const output = win.addNode('output', 600, 200, 'Done', { deliverable:'Result', format:'code' });
     win.addConnection(input.id, agent.id);
     win.addConnection(agent.id, output.id);
@@ -2835,8 +2883,8 @@ describe('Node config: Parallel Strategy join semantics', () => {
   function forkWorkflow(strategy) {
     const inp = win.addNode('input', 0, 0, 'Spec');
     const fork = win.addNode('parallel', 0, 0, 'Fork', { strategy, description: '' });
-    const a1 = win.addNode('agent', 0, 0, 'A', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'a', maxTurns:5 });
-    const a2 = win.addNode('agent', 0, 0, 'B', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'b', maxTurns:5 });
+    const a1 = win.addNode('agent', 0, 0, 'A', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'a', maxTurns:5 });
+    const a2 = win.addNode('agent', 0, 0, 'B', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'b', maxTurns:5 });
     const join = win.addNode('parallel', 0, 0, 'Join', { strategy });
     win.addConnection(inp.id, fork.id); win.addConnection(fork.id, a1.id); win.addConnection(fork.id, a2.id);
     win.addConnection(a1.id, join.id); win.addConnection(a2.id, join.id);
@@ -2879,7 +2927,7 @@ describe('Node config: Task nodes reach the prompt', () => {
   const ACC = 'returns 429 after the configured threshold';
   function base() {
     const inp = win.addNode('input', 0, 0, 'Spec');
-    const ag = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    const ag = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'x', maxTurns:5 });
     win.addConnection(inp.id, ag.id);
     return ag;
   }
@@ -2936,7 +2984,7 @@ describe('Node config: Input Source framing', () => {
   function srcWorkflow(source) {
     win.document.getElementById('storyInput').value = 'Add a rate limiter to the public API.';
     const inp = win.addNode('input', 0, 0, 'Spec', { source });
-    const ag = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    const ag = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'x', maxTurns:5 });
     win.addConnection(inp.id, ag.id);
   }
   it('freeform (default) emits no source-framing hint', () => {
@@ -2962,7 +3010,7 @@ describe('Node config: Input Source framing', () => {
   it('URL-only story suppresses the source hint in every generator (incl. SDK)', () => {
     win.document.getElementById('storyInput').value = 'https://team.atlassian.net/browse/ABC-123';
     const inp = win.addNode('input', 0, 0, 'Spec', { source:'prd' });
-    const ag = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    const ag = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'x', maxTurns:5 });
     win.addConnection(inp.id, ag.id);
     [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genAgentSDK(), win.genClaudePrompt()]
       .forEach(out => expect(out).toNotContain('product requirements document'));
@@ -2970,7 +3018,7 @@ describe('Node config: Input Source framing', () => {
   });
   it('empty story suppresses the source hint (incl. SDK)', () => {
     const inp = win.addNode('input', 0, 0, 'Spec', { source:'prd' });
-    const ag = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    const ag = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'x', maxTurns:5 });
     win.addConnection(inp.id, ag.id);
     [win.genWorkflow(), win.genAgentSDK()].forEach(out => expect(out).toNotContain('product requirements document'));
   });
@@ -2998,8 +3046,8 @@ describe('Dependency references carry upstream agent type', () => {
   beforeEach(() => { resetState(); });
   it('downstream agent dependency lines include the upstream Label (Type)', () => {
     const i = win.addNode('input', 0, 0, 'Spec');
-    const a = win.addNode('agent', 0, 0, 'Codebase Mapper', { agentType:'researcher', model:'opus-4.6', tools:['Read'], prompt:'map', maxTurns:8 });
-    const b = win.addNode('agent', 0, 0, 'Synthesizer', { agentType:'writer', model:'opus-4.6', tools:['Read','Write'], prompt:'synth', maxTurns:8 });
+    const a = win.addNode('agent', 0, 0, 'Codebase Mapper', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'map', maxTurns:8 });
+    const b = win.addNode('agent', 0, 0, 'Synthesizer', { agentType:'writer', model:'opus-5', tools:['Read','Write'], prompt:'synth', maxTurns:8 });
     win.addConnection(i.id, a.id); win.addConnection(a.id, b.id);
     const TAG = 'Codebase Mapper (Researcher)';
     [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genClaudePrompt()]
@@ -3007,8 +3055,8 @@ describe('Dependency references carry upstream agent type', () => {
   });
   it('applies to any downstream step (not just reviewers) - e.g. an Implementer fed by a Planner', () => {
     const i = win.addNode('input', 0, 0, 'Spec');
-    const pl = win.addNode('agent', 0, 0, 'Lead Planner', { agentType:'planner', model:'opus-4.6', tools:['Read'], prompt:'plan', maxTurns:5 });
-    const im = win.addNode('agent', 0, 0, 'Implementer', { agentType:'coder', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'build', maxTurns:10 });
+    const pl = win.addNode('agent', 0, 0, 'Lead Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'plan', maxTurns:5 });
+    const im = win.addNode('agent', 0, 0, 'Implementer', { agentType:'coder', model:'opus-5', tools:['Read','Write','Edit'], prompt:'build', maxTurns:10 });
     win.addConnection(i.id, pl.id); win.addConnection(pl.id, im.id);
     expect(win.genSubAgents()).toContain('Lead Planner (Planner)');
   });
@@ -4222,47 +4270,28 @@ describe('Model Version Handling', () => {
   beforeEach(() => { resetState(); });
 
   describe('sub-agents export', () => {
-    it('should use full model ID for Sonnet 4.5', () => {
+    it('should use opus shorthand for Opus 5 (latest)', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
-      impl.config.model = 'sonnet';
-      const output = win.genSubAgents();
-      expect(output).toContain('model="claude-sonnet-4-5-20251001"');
-    });
-    it('should use full model ID for Opus 4.5', () => {
-      buildTestWorkflow('linear');
-      const impl = win.state.nodes.find(n => n.label === 'Implementer');
-      impl.config.model = 'opus';
-      const output = win.genSubAgents();
-      expect(output).toContain('model="claude-opus-4-5-20251001"');
-    });
-    it('should use shorthand for Sonnet 4.6', () => {
-      buildTestWorkflow('linear');
-      const impl = win.state.nodes.find(n => n.label === 'Implementer');
-      impl.config.model = 'sonnet-4.6';
-      const output = win.genSubAgents();
-      expect(output).toContain('model="sonnet"');
-    });
-    it('should use shorthand for Opus 4.8 (latest)', () => {
-      buildTestWorkflow('linear');
-      const impl = win.state.nodes.find(n => n.label === 'Implementer');
-      impl.config.model = 'opus-4.8';
+      impl.config.model = 'opus-5';
       const output = win.genSubAgents();
       expect(output).toContain('model="opus"');
     });
-    it('should use full ID for Opus 4.7 (now older)', () => {
+    it('should use full ID for Opus 4.8 (superseded by Opus 5, so no longer the shorthand)', () => {
       buildTestWorkflow('linear');
-      const impl = win.state.nodes.find(n => n.label === 'Implementer');
-      impl.config.model = 'opus-4.7';
+      // Every step on the superseded model, so the absence check covers the whole document:
+      // the shorthand now resolves to Opus 5, and emitting it would silently upgrade the step.
+      win.state.nodes.forEach(n => { if (n.config && n.config.model) n.config.model = 'opus-4.8'; });
       const output = win.genSubAgents();
-      expect(output).toContain('model="claude-opus-4-7"');
+      expect(output).toContain('model="claude-opus-4-8"');
+      expect(output).toNotContain('model="opus"');
     });
-    it('should use full ID for Opus 4.6 (now older)', () => {
+    it('should use full ID for Sonnet 4.6 (superseded by Sonnet 5, so no longer the shorthand)', () => {
       buildTestWorkflow('linear');
-      const impl = win.state.nodes.find(n => n.label === 'Implementer');
-      impl.config.model = 'opus-4.6';
+      win.state.nodes.forEach(n => { if (n.config && n.config.model) n.config.model = 'sonnet-4.6'; });
       const output = win.genSubAgents();
-      expect(output).toContain('model="claude-opus-4-6"');
+      expect(output).toContain('model="claude-sonnet-4-6"');
+      expect(output).toNotContain('model="sonnet"');
     });
     it('should use shorthand for Haiku', () => {
       buildTestWorkflow('linear');
@@ -4274,27 +4303,38 @@ describe('Model Version Handling', () => {
     it('should not inject /model prompt override', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
-      impl.config.model = 'sonnet';
+      impl.config.model = 'sonnet-5';
       const output = win.genSubAgents();
       expect(output).toNotContain('/model claude-sonnet');
     });
-    it('should emit a base model param plus the 1M prose note for Opus 4.8 [1M] (Task tool rejects [1m] values)', () => {
+    it('should emit a base model param plus the 1M prose note for Opus 5 [1M] (Task tool rejects [1m] values)', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
-      impl.config.model = 'opus-4.8-1m';
+      impl.config.model = 'opus-5-1m';
       const output = win.genSubAgents();
       expect(output).toContain('model="opus"');
       expect(output).toNotContain('model="opus[1m]"');
       expect(output).toContain('1M context intended');
       expect(output).toContain('/model opus[1m]');
     });
-    it('should emit a base model param plus the 1M prose note for Sonnet 4.6 [1M]', () => {
+    it('should emit the pinned full ID plus the 1M prose note for Opus 4.8 [1M]', () => {
+      // A superseded model keeps its 1M intent; the note just carries the full id as the base.
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'opus-4.8-1m';
+      const output = win.genSubAgents();
+      expect(output).toContain('model="claude-opus-4-8"');
+      expect(output).toNotContain('model="claude-opus-4-8[1m]"');
+      expect(output).toContain('1M context intended');
+      expect(output).toContain('/model claude-opus-4-8[1m]');
+    });
+    it('should emit the pinned full ID plus the 1M prose note for Sonnet 4.6 [1M]', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
       impl.config.model = 'sonnet-4.6-1m';
       const output = win.genSubAgents();
-      expect(output).toContain('model="sonnet"');
-      expect(output).toNotContain('model="sonnet[1m]"');
+      expect(output).toContain('model="claude-sonnet-4-6"');
+      expect(output).toNotContain('model="claude-sonnet-4-6[1m]"');
       expect(output).toContain('1M context intended');
     });
     it('should use sonnet shorthand for Sonnet 5', () => {
@@ -4334,26 +4374,26 @@ describe('Model Version Handling', () => {
   });
 
   describe('workflow export', () => {
-    it('should use shorthand model for latest (4.8)', () => {
+    it('should use shorthand model for latest (Opus 5)', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.model = 'opus-5';
+      const output = win.genWorkflow();
+      expect(output).toContain('`opus`');
+    });
+    it('should use full model ID for the superseded Opus 4.8', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
       impl.config.model = 'opus-4.8';
       const output = win.genWorkflow();
-      expect(output).toContain('`opus`');
-    });
-    it('should use full model ID for 4.5', () => {
-      buildTestWorkflow('linear');
-      const impl = win.state.nodes.find(n => n.label === 'Implementer');
-      impl.config.model = 'opus';
-      const output = win.genWorkflow();
-      expect(output).toContain('claude-opus-4-5-20251001');
+      expect(output).toContain('claude-opus-4-8');
     });
     it('should show the [1M] label with a base param and the 1M prose note', () => {
       buildTestWorkflow('linear');
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
-      impl.config.model = 'opus-4.8-1m';
+      impl.config.model = 'opus-5-1m';
       const output = win.genWorkflow();
-      expect(output).toContain('Opus 4.8 [1M]');
+      expect(output).toContain('Opus 5 [1M]');
       expect(output).toContain('(`opus`)');
       expect(output).toContain('1M context intended');
     });
@@ -4871,7 +4911,7 @@ describe('Verification instructions', () => {
     const input = win.addNode('input', 100, 200, 'Requirements');
     let prev = input;
     const agents = agentTypes.map((t, i) => {
-      const a = win.addNode('agent', 300 + i * 200, 200, t + ' ' + i, { agentType: t, model: 'opus-4.6', tools: ['Read'], prompt: 'Do ' + t + ' work.', maxTurns: 5 });
+      const a = win.addNode('agent', 300 + i * 200, 200, t + ' ' + i, { agentType: t, model: 'opus-5', tools: ['Read'], prompt: 'Do ' + t + ' work.', maxTurns: 5 });
       win.addConnection(prev.id, a.id);
       prev = a;
       return a;
@@ -4957,7 +4997,7 @@ describe('Verification instructions', () => {
 
   describe('workflow-level emission', () => {
     it('beat appears at all five exporters when verifyPaths non-empty', () => {
-      workflowWith('Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      workflowWith('Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
       win.state.verifyPaths = ['VERIFY.md'];
       expect(win.genWorkflow()).toContain(BEAT_MARK);
       expect(win.genSubAgents()).toContain(BEAT_MARK);
@@ -4982,7 +5022,7 @@ describe('Verification instructions', () => {
       win.state.verifyFailRun = true;
     });
     it('silence when empty: beat absent from all five exporters and from openSpecContextBlock', () => {
-      workflowWith('Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      workflowWith('Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
       win.state.verifyPaths = [];
       ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt', 'genAgentSDK'].forEach(fn => {
         expect(win[fn]()).toNotContain(BEAT_MARK);
@@ -5080,19 +5120,19 @@ describe('Verification instructions', () => {
       expect(h).toContain('extend the definition of done, they do not narrow it');
     });
     it('step hint is generation-only: node-config display omits it even with paths set', () => {
-      const node = win.addNode('agent', 350, 200, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      const node = win.addNode('agent', 350, 200, 'Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
       expect(win.classifyAgentPrompt(node).text).toNotContain(STEP_MARK);
     });
   });
 
   describe('per-step end-to-end (implementer never carries the step hint)', () => {
     it('a tester-only workflow carries the step hint in the generated prompt', () => {
-      workflowWith('Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      workflowWith('Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
       win.state.verifyPaths = ['VERIFY.md'];
       expect(win.genWorkflow()).toContain(STEP_MARK);
     });
     it('a coder-only (implementer) workflow does NOT carry the step hint, even though the beat is present', () => {
-      workflowWith('Coder', { agentType:'coder', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
+      workflowWith('Coder', { agentType:'coder', model:'opus-5', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
       win.state.verifyPaths = ['VERIFY.md'];
       const out = win.genWorkflow();
       expect(out).toContain(BEAT_MARK);   // workflow-level beat still fires
@@ -5134,7 +5174,7 @@ describe('Verification instructions (run-level matrix)', () => {
     const FORMATS = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt'];
     FORMATS.forEach(fn => {
       it(fn + ': a tester step carries the per-step hint AND the workflow beat', () => {
-        workflowWith('Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+        workflowWith('Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
         win.state.verifyPaths = ['VERIFY.md'];
         const out = win[fn]();
         expect(out).toContain(BEAT_MARK);
@@ -5142,7 +5182,7 @@ describe('Verification instructions (run-level matrix)', () => {
         win.state.verifyPaths = [];
       });
       it(fn + ': a coder (implementer) step does NOT carry the per-step hint, though the beat still fires', () => {
-        workflowWith('Coder', { agentType:'coder', model:'opus-4.6', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
+        workflowWith('Coder', { agentType:'coder', model:'opus-5', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
         win.state.verifyPaths = ['VERIFY.md'];
         const out = win[fn]();
         expect(out).toContain(BEAT_MARK);      // workflow-level beat still present
@@ -5156,7 +5196,7 @@ describe('Verification instructions (run-level matrix)', () => {
   describe('awd:meta posture serialization (explicit false round-trips; no defensive default)', () => {
     it('verifyFailRun false survives into awd:meta as strict boolean false (not dropped, not defaulted to true)', () => {
       resetState();
-      win.addNode('agent', 100, 100, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.addNode('agent', 100, 100, 'Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
       win.state.verifyPaths = ['VERIFY.md'];
       win.state.verifyFailRun = false;
       const meta = win.openSpecExtractMeta(win.buildOpenSpecSchema().schemaYaml);
@@ -5166,7 +5206,7 @@ describe('Verification instructions (run-level matrix)', () => {
     });
     it('verifyFailRun true serializes into awd:meta as strict boolean true', () => {
       resetState();
-      win.addNode('agent', 100, 100, 'Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.addNode('agent', 100, 100, 'Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
       win.state.verifyPaths = ['VERIFY.md'];
       win.state.verifyFailRun = true;
       const meta = win.openSpecExtractMeta(win.buildOpenSpecSchema().schemaYaml);
@@ -5266,7 +5306,7 @@ describe('Verification instructions (run-level matrix)', () => {
     });
 
     it('toggling verifyFailRunToggle onchange live-refreshes the generated prompt (posture text flips)', () => {
-      workflowWith('Tester', { agentType:'tester', model:'opus-4.6', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      workflowWith('Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
       const toggle = doc().getElementById('verifyFailRunToggle');
       toggle.checked = true; win.state.verifyFailRun = true;   // workflowWith reset state; re-sync ON
       win.state.verifyPaths = ['VERIFY.md'];
@@ -5293,7 +5333,7 @@ describe('Agent craft batch', () => {
     const input = win.addNode('input', 100, 200, 'Requirements');
     let prev = input;
     const agents = agentTypes.map((t, i) => {
-      const a = win.addNode('agent', 300 + i * 200, 200, t + ' ' + i, { agentType: t, model: 'opus-4.6', tools: ['Read'], prompt: 'Do ' + t + ' work.', maxTurns: 5 });
+      const a = win.addNode('agent', 300 + i * 200, 200, t + ' ' + i, { agentType: t, model: 'opus-5', tools: ['Read'], prompt: 'Do ' + t + ' work.', maxTurns: 5 });
       win.addConnection(prev.id, a.id);
       prev = a;
       return a;
@@ -6249,12 +6289,12 @@ describe('Cross-Feature Edge Cases', () => {
   it('should use a valid base model alias plus the 1M note for 1M variants in sub-agents export', () => {
     buildTestWorkflow('linear');
     const impl = win.state.nodes.find(n => n.label === 'Implementer');
-    impl.config.model = 'sonnet-4.6-1m';
+    impl.config.model = 'sonnet-5-1m';
     const output = win.genSubAgents();
     expect(output).toContain('model="sonnet"');
     expect(output).toNotContain('model="sonnet[1m]"');
     expect(output).toContain('1M context intended');
-    expect(output).toNotContain('sonnet-4.6-1m');
+    expect(output).toNotContain('sonnet-5-1m');
   });
 
   it('should not produce empty plan section when plan is whitespace-only', () => {
@@ -6395,7 +6435,7 @@ describe('Auto Layout', () => {
 
     it('should position single node without error', () => {
       resetState();
-      const n = win.addNode('agent', 0, 0, 'Solo', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'Go.', maxTurns:5 });
+      const n = win.addNode('agent', 0, 0, 'Solo', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'Go.', maxTurns:5 });
       win.autoLayout();
       expect(typeof n.x).toBe('number');
       expect(typeof n.y).toBe('number');
@@ -6403,8 +6443,8 @@ describe('Auto Layout', () => {
 
     it('should position all disconnected nodes', () => {
       resetState();
-      const a = win.addNode('agent', 0, 0, 'A', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'A.', maxTurns:5 });
-      const b = win.addNode('agent', 0, 0, 'B', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'B.', maxTurns:5 });
+      const a = win.addNode('agent', 0, 0, 'A', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'A.', maxTurns:5 });
+      const b = win.addNode('agent', 0, 0, 'B', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'B.', maxTurns:5 });
       win.autoLayout();
       expect(typeof a.x).toBe('number');
       expect(typeof b.x).toBe('number');
@@ -6498,7 +6538,7 @@ describe('Usability & Help', () => {
 
   describe('copy prompt validation', () => {
     it('should warn about agents with empty prompts on copy', () => {
-      win.addNode('agent', 0, 0, 'Empty Agent', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: '', maxTurns: 5 });
+      win.addNode('agent', 0, 0, 'Empty Agent', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: '', maxTurns: 5 });
       let toastMsg = '';
       const origToast = win.showToast;
       win.showToast = (msg) => { toastMsg = msg; };
@@ -6902,14 +6942,14 @@ describe('Usability & Help', () => {
     it('should undo adding a node', () => {
       resetState();
       const before = win.state.nodes.length;
-      win.addNode('agent', 100, 100, 'Test', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      win.addNode('agent', 100, 100, 'Test', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
       expect(win.state.nodes.length).toBe(before + 1);
       win.undo();
       expect(win.state.nodes.length).toBe(before);
     });
     it('should redo after undo', () => {
       resetState();
-      win.addNode('agent', 100, 100, 'Test', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      win.addNode('agent', 100, 100, 'Test', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
       const afterAdd = win.state.nodes.length;
       win.undo();
       win.redo();
@@ -6917,7 +6957,7 @@ describe('Usability & Help', () => {
     });
     it('should undo deleting a node', () => {
       resetState();
-      const n = win.addNode('agent', 100, 100, 'Deleteme', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const n = win.addNode('agent', 100, 100, 'Deleteme', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
       const countAfterAdd = win.state.nodes.length;
       win.deleteNode(n.id);
       expect(win.state.nodes.length).toBe(countAfterAdd - 1);
@@ -6926,9 +6966,9 @@ describe('Usability & Help', () => {
     });
     it('should clear redo stack on new action', () => {
       resetState();
-      win.addNode('agent', 100, 100, 'A', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      win.addNode('agent', 100, 100, 'A', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
       win.undo();
-      win.addNode('agent', 200, 200, 'B', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'y', maxTurns: 5 });
+      win.addNode('agent', 200, 200, 'B', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'y', maxTurns: 5 });
       win.redo(); // Should do nothing since redo was cleared
       expect(win.state.nodes.filter(n => n.label === 'A').length).toBe(0);
     });
@@ -7359,7 +7399,7 @@ describe('Usability & Help', () => {
   describe('workflow validation', () => {
     it('should report disconnected nodes', () => {
       resetState();
-      win.addNode('agent', 100, 100, 'Lonely', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      win.addNode('agent', 100, 100, 'Lonely', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
       const warnings = win.validateWorkflow();
       expect(warnings.length > 0).toBe(true);
       expect(warnings[0].msg).toContain('Lonely');
@@ -7411,7 +7451,7 @@ describe('Coverage Gaps', () => {
 
   describe('node operations', () => {
     it('should deep-copy tools array when duplicating a node', () => {
-      const n = win.addNode('agent', 100, 100, 'Original', { agentType: 'coder', model: 'opus-4.6', tools: ['Read', 'Write'], prompt: 'test', maxTurns: 5 });
+      const n = win.addNode('agent', 100, 100, 'Original', { agentType: 'coder', model: 'opus-5', tools: ['Read', 'Write'], prompt: 'test', maxTurns: 5 });
       win.state.selectedId = n.id;
       win.duplicateNode();
       const copy = win.state.nodes.find(x => x.label === 'Original (copy)');
@@ -7420,9 +7460,9 @@ describe('Coverage Gaps', () => {
       expect(n.config.tools.includes('Bash')).toBe(false); // original not mutated
     });
     it('should disconnect all connections from a node', () => {
-      const a = win.addNode('agent', 0, 0, 'A', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
-      const b = win.addNode('agent', 100, 0, 'B', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
-      const c = win.addNode('agent', 200, 0, 'C', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const a = win.addNode('agent', 0, 0, 'A', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const b = win.addNode('agent', 100, 0, 'B', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const c = win.addNode('agent', 200, 0, 'C', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
       win.addConnection(a.id, b.id);
       win.addConnection(b.id, c.id);
       win.state.selectedId = b.id;
@@ -7430,8 +7470,8 @@ describe('Coverage Gaps', () => {
       expect(win.state.connections.length).toBe(0);
     });
     it('should deleteSelected for a connection', () => {
-      const a = win.addNode('agent', 0, 0, 'A', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
-      const b = win.addNode('agent', 100, 0, 'B', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const a = win.addNode('agent', 0, 0, 'A', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const b = win.addNode('agent', 100, 0, 'B', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
       const conn = win.addConnection(a.id, b.id);
       win.state.selectedId = conn.id;
       win.deleteSelected();
@@ -7442,7 +7482,7 @@ describe('Coverage Gaps', () => {
 
   describe('undo/redo batch operations', () => {
     it('should undo an entire preset load in one step', () => {
-      win.addNode('agent', 0, 0, 'Keeper', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'keep me', maxTurns: 5 });
+      win.addNode('agent', 0, 0, 'Keeper', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'keep me', maxTurns: 5 });
       const beforeCount = win.state.nodes.length;
       win.loadPreset('feature');
       expect(win.state.nodes.length > beforeCount).toBe(true);
@@ -7451,7 +7491,7 @@ describe('Coverage Gaps', () => {
       expect(win.state.nodes[0].label).toBe('Keeper');
     });
     it('should undo generateFromStory in one step', () => {
-      win.addNode('agent', 0, 0, 'Existing', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'here', maxTurns: 5 });
+      win.addNode('agent', 0, 0, 'Existing', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'here', maxTurns: 5 });
       const beforeCount = win.state.nodes.length;
       win.document.getElementById('storyInput').value = 'Build a REST API with authentication and database integration';
       win.generateFromStory();
@@ -7487,7 +7527,7 @@ describe('Coverage Gaps', () => {
       expect(data.canvas.connections.length).toBe(0);
     });
     it('should roundtrip node labels with special characters', () => {
-      win.addNode('agent', 0, 0, 'Agent "quoted" & <tagged>', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'test', maxTurns: 5 });
+      win.addNode('agent', 0, 0, 'Agent "quoted" & <tagged>', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'test', maxTurns: 5 });
       const data = win.serializeWorkflow();
       resetState();
       win.deserializeWorkflow(data);
@@ -7505,7 +7545,7 @@ describe('Coverage Gaps', () => {
 
   describe('export edge cases', () => {
     it('should handle single-agent workflow in all formats', () => {
-      win.addNode('agent', 0, 0, 'Solo', { agentType: 'coder', model: 'opus-4.6', tools: ['Read', 'Write'], prompt: 'Do something', maxTurns: 5 });
+      win.addNode('agent', 0, 0, 'Solo', { agentType: 'coder', model: 'opus-5', tools: ['Read', 'Write'], prompt: 'Do something', maxTurns: 5 });
       const wf = win.genWorkflow();
       const sa = win.genSubAgents();
       const at = win.genAgentTeams();
@@ -7517,14 +7557,14 @@ describe('Coverage Gaps', () => {
       });
     });
     it('should include decision condition even without revision connection', () => {
-      const a = win.addNode('agent', 0, 0, 'Worker', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'work', maxTurns: 5 });
+      const a = win.addNode('agent', 0, 0, 'Worker', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'work', maxTurns: 5 });
       const d = win.addNode('decision', 100, 0, 'Review', { condition: 'All tests pass', yesLabel: 'Pass', noLabel: 'Fail' });
       win.addConnection(a.id, d.id);
       const output = win.genSubAgents();
       expect(output).toContain('All tests pass');
     });
     it('should use default decision labels when not specified', () => {
-      const a = win.addNode('agent', 0, 0, 'Worker', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'work', maxTurns: 5 });
+      const a = win.addNode('agent', 0, 0, 'Worker', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'work', maxTurns: 5 });
       const d = win.addNode('decision', 100, 0, 'Check', { condition: 'Quality OK', yesLabel: '', noLabel: '' });
       win.addConnection(a.id, d.id);
       const output = win.genWorkflow();
@@ -7572,23 +7612,23 @@ describe('Coverage Gaps', () => {
   describe('validation edge cases', () => {
     it('should warn about decision nodes with less than 2 outputs', () => {
       const d = win.addNode('decision', 0, 0, 'Check', { condition: 'test' });
-      const a = win.addNode('agent', 100, 0, 'Worker', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const a = win.addNode('agent', 100, 0, 'Worker', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
       win.addConnection(d.id, a.id); // only 1 output
       const warnings = win.validateWorkflow();
       const decisionWarning = warnings.find(w => w.msg.includes('pass and fail'));
       expect(decisionWarning.msg).toContain('Check');
     });
     it('should warn about General agents with empty prompts', () => {
-      win.addNode('agent', 0, 0, 'Empty General', { agentType: 'general', model: 'opus-4.6', tools: ['Read'], prompt: '', maxTurns: 5 });
-      const a2 = win.addNode('agent', 100, 0, 'Has Prompt', { agentType: 'general', model: 'opus-4.6', tools: ['Read'], prompt: 'do stuff', maxTurns: 5 });
+      win.addNode('agent', 0, 0, 'Empty General', { agentType: 'general', model: 'opus-5', tools: ['Read'], prompt: '', maxTurns: 5 });
+      const a2 = win.addNode('agent', 100, 0, 'Has Prompt', { agentType: 'general', model: 'opus-5', tools: ['Read'], prompt: 'do stuff', maxTurns: 5 });
       win.addConnection(win.state.nodes[0].id, a2.id);
       const warnings = win.validateWorkflow();
       const promptWarning = warnings.find(w => w.msg.includes('no prompt'));
       expect(promptWarning.msg).toContain('Empty General');
     });
     it('should not warn about typed agents with empty prompts', () => {
-      const a = win.addNode('agent', 0, 0, 'Coder', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: '', maxTurns: 5 });
-      const b = win.addNode('agent', 100, 0, 'Next', { agentType: 'coder', model: 'opus-4.6', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const a = win.addNode('agent', 0, 0, 'Coder', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: '', maxTurns: 5 });
+      const b = win.addNode('agent', 100, 0, 'Next', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
       win.addConnection(a.id, b.id);
       const warnings = win.validateWorkflow();
       const promptWarning = warnings.find(w => w.msg.includes('no prompt'));
@@ -8044,7 +8084,7 @@ describe('OpenSpec schema export', () => {
   });
   it('task nodes become artifacts (description + acceptance) and wire into requires', () => {
     resetState();
-    const p = win.addNode('agent', 100, 100, 'Planner', { agentType:'planner', model:'opus-4.6', tools:['Read'], prompt:'Plan it.', maxTurns:5 });
+    const p = win.addNode('agent', 100, 100, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'Plan it.', maxTurns:5 });
     const t = win.addNode('task', 350, 100, 'Migrate DB', { description:'Run the schema migration.', acceptance:'All tables migrated; no data loss.' });
     win.addConnection(p.id, t.id);
     const s = win.buildOpenSpecSchema();
@@ -8091,7 +8131,7 @@ describe('OpenSpec schema export', () => {
   });
   it('apply block describes a PR deliverable with branch and target', () => {
     resetState();
-    const a = win.addNode('agent', 100, 100, 'Coder', { agentType:'coder', model:'opus-4.6', tools:['Write'], prompt:'Do it.', maxTurns:5 });
+    const a = win.addNode('agent', 100, 100, 'Coder', { agentType:'coder', model:'opus-5', tools:['Write'], prompt:'Do it.', maxTurns:5 });
     const o = win.addNode('output', 350, 100, 'Ship', { format:'pr', deliverable:'Feature', branchName:'feature/x', targetBranch:'develop' });
     win.addConnection(a.id, o.id);
     const s = win.buildOpenSpecSchema();
@@ -8102,7 +8142,7 @@ describe('OpenSpec schema export', () => {
   it('surfaces input source guidance and input detail into the description', () => {
     resetState();
     const inp = win.addNode('input', 50, 100, 'Ticket', { source:'story', description:'As a user I want X.' });
-    const ag = win.addNode('agent', 300, 100, 'Coder', { agentType:'coder', model:'opus-4.6', tools:['Write'], prompt:'Do it.', maxTurns:5 });
+    const ag = win.addNode('agent', 300, 100, 'Coder', { agentType:'coder', model:'opus-5', tools:['Write'], prompt:'Do it.', maxTurns:5 });
     win.addConnection(inp.id, ag.id);
     const s = win.buildOpenSpecSchema();
     const descLine = s.schemaYaml.split('\n').find(l => l.startsWith('description: '));
@@ -8127,9 +8167,9 @@ describe('OpenSpec schema export', () => {
   });
   it('templates scaffold role-aware handoff/record structure', () => {
     resetState();
-    win.addNode('agent', 100, 100, 'Builder', { agentType:'coder', model:'opus-4.6', tools:['Write'], prompt:'x', maxTurns:5 });
-    win.addNode('agent', 350, 100, 'Critic', { agentType:'adversary', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
-    win.addNode('agent', 600, 100, 'Architect', { agentType:'planner', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addNode('agent', 100, 100, 'Builder', { agentType:'coder', model:'opus-5', tools:['Write'], prompt:'x', maxTurns:5 });
+    win.addNode('agent', 350, 100, 'Critic', { agentType:'adversary', model:'opus-5', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addNode('agent', 600, 100, 'Architect', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'x', maxTurns:5 });
     win.addNode('task', 850, 100, 'Cutover', { description:'Do the cutover.', acceptance:'Zero downtime\nRollback tested' });
     const s = win.buildOpenSpecSchema();
     const tpl = name => (s.templates.find(t => t.file === name) || {}).content || '';
@@ -8151,7 +8191,7 @@ describe('OpenSpec schema export', () => {
     resetState();
     win.state.rulesPaths = ['.claude/rules', 'CONVENTIONS.md'];
     win.state.productDocPaths = ['docs/', 'ARCHITECTURE.md'];
-    win.addNode('agent', 100, 100, 'Coder', { agentType:'coder', model:'opus-4.6', tools:['Write'], prompt:'Do it.', maxTurns:5 });
+    win.addNode('agent', 100, 100, 'Coder', { agentType:'coder', model:'opus-5', tools:['Write'], prompt:'Do it.', maxTurns:5 });
     const s = win.buildOpenSpecSchema();
     expect(s.schemaYaml).toContain('Repo context to read and honor');
     expect(s.schemaYaml).toContain('Rules / constitution (BINDING');
@@ -8165,14 +8205,14 @@ describe('OpenSpec schema export', () => {
   it('omits the repo-context block entirely when no context paths are set', () => {
     resetState();
     win.state.rulesPaths = []; win.state.productDocPaths = [];
-    win.addNode('agent', 100, 100, 'Coder', { agentType:'coder', model:'opus-4.6', tools:['Write'], prompt:'Do it.', maxTurns:5 });
+    win.addNode('agent', 100, 100, 'Coder', { agentType:'coder', model:'opus-5', tools:['Write'], prompt:'Do it.', maxTurns:5 });
     expect(win.buildOpenSpecSchema().schemaYaml).toNotContain('Repo context to read and honor');
   });
   it('documentation roles get a docs record skeleton (full role coverage, no general fallback)', () => {
     resetState();
-    win.addNode('agent', 100, 100, 'API Docs', { agentType:'api', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
-    win.addNode('agent', 350, 100, 'Ops Runbook', { agentType:'runbook', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
-    win.addNode('agent', 600, 100, 'Tech Writer', { agentType:'technical', model:'opus-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addNode('agent', 100, 100, 'API Docs', { agentType:'api', model:'opus-5', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addNode('agent', 350, 100, 'Ops Runbook', { agentType:'runbook', model:'opus-5', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addNode('agent', 600, 100, 'Tech Writer', { agentType:'technical', model:'opus-5', tools:['Read'], prompt:'x', maxTurns:5 });
     const s = win.buildOpenSpecSchema();
     const tpl = name => (s.templates.find(t => t.file === name) || {}).content || '';
     const api = tpl('api-docs.md');
@@ -8186,7 +8226,7 @@ describe('OpenSpec schema export', () => {
   it('template body mirrors the agent own handoff contract (distinct, not role-generic)', () => {
     resetState();
     const prompt = 'Find what already exists so the team reuses instead of reinventing.\n\n## Handoff Summary\nEnd your response with:\n- **Reuse**: Existing code to build on (file:line)\n- **Idioms**: The established pattern here\n- **Gaps**: What must be built new';
-    win.addNode('agent', 100, 100, 'Prior-Art Researcher', { agentType:'researcher', model:'opus-4.6', tools:['Read','WebSearch'], prompt, maxTurns:5 });
+    win.addNode('agent', 100, 100, 'Prior-Art Researcher', { agentType:'researcher', model:'opus-5', tools:['Read','WebSearch'], prompt, maxTurns:5 });
     const s = win.buildOpenSpecSchema();
     const tpl = (s.templates.find(t => t.file === 'prior-art-researcher.md') || {}).content || '';
     expect(tpl).toContain('## Reuse');
@@ -8198,8 +8238,8 @@ describe('OpenSpec schema export', () => {
   });
   it('two same-type agents get distinct templates from their own contracts', () => {
     resetState();
-    win.addNode('agent', 100, 100, 'Mapper', { agentType:'researcher', model:'opus-4.6', tools:['Read'], prompt:'Map the codebase.\n\nEnd your response with:\n- **Touch Points**: files to modify\n- **Call Paths**: how code is reached', maxTurns:5 });
-    win.addNode('agent', 300, 100, 'Scout', { agentType:'researcher', model:'opus-4.6', tools:['Read'], prompt:'Find prior art.\n\nEnd your response with:\n- **Reuse**: existing code\n- **Avoid**: anti-patterns', maxTurns:5 });
+    win.addNode('agent', 100, 100, 'Mapper', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'Map the codebase.\n\nEnd your response with:\n- **Touch Points**: files to modify\n- **Call Paths**: how code is reached', maxTurns:5 });
+    win.addNode('agent', 300, 100, 'Scout', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'Find prior art.\n\nEnd your response with:\n- **Reuse**: existing code\n- **Avoid**: anti-patterns', maxTurns:5 });
     const s = win.buildOpenSpecSchema();
     const mapper = (s.templates.find(t => t.file === 'mapper.md') || {}).content || '';
     const scout = (s.templates.find(t => t.file === 'scout.md') || {}).content || '';
@@ -8226,7 +8266,7 @@ describe('OpenSpec schema export', () => {
   it('awd:meta carries the exporter Repo Context Paths (Option 1: self-contained shared schema)', () => {
     resetState();
     win.state.rulesPaths = ['.claude/rules']; win.state.productDocPaths = ['docs/'];
-    win.addNode('agent', 100, 100, 'Coder', { agentType:'coder', model:'opus-4.6', tools:['Write'], prompt:'x', maxTurns:5 });
+    win.addNode('agent', 100, 100, 'Coder', { agentType:'coder', model:'opus-5', tools:['Write'], prompt:'x', maxTurns:5 });
     const meta = win.openSpecExtractMeta(win.buildOpenSpecSchema().schemaYaml);
     expect(meta.rulesPaths.join(',')).toBe('.claude/rules');
     expect(meta.productDocPaths.join(',')).toBe('docs/');
@@ -8283,7 +8323,7 @@ describe('OpenSpec schema export', () => {
     expect(meta.format).toBe('agentic-workflow-designer');
     expect(meta.canvas.nodes.length >= 1).toBe(true);
     const planner = meta.canvas.nodes.find(n => n.label === 'Planner');
-    expect(planner.config.model).toBe('opus-4.6');
+    expect(planner.config.model).toBe('opus-5');
   });
   it('Phase 1 round-trip: export -> awd:meta -> deserialize restores the workflow losslessly', () => {
     buildTestWorkflow('parallel');
@@ -8305,7 +8345,7 @@ describe('OpenSpec schema export', () => {
   });
   it('instruction includes the Additional-Notes / Agent-Context field, not just the core prompt', () => {
     resetState();
-    win.addNode('agent', 100, 100, 'Noted', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'Core prompt here.', notes:'Extra agent context that must survive.', maxTurns:5 });
+    win.addNode('agent', 100, 100, 'Noted', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'Core prompt here.', notes:'Extra agent context that must survive.', maxTurns:5 });
     const s = win.buildOpenSpecSchema();
     expect(s.schemaYaml).toContain('Core prompt here.');
     expect(s.schemaYaml).toContain('Extra agent context that must survive.');
@@ -8323,7 +8363,7 @@ describe('OpenSpec schema export', () => {
   });
   it('instruction is a literal block scalar - special chars do not break YAML', () => {
     resetState();
-    win.addNode('agent', 100, 100, 'Tricky', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'Use a colon: a # hash and "quotes".', maxTurns:5 });
+    win.addNode('agent', 100, 100, 'Tricky', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'Use a colon: a # hash and "quotes".', maxTurns:5 });
     const s = win.buildOpenSpecSchema();
     expect(s.schemaYaml).toContain('instruction: |');
     expect(s.schemaYaml).toContain('Use a colon: a # hash and "quotes".');
@@ -10666,7 +10706,7 @@ describe('Agent Context round-trip through OpenSpec (export -> foreign import ->
   it('export -> foreign import re-populates Agent Context and re-export bundles it once (no dup)', () => {
     resetState();
     const inp = win.addNode('input', 80, 200, 'Spec');
-    const a = win.addNode('agent', 340, 200, 'Planner', { agentType:'planner', model:'opus-4.6', tools:['Read'], prompt:'Plan it.', notes:'Our API lives in src/api.', maxTurns:5 });
+    const a = win.addNode('agent', 340, 200, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'Plan it.', notes:'Our API lives in src/api.', maxTurns:5 });
     const out = win.addNode('output', 600, 200, 'Done', { deliverable:'x', format:'code' });
     win.addConnection(inp.id, a.id); win.addConnection(a.id, out.id);
     const s1 = win.buildOpenSpecSchema();
@@ -10689,7 +10729,7 @@ describe('Agent Context label (matches the UI field name across all outputs)', (
   it('every generator labels the notes field "Agent Context", never "Additional context"', () => {
     resetState();
     const inp = win.addNode('input', 80, 200, 'Spec');
-    const a = win.addNode('agent', 340, 200, 'Planner', { agentType:'planner', model:'opus-4.6', tools:['Read'], prompt:'Plan it.', notes:'Our API lives in src/api.', maxTurns:5 });
+    const a = win.addNode('agent', 340, 200, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'Plan it.', notes:'Our API lives in src/api.', maxTurns:5 });
     const out = win.addNode('output', 600, 200, 'Done', { deliverable:'x', format:'code' });
     win.addConnection(inp.id, a.id); win.addConnection(a.id, out.id);
     ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genAgentSDK', 'genClaudePrompt'].forEach(fn => {
@@ -11059,7 +11099,7 @@ describe('Dogfood-run fixes: valid model params, honest hints, memory kickoff an
   it('A1: teams format emits the base param plus the 1M note', () => {
     buildTestWorkflow('linear');
     const impl = win.state.nodes.find(n => n.label === 'Implementer');
-    impl.config.model = 'opus-4.8-1m';
+    impl.config.model = 'opus-5-1m';
     const out = win.genAgentTeams();
     expect(out).toContain('Model: `opus`');
     expect(out).toContain('1M context intended');
@@ -11079,11 +11119,28 @@ describe('Dogfood-run fixes: valid model params, honest hints, memory kickoff an
     expect(out).toNotContain('1M context intended');
   });
   it('A1: modelContextNote and getTaskModelParam agree on the base alias', () => {
-    expect(win.modelContextNote('opus-4.8')).toBe('');
-    expect(win.modelContextNote('opus-4.8-1m')).toContain('/model opus[1m]');
-    expect(win.getTaskModelParam('opus-4.8-1m')).toBe('opus');
-    expect(win.getTaskModelParam('sonnet-4.6-1m')).toBe('sonnet');
+    expect(win.modelContextNote('opus-5')).toBe('');
+    expect(win.modelContextNote('opus-5-1m')).toContain('/model opus[1m]');
+    expect(win.getTaskModelParam('opus-5-1m')).toBe('opus');
+    expect(win.getTaskModelParam('sonnet-5-1m')).toBe('sonnet');
     expect(win.getTaskModelParam('fable-5-1m')).toBe('fable');
+    // Superseded families pin to their full id, and the note follows the same base.
+    expect(win.getTaskModelParam('opus-4.8-1m')).toBe('claude-opus-4-8');
+    expect(win.modelContextNote('opus-4.8-1m')).toContain('/model claude-opus-4-8[1m]');
+    expect(win.getTaskModelParam('sonnet-4.6-1m')).toBe('claude-sonnet-4-6');
+  });
+  it('only the newest model in each family holds the shorthand alias', () => {
+    // The silent-upgrade guard: a superseded model must never emit its family shorthand.
+    expect(win.getTaskModelParam('opus-5')).toBe('opus');
+    expect(win.getTaskModelParam('opus-4.8')).toBe('claude-opus-4-8');
+    expect(win.getTaskModelParam('sonnet-5')).toBe('sonnet');
+    expect(win.getTaskModelParam('sonnet-4.6')).toBe('claude-sonnet-4-6');
+    expect(win.getTaskModelParam('fable-5')).toBe('fable');
+    expect(win.getTaskModelParam('haiku')).toBe('haiku');
+    const shorthands = ['fable', 'opus', 'sonnet', 'haiku'];
+    const holders = win.MODELS.filter(m => shorthands.includes(win.getTaskModelParam(m.value)));
+    // Fable 5, Opus 5, Sonnet 5 (x2 each for the [1M] variants) + Haiku 4.5.
+    expect(holders.length).toBe(7);
   });
   it('B: Sonnet 5 and Sonnet 5 [1M] both map to the sonnet base alias for the Task param', () => {
     expect(win.getTaskModelParam('sonnet-5')).toBe('sonnet');
@@ -11220,7 +11277,7 @@ describe('Dogfood-run fixes: valid model params, honest hints, memory kickoff an
   });
   it('A7: default output after reset carries memory + durable record protocols', () => {
     win.clearCanvas(true);
-    win.addNode('agent', 300, 200, 'Implementer', { agentType:'coder', model:'opus-4.6', tools:['Read'], prompt:'Build it.', maxTurns:5 });
+    win.addNode('agent', 300, 200, 'Implementer', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'Build it.', maxTurns:5 });
     const out = win.genWorkflow();
     expect(out).toContain('## Memory Protocol');
     expect(out).toContain('## Durable Record');
@@ -11426,7 +11483,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

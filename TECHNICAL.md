@@ -96,7 +96,7 @@ All persistence uses `localStorage` so the app remains a single portable HTML fi
 Each Agent node has:
 - **Agent Type**: Analyst, App Explorer, Architect, Backend, Coder, Debugger, Design Analyzer, Frontend, General, Planner, Researcher, Reviewer, Tester, Writer, plus **Skeptic** and **Verifier** (the review-loop roles - see [Review Loops](#review-loops-skeptic--verifier)). 16 types total (`AGENT_TYPES`, alpha-sorted by display name)
 - **Writing Style** (Writer only): Technical, User Guide, Business, API Reference, Runbook. Auto-configures tools and prompt template per style
-- **Model**: Fable 5, Opus 4.8 (default), Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6, Sonnet 4.5, Opus 4.5, Haiku 4.5 (Fable 5 and the latest Opus/Sonnet generations also have [1M] variants; every value maps to a valid Task-tool base alias via `taskModelMap`, with `modelContextNote` carrying the 1M intent as prose)
+- **Model**: Fable 5, Opus 5 (default), Opus 4.8, Sonnet 5, Sonnet 4.6, Haiku 4.5 (every family except Haiku also has a [1M] variant). `taskModelMap` holds only the newest model in each family, so those emit the short alias (`fable`/`opus`/`sonnet`/`haiku`) and every superseded model falls through to its full API id. That fall-through is the point: leaving a superseded model in the map would make it emit a shorthand that now resolves to its successor, silently running the step on a different model. `modelContextNote` carries the 1M intent as prose and follows the same base, so a pinned model's note reads `/model claude-opus-4-8[1m]`
 - **Tools**: Checkboxes for Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, Task, LSP
 - **Agent Prompt**: Freeform textarea. If left blank, falls back to `getEffectivePrompt()`
 - **Agent Context** (per-node, `config.notes`, was "Custom Notes"): extra context injected into this agent's prompt section (labeled "Agent Context") across all export formats. The workflow-wide counterpart is the **Workflow Context** sidebar field (`getPlan()`, `id="planInput"`)
@@ -188,7 +188,7 @@ Generates markdown with embedded `Task(subagent_type=..., model=..., prompt=...)
 Generates a "team lead brief" for use with the experimental Claude Code Agent Teams feature (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`). Includes TeamCreate setup, parallel spawn instructions, and explicit dependency handoff guidance. When memory is enabled, each teammate block includes **READ FIRST** instructions before the task and **WRITE LAST** instructions after.
 
 ### 4. Agent SDK (Python)
-Generates Python code using the Anthropic Agent SDK patterns. Includes model family mapping (e.g., `claude-sonnet-4-5-20251001`), tool lists, and agent prompt construction. Useful for programmatic workflow execution.
+Generates Python code using the Anthropic Agent SDK patterns. Includes model family mapping (e.g., `claude-opus-5`), tool lists, and agent prompt construction. Useful for programmatic workflow execution.
 
 ### 5. Claude.ai
 A conversational prompt suitable for Claude.ai, structured as a role-assignment prompt with the full workflow described in natural language.

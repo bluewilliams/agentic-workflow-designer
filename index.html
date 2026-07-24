@@ -504,7 +504,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <div class="sidebar-section" data-collapse-id="default-model">
     <h3>Default Model</h3>
     <div class="custom-select" id="defaultModelSelect">
-      <div class="custom-select-trigger" id="defaultModelTrigger">Opus 4.8</div>
+      <div class="custom-select-trigger" id="defaultModelTrigger">Opus 5</div>
       <div class="custom-select-options" id="defaultModelOptions"></div>
     </div>
     <div style="font-size:10px;color:var(--text3);margin-top:6px">New nodes, presets, and generated workflows will use this model.</div>
@@ -1314,7 +1314,7 @@ svg.canvas{width:100%;height:100%;display:block}
 // ═══════════════════════════════════════════════════════════
 const NODE_DEFAULTS = {
   agent: { w: 200, h: 64, color: '#3b82f6', icon: '\u{1F916}', label: 'Agent',
-    config: { agentType: 'general', model: 'opus-4.8', tools: ['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt: '', notes: '', maxTurns: 10 }},
+    config: { agentType: 'general', model: 'opus-5', tools: ['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt: '', notes: '', maxTurns: 10 }},
   task: { w: 180, h: 52, color: '#10b981', icon: '\u2713', label: 'Task',
     config: { description: '', acceptance: '' }},
   decision: { w: 140, h: 80, color: '#f59e0b', icon: '?', label: 'Decision',
@@ -1409,35 +1409,34 @@ const ALL_TOOLS = ['Read','Write','Edit','Bash','Grep','Glob','WebSearch','WebFe
 const MODELS = [
   { value: 'fable-5',       label: 'Fable 5',       family: 'fable-5',    id: 'claude-fable-5' },
   { value: 'fable-5-1m',    label: 'Fable 5 [1M]',  family: 'fable-5',    id: 'claude-fable-5' },
+  { value: 'opus-5',        label: 'Opus 5',        family: 'opus-5',     id: 'claude-opus-5' },
+  { value: 'opus-5-1m',     label: 'Opus 5 [1M]',   family: 'opus-5',     id: 'claude-opus-5' },
   { value: 'opus-4.8',      label: 'Opus 4.8',      family: 'opus-4.8',   id: 'claude-opus-4-8' },
   { value: 'opus-4.8-1m',   label: 'Opus 4.8 [1M]', family: 'opus-4.8',   id: 'claude-opus-4-8' },
-  { value: 'opus-4.7',      label: 'Opus 4.7',      family: 'opus-4.7',   id: 'claude-opus-4-7' },
-  { value: 'opus-4.7-1m',   label: 'Opus 4.7 [1M]', family: 'opus-4.7',   id: 'claude-opus-4-7' },
-  { value: 'opus-4.6',      label: 'Opus 4.6',      family: 'opus-4.6',   id: 'claude-opus-4-6' },
-  { value: 'opus-4.6-1m',   label: 'Opus 4.6 [1M]', family: 'opus-4.6',   id: 'claude-opus-4-6' },
   { value: 'sonnet-5',      label: 'Sonnet 5',      family: 'sonnet-5',  id: 'claude-sonnet-5' },
   { value: 'sonnet-5-1m',   label: 'Sonnet 5 [1M]', family: 'sonnet-5',  id: 'claude-sonnet-5' },
   { value: 'sonnet-4.6',    label: 'Sonnet 4.6',    family: 'sonnet-4.6', id: 'claude-sonnet-4-6' },
   { value: 'sonnet-4.6-1m', label: 'Sonnet 4.6 [1M]', family: 'sonnet-4.6', id: 'claude-sonnet-4-6' },
   { value: 'haiku',         label: 'Haiku 4.5',     family: 'haiku-4.5',  id: 'claude-haiku-4-5-20251001' },
-  { value: 'sonnet',        label: 'Sonnet 4.5',    family: 'sonnet-4.5', id: 'claude-sonnet-4-5-20251001' },
-  { value: 'opus',          label: 'Opus 4.5',      family: 'opus-4.5',   id: 'claude-opus-4-5-20251001' },
 ];
 function getModelLabel(val) { const m = MODELS.find(m => m.value === val); return m ? m.label : val; }
 function getModelFamily(val) { const m = MODELS.find(m => m.value === val); return m ? m.family : val; }
 function getModelId(val) { const m = MODELS.find(m => m.value === val); return m ? m.id : val; }
-// Latest models (Fable 5, Opus 4.8, Sonnet 5, Sonnet 4.6) use shorthand aliases; older models use full IDs for precise version pinning
+// The LATEST model in each family (Fable 5, Opus 5, Sonnet 5, Haiku 4.5) uses the shorthand
+// alias; every older model is absent from the map so getTaskModelParam falls through to its
+// full API id. A superseded model MUST leave the map the moment its successor takes the
+// shorthand - otherwise a step configured for the older model silently runs on the newer one.
 // [1M] variants append the Claude Code context window suffix for 1M token sessions
 // The Task tool model parameter accepts only base model aliases (fable, opus, sonnet,
 // haiku) - "[1m]" is not a valid parameter value (a live run had to silently fall back).
 // The 1M intent is carried as prose via modelContextNote next to each model line.
-const taskModelMap = { 'fable-5': 'fable', 'fable-5-1m': 'fable', 'opus-4.8': 'opus', 'opus-4.8-1m': 'opus', 'sonnet-5': 'sonnet', 'sonnet-5-1m': 'sonnet', 'sonnet-4.6': 'sonnet', 'sonnet-4.6-1m': 'sonnet', 'haiku': 'haiku' };
+const taskModelMap = { 'fable-5': 'fable', 'fable-5-1m': 'fable', 'opus-5': 'opus', 'opus-5-1m': 'opus', 'sonnet-5': 'sonnet', 'sonnet-5-1m': 'sonnet', 'haiku': 'haiku' };
 function getTaskModelParam(val) { return taskModelMap[val] || getModelId(val); }
 function isLongContextModel(val) { return /-1m$/.test(String(val || '')); }
 function modelContextNote(val) {
   if (!isLongContextModel(val)) return '';
   const base = getTaskModelParam(val);
-  return '**1M context intended**: this step is configured for the extended-context [1M] variant of `' + base + '`. The Task tool model parameter accepts only base model names, so pass `' + base + '`; where your harness supports selecting the 1M variant (for example `/model ' + base + '[1m]` in Claude Code), run this step there to honor the intent.';
+  return '**1M context intended**: this step is configured for the extended-context [1M] variant of `' + base + '`. The Task tool model parameter does not accept the `[1m]` suffix, so pass `' + base + '`; where your harness supports selecting the 1M variant (for example `/model ' + base + '[1m]` in Claude Code), run this step there to honor the intent.';
 }
 
 // ── Atlassian URL detection ──────────────────────────────────────────────────
@@ -2088,7 +2087,7 @@ let state = {
   memoryEnabled: true,
   durableRecord: true,
   artifactPath: '',
-  defaultModel: 'opus-4.8',
+  defaultModel: 'opus-5',
   repositories: [],
   activePreset: null,
   mcpAtlassian: true,
@@ -2988,6 +2987,12 @@ function deserializeWorkflow(data) {
     if (n.type === 'output') {
       if (n.config.targetBranch === undefined) n.config.targetBranch = '';
       if (n.config.branchName === undefined) n.config.branchName = '';
+    }
+    // A workflow saved on a model we no longer offer would otherwise emit its stored value
+    // verbatim as the Task model param (getModelId falls through), which is not a valid model
+    // identifier, while the config panel showed a different model entirely. Snap to the default.
+    if (n.type === 'agent' && n.config && !MODELS.some(m => m.value === n.config.model)) {
+      n.config.model = state.defaultModel;
     }
   });
   state.connections = c.connections || [];
@@ -4850,7 +4855,11 @@ function configInput(label, key, value, type, placeholder, attrs) {
     <input type="${type||'text'}" data-key="${key}" value="${escHtml(String(value||''))}"${placeholder ? ` placeholder="${escHtml(placeholder)}"` : ''}${attrs ? ' ' + attrs : ''} /></div>`;
 }
 function configSelect(label, key, value, options) {
-  const selected = options.find(o => o.value === value) || options[0];
+  // Never show a value the node is not actually holding: an unrecognized value renders as itself
+  // rather than silently borrowing the first option's label (which made the panel disagree with
+  // the emitted prompt). Recognized values are unaffected.
+  const known = options.find(o => o.value === value);
+  const selected = known || (value ? { value: value, label: String(value) } : options[0]);
   const optHtml = options.map(o =>
     `<div class="custom-select-option${o.value === value ? ' selected' : ''}" data-value="${o.value}">${o.label}</div>`
   ).join('');
@@ -5699,7 +5708,7 @@ function normalizeAgentConfig(c) {
   c = c || {};
   return {
     agentType: typeof c.agentType === 'string' ? c.agentType : 'general',
-    model: typeof c.model === 'string' ? c.model : (state.defaultModel || 'opus-4.8'),
+    model: typeof c.model === 'string' ? c.model : (state.defaultModel || 'opus-5'),
     tools: Array.isArray(c.tools) ? c.tools.slice() : ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LSP'],
     prompt: typeof c.prompt === 'string' ? c.prompt : '',
     notes: typeof c.notes === 'string' ? c.notes : '',
@@ -11213,7 +11222,7 @@ function openSpecSchemaToWorkflow(parsed) {
     const split = openSpecExtractAgentContext(instruction);
     nodes.push({
       id: id, type: 'agent', label: humanize(a.id) || a.id, x: X0 + d * COLW, y: Y0 + row * ROWH, w: 200, h: 64,
-      config: { agentType: 'general', model: state.defaultModel || 'opus-4.8',
+      config: { agentType: 'general', model: state.defaultModel || 'opus-5',
         tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LSP'],
         prompt: split.prompt || desc, notes: split.notes, maxTurns: 10 }
     });
