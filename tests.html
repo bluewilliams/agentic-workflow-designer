@@ -239,6 +239,7 @@ function resetState() {
   win.state.durableRecord = false;  // app default is now ON; same deliberate OFF baseline
   win.state.artifactPath = '';
   win.state.defaultModel = 'opus-5';
+  win.state.effort = '';  // shipped state: inherit the runner default, emit nothing
   win.state.repositories = [];
   win.state.activePreset = null;
   win.state.mcpCodeSearch = true;  // app default is ON (index.html state init)
@@ -4396,6 +4397,296 @@ describe('Model Version Handling', () => {
       expect(output).toContain('Opus 5 [1M]');
       expect(output).toContain('(`opus`)');
       expect(output).toContain('1M context intended');
+    });
+  });
+});
+
+// ─── Suite: Effort (workflow-level) ──────────────────────
+describe('Effort', () => {
+  beforeEach(() => { resetState(); });
+  afterEach(() => { win.setEffort(''); });
+
+  describe('support matrix', () => {
+    it('Haiku takes no effort parameter and Sonnet 4.6 has no xhigh; everything else takes all five', () => {
+      expect(win.modelEffortLevels('haiku').length).toBe(0);
+      expect(win.modelEffortLevels('sonnet-4.6').join(',')).toBe('low,medium,high,max');
+      expect(win.modelEffortLevels('sonnet-4.6-1m').join(',')).toBe('low,medium,high,max');
+      ['fable-5','opus-5','opus-5-1m','opus-4.8','sonnet-5'].forEach(v => {
+        expect(win.modelEffortLevels(v).join(',')).toBe('low,medium,high,xhigh,max');
+      });
+    });
+    it('resolves an unsupported level DOWN, never up, and to nothing when unsupported entirely', () => {
+      expect(win.resolvedEffortFor('opus-5', 'xhigh')).toBe('xhigh');
+      expect(win.resolvedEffortFor('sonnet-4.6', 'xhigh')).toBe('high');
+      expect(win.resolvedEffortFor('haiku', 'xhigh')).toBe('');
+      expect(win.resolvedEffortFor('opus-5', '')).toBe('');
+      // max is above xhigh, so a Sonnet 4.6 asked for max keeps max (it supports it).
+      expect(win.resolvedEffortFor('sonnet-4.6', 'max')).toBe('max');
+    });
+  });
+
+  describe('unset emits nothing', () => {
+    it('effortHint is null and no format mentions effort when unset', () => {
+      buildTestWorkflow('linear');
+      expect(win.workflowHasEffort()).toBe(false);
+      expect(win.effortHint()).toBeNull();
+      ['genWorkflow','genSubAgents','genAgentTeams','genClaudePrompt','genAgentSDK'].forEach(g => {
+        expect(win[g]()).toNotContain('Effort (configured)');
+      });
+      expect(win.genAgentSDK()).toNotContain('output_config');
+    });
+    it('setEffort rejects a bogus level and falls back to unset', () => {
+      win.setEffort('turbo');
+      expect(win.state.effort).toBe('');
+      expect(win.effortHint()).toBeNull();
+    });
+  });
+
+  describe('set emits intent in prose and a real parameter in the SDK', () => {
+    it('names the level, the Claude Code flag, and the API parameter', () => {
+      buildTestWorkflow('linear');
+      win.state.nodes.forEach(n => { if (n.config) n.config.effort = 'high'; });
+      const h = win.effortHint();
+      expect(h).toContain('Effort (configured)');
+      expect(h).toContain('every step in this workflow is set to effort `high`'.replace('every','Every'));
+      expect(h).toContain('claude --effort <level>');
+      expect(h).toContain('"effort": "<level>"');
+      // Task() has no effort param, so the beat must say so rather than imply a per-step knob.
+      expect(h).toContain('not a Task tool parameter');
+      // Mixed levels drop the uniform claim and point at the per-step blocks instead.
+      win.state.nodes[1].config.effort = 'low';
+      expect(win.effortHint()).toContain('per-step effort levels');
+    });
+    it('rides in the three prose formats and stays out of Claude.ai', () => {
+      buildTestWorkflow('linear');
+      win.state.nodes.forEach(n => { if (n.config) n.config.effort = 'medium'; });
+      expect(win.genWorkflow()).toContain('Effort (configured)');
+      expect(win.genSubAgents()).toContain('Effort (configured)');
+      expect(win.genAgentTeams()).toContain('Effort (configured)');
+      expect(win.genClaudePrompt()).toNotContain('Effort (configured)');
+    });
+    it('SDK emits a real output_config for a supporting model', () => {
+      buildTestWorkflow('linear');
+      win.state.nodes.forEach(n => { if (n.config) n.config.effort = 'max'; });
+      expect(win.genAgentSDK()).toContain('output_config={"effort": "max"}');
+    });
+    it('SDK skips the parameter for Haiku and says why, rather than emitting code that would 400', () => {
+      buildTestWorkflow('linear');
+      win.state.nodes.forEach(n => { if (n.config && n.config.model) { n.config.model = 'haiku'; n.config.effort = 'high'; } });
+      const out = win.genAgentSDK();
+      expect(out).toNotContain('output_config');
+      expect(out).toContain('does not accept the effort parameter');
+    });
+    it('SDK lowers xhigh to high for Sonnet 4.6 and names the substitution', () => {
+      buildTestWorkflow('linear');
+      win.state.nodes.forEach(n => { if (n.config && n.config.model) { n.config.model = 'sonnet-4.6'; n.config.effort = 'xhigh'; } });
+      const out = win.genAgentSDK();
+      expect(out).toContain('output_config={"effort": "high"}');
+      expect(out).toContain('effort lowered from "xhigh"');
+      // Never silently: the substitution is visible in the generated code.
+      expect(out).toNotContain('output_config={"effort": "xhigh"}');
+    });
+    it('the per-step note names a downgrade or a skip rather than hiding it', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.effort = 'xhigh';
+      impl.config.model = 'opus-5';
+      expect(win.effortStepNote(impl)).toBe('**Effort**: `xhigh`.');
+      impl.config.model = 'sonnet-4.6';
+      expect(win.effortStepNote(impl)).toContain('`high` (intended `xhigh`');
+      impl.config.model = 'haiku';
+      expect(win.effortStepNote(impl)).toContain('does not accept an effort parameter');
+      // And it reaches the emitted step block, beside the Model line.
+      expect(win.genSubAgents()).toContain('does not accept an effort parameter');
+    });
+    it('a step with no effort emits no step note at all', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      expect(win.effortStepNote(impl)).toBe('');
+    });
+    it('a node inherits the workspace default until it sets its own', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      win.setEffort('medium');
+      expect(win.nodeEffort(impl)).toBe('medium');
+      impl.config.effort = 'max';
+      expect(win.nodeEffort(impl)).toBe('max');
+    });
+  });
+
+  describe('explain', () => {
+    it('names its lever in user language whether set or unset', () => {
+      buildTestWorkflow('linear');
+      const rowFor = (fmt) => win.explainWorkflow(fmt).find(r => r.part === 'Effort');
+      expect(rowFor('prompt').status).toBe('skipped');
+      expect(rowFor('prompt').reason).toContain('no step carries an effort level');
+      // Names both levers by their UI home, per the off-row principle.
+      expect(rowFor('prompt').reason).toContain('Node Configuration');
+      expect(rowFor('prompt').reason).toContain('Default Effort');
+      win.state.nodes.forEach(n => { if (n.config) n.config.effort = 'high'; });
+      expect(rowFor('prompt').status).toBe('emitted');
+      expect(rowFor('prompt').reason).toContain('effort configured on one or more steps');
+      // Claude.ai is an honest by-design skip, not a missing lever.
+      expect(rowFor('claude').status).toBe('skipped');
+      expect(rowFor('claude').reason).toContain('carries no model or effort parameter');
+    });
+    it('Explain Step carries an Effort row that reflects THIS step\'s model', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      const rowFor = (fmt) => win.explainNode(impl, fmt || 'prompt').find(r => r.part === 'Effort');
+      // Unset: present, skipped, and it names where the lever lives.
+      expect(rowFor().status).toBe('skipped');
+      expect(rowFor().reason).toContain('Node Configuration');
+      // Set on the step itself: emitted and applies to this step.
+      impl.config.effort = 'high';
+      expect(rowFor().status).toBe('emitted');
+      expect(rowFor().reason).toContain('Effort high');
+      // Capped by this step's model: emitted at the level it actually runs.
+      impl.config.model = 'sonnet-4.6';
+      impl.config.effort = 'xhigh';
+      expect(rowFor().status).toBe('emitted');
+      expect(rowFor().reason).toContain('supports up to high');
+      // Unsupported by this step's model: skipped, and it says why.
+      impl.config.model = 'haiku';
+      expect(rowFor().status).toBe('skipped');
+      expect(rowFor().reason).toContain('does not accept the effort parameter');
+      // Claude.ai: honest by-design skip, same as its Model row.
+      expect(rowFor('claude').status).toBe('skipped');
+      expect(rowFor('claude').reason).toContain('carries no model or effort parameter');
+    });
+    it('the step Effort row carries no probe, because the text is emitted workflow-level', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.effort = 'high';
+      const row = win.explainNode(impl, 'prompt').find(r => r.part === 'Effort');
+      expect(row.probe).toBe('');
+    });
+    it('the sdk step summary names what this step will actually emit', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      expect(win.explainNode(impl, 'sdk')[0].reason).toNotContain('Effort');
+      impl.config.effort = 'xhigh';
+      impl.config.model = 'opus-5';
+      expect(win.explainNode(impl, 'sdk')[0].reason).toContain('emits output_config effort xhigh');
+      impl.config.model = 'sonnet-4.6';
+      expect(win.explainNode(impl, 'sdk')[0].reason).toContain('lowered from the configured xhigh');
+      impl.config.model = 'haiku';
+      expect(win.explainNode(impl, 'sdk')[0].reason).toContain('is skipped for this step');
+    });
+    it('the sdk single-row summary mentions effort only when set', () => {
+      buildTestWorkflow('linear');
+      // The sdk format returns one hand-built row, so it has no separate Effort row.
+      expect(win.explainWorkflow('sdk').some(r => r.part === 'Effort')).toBe(false);
+      expect(win.explainWorkflow('sdk')[0].reason).toNotContain('Effort');
+      win.state.nodes.forEach(n => { if (n.config) n.config.effort = 'max'; });
+      expect(win.explainWorkflow('sdk')[0].reason).toContain('Effort is configured on one or more steps');
+    });
+  });
+
+  describe('preferences', () => {
+    it('round-trips through savePrefs and restorePrefs', () => {
+      win.setEffort('low');
+      win.savePrefs();
+      win.state.effort = 'max';
+      win.restorePrefs();
+      expect(win.state.effort).toBe('low');
+    });
+    it('a stored blob with no effort key leaves it unset, and a bogus stored level is ignored', () => {
+      localStorage.setItem('awd_prefs', JSON.stringify({ defaultModel: 'opus-5' }));
+      win.restorePrefs();
+      expect(win.state.effort).toBe('');
+      localStorage.setItem('awd_prefs', JSON.stringify({ defaultModel: 'opus-5', effort: 'nope' }));
+      win.restorePrefs();
+      expect(win.state.effort).toBe('');
+      localStorage.removeItem('awd_prefs');
+    });
+  });
+
+  describe('persistence and node config', () => {
+    it('per-node effort rides in serializeWorkflow and survives a round-trip', () => {
+      buildTestWorkflow('linear');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      impl.config.effort = 'max';
+      const blob = JSON.parse(JSON.stringify(win.serializeWorkflow()));
+      expect(blob.canvas.nodes.some(n => n.config && n.config.effort === 'max')).toBe(true);
+      resetState();
+      expect(win.deserializeWorkflow(blob)).toBe(true);
+      expect(win.state.nodes.find(n => n.label === 'Implementer').config.effort).toBe('max');
+    });
+    it('every node inherits the default the same way, however it was created', () => {
+      // The bug this pins: a blank node once BAKED the default while a preset node stayed on
+      // inherit, so two identical-looking steps diverged the moment the default changed.
+      win.setEffort('medium');
+      const blank = win.addNode('agent', 100, 100, 'Fresh', null);
+      const explicit = win.addNode('agent', 300, 100, 'FromPreset', { agentType:'coder', model: win.state.defaultModel, tools:['Read'], prompt:'x', maxTurns:5 });
+      expect(blank.config.effort || '').toBe('');
+      expect(explicit.config.effort || '').toBe('');
+      expect(win.nodeEffort(blank)).toBe('medium');
+      expect(win.nodeEffort(explicit)).toBe('medium');
+      win.setEffort('max');
+      expect(win.nodeEffort(blank)).toBe(win.nodeEffort(explicit));
+      // An explicitly set step pins and stops following the default.
+      blank.config.effort = 'low';
+      win.setEffort('high');
+      expect(win.nodeEffort(blank)).toBe('low');
+      expect(win.nodeEffort(explicit)).toBe('high');
+    });
+    it('a preset-loaded workflow honors Default Effort', () => {
+      win.setEffort('low');
+      win.loadPreset('feature', true);
+      const agents = win.state.nodes.filter(n => n.type === 'agent');
+      expect(agents.length > 0).toBe(true);
+      agents.forEach(n => expect(win.nodeEffort(n)).toBe('low'));
+      expect(win.genSubAgents()).toContain('**Effort**: `low`');
+    });
+    it('OpenSpec forwards effort as intent beside Model', () => {
+      const n = win.addNode('agent', 100, 100, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'Plan.', maxTurns:5 });
+      n.config.effort = 'xhigh';
+      expect(win.buildOpenSpecSchema().schemaYaml).toContain('- Effort: xhigh');
+      n.config.model = 'haiku';
+      expect(win.buildOpenSpecSchema().schemaYaml).toContain('not supported by Haiku 4.5');
+    });
+    it('normalizeAgentConfig keeps a valid effort and drops a bogus one', () => {
+      const a = win.addNode('agent', 100, 100, 'A', { agentType:'coder', model:'opus-5', effort:'low', tools:['Read'], prompt:'x', maxTurns:5 });
+      expect(a.config.effort).toBe('low');
+      // Foreign packs may carry junk; deserialize must not let it through to emission.
+      const blob = { canvas: { nodes: [{ id: 90, type: 'agent', x: 0, y: 0, label: 'Junk',
+        config: { agentType: 'coder', model: 'opus-5', effort: 'turbo', tools: ['Read'], prompt: 'x', maxTurns: 5 } }], connections: [], nextId: 91 } };
+      resetState();
+      win.deserializeWorkflow(blob);
+      const j = win.state.nodes.find(n => n.label === 'Junk');
+      expect(win.effortStepNote(j)).toNotContain('turbo');
+    });
+    it('the node config panel offers only levels this step\'s model accepts', () => {
+      resetState();
+      const n = win.addNode('agent', 100, 100, 'Step', { agentType:'coder', model:'sonnet-4.6', tools:['Read'], prompt:'x', maxTurns:5 });
+      win.selectNode(n.id); win.updateConfig();
+      let sel = win.document.querySelector('.config-select[data-key="effort"]');
+      expect(!!sel).toBe(true);
+      expect(sel.innerHTML).toContain('data-value="max"');
+      expect(sel.innerHTML).toNotContain('data-value="xhigh"');  // Sonnet 4.6 predates xhigh
+      // Haiku takes none, so the control offers Inherit only rather than vanishing.
+      n.config.model = 'haiku';
+      win.updateConfig();
+      sel = win.document.querySelector('.config-select[data-key="effort"]');
+      expect(!!sel).toBe(true);
+      win.EFFORT_LEVELS.forEach(l => expect(sel.innerHTML).toNotContain('data-value="' + l + '"'));
+      win.selectNode(null); win.updateConfig();
+    });
+  });
+
+  describe('sidebar control', () => {
+    it('offers Inherit plus all five levels and never hides itself', () => {
+      const opts = win.document.getElementById('effortOptions').innerHTML;
+      expect(opts).toContain('data-value=""');
+      expect(opts).toContain('Inherit (runner default)');
+      win.EFFORT_LEVELS.forEach(l => expect(opts).toContain('data-value="' + l + '"'));
+    });
+    it('the trigger reflects the selection', () => {
+      win.setEffort('xhigh');
+      expect(win.document.getElementById('effortTrigger').textContent).toBe('Extra high');
+      win.setEffort('');
+      expect(win.document.getElementById('effortTrigger').textContent).toBe('Inherit (runner default)');
     });
   });
 });
@@ -11483,7 +11774,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
