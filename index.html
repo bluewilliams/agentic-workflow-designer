@@ -508,6 +508,13 @@ svg.canvas{width:100%;height:100%;display:block}
       <div class="custom-select-options" id="defaultModelOptions"></div>
     </div>
     <div style="font-size:10px;color:var(--text3);margin-top:6px">New nodes, presets, and generated workflows will use this model.</div>
+
+    <h3 style="margin-top:14px">Default Effort</h3>
+    <div class="custom-select" id="effortSelect">
+      <div class="custom-select-trigger" id="effortTrigger">Inherit (runner default)</div>
+      <div class="custom-select-options" id="effortOptions"></div>
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-top:6px">Reasoning depth and token spend new nodes start with. Override any step in Node Configuration. Leave on Inherit to use whatever the runner defaults to (<code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">high</code> on the API, <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">xhigh</code> in Claude Code).</div>
   </div>
 
   <div class="sidebar-section" data-collapse-id="repositories">
@@ -1314,7 +1321,7 @@ svg.canvas{width:100%;height:100%;display:block}
 // ═══════════════════════════════════════════════════════════
 const NODE_DEFAULTS = {
   agent: { w: 200, h: 64, color: '#3b82f6', icon: '\u{1F916}', label: 'Agent',
-    config: { agentType: 'general', model: 'opus-5', tools: ['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt: '', notes: '', maxTurns: 10 }},
+    config: { agentType: 'general', model: 'opus-5', effort: '', tools: ['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt: '', notes: '', maxTurns: 10 }},
   task: { w: 180, h: 52, color: '#10b981', icon: '\u2713', label: 'Task',
     config: { description: '', acceptance: '' }},
   decision: { w: 140, h: 80, color: '#f59e0b', icon: '?', label: 'Decision',
@@ -1432,6 +1439,70 @@ function getModelId(val) { const m = MODELS.find(m => m.value === val); return m
 // The 1M intent is carried as prose via modelContextNote next to each model line.
 const taskModelMap = { 'fable-5': 'fable', 'fable-5-1m': 'fable', 'opus-5': 'opus', 'opus-5-1m': 'opus', 'sonnet-5': 'sonnet', 'sonnet-5-1m': 'sonnet', 'haiku': 'haiku' };
 function getTaskModelParam(val) { return taskModelMap[val] || getModelId(val); }
+
+// ── Effort ───────────────────────────────────────────────────────────────────
+// Effort is a real request parameter (output_config.effort) and a real Claude Code
+// session flag (--effort). It is WORKFLOW-level here, not per-node, because the flag
+// sets the session: a per-step value could not be honored by the harness these prompts
+// are pasted into. Unset is the shipped state and emits nothing at all.
+const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+// Support is not uniform. Haiku 4.5 rejects the parameter outright; Sonnet 4.6 predates
+// xhigh (it arrived with Opus 4.7). Everything else on the roster takes all five.
+const EFFORT_UNSUPPORTED_FAMILIES = ['haiku-4.5'];
+const EFFORT_NO_XHIGH_FAMILIES = ['sonnet-4.6'];
+function modelEffortLevels(modelValue) {
+  const fam = getModelFamily(modelValue);
+  if (EFFORT_UNSUPPORTED_FAMILIES.includes(fam)) return [];
+  if (EFFORT_NO_XHIGH_FAMILIES.includes(fam)) return EFFORT_LEVELS.filter(l => l !== 'xhigh');
+  return EFFORT_LEVELS.slice();
+}
+// The level this model can actually run for the configured intent, or '' when it takes none.
+// Never silently upgrades: an unsupported level falls to the highest supported one below it.
+function resolvedEffortFor(modelValue, level) {
+  const levels = modelEffortLevels(modelValue);
+  if (!level || !levels.length) return '';
+  if (levels.includes(level)) return level;
+  const wanted = EFFORT_LEVELS.indexOf(level);
+  for (let i = wanted - 1; i >= 0; i--) { if (levels.includes(EFFORT_LEVELS[i])) return EFFORT_LEVELS[i]; }
+  return '';
+}
+function effortInheritLabel() { return state.effort ? 'Inherit (' + effortOptionLabel(state.effort) + ')' : 'Inherit (runner default)'; }
+// The level a node actually runs at: its own setting, else the workspace default.
+// Effort deliberately does NOT bake at creation the way model does. Model must always be a
+// concrete value; effort has a real unset state (the runner has its own default), so '' means
+// inherit and resolves here. That keeps Default Effort meaningful after a preset loads - which
+// is the common flow - and every node behaves the same however it was created.
+function nodeEffort(node) {
+  const own = node && node.config ? node.config.effort : '';
+  return own || state.effort || '';
+}
+// Per-step note, peer of modelContextNote: emitted next to the step's Model line, nothing
+// when the step has no effort intent. Names a downgrade or a skip rather than hiding it.
+function effortStepNote(node) {
+  const want = nodeEffort(node);
+  if (!want) return '';
+  const res = resolvedEffortFor(node.config.model, want);
+  if (!res) return '**Effort**: `' + want + '` intended, but ' + getModelLabel(node.config.model) + ' does not accept an effort parameter - this step runs at its model default.';
+  if (res !== want) return '**Effort**: `' + res + '` (intended `' + want + '`; ' + getModelLabel(node.config.model) + ' supports up to `' + res + '`).';
+  return '**Effort**: `' + res + '`.';
+}
+function workflowHasEffort() { return state.nodes.some(n => n.type === 'agent' && n.config && nodeEffort(n)); }
+// Workflow-level beat: explains the mechanism ONCE so the per-step lines stay terse.
+// Nothing when no step carries effort - the hard constraint is that such a workflow emits
+// byte-identical output to before this feature existed.
+function effortHint() {
+  if (!workflowHasEffort()) return null;
+  const set = [...new Set(state.nodes.filter(n => n.type === 'agent' && n.config).map(n => nodeEffort(n)).filter(Boolean))];
+  const uniform = set.length === 1 ? set[0] : '';
+  const r = [];
+  r.push('> **Effort (configured).** ' + (uniform
+    ? 'Every step in this workflow is set to effort `' + uniform + '`.'
+    : 'Steps in this workflow carry per-step effort levels; each step block below names its own.') +
+    ' Effort sets reasoning depth and overall token spend, so it is the lever to reach for before dropping a step to a weaker model.');
+  r.push('>');
+  r.push('> How to honor it: in Claude Code effort is a **session-level** flag (`claude --effort <level>`), not a Task tool parameter, so run the workflow - or the steps that matter most - in a session set to that level. On the API it is `output_config: {"effort": "<level>"}` per request, and the Agent SDK export sets it per step for you.');
+  return r.join('\n');
+}
 function isLongContextModel(val) { return /-1m$/.test(String(val || '')); }
 function modelContextNote(val) {
   if (!isLongContextModel(val)) return '';
@@ -2088,6 +2159,7 @@ let state = {
   durableRecord: true,
   artifactPath: '',
   defaultModel: 'opus-5',
+  effort: '',  // '' = inherit the runner's default; see EFFORT_LEVELS
   repositories: [],
   activePreset: null,
   mcpAtlassian: true,
@@ -2531,6 +2603,48 @@ function initDefaultModelSelect() {
   document.addEventListener('click', () => container.classList.remove('open'));
 }
 
+const EFFORT_OPTION_LABELS = { '': 'Inherit (runner default)', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
+function effortOptionLabel(v) { return EFFORT_OPTION_LABELS[v] || v; }
+
+function setEffort(value) {
+  state.effort = EFFORT_LEVELS.includes(value) ? value : '';
+  const trigger = $('effortTrigger');
+  if (trigger) trigger.textContent = state.effort ? effortOptionLabel(state.effort) : 'Inherit (runner default)';
+  const opts = $('effortOptions');
+  if (opts) opts.querySelectorAll('.custom-select-option').forEach(el => {
+    el.classList.toggle('selected', el.dataset.value === state.effort);
+  });
+  updatePrompt();
+  savePrefs();
+}
+
+function initEffortSelect() {
+  const container = $('effortSelect');
+  const trigger = $('effortTrigger');
+  const opts = $('effortOptions');
+  if (!container || !trigger || !opts) return;
+
+  opts.innerHTML = [''].concat(EFFORT_LEVELS).map(v =>
+    `<div class="custom-select-option${v === state.effort ? ' selected' : ''}" data-value="${v}">${effortOptionLabel(v)}</div>`
+  ).join('');
+  trigger.textContent = effortOptionLabel(state.effort);
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeAllCustomSelects(container);
+    container.classList.toggle('open');
+  });
+
+  opts.addEventListener('click', (e) => {
+    const opt = e.target.closest('.custom-select-option');
+    if (!opt) return;
+    setEffort(opt.dataset.value);
+    container.classList.remove('open');
+  });
+
+  document.addEventListener('click', () => container.classList.remove('open'));
+}
+
 function toggleMemory() {
   state.memoryEnabled = $('memoryToggle').checked;
   $('memoryPathField').style.display = state.memoryEnabled ? 'block' : 'none';
@@ -2648,6 +2762,7 @@ function savePrefs() {
   try {
     localStorage.setItem('awd_prefs', JSON.stringify({
       defaultModel: state.defaultModel,
+      effort: state.effort,
       memoryEnabled: state.memoryEnabled,
       durableRecord: state.durableRecord,
       artifactPath: state.artifactPath,
@@ -2690,6 +2805,7 @@ function restorePrefs() {
     if (!raw) return;
     const p = JSON.parse(raw);
     if (p.defaultModel && MODELS.find(m => m.value === p.defaultModel)) setDefaultModel(p.defaultModel);
+    if (p.effort !== undefined) setEffort(EFFORT_LEVELS.includes(p.effort) ? p.effort : '');
     if (p.memoryEnabled !== undefined) {
       state.memoryEnabled = !!p.memoryEnabled;
       const cb = $('memoryToggle');
@@ -2993,6 +3109,11 @@ function deserializeWorkflow(data) {
     // identifier, while the config panel showed a different model entirely. Snap to the default.
     if (n.type === 'agent' && n.config && !MODELS.some(m => m.value === n.config.model)) {
       n.config.model = state.defaultModel;
+    }
+    // Same rule for effort: a foreign or hand-edited blob must not put an unknown level
+    // into an emitted prompt or an output_config parameter.
+    if (n.type === 'agent' && n.config && n.config.effort && !EFFORT_LEVELS.includes(n.config.effort)) {
+      n.config.effort = '';
     }
   });
   state.connections = c.connections || [];
@@ -4579,6 +4700,11 @@ function updateConfig() {
     }
     fields.innerHTML += configSelect('Model', 'model', node.config.model,
       MODELS.map(m => ({ value: m.value, label: m.label })));
+    // Effort rides beside Model: same seam, same skin. Options are filtered to what THIS
+    // step's model accepts, so the panel cannot offer a level that would be silently dropped.
+    fields.innerHTML += configSelect('Effort', 'effort', node.config.effort || '',
+      [{ value: '', label: effortInheritLabel() }]
+        .concat(modelEffortLevels(node.config.model).map(l => ({ value: l, label: effortOptionLabel(l) }))));
     // Defect posture: two knobs, two homes. The coder family tunes fix-vs-record; the
     // reviewer tunes flag-back intensity (spot-and-report to the orchestrator, never fix,
     // never gate-failing). Testers/verifiers carry the balanced protocol without a knob.
@@ -5709,6 +5835,7 @@ function normalizeAgentConfig(c) {
   return {
     agentType: typeof c.agentType === 'string' ? c.agentType : 'general',
     model: typeof c.model === 'string' ? c.model : (state.defaultModel || 'opus-5'),
+    effort: typeof c.effort === 'string' && EFFORT_LEVELS.includes(c.effort) ? c.effort : '',
     tools: Array.isArray(c.tools) ? c.tools.slice() : ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LSP'],
     prompt: typeof c.prompt === 'string' ? c.prompt : '',
     notes: typeof c.notes === 'string' ? c.notes : '',
@@ -8384,6 +8511,21 @@ function explainAgentNode(node, format) {
   }[info.state];
   rows.push(exRow('Role instructions', true, roleReason, eff));
   rows.push(exRow('Model', format !== 'claude', format === 'claude' ? 'Claude.ai format carries no model parameter' : 'always emitted', format === 'claude' ? '' : getTaskModelParam(node.config.model)));
+  // Effort is set once for the whole run, but whether THIS step honors the level depends on its
+  // model, so the step deserves its own row. Probe stays empty: the effort text is emitted at the
+  // workflow level, not in this step's block, and a probe here would claim otherwise.
+  const _nEffLvl = nodeEffort(node);
+  const _nEffRes = _nEffLvl ? resolvedEffortFor(node.config.model, _nEffLvl) : '';
+  const _nEffReason = format === 'claude'
+    ? 'Claude.ai format carries no model or effort parameter'
+    : !_nEffLvl
+      ? 'Effort left on Inherit for this step and no workspace default is set - it runs at whatever the runner defaults to (lever: the Effort row in Node Configuration, or Default Effort in the sidebar)'
+      : !_nEffRes
+        ? 'Effort is ' + _nEffLvl + ', but ' + getModelLabel(node.config.model) + ' does not accept the effort parameter - this step runs at its own default'
+        : _nEffRes !== _nEffLvl
+          ? 'Effort is ' + _nEffLvl + ', and ' + getModelLabel(node.config.model) + ' supports up to ' + _nEffRes + ' - this step runs at ' + _nEffRes
+          : 'Effort ' + _nEffRes + ' applies to this step (lever: the Effort row in Node Configuration)';
+  rows.push(exRow('Effort', format !== 'claude' && !!_nEffRes, _nEffReason, ''));
 
   if (format === 'claude') {
     rows.push(exRow('Suggested tools', false, 'Claude.ai format carries no CLI tool lines'));
@@ -8583,7 +8725,13 @@ function explainNode(node, format) {
   format = format || state.exportFormat;
   if (!node) return [];
   if (format === 'sdk') {
-    return [exRow('Agent SDK', true, 'suggested tools ride as a comment plus an instruction line (suggestions, never a restriction - no hard tools param); per-step MCP hints are excluded to keep the format minimal by owner priority', '')];
+    const _sWant = node.type === 'agent' && node.config ? nodeEffort(node) : '';
+    const _sEff = _sWant ? resolvedEffortFor(node.config.model, _sWant) : '';
+    const _sEffNote = !_sWant ? ''
+      : _sEff
+        ? '. Effort: this step emits output_config effort ' + _sEff + (_sEff !== _sWant ? ', lowered from the configured ' + _sWant + ' because ' + getModelLabel(node.config.model) + ' does not support that level' : '')
+        : '. Effort: the configured ' + _sWant + ' is skipped for this step because ' + getModelLabel(node.config.model) + ' does not accept the effort parameter';
+    return [exRow('Agent SDK', true, 'suggested tools ride as a comment plus an instruction line (suggestions, never a restriction - no hard tools param); per-step MCP hints are excluded to keep the format minimal by owner priority' + _sEffNote, '')];
   }
   if (node.type === 'agent') return explainAgentNode(node, format);
   if (node.type === 'input') return explainInputNode(node, format);
@@ -8696,7 +8844,8 @@ function orchestratorRunPlan(format) {
 function explainWorkflow(format) {
   format = format || state.exportFormat;
   if (format === 'sdk') {
-    return [exRow('Agent SDK', true, 'Python skeleton: suggested tools ride as comments and instruction lines (no hard tools param - suggestions, never a restriction); per-step MCP hints excluded to keep the format minimal by owner priority; clarify/Datadog toggles render as comment banners', '')];
+    return [exRow('Agent SDK', true, 'Python skeleton: suggested tools ride as comments and instruction lines (no hard tools param - suggestions, never a restriction); per-step MCP hints excluded to keep the format minimal by owner priority; clarify/Datadog toggles render as comment banners'
+      + (workflowHasEffort() ? '. Effort is configured on one or more steps, and this is the one format that emits it as a real per-step output_config parameter - lowered or skipped where a step\'s model does not support that level, with the difference named in a comment' : ''), '')];
   }
   const rows = [];
   // Capstone framing row: the orchestrator is not a canvas node, and users go looking
@@ -8750,6 +8899,15 @@ function explainWorkflow(format) {
   rows.push(exRow('Product / architecture docs', !!pd, pd ? 'doc paths configured (goals to SERVE)' : 'no doc paths configured - add them under Repo Context Paths (Product docs)', pd));
   const ve = verifyInstructionsHint();
   rows.push(exRow('Verification instructions', !!ve, ve ? 'verification paths configured (routed to the owning verification step - Verifier if present, else final Tester; posture ' + (state.verifyFailRun ? 'fails the run' : 'report-only') + ')' : 'no verification paths configured - add them under Repo Context Paths (Verification instructions)', ve));
+  // The sdk format returns its own single summary row above and never reaches here, so this
+  // row covers the prose formats plus the by-design Claude.ai skip.
+  const ef = format === 'claude' ? null : effortHint();
+  const efReason = format === 'claude'
+    ? 'Claude.ai format carries no model or effort parameter'
+    : workflowHasEffort()
+      ? 'effort configured on one or more steps (lever: the Effort row in Node Configuration, defaulted by Default Effort in the sidebar) - carried as run intent, since the Task tool has no effort parameter and Claude Code sets it per session'
+      : 'no step carries an effort level - the run uses whatever the runner defaults to (high on the API, xhigh in Claude Code); set one per step in Node Configuration or set Default Effort in the sidebar';
+  rows.push(exRow('Effort', format !== 'claude' && workflowHasEffort(), efReason, ef || ''));
   const cr = consumeRecordsHint(format);
   rows.push(exRow('Grounding in prior records', !!cr, cr ? 'Ground-in-prior-records toggle on - three-tier lookup, Current behavior first' : 'Ground-in-prior-records toggle off', cr));
   const cl = clarifyFirstHint();
@@ -9289,6 +9447,8 @@ function genWorkflow() {
   if (_wfPd) { p.push(_wfPd); p.push(''); }
   const _wfVe = verifyInstructionsHint();
   if (_wfVe) { p.push(_wfVe); p.push(''); }
+  const _wfEf = effortHint();
+  if (_wfEf) { p.push(_wfEf); p.push(''); }
   const _wfCr = consumeRecordsHint('prompt');
   if (_wfCr) { p.push(_wfCr); p.push(''); }
   const _wfCl = clarifyFirstHint();
@@ -9330,6 +9490,7 @@ function genWorkflow() {
           p.push(`  **${s.label}** (${sAt} Agent)`);
           p.push(`  - Model: ${getModelLabel(s.config.model)} (\`${getTaskModelParam(s.config.model)}\`)`);
           const _mcS = modelContextNote(s.config.model); if (_mcS) p.push('  - ' + _mcS);
+          const _efS = effortStepNote(s); if (_efS) p.push('  - ' + _efS);
           if (s.config.tools.length > 0) p.push('  - ' + toolAccessText(s.config.tools));
           const _scS = toolScopeNote(s.config.tools); if (_scS) p.push('  - ' + _scS);
           const _ddS = datadogStepHint(s); if (_ddS) p.push('  ' + _ddS);
@@ -9354,6 +9515,7 @@ function genWorkflow() {
         p.push(`**Step ${stepNum}: ${node.label}** (${at} Agent)`);
         p.push(`- Model: ${getModelLabel(node.config.model)} (\`${getTaskModelParam(node.config.model)}\`)`);
         const _mcN = modelContextNote(node.config.model); if (_mcN) p.push('- ' + _mcN);
+        const _efN = effortStepNote(node); if (_efN) p.push('- ' + _efN);
         if (node.config.tools.length > 0) p.push('- ' + toolAccessText(node.config.tools));
         const _scN = toolScopeNote(node.config.tools); if (_scN) p.push('- ' + _scN);
         const _ddN = datadogStepHint(node); if (_ddN) p.push('- ' + _ddN);
@@ -9495,6 +9657,8 @@ function genSubAgents() {
   if (_saPd) { p.push(_saPd); p.push(''); }
   const _saVe = verifyInstructionsHint();
   if (_saVe) { p.push(_saVe); p.push(''); }
+  const _saEf = effortHint();
+  if (_saEf) { p.push(_saEf); p.push(''); }
   const _saCr = consumeRecordsHint('subagent');
   if (_saCr) { p.push(_saCr); p.push(''); }
   const _saCl = clarifyFirstHint();
@@ -9658,6 +9822,7 @@ function genSubAgents() {
         p.push(`- **Agent type**: ${at}`);
         p.push(`- **Model**: ${getModelLabel(s.config.model)} (\`${getTaskModelParam(s.config.model)}\`)`);
         const _mcP = modelContextNote(s.config.model); if (_mcP) p.push('- ' + _mcP);
+        const _efP = effortStepNote(s); if (_efP) p.push('- ' + _efP);
         if (s.config.tools.length > 0) p.push('- ' + toolAccessText(s.config.tools));
         p.push(`- **Max turns**: ${s.config.maxTurns}`);
         if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
@@ -9675,6 +9840,7 @@ function genSubAgents() {
       p.push(`- **Agent type**: ${at}`);
       p.push(`- **Model**: ${getModelLabel(node.config.model)} (\`${getTaskModelParam(node.config.model)}\`)`);
       const _mcQ = modelContextNote(node.config.model); if (_mcQ) p.push('- ' + _mcQ);
+      const _efQ = effortStepNote(node); if (_efQ) p.push('- ' + _efQ);
       if (node.config.tools.length > 0) p.push('- ' + toolAccessText(node.config.tools));
       p.push(`- **Max turns**: ${node.config.maxTurns}`);
       if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
@@ -9789,6 +9955,8 @@ function genAgentTeams() {
   if (_atPd) { p.push(_atPd); p.push(''); }
   const _atVe = verifyInstructionsHint();
   if (_atVe) { p.push(_atVe); p.push(''); }
+  const _atEf = effortHint();
+  if (_atEf) { p.push(_atEf); p.push(''); }
   const _atCr = consumeRecordsHint('teams');
   if (_atCr) { p.push(_atCr); p.push(''); }
   const _atCl = clarifyFirstHint();
@@ -9821,6 +9989,7 @@ function genAgentTeams() {
     lines.push(`${pre}**Teammate: "${node.label}"** (${at})`);
     lines.push(`${pre}- Model: \`${getTaskModelParam(node.config.model)}\` (${getModelLabel(node.config.model)})`);
     const _mcT = modelContextNote(node.config.model); if (_mcT) lines.push(`${pre}- ` + _mcT);
+    const _efT = effortStepNote(node); if (_efT) lines.push(`${pre}- ` + _efT);
     if (node.config.tools.length > 0) lines.push(`${pre}- ` + toolAccessText(node.config.tools));
     const _scTm = toolScopeNote(node.config.tools); if (_scTm) lines.push(`${pre}- ` + _scTm);
     lines.push(`${pre}- Max turns: ${node.config.maxTurns}`);
@@ -10160,6 +10329,20 @@ function genAgentSDK() {
     p.push(`${varName}_config = AgentConfig(`);
     p.push(`    name="${node.label}",`);
     p.push(`    model="${getModelId(node.config.model)}",`);
+    // Effort is a real parameter here, so it must be model-legal: Haiku rejects it outright
+    // and Sonnet 4.6 has no xhigh. Any difference from the configured level is emitted as a
+    // comment rather than applied quietly - a step should never run at a depth its config
+    // does not name without saying so.
+    const _want = nodeEffort(node);
+    if (_want) {
+      const _eff = resolvedEffortFor(node.config.model, _want);
+      if (!_eff) {
+        p.push(`    # effort "${_want}" not emitted: ${getModelLabel(node.config.model)} does not accept the effort parameter`);
+      } else {
+        if (_eff !== _want) p.push(`    # effort lowered from "${_want}": ${getModelLabel(node.config.model)} supports up to "${_eff}"`);
+        p.push(`    output_config={"effort": "${_eff}"},`);
+      }
+    }
     p.push(`    max_turns=${node.config.maxTurns},`);
 
     const instructions = [];
@@ -10606,6 +10789,11 @@ function openSpecStepIntent(node) {
   if (node.type === 'agent') {
     lines.push('- Role: ' + getAgentTypeName(c.agentType));
     if (c.model) lines.push('- Model: ' + c.model);
+    // Effort forwards as intent beside Model. OpenSpec has no native slot for it, same as model
+    // and turn limits; without this a foreign consumer of the schema would lose the intent (the
+    // awd:meta round-trip already carries it).
+    const _osEff = nodeEffort(node);
+    if (_osEff) lines.push('- Effort: ' + (resolvedEffortFor(c.model, _osEff) || 'not supported by ' + getModelLabel(c.model) + '; runs at its model default'));
     if (c.tools && c.tools.length) lines.push('- ' + toolAccessText(c.tools));
     if (c.maxTurns) lines.push('- Max turns: ' + c.maxTurns);
   }
@@ -11745,6 +11933,7 @@ function copyPrompt() {
   });
 })();
 initDefaultModelSelect();
+initEffortSelect();
 initSidebarCollapse();
 restorePrefs();
 const _autoRestored = restoreAutoSave();

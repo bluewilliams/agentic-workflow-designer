@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## effort-control
+
+- record: .workflow/effort-control.md
+- intent: a PER-STEP Effort lever in Node Configuration under Model (`config.effort`, '' = inherit), with a sidebar Default Effort that unset steps inherit at READ time (deliberately not baked like model: effort has a real unset state, and baking silently skipped every preset-built node because presets pass model explicitly). No step carrying effort emits NOTHING - proven byte-identical three times against a pre-feature snapshot of 17 presets x 5 formats + 3 toggle combos. Per-step prose line via effortStepNote (peer of modelContextNote, same 5 sites) + one workflow-level beat explaining that Claude Code applies effort per SESSION (claude --effort <level>), not per Task call; real per-agent output_config in the SDK; nothing in Claude.ai. Model-aware: the picker offers only what a step's model accepts, resolution goes DOWN only, every difference named in prose, an SDK comment, and Explain. Persistence inherited free from serializeWorkflow + savePrefs; deserializeWorkflow drops an unknown level like it drops an unknown model; OpenSpec forwards effort as intent beside Model.
+- files: index.html (+181/-3: EFFORT_LEVELS/modelEffortLevels/resolvedEffortFor/nodeEffort/effortStepNote/effortHint, node config field + shared configSelect control, 5 per-step emission sites, SDK output_config, sidebar Default Effort, deserialize validation, Explain rows at workflow AND step level), tests.html (+27), README.md, TECHNICAL.md
+- status: current | date: 2026-07-24
+
 ## model-roster
 
 - record: .workflow/model-roster.md
