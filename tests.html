@@ -8342,13 +8342,32 @@ describe('Atlassian two-block scenario matrix', () => {
     expect(copied).toContain('Implementation Planning');
     expect(copied).toContain(TF);
   });
-  it('urlPresetPicker shows for a bare URL even when toggle is off', () => {
+  it('urlPresetPicker shows for a bare URL even when toggle is off (user input path)', () => {
     resetState();
     win.document.getElementById('storyInput').value = JIRA_URL;
     win.state.mcpAtlassian = false;
-    win.validateStoryInput();
+    win.validateStoryInput(true);
     const picker = win.document.getElementById('urlPresetPicker');
     expect(picker.style.display).toBe('');
+    win.dismissUrlPicker();
+  });
+  it('urlPresetPicker does NOT reopen on the startup revalidate of a restored URL-only session', () => {
+    resetState();
+    win.document.getElementById('storyInput').value = JIRA_URL;
+    const picker = win.document.getElementById('urlPresetPicker');
+    picker.style.display = 'none';
+    win.validateStoryInput();   // the startup call passes no arg
+    expect(picker.style.display).toBe('none');
+  });
+  it('urlPresetPicker still hides on any path once the input is no longer URL-only', () => {
+    resetState();
+    win.document.getElementById('storyInput').value = JIRA_URL;
+    win.validateStoryInput(true);
+    const picker = win.document.getElementById('urlPresetPicker');
+    expect(picker.style.display).toBe('');
+    win.document.getElementById('storyInput').value = 'Build a login page with validation and tests';
+    win.validateStoryInput();   // even a programmatic revalidate clears a stale picker
+    expect(picker.style.display).toBe('none');
   });
 });
 
