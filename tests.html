@@ -6775,6 +6775,7 @@ describe('Usability & Help', () => {
       expect(body.innerHTML).toContain('Under the Hood');
       expect(body.innerHTML).toContain('Which prep step should I use?');
       expect(body.innerHTML).toContain('Multiple Repos');
+      expect(body.innerHTML).toContain('Run Reports: Self-Improvement &amp; Connect Repo');
       expect(body.innerHTML).toContain('github.com/bluewilliams/agentic-workflow-designer');
     });
     it('groups sections with a jump-to table of contents', () => {
@@ -10370,6 +10371,64 @@ describe('Run report loop', () => {
     expect(t).toContain('COMPLETE updated workflow');
     expect(t).toContain('do not invent telemetry');
     win.localStorage.removeItem('awd_run_reports');
+  });
+  it('Import is a two-item menu (file + clipboard) and extractFencedPayload takes the largest fence', () => {
+    const btn = win.document.getElementById('importMenuBtn');
+    expect(!!btn).toBe(true);
+    const menu = win.document.getElementById('importMenu');
+    expect(menu.querySelectorAll('[role="menuitem"]').length).toBe(2);
+    expect(menu.textContent).toContain('From clipboard');
+    expect(win.extractFencedPayload('no fences here')).toBe('no fences here');
+    const picked = win.extractFencedPayload('prose\n```json\n{"a":1}\n```\nmore\n```\nbigger content wins here truly\n```\n');
+    expect(picked).toContain('bigger content wins');
+  });
+  it('importWorkflowText accepts a pasted workflow envelope directly (the tuning round trip, no file)', () => {
+    resetState();
+    const wf = win.serializeWorkflow();
+    wf.name = 'Tuned By Claude';
+    const payload = JSON.stringify({ format: 'agentic-workflow-designer', ...wf });
+    win.importWorkflowText(payload, 'clipboard.json');
+    expect(win.document.getElementById('workflowName').value).toBe('Tuned By Claude');
+    resetState();
+  });
+  it('advisor nudges the Tuning Prompt at three runs of telemetry, silent below', () => {
+    seedWorkflow();
+    win.localStorage.removeItem('awd_run_reports');
+    const name = win.document.getElementById('workflowName').value || 'workflow';
+    const mk = runs => { const st = {}; st[name] = { nodes: { planner: { runs: runs, capHits: 0, failures: 0, cycleRuns: 0, cycleSum: 0 } } }; win.localStorage.setItem('awd_run_reports', JSON.stringify(st)); };
+    mk(2);
+    let msgs = win.adviseWorkflow().map(x => x.msg).join(' ');
+    expect(msgs).toNotContain('Tuning Prompt');
+    mk(3);
+    msgs = win.adviseWorkflow().map(x => x.msg).join(' ');
+    expect(msgs).toContain('Tuning Prompt');
+    expect(msgs).toContain('From clipboard');
+    win.localStorage.removeItem('awd_run_reports');
+    resetState();
+  });
+  it('ingestion keeps qualitative evidence: notes capped at 5 newest, grounded slugs counted; tuning prompt carries both and the full toolbox', () => {
+    seedWorkflow();
+    win.localStorage.removeItem('awd_run_reports');
+    const name = win.document.getElementById('workflowName').value || 'workflow';
+    for (let i = 1; i <= 6; i++) {
+      win.ingestRunReport({ workflow: name, steps: [{ slug: 'planner', status: 'done' }], gates: [], notes: 'run note number ' + i, grounded: ['payment-retry'] }, { source: 'test' });
+    }
+    const wf = win.loadRunReports()[name];
+    expect(wf.recentNotes.length).toBe(5);
+    expect(wf.recentNotes[4]).toBe('run note number 6');
+    expect(wf.recentNotes[0]).toBe('run note number 2');
+    expect(wf.groundedCounts['payment-retry']).toBe(6);
+    const tp = win.genTuningPrompt();
+    expect(tp).toContain('Recent run notes');
+    expect(tp).toContain('run note number 6');
+    expect(tp).toContain('Durable records that informed these runs');
+    expect(tp).toContain('payment-retry: 6');
+    expect(tp).toContain('trust the note');
+    expect(tp).toContain('MODEL');
+    expect(tp).toContain('fork genuinely independent sequential steps');
+    expect(tp).toContain('clarify-first');
+    win.localStorage.removeItem('awd_run_reports');
+    resetState();
   });
   it('the Run Reports section is the one home: below the toggles, tuning gated there, not in Export', () => {
     const section = win.document.getElementById('runReportSection');
