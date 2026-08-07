@@ -626,9 +626,9 @@ The `index.html` is internally organized into clearly delimited sections:
 ```
 CSS styles
 HTML structure
-  ├── Sidebar: Workflow Name (+ New Workflow), Story Input (+ Generate Refine Prompt, validation hint),
+  ├── Sidebar: Name & Requirements (workflow name + New Workflow + story input, Generate Refine Prompt, validation hint),
   │            Workflow Context (+ Generate Plan Prompt), Default Model, Repositories,
-  │            Add Nodes, Presets, App Under Test, UI Context, Repo Context Paths, Workflow Management, Tip, MCP Integrations, Memory, Run Reports, Node Config
+  │            Add Nodes, Presets, App Under Test, UI Context, Repos & Context Paths, Workflow Management, MCP Integrations (leads with the Better-outcomes tip), Memory, Run Reports, Node Config
   ├── Canvas: Toolbar (Select, Connect, Delete, Auto Layout, Fit, Zoom, Prompts, Help), SVG canvas, Empty state
   ├── Prompt Output: 5 format tabs, Copy button
   ├── Help Modal: Quick start, flows, output formats, shortcuts, power user tips

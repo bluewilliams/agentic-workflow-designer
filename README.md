@@ -126,7 +126,7 @@ Every generated prompt is a composition: role templates, tool lines, MCP hints, 
 
 ## Repo Context Paths
 
-The **Repo Context Paths** sidebar section lets you point agents at a repo's own rules and product docs, so generated workflows read and honor more than just the per-task spec. It captures path strings only (the designer never touches your filesystem); the agents do the reading. Three optional chip lists, each with a text input, an Add button, per-chip remove, Clear-all, and one-click quick-add suggestions:
+The **Repo Context Paths** area (inside the Repos & Context Paths sidebar section) lets you point agents at a repo's own rules and product docs, so generated workflows read and honor more than just the per-task spec. It captures path strings only (the designer never touches your filesystem); the agents do the reading. Three optional chip lists, each with a text input, an Add button, per-chip remove, Clear-all, and one-click quick-add suggestions:
 
 - **Rules / constitution paths** (binding; CLAUDE.md already read) - paths whose rules and conventions are binding constraints on HOW you build. Quick-add: `.claude/rules`, `CONVENTIONS.md`, `CONTRIBUTING.md`.
 - **Product docs (PRD / ADR)** (goals/direction to honor) - paths describing the goals and direction the work must serve and not contradict. Quick-add: `docs/`, `ARCHITECTURE.md`, `docs/adr/`.
@@ -334,7 +334,7 @@ LSP is enabled by default on most agent presets. Code-analysis prompts in the Pr
 
 ## Things You Might Not Notice
 
-- **New Workflow**: The small "New Workflow" link next to the Workflow Name heading clears everything and starts fresh. Save or export your current workflow first if you want to keep it.
+- **New Workflow**: The small "New Workflow" link in the Name & Requirements heading clears everything and starts fresh. Save or export your current workflow first if you want to keep it.
 - **Collapsible sidebar with a curated first boot**: every sidebar section header is a click-to-fold toggle (Expand All / Collapse All at the top), and your choices persist across visits. On a true first visit only Requirements and Presets start open - the two sections the Quick Start actually needs - and everything else waits politely behind a chevron. Programmatic reveals (like selecting a node) always re-open their section first.
 - **Empty-canvas quick start**: a blank canvas shows the two-step path inline (paste requirements or a Jira URL, pick a preset) with links that open and scroll to the right sections. It disappears the moment nodes exist.
 - **Auto-naming**: The workflow name is optional (the placeholder says so). Leave it blank and the slug derives from the first few meaningful words of your requirements - so two unnamed workflows no longer collide on `untitled.md`, and the memory and record paths update live as you type. An explicit name always wins; `untitled` only appears when you give it neither a name nor requirements, at which point it has earned it.
