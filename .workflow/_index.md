@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## url-picker-input-gate
+
+- record: .workflow/url-picker-input-gate.md
+- intent: the urlPresetPicker ("Your input looks like a ticket URL...") shows only on a real input event - `validateStoryInput(fromUser)`, textarea oninput passes true - so pasting a URL still surfaces the preset helper but the startup revalidate of a restored URL-only session never reopens it over a built workflow; hide stays universal on every path; the bare-key hint deliberately keeps its state-based behavior (an input that genuinely needs fixing).
+- files: index.html (validateStoryInput signature + picker show gate, textarea oninput), tests.html (show test migrated to fromUser + 2 regression tests)
+- status: current | date: 2026-08-06 | note: 1563 -> 1565. Direct session fix - surfaced by the director hitting the picker on every open.
+
 ## effort-control
 
 - record: .workflow/effort-control.md

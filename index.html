@@ -465,7 +465,7 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-section" data-collapse-id="requirements">
     <h3>Requirements</h3>
-    <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Auto Workflow to auto-build a workflow from keywords." oninput="validateStoryInput()"></textarea>
+    <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Auto Workflow to auto-build a workflow from keywords." oninput="validateStoryInput(true)"></textarea>
     <div id="storyHint" class="input-hint"></div>
     <label class="memory-toggle" style="margin-top:6px">
       <input type="checkbox" id="clarifyFirstToggle" onchange="toggleClarifyFirst()"/>
@@ -6627,7 +6627,7 @@ function isJiraKeyOnly(text) {
   const stripped = text.replace(/\b[A-Z][A-Z0-9]+-\d+\b/g, '').trim();
   return stripped.length < 10 && /\b[A-Z][A-Z0-9]+-\d+\b/.test(text);
 }
-function validateStoryInput() {
+function validateStoryInput(fromUser) {
   autoSaveWorkflow();
   // While the name box is empty, memory/record paths derive from the requirements text,
   // so refresh the displayed paths live as the user types.
@@ -6664,8 +6664,13 @@ function validateStoryInput() {
   const plan = $('planBtn');
   if (plan) { plan.disabled = empty; plan.title = empty ? 'Paste requirements or a Jira URL first' : ''; }
   // For a bare ticket URL, surface the workflow-type picker immediately (Generate is the wrong tool here).
+  // Show only on a real input event (fromUser): the picker reacts to the ACT of pasting a URL, not the
+  // state of the text - the startup revalidate of a restored session must never reopen it.
   const picker = $('urlPresetPicker');
-  if (picker) picker.style.display = urlOnly ? '' : 'none';
+  if (picker) {
+    if (!urlOnly) picker.style.display = 'none';
+    else if (fromUser) picker.style.display = '';
+  }
   // Bare Jira key: guide the user to the full URL.
   const hint = $('storyHint');
   if (hint) {
