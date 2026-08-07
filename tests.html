@@ -6930,7 +6930,7 @@ describe('Usability & Help', () => {
         findPrompt('Debugging & Performance', 'Root Cause Analysis'),
         findPrompt('Testing', 'Edge Case Test Generator'),
         findPrompt('Planning & Estimation', 'Implementation Breakdown'),
-        findPrompt('Data & Migrations', 'Zero-Downtime Migration Planner'),
+        findPrompt('Migrations & Upgrades', 'Zero-Downtime Migration Planner'),
       ];
       promptsNeedingInput.forEach(p => {
         expect(p.input.label.length > 10).toBe(true);
@@ -7011,6 +7011,10 @@ describe('Usability & Help', () => {
         expect(cat.category).toNotContain('\u2013');
         cat.prompts.forEach(p => {
           const surfaces = [p.title, p.desc || '', p.prompt, (p.input && p.input.label) || '', (p.input && p.input.placeholder) || ''];
+          (p.inputs || []).forEach(f => {
+            surfaces.push(f.label || '', f.placeholder || '', f.find || '');
+            (f.options || []).forEach(o => surfaces.push(o.value || '', o.label || ''));
+          });
           surfaces.forEach(t => {
             expect(t).toNotContain('\u2014');
             expect(t).toNotContain('\u2013');
@@ -7136,6 +7140,116 @@ describe('Usability & Help', () => {
       expect(text).toContain('GET THE SUITE GREEN');
       expect(text).toNotContain('[your objective]');   // no leftover placeholder
       expect(text.startsWith('> **Your input**')).toBe(false); // preamble removed
+    });
+    it('Software & Framework Upgrade lives in Migrations & Upgrades with dial tokens in the body and conservative select defaults', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Migrations & Upgrades');
+      const p = cat.prompts.find(x => x.title === 'Software & Framework Upgrade');
+      expect(!!p).toBe(true);
+      // six inputs: required target text, four selects, optional constraints text
+      expect(p.inputs.length).toBe(6);
+      expect(p.inputs[0].kind).toBe('text');
+      expect(!!p.inputs[0].optional).toBe(false);
+      const selects = p.inputs.filter(f => f.kind === 'select');
+      expect(selects.length).toBe(4);
+      // every select default is its first (conservative) option and a real option value
+      selects.forEach(f => {
+        expect(f.options.some(o => o.value === f.default)).toBe(true);
+      });
+      expect(selects.map(f => f.default)).toEqual(['minimal', 'necessary-only', 'full report', 'chat']);
+      // report detail offers a true opt-out, but even none keeps the one-line verdict honest
+      const detail = p.inputs.find(f => f.find === '[report detail]');
+      expect(detail.options.some(o => o.value === 'none')).toBe(true);
+      expect(p.prompt).toContain('an upgrade may end quietly, never dishonestly');
+      const constraints = p.inputs[5];
+      expect(constraints.optional).toBe(true);
+      expect(constraints.fallback).toBe('none stated');
+      // every find token lives in the BODY (not just the stripped preamble) so replacement targets it
+      const body = p.prompt.replace(/^> \*\*Your input\*\*.*?\n> Example:.*?\n\n/s, '');
+      p.inputs.forEach(f => expect(body).toContain(f.find));
+      // dial definitions ride along in the body so the agent knows what each level means
+      expect(body).toContain('minimal: upgrade the target plus ONLY what is mandatory');
+      expect(body).toContain('modernize: where the new version deprecates an API');
+      expect(body).toContain('detail changes what is written up, never what is verified');
+      expect(body).toContain('Constraints outrank every dial');
+    });
+    it('Upgrade prompt is research-first with an honest baseline, staged reverts, runtime proof, and a supported verdict', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Migrations & Upgrades');
+      const p = cat.prompts.find(x => x.title === 'Software & Framework Upgrade').prompt;
+      expect(p).toContain('Baseline (before touching anything)');       // baseline precedes any edit
+      expect(p).toContain('no signal worse than baseline');             // honesty anchor
+      expect(p).toContain('never invent one');                          // target existence sanity check
+      expect(p).toContain('Research (still not touching anything)');    // docs before code
+      expect(p).toContain('EVERY major version boundary crossed');      // 7->10 reads 8, 9, 10
+      expect(p).toContain('STOP and ask before executing');             // user-owned decisions escalate
+      expect(p).toContain('Never weaken a test');                       // anti reward-hacking
+      expect(p).toContain('revert to the last green stage');            // clean stop beats broken tree
+      expect(p).toContain('live at RUNTIME');                           // proof beyond the manifest
+      expect(p).toContain('UPGRADED AND VERIFIED');
+      expect(p).toContain('UPGRADED WITH CAVEATS');
+      expect(p).toContain('BLOCKED');
+      expect(p).toContain('Never report a verdict the validation matrix does not support');
+    });
+    it('multi-input popup renders labeled fields: one primary textarea, four dropdown selects at their defaults, one optional textarea', () => {
+      const catIdx = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Migrations & Upgrades');
+      const pIdx = win.PROMPT_LIBRARY[catIdx].prompts.findIndex(p => p.title === 'Software & Framework Upgrade');
+      win.copyLibPrompt(pIdx, catIdx);
+      const box = win.document.getElementById('plibInputFields');
+      expect(box.querySelectorAll('textarea').length).toBe(2);
+      expect(box.querySelectorAll('select').length).toBe(4);
+      expect(box.querySelectorAll('.plib-input-label').length).toBe(6);
+      // selects arrive skinned by the unified dropdown enhancer, defaults preselected
+      expect(box.querySelectorAll('.custom-select.enhanced-select').length).toBe(4);
+      const sels = box.querySelectorAll('select');
+      expect(sels[0].value).toBe('minimal');
+      expect(sels[1].value).toBe('necessary-only');
+      expect(sels[2].value).toBe('full report');
+      expect(sels[3].value).toBe('chat');
+      // the first text field keeps the historical id (Cmd+E expand contract)
+      expect(box.querySelector('textarea').id).toBe('plibInputText');
+      win.closePlibInput();
+    });
+    it('multi-input confirm substitutes every token (dials at defaults, optional constraints falls back) and strips the preamble', () => {
+      const catIdx = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Migrations & Upgrades');
+      const pIdx = win.PROMPT_LIBRARY[catIdx].prompts.findIndex(p => p.title === 'Software & Framework Upgrade');
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.copyLibPrompt(pIdx, catIdx);
+      win.document.getElementById('plibInputText').value = 'Angular to 20';
+      win.confirmPlibInput();
+      expect(copied).toContain('Target: Angular to 20');
+      expect(copied).toContain('DEPENDENCY SCOPE: minimal');
+      expect(copied).toContain('API ADAPTATION: necessary-only');
+      expect(copied).toContain('REPORT DETAIL: full report');
+      expect(copied).toContain('REPORT DESTINATION: chat');
+      expect(copied).toContain('CONSTRAINTS: none stated');
+      expect(copied.indexOf('[dependency scope]')).toBe(-1);   // no leftover tokens
+      expect(copied.indexOf('[report destination]')).toBe(-1);
+      expect(copied.indexOf('[constraints]')).toBe(-1);
+      expect(copied.startsWith('> **Your input**')).toBe(false);
+    });
+    it('multi-input confirm honors a changed dropdown and a typed constraint', () => {
+      const catIdx = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Migrations & Upgrades');
+      const pIdx = win.PROMPT_LIBRARY[catIdx].prompts.findIndex(p => p.title === 'Software & Framework Upgrade');
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.copyLibPrompt(pIdx, catIdx);
+      const box = win.document.getElementById('plibInputFields');
+      win.document.getElementById('plibInputText').value = '.NET 8 to 9';
+      box.querySelectorAll('select')[0].value = 'everything';
+      box.querySelectorAll('textarea')[1].value = 'keep Node 18 support';
+      win.confirmPlibInput();
+      expect(copied).toContain('DEPENDENCY SCOPE: everything');
+      expect(copied).toContain('CONSTRAINTS: keep Node 18 support');
+    });
+    it('multi-input confirm blocks on an empty required field but not on the optional one', () => {
+      const catIdx = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Migrations & Upgrades');
+      const pIdx = win.PROMPT_LIBRARY[catIdx].prompts.findIndex(p => p.title === 'Software & Framework Upgrade');
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.copyLibPrompt(pIdx, catIdx);
+      win.confirmPlibInput();   // target left empty -> refuses
+      expect(copied).toBe('');
+      win.closePlibInput();
     });
     it('should have OWASP and Secrets prompts in Security', () => {
       const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Security');

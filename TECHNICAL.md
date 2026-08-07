@@ -519,14 +519,14 @@ The app validates user input at multiple points:
 A curated collection of high-impact prompts accessible via the **Prompts** toolbar button. Each prompt encodes expert methodology that produces better results than asking from scratch.
 
 ### Architecture
-- **Data**: `PROMPT_LIBRARY` is a JS array of category objects, each containing an array of prompt entries with `title`, `desc`, `prompt`, and optional `input` config
-- **Input popup**: Prompts with an `input` field show a modal collecting user context before copying. Supports `optional: true` with `fallback` text for prompts that work with or without a target
+- **Data**: `PROMPT_LIBRARY` is a JS array of category objects, each containing an array of prompt entries with `title`, `desc`, `prompt`, and optional input config: either a legacy single `input` object or an `inputs` array of fields
+- **Input popup**: Prompts with input config show a modal collecting user context before copying. Fields render in declared order and come in two kinds: `text` (textarea; supports `optional: true` with `fallback` text) and `select` (a real dropdown, skinned by the unified `enhanceSelect` enhancer, with a `default` option preselected). Each field's `find` token is replaced everywhere it appears in the prompt body. A single-text prompt renders exactly as it always has; the Software & Framework Upgrade prompt is the first to use the multi-field form (a target, four dials, and optional constraints)
 - **Favorites**: Stored as `plibFavs` array in state/prefs (format: `"catIdx:promptIdx"`). Favorited prompts render in a persistent "Favorites" section at the top
 - **Category expansion**: Open/closed state persists via `plibOpen` in prefs
 - **Tool guidance**: Several prompts include context-aware hints for Sourcebot, LSP, and Atlassian MCP tools (embedded in prompt text, not tied to app toggles)
 
 ### Categories
-Code Quality, Code Generation, Architecture & Design, Debugging & Performance, Testing, Security, Documentation, Planning & Estimation, Git & Code Review, DevOps & Infrastructure, Data & Migrations, Strategy & Analysis, Release & Operations, Post-Work, Live Monitors, Observability (requires Datadog), Cross-Repo (requires Sourcebot)
+Code Quality, Code Generation, Architecture & Design, Debugging & Performance, Testing, Security, Documentation, Planning & Estimation, Git & Code Review, DevOps & Infrastructure, Migrations & Upgrades, Strategy & Analysis, Release & Operations, Post-Work, Live Monitors, Observability (requires Datadog), Cross-Repo (requires Sourcebot)
 
 ### Live Monitors Category
 Prompts that watch things for you over time. They run on a recurring interval, compare state across iterations, and self-terminate when their exit condition is met. Each prompt includes a `> **Exit**:` line documenting when the loop should stop. Prompts: PR Build Babysitter, PR Review Watcher, Post-Deploy Canary Monitor, Test Flake Detector, Sprint Stale Work Alert, Long-Running Task Companion, Code Review Soak Test, Service Recovery Watcher.

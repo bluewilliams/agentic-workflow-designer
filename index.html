@@ -134,6 +134,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
   border:1px solid var(--border);border-radius:6px;padding:10px;font-family:var(--font);
   font-size:12px;resize:vertical;line-height:1.5;box-sizing:border-box}
 .plib-input-modal textarea:focus{outline:none;border-color:var(--accent)}
+.plib-input-modal .plib-input-label{font-size:11px;color:var(--text2);margin:10px 0 4px;font-weight:600}
+.plib-input-modal .plib-input-label:first-child{margin-top:0}
 .plib-input-modal .plib-input-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
 /* === Expand-to-modal text editing (summon a large editor for any textarea) - REMOVABLE === */
 .text-expand-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;display:none;align-items:center;justify-content:center}
@@ -1238,7 +1240,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <div class="plib-input-modal">
     <h3 id="plibInputTitle"></h3>
     <div class="plib-input-desc" id="plibInputDesc"></div>
-    <textarea id="plibInputText"></textarea>
+    <div id="plibInputFields"></div>
     <div class="plib-input-actions">
       <button class="btn sm" onclick="closePlibInput()">Cancel</button>
       <button class="btn sm primary" onclick="confirmPlibInput()">Copy Prompt</button>
@@ -5535,18 +5537,62 @@ function effectivePromptLib() {
   const custom = (typeof getCustomPrompts === 'function') ? getCustomPrompts() : [];
   return custom.length ? PROMPT_LIBRARY.concat([{ category: 'My Prompts', custom: true, prompts: custom }]) : PROMPT_LIBRARY;
 }
+function plibInputList(p) {
+  // Normalized input list for the popup: the new-style `inputs` array (text and select kinds,
+  // rendered in declared order), or the legacy single `input` object wrapped as a one-item text
+  // list. Empty list = no popup, copy directly.
+  if (p.inputs && p.inputs.length) return p.inputs;
+  return p.input ? [Object.assign({ kind: 'text' }, p.input)] : [];
+}
+function renderPlibInputFields(p) {
+  const inputs = plibInputList(p);
+  const box = $('plibInputFields');
+  box.innerHTML = '';
+  // A single text input keeps the classic layout byte-identical: its label rides the desc slot and
+  // the lone textarea gets no field label. Multi-input popups label every field individually.
+  const single = inputs.length === 1 && inputs[0].kind !== 'select';
+  $('plibInputDesc').textContent = single ? inputs[0].label : (p.inputsNote || 'Set the fields below, then copy.');
+  let textSeen = false;
+  inputs.forEach((f, i) => {
+    if (!single) {
+      const lab = document.createElement('div');
+      lab.className = 'plib-input-label';
+      lab.textContent = f.label;
+      box.appendChild(lab);
+    }
+    if (f.kind === 'select') {
+      const sel = document.createElement('select');
+      sel.id = 'plibInputSel' + i;
+      sel.dataset.plibIdx = i;
+      (f.options || []).forEach(o => {
+        const op = document.createElement('option');
+        op.value = o.value;
+        op.textContent = o.label || o.value;
+        if (o.value === f.default) op.selected = true;
+        sel.appendChild(op);
+      });
+      box.appendChild(sel);
+      if (typeof enhanceSelect === 'function') { enhanceSelect(sel); refreshEnhancedSelect(sel); }
+    } else {
+      const ta = document.createElement('textarea');
+      // The first text field keeps the historical id so Cmd/Ctrl+E expand keeps working.
+      if (!textSeen) { ta.id = 'plibInputText'; textSeen = true; }
+      ta.dataset.plibIdx = i;
+      ta.placeholder = f.placeholder || '';
+      box.appendChild(ta);
+    }
+  });
+}
 function copyLibPrompt(idx, catIdx) {
   const p = effectivePromptLib()[catIdx].prompts[idx];
-  if (p.input) {
+  if (plibInputList(p).length) {
     // Show input popup to collect user's context before copying
     _plibPending = { idx, catIdx };
     $('plibInputTitle').textContent = p.title;
-    $('plibInputDesc').textContent = p.input.label;
-    const ta = $('plibInputText');
-    ta.value = '';
-    ta.placeholder = p.input.placeholder;
+    renderPlibInputFields(p);
     $('plibInputOverlay').classList.add('show');
-    setTimeout(() => ta.focus(), 50);
+    const first = $('plibInputFields').querySelector('textarea');
+    if (first) setTimeout(() => first.focus(), 50);
     return;
   }
   navigator.clipboard.writeText(p.prompt + getWritingStyleDirective()).then(() => showToast('Prompt copied to clipboard', 2500))
@@ -5559,15 +5605,24 @@ function closePlibInput() {
 function confirmPlibInput() {
   if (!_plibPending) return;
   const p = effectivePromptLib()[_plibPending.catIdx].prompts[_plibPending.idx];
-  const userInput = $('plibInputText').value.trim();
-  if (!userInput && !p.input.optional) {
-    showToast('Enter your input before copying');
-    $('plibInputText').focus();
-    return;
+  const inputs = plibInputList(p);
+  const box = $('plibInputFields');
+  let text = p.prompt;
+  for (let i = 0; i < inputs.length; i++) {
+    const f = inputs[i];
+    const el = box.querySelector('[data-plib-idx="' + i + '"]');
+    let v = el ? el.value.trim() : '';
+    if (f.kind !== 'select' && !v) {
+      if (!f.optional) {
+        showToast('Enter your input before copying');
+        if (el) el.focus();
+        return;
+      }
+      v = f.fallback || '';
+    }
+    // split/join replaces EVERY occurrence of the token (a prompt may reference a dial twice)
+    text = text.split(f.find).join(v);
   }
-  // Replace placeholder with user's input (or fallback for optional inputs)
-  const replacement = userInput || (p.input.fallback || '');
-  let text = p.prompt.replace(p.input.find, replacement);
   text = text.replace(/^> \*\*Your input\*\*.*?\n> Example:.*?\n\n/s, '');
   text += getWritingStyleDirective();
   navigator.clipboard.writeText(text).then(() => showToast('Prompt copied with your input', 2500))
@@ -6310,7 +6365,29 @@ const PROMPT_LIBRARY = [
       desc: 'Design what to monitor, alert thresholds, dashboard structure, and log strategy for this application.',
       prompt: '> **Your input**: Specify a service or system to focus on, or leave empty for the full application.\n> Example: payments-api, or the checkout flow\n\nDesign a monitoring and alerting strategy for [this application]. First, analyze the codebase to understand:\n- What services/components exist?\n- What are the critical user-facing paths?\n- What external dependencies does it have?\n- What could fail and how would we know?\n\nProduce a monitoring plan:\n\n## Health Checks\nFor each service/component: what endpoint to check, what constitutes "healthy", how often to check, what to do when unhealthy.\n\n## Key Metrics\n| Metric | What it measures | Alert threshold | Severity |\n\nInclude:\n- Request rate, error rate, latency (RED method)\n- Saturation: CPU, memory, disk, connections, queue depth\n- Business metrics: signups, orders, key user actions per minute\n- Dependency health: database response time, external API availability\n\n## Alerting Rules\nFor each alert:\n- Condition (not just "high CPU" but "CPU > 80% for 5 minutes")\n- Severity (page someone at 3am? or wait until morning?)\n- Runbook: what to check first, common causes, how to mitigate\n\n## Dashboard Design\nWhat panels to include, grouped by:\n- Overview (is everything OK at a glance?)\n- Per-service deep dive\n- Business metrics\n- Infrastructure\n\n## Logging Strategy\n- What to log at each level (ERROR, WARN, INFO, DEBUG)\n- Structured logging format\n- What to NEVER log (PII, secrets, full request bodies)\n- Log retention policy recommendation' }
   ]},
-  { category: 'Data & Migrations', prompts: [
+  { category: 'Migrations & Upgrades', prompts: [
+    { title: 'Software & Framework Upgrade',
+      inputs: [
+        { kind: 'text', label: 'What are you upgrading, and to which target version?', placeholder: 'e.g. Angular to 20, or .NET 8 to 9, or MUI to v7', find: '[what to upgrade and the target version]' },
+        { kind: 'select', label: 'Dependency scope: how much beyond the target itself may move?', find: '[dependency scope]', default: 'minimal', options: [
+          { value: 'minimal', label: 'minimal - the target plus only what is mandatory' },
+          { value: 'important', label: 'important - minimal, plus security and compatibility-risk deps' },
+          { value: 'everything', label: 'everything - minimal, plus all reasonable upgrades' } ] },
+        { kind: 'select', label: 'API adaptation: how should deprecated-but-still-working APIs be handled?', find: '[api adaptation]', default: 'necessary-only', options: [
+          { value: 'necessary-only', label: 'necessary-only - change code only where the upgrade breaks it' },
+          { value: 'modernize', label: 'modernize - also migrate deprecated APIs to their documented replacements' } ] },
+        { kind: 'select', label: 'Report detail: how much write-up at the end?', find: '[report detail]', default: 'full report', options: [
+          { value: 'full report', label: 'full report - version table, change ledger, validation matrix, proof' },
+          { value: 'summary', label: 'summary - what moved, what changed, validation outcome' },
+          { value: 'verdict only', label: 'verdict only - the closing verdict plus any caveats' },
+          { value: 'none', label: 'none - no write-up, just the one-line verdict' } ] },
+        { kind: 'select', label: 'Report destination: where should the write-up go?', find: '[report destination]', default: 'chat', options: [
+          { value: 'chat', label: 'chat - the report lands in the reply only' },
+          { value: 'markdown file', label: 'markdown file - also written into the repo on the upgrade branch' } ] },
+        { kind: 'text', optional: true, fallback: 'none stated', label: 'Constraints (optional): anything that must not change?', placeholder: 'e.g. keep Node 18 support, do not touch the legacy reporting module, hold a package back', find: '[constraints]' }
+      ],
+      desc: 'Research-first upgrade of a framework, runtime, library, or toolchain: reads the official migration path before touching code, moves only what the scope dial allows, adapts APIs per its own dial, and grades itself against a pre-upgrade baseline with runtime proof. Dials for dependency scope, API adaptation, and report detail - every default is the conservative one.',
+      prompt: '> **Your input**: Fill in the fields when copying - the target and version, the dials, and optional constraints.\n> Example: Angular to 20, or .NET 8 to 9, or MUI to v7\n\nYou are performing a production software upgrade. Target: [what to upgrade and the target version]\n\nTHE USER\'S DIALS (chosen at copy time; the definitions below are binding):\n- DEPENDENCY SCOPE: [dependency scope]\n  - minimal: upgrade the target plus ONLY what is mandatory for it to work - hard peer/version requirements (e.g. the EF Core bump a .NET upgrade forces, or the React version a UI library demands).\n  - important: minimal, plus direct dependencies with security advisories or known-incompatibility risk where a compatible upgrade exists.\n  - everything: minimal, plus every other dependency that can reasonably move to its latest compatible version.\n- API ADAPTATION: [api adaptation]\n  - necessary-only: change code only where the upgrade breaks it; prefer the smallest compatible change (renamed imports and shims over rewrites).\n  - modernize: where the new version deprecates an API and documents a replacement, migrate to the replacement even if the old API still works.\n- REPORT DETAIL: [report detail] - governs Phase 4 only. Every verification still RUNS at every level; detail changes what is written up, never what is verified.\n- REPORT DESTINATION: [report destination]\n  - chat: deliver the write-up in the reply only.\n  - markdown file: ALSO write it to a markdown file in the repo (docs/upgrades/upgrade-<target>-<date>.md, or the repo root if there is no docs folder) on the upgrade branch, so the record travels with the change.\n- CONSTRAINTS: [constraints]\n  Constraints outrank every dial and every phase: if honoring one blocks the upgrade, STOP and say so rather than violate it.\n\nPhase 0 - Baseline (before touching anything)\n1. Detect the CURRENT version from the project itself: manifests and lockfiles (package.json, csproj/global.json, go.mod, pyproject/requirements, Gemfile, pubspec), build files (CMakeLists, conanfile/vcpkg.json, build.gradle, Makefile), or config. State the exact from -> to path. If the current version cannot be determined confidently, say what you checked and ask. If the workspace contains multiple projects or apps using the target, list them and confirm which are in scope.\n2. Sanity-check the TARGET: confirm the requested version actually exists in the live registry or official releases - never invent one. If no documented path reaches it, or it is already end of life, or a newer maintained release would clearly serve better, say so and let the user confirm the target before proceeding.\n3. Confirm the working tree is clean and do the work on a dedicated branch. Every stage below must be individually revertible.\n4. Inventory every validation signal this repo has: build/compile, type check, lint, unit tests, integration tests, e2e, smoke scripts. For UI-library upgrades add a rendering signal - dev-server boot, Storybook build, visual or snapshot tests, or at minimum a manual render pass of the most-used screens - because styling regressions will not show up in unit tests. Run ALL of them NOW and record the results. This baseline is the honesty anchor: pre-existing failures are not yours to fix and not yours to hide - the success bar is "no signal worse than baseline".\n5. If the repo has no meaningful validation signals (common in older projects), say so up front and build the cheapest safety net FIRST - a compile check and a boot smoke test at minimum - because for a legacy codebase that net may be the only thing standing between the upgrade and silent breakage.\n\nPhase 1 - Research (still not touching anything)\n6. Do not trust memory for versions or compatibility - training data is stale for exactly the releases that matter here. Verify against live sources (web search, official docs, the package registry): the official migration/upgrade guide for this specific from -> to path, and the release notes and breaking-changes list for EVERY major version boundary crossed (a 7 -> 10 jump means reading 8, 9, AND 10).\n7. Identify toolchain and environment prerequisites - runtime, SDK, compiler and language-standard level, Node, JDK, Xcode / Android Gradle plugin, OS minimums - and check them against THIS machine and this repo\'s CI config. A prerequisite gap found now is a plan item; found mid-upgrade it is a broken tree.\n8. Map the companion-dependency graph: which dependencies MUST move (hard requirements of the target version) and which the DEPENDENCY SCOPE dial elects. For every mandatory companion that itself crosses a major version, read ITS breaking changes too.\n9. Find out whether an official migration tool, codemod, or CLI exists for this path (e.g. ng update, dotnet upgrade, rails app:update, npx @mui/codemod, clang-tidy modernize checks). Official tooling beats hand editing - plan around it.\n10. Grep THIS codebase for actual usage of every API the breaking-changes lists name. The plan addresses evidence, not hypotheticals: a breaking change the code never uses is a one-line no-op in the plan, not work.\n11. If this project is itself a published library, check whether the upgrade leaks through its public surface (re-exported types, peer requirements, ABI for native code) - that can force a major bump of THIS project; flag it in the plan.\n12. Write the UPGRADE PLAN: ordered stages, each naming the packages that move (exact from -> to), why (mandatory vs scope-elected), the code changes it forces (with the doc link that mandates each), and how to revert that stage alone. If any decision genuinely belongs to the user - a mandatory companion crosses its own major with heavy breakage, the documented path recommends an intermediate stop, a prerequisite needs installing - STOP and ask before executing. Otherwise state the plan and proceed.\n\nPhase 2 - Execute, stage by stage\n13. Follow the documented upgrade path one stage at a time. Use official migration tooling first where it exists; hand-edit only what it misses. Build scripts, CI config, and native project files are part of the upgrade, not just source code.\n14. After every stage: reinstall and restore dependencies properly (regenerate the lockfile; never mask a conflict with --force or --legacy-peer-deps without declaring and justifying it), get back to a compiling state, and run the fast validation signals before starting the next stage. Never stack a second stage on a broken tree.\n15. Adapt code per the API ADAPTATION dial and keep a running change ledger: package or API -> what changed -> which doc required it. No drive-by refactors, no unrelated cleanups - a reviewer must be able to map every hunk in the diff to a ledger line.\n16. Never weaken a test, delete an assertion, skip a suite, or pin a dependency backwards just to make a stage pass. If a test legitimately must change because the upgrade changed real behavior, change it with the doc citation in the ledger.\n17. If a stage will not reach green after honest attempts, STOP: revert to the last green stage, leave the tree working, and report the exact blocker with what you researched. A clean stop at stage 2 of 4 beats a broken tree at stage 4.\n\nPhase 3 - Verify (the gate)\n18. Re-run EVERY signal from the Phase 0 inventory: build, types, lint, unit, integration, e2e, smoke, rendering. Compare each against baseline: zero new failures. Pre-existing failures stay reported, not silently fixed and not blamed on the upgrade.\n19. Prove the new version is live at RUNTIME, not just declared: boot the app or run the doctor command (framework version banner, dotnet --list-sdks vs the project target, ng version, the built binary\'s --version output, lockfile resolution) and show the evidence. For UI-library upgrades, render the key screens and compare against their pre-upgrade appearance.\n20. Sweep for leftovers: mixed versions (a package still on the old major), duplicate versions in the lockfile, orphaned config keys, workarounds or polyfills the new version obsoletes (remove only if the SCOPE dial allows; otherwise list as follow-ups). Check the build output for NEW deprecation warnings and handle them per the API dial.\n21. Run the ecosystem\'s advisory check (npm audit, dotnet list package --vulnerable, pip-audit, or equivalent) and report the security delta of the upgrade.\n\nPhase 4 - Report (at the REPORT DETAIL level the user chose)\n- full report: version table (every package that moved, from -> to, why; every candidate deliberately NOT moved, why), the change ledger with doc citations, the validation matrix (every signal, baseline vs post-upgrade), the runtime proof, and follow-ups with remaining risks.\n- summary: one line per package moved, a brief note of what code changed and why, the validation outcome, and any follow-ups worth knowing.\n- verdict only: just the closing verdict plus any caveats the user must know.\n- none: no write-up; end with the one-line verdict only (caveats, if any, are named in that line - an upgrade may end quietly, never dishonestly).\nDeliver per REPORT DESTINATION: chat means the reply only; markdown file means the write-up is also saved to the repo as described in the dials (with REPORT DETAIL none there is nothing to save - say so rather than create an empty file).\nAt EVERY level: caveats and unresolved risks are always reported - silent risk is never an acceptable economy - and the write-up ends with the verdict, exactly one of: UPGRADED AND VERIFIED (all signals at or above baseline, runtime proof shown) / UPGRADED WITH CAVEATS (name each caveat) / BLOCKED (reverted to the last green stage; exact blocker and what unblocks it). Never report a verdict the validation matrix does not support.' },
     { title: 'Zero-Downtime Migration Planner',
       input: { label: 'Describe the schema change you need to make.', placeholder: 'e.g. Rename users.name to users.display_name and split into first_name + last_name columns', find: '[Describe the schema change: add/remove/rename columns, change types, split/merge tables, etc.]' },
       desc: 'Design a database migration that can be deployed without taking the application offline.',
