@@ -724,9 +724,15 @@ svg.canvas{width:100%;height:100%;display:block}
           <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportHandoffFile();closeExportMenu()" title="Download a resume package (.md) to hand in-progress work to another engineer: how to resume, the durable record path, the ready-to-run prompt, and the workflow definition. The live state travels with your git branch, not this file.">Handoff Package</button>
         </div>
       </div>
-      <label class="btn sm" style="margin:0">Import
-        <input type="file" accept=".json,.yaml,.yml,.md" style="display:none" onchange="importWorkflowFile(event)">
-      </label>
+      <div style="position:relative;display:inline-block">
+        <button class="btn sm" id="importMenuBtn" aria-haspopup="true" aria-expanded="false" onclick="toggleImportMenu(event)" title="Bring a workflow, schema, or run report into the designer - from a file or straight from your clipboard.">Import &#9662;</button>
+        <div class="export-menu" id="importMenu" role="menu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:60;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,0.4);min-width:210px;padding:4px">
+          <label class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" title="Import a saved .json workflow, an OpenSpec schema.yaml, or a fence-bearing .md file.">From file
+            <input type="file" accept=".json,.yaml,.yml,.md" style="display:none" onchange="importWorkflowFile(event);closeImportMenu()">
+          </label>
+          <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="pasteImportWorkflow();closeImportMenu()" title="Import whatever is on your clipboard - Claude's returned tuning JSON, a run report, any importable text. Fenced code blocks are extracted automatically; no file needed.">From clipboard</button>
+        </div>
+      </div>
     </div>
     <div class="saved-workflows-list" id="savedWorkflowList">
       <div class="saved-empty">No saved workflows yet</div>
@@ -1159,8 +1165,16 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h2 id="hg-more">More</h2>
 
-<h3>Run Reports &amp; Connect Repo</h3>
-<p>Generated workflows end with a small <code>awd:run</code> fence summarizing the run (steps, turn caps, gate cycles). Drop a run's final response or durable record onto <strong>Import</strong> and the designer badges your nodes with that telemetry; the <strong>Tuning Prompt</strong> button turns the accumulated stats into a prompt that asks Claude to return an improved workflow JSON to import back. Everything lives in the <strong>Run Reports</strong> section, right below the memory and durable-record toggles - it completes that loop: the record a run keeps is where its report comes back from.</p>
+<h3>Run Reports: Self-Improvement &amp; Connect Repo</h3>
+<p>Generated workflows end with a small <code>awd:run</code> fence summarizing the run (steps, turn caps, gate cycles). Drop a run's final response or durable record onto <strong>Import</strong> (or use <strong>Connect Folder</strong> so <code>~/.awd</code> feeds in automatically) and the designer badges your nodes with that telemetry. The full tuning loop, start to finish:</p>
+<ol>
+<li><strong>Run your workflow a few times.</strong> Each run reports back via its <code>awd:run</code> fence; the Workflow Review suggests tuning once three runs have reported.</li>
+<li><strong>Click Tuning Prompt</strong> (Run Reports section). It copies a prompt built from your real stats plus the workflow itself.</li>
+<li><strong>Paste it to Claude.</strong> It diagnoses from the telemetry and returns an improved workflow as one JSON block, with a predicted effect per change.</li>
+<li><strong>Copy Claude's reply and use Import &gt; From clipboard.</strong> The designer extracts the JSON and replaces your canvas.</li>
+<li><strong>Run the improved workflow.</strong> The next reports confirm or refute each prediction.</li>
+</ol>
+<p>The record a run keeps is where its report comes back from - and the loop is honest because the predictions are checkable.</p>
 <p><strong>Connect Folder</strong> (in the Run Reports section, Chromium only) removes even the paste. Recommended: connect <code>~/.awd</code> once - every run appends its fence to <code>~/.awd/run-reports.md</code>, so one grant catches every workflow against every repo, always on. (Pick the <code>~/.awd</code> folder itself - Chrome refuses to grant the home directory because it contains system files. Create it first if it does not exist (<code>mkdir -p ~/.awd</code>), then in the picker press <code>Cmd+Shift+G</code> and type <code>~/.awd</code>, or <code>Cmd+Shift+.</code> to reveal hidden folders. The dialog remembers your last pick afterwards.) Connecting a single repo's <code>.workflow</code> folder works too (reports also live in its durable records) when you only care about that repo. Rescans never double-count (content-hash dedupe); disconnect anytime. Stats live in your browser only.</p>
 <h3>Workflow Advisor</h3>
 <p>Click the health indicator to open the review modal. Below any issues, a lightbulb <b>Suggestions</b> group offers non-blocking advice: unreviewed build paths (one-click <b>Attach Skeptic</b>), fan-outs that never synthesize, solo agents shipping code, read-only roles holding write tools, starved turn budgets - and, once run reports are ingested, telemetry-informed tuning (gates that loop, steps that cap out or fail). Suggestions never affect the badge count and never block generation.</p>
@@ -3286,8 +3300,27 @@ function importWorkflowFile(event) {
   if (!file) return;
   if (file.size > 10 * 1024 * 1024) { showToast('File too large (max 10MB)'); return; }
   const reader = new FileReader();
-  reader.onload = function(e) {
-    const text = e.target.result;
+  reader.onload = function(e) { importWorkflowText(e.target.result, file.name || 'import'); };
+  reader.readAsText(file);
+}
+// A chat reply usually wraps the payload in a fenced code block with prose around it;
+// take the LARGEST fence (the workflow JSON dwarfs any snippet), else the raw text.
+function extractFencedPayload(text) {
+  const fences = [...String(text || '').matchAll(/```[a-zA-Z]*\n([\s\S]*?)```/g)].map(m => m[1]);
+  if (!fences.length) return text;
+  return fences.reduce((a, b) => (b.length > a.length ? b : a), '');
+}
+function pasteImportWorkflow() {
+  if (!navigator.clipboard || !navigator.clipboard.readText) { showToast('Clipboard unavailable here - use Import (file) instead'); return; }
+  navigator.clipboard.readText().then(t => {
+    if (!t || !t.trim()) { showToast('Clipboard is empty'); return; }
+    importWorkflowText(extractFencedPayload(t), 'clipboard.json');
+  }).catch(() => showToast('Could not read the clipboard - use Import (file) instead'));
+}
+// Shared ingestion for file and clipboard imports. fileName drives the zip/yaml/md
+// branch heuristics exactly as the file path always has.
+function importWorkflowText(text, fileName) {
+  {
     // OpenSpec round-trip import: a schema.yaml or our .md bundle carrying the
     // awd:meta side-channel rehydrates losslessly through the existing deserializeWorkflow.
     const meta = openSpecExtractMeta(text);
@@ -3306,14 +3339,14 @@ function importWorkflowFile(event) {
     // workflow import. Checked AFTER awd:meta so handoff bundles still round-trip.
     if (typeof extractRunFences === 'function') {
       const fences = extractRunFences(text);
-      if (fences.length) { ingestRunFences(fences, { source: file.name || 'import' }); return; }
+      if (fences.length) { ingestRunFences(fences, { source: fileName || 'import' }); return; }
     }
-    if (/\.zip$/i.test(file.name || '')) {
+    if (/\.zip$/i.test(fileName || '')) {
       // Our OpenSpec export is a .zip; the re-importable file is the schema.yaml inside it.
       showToast('That is the zipped OpenSpec export - unzip it and import the schema.yaml inside to edit it here.');
       return;
     }
-    if (/\.(ya?ml|md)$/i.test(file.name || '')) {
+    if (/\.(ya?ml|md)$/i.test(fileName || '')) {
       // Foreign OpenSpec schema (no awd:meta): best-effort reconstruction for viewing/editing.
       const wf = (typeof openSpecImportForeign === 'function') ? openSpecImportForeign(text) : null;
       if (wf && deserializeWorkflow(wf)) {
@@ -3338,8 +3371,7 @@ function importWorkflowFile(event) {
         showToast('Failed to import workflow');
       }
     } catch(err) { showToast('Invalid JSON file'); }
-  };
-  reader.readAsText(file);
+  }
 }
 
 // Generate the active export prompt without touching the DOM preview (used by the handoff bundle).
@@ -3425,6 +3457,18 @@ function genHandoffBundle() {
 
 // Download the handoff bundle as a single Markdown file.
 // Export dropdown (Workflow Management): toggles the Export menu (Workflow JSON / OpenSpec schema).
+function toggleImportMenu(e) {
+  e.stopPropagation();
+  const m = $('importMenu'), b = $('importMenuBtn');
+  const open = m.style.display !== 'none';
+  m.style.display = open ? 'none' : 'block';
+  if (b) b.setAttribute('aria-expanded', String(!open));
+}
+function closeImportMenu() {
+  const m = $('importMenu'), b = $('importMenuBtn');
+  if (m) m.style.display = 'none';
+  if (b) b.setAttribute('aria-expanded', 'false');
+}
 function toggleExportMenu(e) {
   if (e) e.stopPropagation();
   const m = $('exportMenu'), b = $('exportMenuBtn');
@@ -8315,6 +8359,12 @@ function adviseWorkflow() {
   if (typeof hasRunReportData === 'function' && hasRunReportData()) {
     const wf = loadRunReports()[getName() || 'workflow'] || {};
     const nodesStats = wf.nodes || {};
+    // (f0) Enough data to tune: once three runs have reported, the Tuning Prompt has a
+    // real sample to reason from - nudge once at the review surface, never nag elsewhere.
+    const _totalRuns = Math.max(0, ...Object.values(nodesStats).map(x => x.runs || 0));
+    if (_totalRuns >= 3) {
+      s.push({ msg: _totalRuns + ' runs of telemetry recorded for this workflow - the Tuning Prompt (Run Reports section) can turn them into a data-driven improved workflow; bring Claude\'s answer back with Import > From clipboard.' });
+    }
     state.nodes.forEach(n => {
       const st = nodesStats[slugify(n.label)];
       if (!st) return;
@@ -11567,6 +11617,15 @@ function ingestRunReport(rep, opts) {
     e.cycleRuns++;
     e.cycleSum += (typeof gt.cycles === 'number' ? gt.cycles : 0);
   });
+  // Qualitative evidence survives ingestion: the fence notes carry the WHY no counter can
+  // (kept newest-last, capped at 5), and grounded slugs show which records earn their keep.
+  if (typeof rep.notes === 'string' && rep.notes.trim()) {
+    wf.recentNotes = (wf.recentNotes || []).concat([rep.notes.trim()]).slice(-5);
+  }
+  (Array.isArray(rep.grounded) ? rep.grounded : []).forEach(g => {
+    wf.groundedCounts = wf.groundedCounts || {};
+    wf.groundedCounts[g] = (wf.groundedCounts[g] || 0) + 1;
+  });
   wf.lastReport = rep;
   wf.lastDate = new Date().toISOString().slice(0, 10);
   wf.reports = (wf.reports || 0) + 1;
@@ -11647,11 +11706,24 @@ function genTuningPrompt() {
   L.push('');
   L.push('## What to do');
   L.push('');
-  L.push('1. Diagnose from the stats: a step hitting its turn cap is under-budgeted or overloaded; a gate averaging high revise cycles means the step feeding it needs a stronger prompt or an earlier review; failures mean the step needs rescoping or better inputs.');
-  L.push('2. Propose the tuning: raise maxTurns where caps hit; attach or move a review loop where revise cycles run high; split a step that both caps out and fails; strengthen the prompt of a step that repeatedly triggers revisions. Keep changes minimal and motivated - one stat, one change.');
-  L.push('3. List each change and the stat that motivated it.');
+  L.push('1. Diagnose from the stats AND the run notes below: a step hitting its turn cap is under-budgeted or overloaded; a gate averaging high revise cycles means the step feeding it needs a stronger prompt or an earlier review; failures mean the step needs rescoping or better inputs. When a note and a counter disagree, trust the note - it says WHY.');
+  L.push('2. Propose the tuning using the designer\'s full toolbox: raise maxTurns where caps hit; attach or move a review loop (a Skeptic critiques a step, a Verifier proves an outcome by execution) where revise cycles run high; split a step that both caps out and fails; strengthen the prompt of a step that repeatedly triggers revisions; adjust a coder-family step\'s defect posture (balanced / record-only / aggressive) when scope churn shows in the notes; consider verification-instructions ownership if checks are being duplicated or skipped; change a struggling step\'s MODEL (upgrade a repeatedly-failing or high-revise step; a trivial always-clean step can run cheaper); turn on workflow memory / the durable record when notes show context loss or repeated re-discovery between steps; restructure topology sparingly - fork genuinely independent sequential steps, serialize a fork whose siblings collide, remove or merge a step the reports show always skipped; raise a gate\'s max revisions only when its cycles are productive (each cycle fixing real findings), lower it when cycles thrash; add the clarify-first gate when notes show requirements churn. Keep changes minimal and motivated - one stat or note, one change.');
+  L.push('3. List each change, the stat that motivated it, and the EFFECT you predict on the next run\'s telemetry (so the next round of reports can confirm or refute the tuning).');
   L.push('4. THEN return the COMPLETE updated workflow as ONE ```json code block in exactly the same format as the definition below (keep node ids and positions unless a change requires otherwise), so it can be imported straight back into the designer.');
   L.push('');
+  const _wfStats = loadRunReports()[name] || {};
+  if ((_wfStats.recentNotes || []).length) {
+    L.push('## Recent run notes (newest last - the qualitative WHY behind the numbers)');
+    L.push('');
+    _wfStats.recentNotes.forEach(n => L.push('- ' + n));
+    L.push('');
+  }
+  if (_wfStats.groundedCounts && Object.keys(_wfStats.groundedCounts).length) {
+    L.push('## Durable records that informed these runs (times used)');
+    L.push('');
+    Object.entries(_wfStats.groundedCounts).forEach(([g, c]) => L.push('- ' + g + ': ' + c));
+    L.push('');
+  }
   L.push('## Current workflow definition (awd JSON)');
   L.push('');
   L.push('```json');
@@ -11668,7 +11740,7 @@ function copyTuningPrompt() {
   // so the change is not provable there. The stock dialog stays until verified in real browsers.
   if (secrets.length > 0 && !confirm('Possible secrets detected in your inputs: ' + secrets.join(', ') + '.\n\nThese will be included in the copied prompt. Continue?')) return;
   navigator.clipboard.writeText(text)
-    .then(() => showToast('Tuning prompt copied - paste it to Claude, then import the returned JSON'))
+    .then(() => showToast('Tuning prompt copied - paste it to Claude, then bring its returned JSON back with the Paste button (no file needed)', 6000))
     .catch(() => showToast('Could not copy - check clipboard permissions'));
 }
 // Content-hash dedupe shared by BOTH feeds (paste/drop import and the connected-folder
