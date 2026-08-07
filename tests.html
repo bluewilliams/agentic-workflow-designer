@@ -7012,7 +7012,7 @@ describe('Usability & Help', () => {
         cat.prompts.forEach(p => {
           const surfaces = [p.title, p.desc || '', p.prompt, (p.input && p.input.label) || '', (p.input && p.input.placeholder) || ''];
           (p.inputs || []).forEach(f => {
-            surfaces.push(f.label || '', f.placeholder || '', f.find || '');
+            surfaces.push(f.label || '', f.placeholder || '', f.find || '', f.on || '', f.off || '');
             (f.options || []).forEach(o => surfaces.push(o.value || '', o.label || ''));
           });
           surfaces.forEach(t => {
@@ -7145,17 +7145,23 @@ describe('Usability & Help', () => {
       const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Migrations & Upgrades');
       const p = cat.prompts.find(x => x.title === 'Software & Framework Upgrade');
       expect(!!p).toBe(true);
-      // six inputs: required target text, four selects, optional constraints text
+      // six inputs: required target text, three selects, a save-to-file checkbox, optional constraints text
       expect(p.inputs.length).toBe(6);
       expect(p.inputs[0].kind).toBe('text');
       expect(!!p.inputs[0].optional).toBe(false);
       const selects = p.inputs.filter(f => f.kind === 'select');
-      expect(selects.length).toBe(4);
+      expect(selects.length).toBe(3);
       // every select default is its first (conservative) option and a real option value
       selects.forEach(f => {
         expect(f.options.some(o => o.value === f.default)).toBe(true);
       });
-      expect(selects.map(f => f.default)).toEqual(['minimal', 'necessary-only', 'full report', 'chat']);
+      expect(selects.map(f => f.default)).toEqual(['minimal', 'necessary-only', 'full report']);
+      // report destination is the shared save-to-file checkbox pattern, defaulting to chat (unchecked)
+      const dest = p.inputs.find(f => f.find === '[report destination]');
+      expect(dest.kind).toBe('checkbox');
+      expect(!!dest.default).toBe(false);
+      expect(dest.on).toBe('markdown file');
+      expect(dest.off).toBe('chat');
       // report detail offers a true opt-out, but even none keeps the one-line verdict honest
       const detail = p.inputs.find(f => f.find === '[report detail]');
       expect(detail.options.some(o => o.value === 'none')).toBe(true);
@@ -7189,21 +7195,23 @@ describe('Usability & Help', () => {
       expect(p).toContain('BLOCKED');
       expect(p).toContain('Never report a verdict the validation matrix does not support');
     });
-    it('multi-input popup renders labeled fields: one primary textarea, four dropdown selects at their defaults, one optional textarea', () => {
+    it('multi-input popup renders labeled fields: one primary textarea, three dropdown selects at their defaults, a checkbox, one optional textarea', () => {
       const catIdx = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Migrations & Upgrades');
       const pIdx = win.PROMPT_LIBRARY[catIdx].prompts.findIndex(p => p.title === 'Software & Framework Upgrade');
       win.copyLibPrompt(pIdx, catIdx);
       const box = win.document.getElementById('plibInputFields');
       expect(box.querySelectorAll('textarea').length).toBe(2);
-      expect(box.querySelectorAll('select').length).toBe(4);
-      expect(box.querySelectorAll('.plib-input-label').length).toBe(6);
+      expect(box.querySelectorAll('select').length).toBe(3);
+      // checkbox rows carry their label inline, so labeled fields = 2 textareas + 3 selects
+      expect(box.querySelectorAll('.plib-input-label').length).toBe(5);
+      expect(box.querySelectorAll('.plib-input-check input[type=checkbox]').length).toBe(1);
+      expect(box.querySelector('.plib-input-check input').checked).toBe(false);
       // selects arrive skinned by the unified dropdown enhancer, defaults preselected
-      expect(box.querySelectorAll('.custom-select.enhanced-select').length).toBe(4);
+      expect(box.querySelectorAll('.custom-select.enhanced-select').length).toBe(3);
       const sels = box.querySelectorAll('select');
       expect(sels[0].value).toBe('minimal');
       expect(sels[1].value).toBe('necessary-only');
       expect(sels[2].value).toBe('full report');
-      expect(sels[3].value).toBe('chat');
       // the first text field keeps the historical id (Cmd+E expand contract)
       expect(box.querySelector('textarea').id).toBe('plibInputText');
       win.closePlibInput();
@@ -7226,6 +7234,52 @@ describe('Usability & Help', () => {
       expect(copied.indexOf('[report destination]')).toBe(-1);
       expect(copied.indexOf('[constraints]')).toBe(-1);
       expect(copied.startsWith('> **Your input**')).toBe(false);
+    });
+    it('checking the save-to-file box flips the destination substitution to markdown file', () => {
+      const catIdx = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Migrations & Upgrades');
+      const pIdx = win.PROMPT_LIBRARY[catIdx].prompts.findIndex(p => p.title === 'Software & Framework Upgrade');
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.copyLibPrompt(pIdx, catIdx);
+      win.document.getElementById('plibInputText').value = 'Angular to 20';
+      win.document.querySelector('#plibInputFields .plib-input-check input').checked = true;
+      win.confirmPlibInput();
+      expect(copied).toContain('REPORT DESTINATION: markdown file');
+      expect(copied.indexOf('[report destination]')).toBe(-1);
+    });
+    it('every Documentation prompt carries the save-to-file checkbox feeding an [output destination] token in its body', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Documentation');
+      cat.prompts.forEach(p => {
+        const cb = (p.inputs || []).find(f => f.kind === 'checkbox' && f.find === '[output destination]');
+        expect(!!cb).toBe(true);
+        expect(p.prompt).toContain('[output destination]');
+        expect(cb.off).toContain('Deliver the');
+      });
+      // API Documentation Generator keeps its historical write-to-file behavior: checked by default
+      const api = cat.prompts.find(p => p.title === 'API Documentation Generator');
+      expect(api.inputs[0].default).toBe(true);
+      expect(api.inputs[0].on).toContain('.claude/docs/api.md');
+      // the rest default to chat-only (unchecked)
+      cat.prompts.filter(p => p.title !== 'API Documentation Generator').forEach(p => {
+        const cb = p.inputs.find(f => f.kind === 'checkbox');
+        expect(!!cb.default).toBe(false);
+      });
+    });
+    it('a single-checkbox popup copies with the off text unchecked and the on text checked', () => {
+      const catIdx = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Documentation');
+      const pIdx = win.PROMPT_LIBRARY[catIdx].prompts.findIndex(p => p.title === 'Codebase Onboarding Guide');
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.copyLibPrompt(pIdx, catIdx);
+      expect(win.document.querySelectorAll('#plibInputFields .plib-input-check input').length).toBe(1);
+      win.confirmPlibInput();   // default unchecked -> chat delivery
+      expect(copied).toContain('Deliver the output in your reply.');
+      expect(copied.indexOf('[output destination]')).toBe(-1);
+      win.copyLibPrompt(pIdx, catIdx);
+      win.document.querySelector('#plibInputFields .plib-input-check input').checked = true;
+      win.confirmPlibInput();
+      expect(copied).toContain('standalone markdown file');
+      expect(copied.indexOf('[output destination]')).toBe(-1);
     });
     it('multi-input confirm honors a changed dropdown and a typed constraint', () => {
       const catIdx = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Migrations & Upgrades');
