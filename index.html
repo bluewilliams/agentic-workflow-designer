@@ -702,9 +702,9 @@ svg.canvas{width:100%;height:100%;display:block}
     <div style="height:1px;background:var(--border);opacity:.5;margin:14px 0 10px"></div>
     <div id="uiContextSection">
     <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">UI Context</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Styling preferences or migration notes. Leave blank and the agent will discover your design system automatically.</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Styling preferences or migration notes for any platform - web, mobile, or desktop UI. Leave blank and the agent will discover your design system automatically.</div>
     <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Used by Design Analyzer and UI-building steps.</div>
-    <textarea id="uiContextNotes" class="story-input" style="min-height:48px;padding:6px 8px;font-size:12px" placeholder="e.g. Use vanilla-extract + clsx, avoid SCSS and MUI v4" oninput="updatePrompt();savePrefsDebounced()"></textarea>
+    <textarea id="uiContextNotes" class="story-input" style="min-height:48px;padding:6px 8px;font-size:12px" placeholder="e.g. Use vanilla-extract + clsx, avoid SCSS and MUI v4; or Compose Material3 tokens only; or SwiftUI over UIKit for new screens" oninput="updatePrompt();savePrefsDebounced()"></textarea>
     </div>
   </div>
 
@@ -9258,7 +9258,7 @@ function appSourceBlock(heading) {
   } else {
     lines.push('This is the application under test - **READ-ONLY, do NOT modify files in this repo.**');
   }
-  lines.push('Explore it to understand UI structure and extract element selectors for test automation:');
+  lines.push('Steps whose task involves app exploration or test authoring: explore it to understand UI structure and extract the element selectors your tests will target:');
   if (app.branch) {
     lines.push('1. Sync the pinned version first: `git -C ' + app.path + ' fetch && git -C ' + app.path + ' checkout ' + app.branch + ' && git -C ' + app.path + ' pull --ff-only`. If the tree is dirty or the pull cannot fast-forward, do NOT force or resolve anything - proceed with the current state and say so. Syncing is version maintenance, not modification; the read-only contract governs authoring changes.');
   } else {
@@ -9270,6 +9270,8 @@ function appSourceBlock(heading) {
   lines.push('4. Extract selectors, interactive elements, and component hierarchy to inform your test code');
   lines.push('5. Note any elements lacking accessibility identifiers - flag these as gaps the app team should address');
   lines.push('');
+  lines.push('Steps with no exploration in their task: the access contract above still binds; read from this repo only as your task requires.');
+  lines.push('');
   return lines;
 }
 function uiContextBlock(heading) {
@@ -9277,7 +9279,7 @@ function uiContextBlock(heading) {
   const notes = el ? el.value.trim() : '';
   if (!notes) return [];
   const h = heading || '### UI Context';
-  return [h, '', notes, ''];
+  return [h, '', 'User-provided UI/design constraints (any platform - web, mobile, or desktop). Authoritative for UI decisions: validate them against what the codebase shows, then honor them in any UI work.', '', notes, ''];
 }
 // Delivery is driven entirely by the Output node format. Code changes are produced
 // by the agents regardless of the output node; the format only decides what to DO at
@@ -10559,13 +10561,13 @@ function genAgentSDK() {
   p.push('');
   const _sdkApp = getAppSource();
   if (_sdkApp) {
-    p.push(`    app_source_path = "${_sdkApp.path}"  # READ-ONLY - explore for selectors, do not modify`);
+    p.push(`    app_source_path = "${_sdkApp.path}"  # ${getAppSourceAccess() === 'writable' ? 'WRITABLE by deliberate configuration - modify only where the task requires it, declare every change' : 'READ-ONLY - explore for selectors, do not modify'}`);
     if (_sdkApp.branch) p.push(`    app_source_branch = "${_sdkApp.branch}"  # checkout before exploring`);
     p.push('');
   }
   const _sdkUiNotes = $('uiContextNotes') ? $('uiContextNotes').value.trim() : '';
   if (_sdkUiNotes) {
-    p.push(`    ui_context = """${_sdkUiNotes}"""  # Styling preferences - Design System Analyzer will use these as constraints`);
+    p.push(`    ui_context = """${_sdkUiNotes}"""  # UI/design constraints (any platform) - authoritative for Design Analyzer and any UI-building step`);
     p.push('');
   }
   const _sdkDelivery = deliveryBlock('###');
@@ -10969,11 +10971,15 @@ function openSpecContextBlock() {
   const rules = (state.rulesPaths || []).filter(Boolean);
   const docs = (state.productDocPaths || []).filter(Boolean);
   const verify = (state.verifyPaths || []).filter(Boolean);
-  if (!rules.length && !docs.length && !verify.length) return '';
+  const app = (typeof getAppSource === 'function') ? getAppSource() : null;
+  const uiNotes = ($('uiContextNotes') ? $('uiContextNotes').value : '').trim();
+  if (!rules.length && !docs.length && !verify.length && !app && !uiNotes) return '';
   const lines = ['Repo context to read and honor (resolve each path in each repo in scope; read only what is listed):'];
   if (rules.length) lines.push('- Rules / constitution (BINDING - follow them): ' + rules.join(', '));
   if (docs.length) lines.push('- Product / architecture docs (serve, do not contradict): ' + docs.join(', '));
   if (verify.length) lines.push('- Verification instructions (verifier / tester owned - report each check as executed / not-applicable / blocked' + (state.verifyFailRun ? '; a blocked or failed REQUIRED check fails the run' : '; blocked checks are recorded, not run-failing') + '): ' + verify.join(', '));
+  if (app) lines.push('- App under test at ' + app.path + (app.branch ? ' (branch ' + app.branch + ')' : '') + ' - ' + (getAppSourceAccess() === 'writable' ? 'writable by deliberate configuration; declare every modification' : 'READ-ONLY') + '; exploration/test steps mine UI selectors from it');
+  if (uiNotes) lines.push('- UI/design constraints (authoritative for UI work, any platform): ' + uiNotes.replace(/\s*\n+\s*/g, '; '));
   return lines.join('\n');
 }
 function openSpecGroundingBlock() {

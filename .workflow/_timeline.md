@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-08-07 - context-agent-types (update) - App Source / UI Context machinery audit: role-addressed exploration prose + everyone-else access line, UI Context framing line (authoritative, any platform), SDK access-selector bug fixed (hardcoded READ-ONLY), sidebar copy broadened beyond web, OpenSpec forwards both. 1574 -> 1578 - .workflow/context-agent-types.md
 2026-08-07 - sidebar-collapse (update) - third merge: UI Context folds into App Under Test ("App & UI Context", sub-labels inside); MCP Integrations heading loses the "prompt hints" suffix to an explanatory body line; 12 sections, seed 10+2; merge campaign closed - .workflow/sidebar-collapse.md
 2026-08-07 - prompt-library-overhaul (update) - checkbox field kind for the popup (on/off text substitution): every Documentation prompt gains a save-as-markdown-file checkbox ([output destination] token; API doc generator defaults checked keeping .claude/docs/api.md), upgrade prompt's destination dropdown becomes the same checkbox (body unchanged). 1571 -> 1574 - .workflow/prompt-library-overhaul.md
 2026-08-07 - sidebar-collapse (update) - floating Better-outcomes tip moved inside MCP Integrations under its heading (collapses with the section it advises) - .workflow/sidebar-collapse.md
