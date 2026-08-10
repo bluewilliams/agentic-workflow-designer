@@ -5885,6 +5885,64 @@ describe('Agent craft batch', () => {
       win.savePrefs();
       resetState();
     });
+    it('appSourceBlock frames exploration for the steps that do it and binds everyone else to the access contract', () => {
+      resetState();
+      win.document.getElementById('appSourcePath').value = '/tmp/proj-app';
+      const block = win.appSourceBlock().join('\n');
+      expect(block).toContain('Steps whose task involves app exploration or test authoring');
+      expect(block).toContain('Steps with no exploration in their task: the access contract above still binds');
+      win.document.getElementById('appSourcePath').value = '';
+      resetState();
+    });
+    it('uiContextBlock frames the notes as authoritative cross-platform constraints', () => {
+      resetState();
+      win.document.getElementById('uiContextNotes').value = 'SwiftUI over UIKit for new screens';
+      const block = win.uiContextBlock().join('\n');
+      expect(block).toContain('any platform - web, mobile, or desktop');
+      expect(block).toContain('Authoritative for UI decisions');
+      expect(block).toContain('SwiftUI over UIKit for new screens');
+      win.document.getElementById('uiContextNotes').value = '';
+      expect(win.uiContextBlock().length).toBe(0);   // content-gated OFF state
+      resetState();
+    });
+    it('the SDK app_source comment honors the Access selector both ways and ui_context names all UI consumers', () => {
+      resetState();
+      win.document.getElementById('appSourcePath').value = '/tmp/proj-app';
+      win.document.getElementById('appSourceAccess').value = 'readonly';
+      win.document.getElementById('uiContextNotes').value = 'Compose Material3 tokens only';
+      win.addNode('agent', 100, 100, 'Coder', { agentType: 'coder', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      let sdk = win.genAgentSDK();
+      expect(sdk).toContain('READ-ONLY - explore for selectors, do not modify');
+      expect(sdk).toContain('authoritative for Design Analyzer and any UI-building step');
+      win.document.getElementById('appSourceAccess').value = 'writable';
+      sdk = win.genAgentSDK();
+      expect(sdk).toContain('WRITABLE by deliberate configuration');
+      expect(sdk).toNotContain('READ-ONLY - explore for selectors');
+      win.document.getElementById('appSourcePath').value = '';
+      win.document.getElementById('appSourceAccess').value = 'readonly';
+      win.document.getElementById('uiContextNotes').value = '';
+      resetState();
+    });
+    it('OpenSpec context block forwards App Source (with access posture) and UI Context beside the repo paths', () => {
+      resetState();
+      win.document.getElementById('appSourcePath').value = '/tmp/proj-app';
+      win.document.getElementById('appSourceBranch').value = 'release/2.4';
+      win.document.getElementById('uiContextNotes').value = 'Avoid SCSS\nUse tokens';
+      let block = win.openSpecContextBlock();
+      expect(block).toContain('App under test at /tmp/proj-app (branch release/2.4) - READ-ONLY');
+      expect(block).toContain('UI/design constraints (authoritative for UI work, any platform): Avoid SCSS; Use tokens');
+      win.document.getElementById('appSourceAccess').value = 'writable';
+      block = win.openSpecContextBlock();
+      expect(block).toContain('writable by deliberate configuration; declare every modification');
+      // both empty (and no paths) -> block stays empty, byte-identical to before
+      win.document.getElementById('appSourcePath').value = '';
+      win.document.getElementById('appSourceBranch').value = '';
+      win.document.getElementById('appSourceAccess').value = 'readonly';
+      win.document.getElementById('uiContextNotes').value = '';
+      win.state.rulesPaths = []; win.state.productDocPaths = []; win.state.verifyPaths = [];
+      expect(win.openSpecContextBlock()).toBe('');
+      resetState();
+    });
     it('the App Source Explain row reflects the access mode and names the Access selector as its lever', () => {
       resetState();
       win.document.getElementById('appSourcePath').value = '/tmp/proj-app';
