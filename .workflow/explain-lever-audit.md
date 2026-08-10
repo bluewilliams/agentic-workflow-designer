@@ -62,6 +62,8 @@ The overnight read-only audit (run after the context-agent-types unit landed) fo
 ## History
 
 - 2026-07-04: created - the overnight read-only audit's findings applied in three batches (by explain-lever-audit)
+- 2026-08-07: Explain OFF-guidance became actionable - rows whose lever lives in a sidebar section now carry a deep link ("configure ->" when skipped, "open section ->" when emitted) that closes the modal, expands the target section, and scrolls to it (jumpToSection; smooth for humans, instant under __instantScroll / reduced motion - the selectNode precedent). One central EXPLAIN_SECTION_LINKS map (row part -> section id); step-only levers (Model/Effort/turns) deliberately unmapped - their lever is the selected node's config panel, not a section. +2 tests, 1578 -> 1580 (by direct session)
+- 2026-08-07: the links reach Explain Step through the shared renderer - memory rows (preamble/postamble/read/write), the durable-handoff row, and the three step hints (Datadog / code-search -> MCP Integrations; verification-instructions -> Multi-Repo & Context Paths) now jump to their levers from the step view too. The director's question caught a mismap while extending: "Branches" is the parallel/output fork-paths row, NOT repo branches - it was pointing at the repositories section; removed from the map and pinned link-free. +1 test, 1580 -> 1581 (by direct session)
 
 ## Outcome
 

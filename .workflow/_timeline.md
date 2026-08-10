@@ -2,6 +2,11 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-08-07 - self-improvement-loop (update) - clipboard import hardened per pre-commit review: any-info-string + CRLF fence regex, raw text to all import stages, artifacts: sniff for pasted YAML, Import menu dismissal parity. 1581 -> 1585 - .workflow/self-improvement-loop.md
+2026-08-07 - prompt-library-overhaul (update) - review catches fixed: Deep Doc + Onboarding write-file contradiction (now default-checked like the API generator, baked lines removed), lone-checkbox double label; shared literal hoisted - .workflow/prompt-library-overhaul.md
+2026-08-07 - sidebar-collapse (update) - stale New Workflow location fixed in README/TECHNICAL (controls row, not the section heading) - .workflow/sidebar-collapse.md
+2026-08-07 - explain-lever-audit (update) - deep links extended to Explain Step (memory rows, durable handoff, step hints); "Branches" mismap caught and removed (fork paths, not repo branches). 1580 -> 1581 - .workflow/explain-lever-audit.md
+2026-08-07 - explain-lever-audit (update) - Explain rows deep-link their sidebar-section levers (configure/open section -> closes modal, expands, scrolls; central EXPLAIN_SECTION_LINKS map; step-only levers unmapped by design). 1578 -> 1580 - .workflow/explain-lever-audit.md
 2026-08-07 - context-agent-types (update) - "App Source" -> "App Under Test" across emitted headings, Explain row (OFF reason: NOT your project source, test-automation only), advisor rules; Explain OFF reasons repointed at the post-merge section names - .workflow/context-agent-types.md
 2026-08-07 - sidebar-collapse (update) - display renames: "Multi-Repo & Context Paths" (optionality in the name, skip-if-single-repo guidance) and "Node & Agent Palette" (ids unchanged) - .workflow/sidebar-collapse.md
 2026-08-07 - context-agent-types (update) - App Source / UI Context machinery audit: role-addressed exploration prose + everyone-else access line, UI Context framing line (authoritative, any platform), SDK access-selector bug fixed (hardcoded READ-ONLY), sidebar copy broadened beyond web, OpenSpec forwards both. 1574 -> 1578 - .workflow/context-agent-types.md
