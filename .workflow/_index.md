@@ -82,7 +82,7 @@ Scan-then-open: read this index first, match an entry against the files or capab
 ## explain-lever-audit
 
 - record: .workflow/explain-lever-audit.md
-- intent: the OFF-row principle enforced uniformly across Explain - every off/absent row names its lever in user language (no internal constants, no raw agentType ids, no jargon; config rows name their sidebar home); ON reasons use plain UI toggle names; Claude.ai Model row is a by-design skip; advisor rules (h)/(i) share one consumer predicate (legacy template carriers get the setup nudge); TECHNICAL/README/help staleness swept (16-type roster, uiAppExplorer split, UI Explorer label, appSourceAccess, always-present sections).
+- intent: the OFF-row principle enforced uniformly across Explain - every off/absent row names its lever in user language (no internal constants, no raw agentType ids, no jargon; config rows name their sidebar home); ON reasons use plain UI toggle names; Claude.ai Model row is a by-design skip; advisor rules (h)/(i) share one consumer predicate (legacy template carriers get the setup nudge); TECHNICAL/README/help staleness swept (16-type roster, uiAppExplorer split, UI Explorer label, appSourceAccess, always-present sections). 2026-08-07: OFF-guidance made actionable - rows deep-link their sidebar-section levers via a central EXPLAIN_SECTION_LINKS map (jumpToSection: close modal, expand, scroll).
 - files: index.html (explainAgentNode/explainWorkflow/explainDecisionNode rows, adviseWorkflow rule h, help modal), tests.html (1 migration + 2 pins), TECHNICAL.md, README.md
 - status: current | date: 2026-07-04 | note: 1511 -> 1513. Findings from the overnight read-only audit, applied in three approved batches.
 

@@ -7314,30 +7314,43 @@ describe('Usability & Help', () => {
         expect(p.prompt).toContain('[output destination]');
         expect(cb.off).toContain('Deliver the');
       });
-      // API Documentation Generator keeps its historical write-to-file behavior: checked by default
+      // Prompts that historically ALWAYS wrote a file keep that behavior: checked by default,
+      // with the historical target preserved as the on text (no baked write line remains in the body).
+      const CHECKED = ['API Documentation Generator', 'Deep Documentation Generator', 'Codebase Onboarding Guide'];
       const api = cat.prompts.find(p => p.title === 'API Documentation Generator');
       expect(api.inputs[0].default).toBe(true);
       expect(api.inputs[0].on).toContain('.claude/docs/api.md');
+      const onb = cat.prompts.find(p => p.title === 'Codebase Onboarding Guide');
+      expect(onb.inputs[0].default).toBe(true);
+      expect(onb.inputs[0].on).toContain('.claude/docs/onboarding.md');
+      expect(onb.prompt.indexOf('Write to `.claude/docs/onboarding.md`')).toBe(-1);   // no contradiction with the off state
+      const deep = cat.prompts.find(p => p.title === 'Deep Documentation Generator');
+      const deepCb = deep.inputs.find(f => f.kind === 'checkbox');
+      expect(deepCb.default).toBe(true);
+      expect(deepCb.on).toContain('docs/billing.md');
+      expect(deep.prompt.indexOf('Write the documentation to a `.md` file')).toBe(-1); // baked line removed
       // the rest default to chat-only (unchecked)
-      cat.prompts.filter(p => p.title !== 'API Documentation Generator').forEach(p => {
+      cat.prompts.filter(p => CHECKED.indexOf(p.title) === -1).forEach(p => {
         const cb = p.inputs.find(f => f.kind === 'checkbox');
         expect(!!cb.default).toBe(false);
       });
     });
-    it('a single-checkbox popup copies with the off text unchecked and the on text checked', () => {
+    it('a single-checkbox popup renders its label ONCE, copies the on text at its checked default, and the off text when unchecked', () => {
       const catIdx = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Documentation');
       const pIdx = win.PROMPT_LIBRARY[catIdx].prompts.findIndex(p => p.title === 'Codebase Onboarding Guide');
       let copied = '';
       win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
       win.copyLibPrompt(pIdx, catIdx);
       expect(win.document.querySelectorAll('#plibInputFields .plib-input-check input').length).toBe(1);
-      win.confirmPlibInput();   // default unchecked -> chat delivery
-      expect(copied).toContain('Deliver the output in your reply.');
+      // a lone checkbox is NOT the classic single-text layout: its label rides the row, the desc stays generic
+      expect(win.document.getElementById('plibInputDesc').textContent).toBe('Set the fields below, then copy.');
+      win.confirmPlibInput();   // default CHECKED (historical always-wrote-a-file behavior)
+      expect(copied).toContain('Write the guide to `.claude/docs/onboarding.md`');
       expect(copied.indexOf('[output destination]')).toBe(-1);
       win.copyLibPrompt(pIdx, catIdx);
-      win.document.querySelector('#plibInputFields .plib-input-check input').checked = true;
+      win.document.querySelector('#plibInputFields .plib-input-check input').checked = false;
       win.confirmPlibInput();
-      expect(copied).toContain('standalone markdown file');
+      expect(copied).toContain('Deliver the guide in your reply.');
       expect(copied.indexOf('[output destination]')).toBe(-1);
     });
     it('multi-input confirm honors a changed dropdown and a typed constraint', () => {
@@ -10628,6 +10641,41 @@ describe('Run report loop', () => {
     const picked = win.extractFencedPayload('prose\n```json\n{"a":1}\n```\nmore\n```\nbigger content wins here truly\n```\n');
     expect(picked).toContain('bigger content wins');
   });
+  it('clipboard path: an awd:run fence survives alongside a LARGER ordinary fence (raw text reaches the run-fence stage)', () => {
+    resetState();
+    win.localStorage.removeItem('awd_run_reports');
+    const t = 'Here is my report\n```bash\n' + 'echo padding to make this fence the largest by far '.repeat(5) + '\n```\n```awd:run\n{"workflow": "cb-fence-test", "steps": [{"slug": "a", "status": "done"}]}\n```\n';
+    win.importWorkflowText(t, '');   // the clipboard path: raw text, no filename
+    expect(!!win.loadRunReports()['cb-fence-test']).toBe(true);
+    win.localStorage.removeItem('awd_run_reports');
+  });
+  it('extractFencedPayload handles CRLF fences and any info string (awd:run fences are matchable)', () => {
+    expect(win.extractFencedPayload('x\r\n```json\r\n{"a":1}\r\n```\r\n')).toContain('"a":1');
+    const both = win.extractFencedPayload('```awd:run\n{"workflow":"w","note":"this run fence is much longer than the json"}\n```\n```json\n{"a":1}\n```');
+    expect(both).toContain('this run fence is much longer');   // largest fence regardless of info string
+  });
+  it('clipboard path: pasted foreign OpenSpec YAML reaches the best-effort importer via the artifacts sniff', () => {
+    resetState();
+    const yaml = 'name: pasted-schema\nversion: 1\nartifacts:\n  - id: step-one\n    description: "One step"\n    instruction: Do the thing.\n';
+    win.importWorkflowText(yaml, '');   // no filename - content sniff must route it
+    expect(win.state.nodes.length > 0).toBe(true);
+    resetState();
+  });
+  it('Import menu closes on outside click and Escape, and opening one dropdown closes the other', () => {
+    const evt = () => new win.Event('click', { bubbles: true });
+    win.toggleImportMenu({ stopPropagation: () => {} });
+    expect(win.document.getElementById('importMenu').style.display).toBe('block');
+    win.document.body.dispatchEvent(evt());   // outside click
+    expect(win.document.getElementById('importMenu').style.display).toBe('none');
+    win.toggleImportMenu({ stopPropagation: () => {} });
+    win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(win.document.getElementById('importMenu').style.display).toBe('none');
+    win.toggleImportMenu({ stopPropagation: () => {} });
+    win.toggleExportMenu({ stopPropagation: () => {} });   // export open closes import
+    expect(win.document.getElementById('importMenu').style.display).toBe('none');
+    expect(win.document.getElementById('exportMenu').style.display).toBe('block');
+    win.closeExportMenu();
+  });
   it('importWorkflowText accepts a pasted workflow envelope directly (the tuning round trip, no file)', () => {
     resetState();
     const wf = win.serializeWorkflow();
@@ -11397,6 +11445,51 @@ describe('Collapsible sidebar sections (toggle, persistence, auto-expand reveal 
     expect(body().some(c => win.getComputedStyle(c).display !== 'none')).toBe(true); // content restored
   });
 
+  it('Explain rows deep-link their sidebar-section levers; rows with no sidebar lever render no link', () => {
+    win.addNode('agent', 100, 200, 'Solo', { agentType: 'coder', prompt: 'x', tools: ['Read'], maxTurns: 5 });
+    win.showExplain(null);
+    const list = win.document.getElementById('explainList');
+    const links = Array.from(list.querySelectorAll('a.ex-jump'));
+    expect(links.length >= 6).toBe(true);
+    const targets = links.map(a => a.dataset.section);
+    expect(targets).toContain('app-under-test');       // the App Under Test row jumps to its section
+    expect(targets).toContain('repositories');
+    expect(targets).toContain('memory-durable-record');
+    expect(targets).toContain('mcp-integrations');
+    // orchestrator-craft rows have no sidebar lever and stay link-free
+    const rowDivs = Array.from(list.children);
+    const craft = rowDivs.find(d => d.textContent.indexOf('Execution model') !== -1);
+    expect(!!craft).toBe(true);
+    expect(!!craft.querySelector('a.ex-jump')).toBe(false);
+    win.closeExplain();
+  });
+  it('Explain Step links: memory rows and step hints deep-link their levers; parallel Branches rows never link (fork paths, not repo branches)', () => {
+    win.state.memoryEnabled = true;
+    win.state.exportFormat = 'subagent';   // memory step-rows render for subagent/teams views
+    const a = win.addNode('agent', 100, 200, 'Coder', { agentType: 'coder', prompt: 'x', tools: ['Read'], maxTurns: 5 });
+    win.showExplain(a.id);
+    let list = win.document.getElementById('explainList');
+    let targets = Array.from(list.querySelectorAll('a.ex-jump')).map(x => x.dataset.section);
+    expect(targets).toContain('memory-durable-record');
+    win.closeExplain();
+    const par = win.addNode('parallel', 300, 200, 'Fork', {});
+    win.showExplain(par.id);
+    list = win.document.getElementById('explainList');
+    const branchRow = Array.from(list.children).find(x => x.textContent.indexOf('Branches') !== -1);
+    expect(!!branchRow).toBe(true);
+    expect(!!branchRow.querySelector('a.ex-jump')).toBe(false);
+    win.closeExplain();
+    win.state.memoryEnabled = false;
+  });
+  it('jumpToSection closes the Explain modal, expands the collapsed target section, and leaves it visible', () => {
+    win.__instantScroll = true;
+    win.setSectionCollapsed('app-under-test', true);
+    win.showExplain(null);
+    expect(win.document.getElementById('explainOverlay').classList.contains('show')).toBe(true);
+    win.jumpToSection('app-under-test');
+    expect(win.document.getElementById('explainOverlay').classList.contains('show')).toBe(false);
+    expect(win.sectionEl('app-under-test').classList.contains('collapsed')).toBe(false);
+  });
   it('New Workflow lives in the sidebar controls row (not a section header) and clicking it never touches collapse state', () => {
     const controls = win.document.querySelector('.sidebar-collapse-controls');
     const btn = Array.from(controls.querySelectorAll('button')).find(b => b.textContent.indexOf('New Workflow') !== -1);
