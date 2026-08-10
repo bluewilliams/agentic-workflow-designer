@@ -576,7 +576,7 @@ The help modal also opens via the `?` keyboard shortcut and closes with `Escape`
 | Debounced auto-save (1s) | Saves on every render without impacting interaction performance |
 | Separate prefs vs. workflow storage | Preferences (model, memory, format) persist globally; workflows persist individually by slug |
 | App Under Test after Presets | Always present (like Repositories): a collapsed section is a visible one-line advertisement of the capability, where a conditionally-hidden one could never teach a user it exists. Emission still gates on content |
-| Repositories between Default Model and Add Nodes | Always visible. Persists across sessions (prefs) and saved workflows. Injected into all 5 export formats |
+| Repositories between Default Model and the Node & Agent Palette | Always visible. Persists across sessions (prefs) and saved workflows. Injected into all 5 export formats |
 | Undo via state snapshots (not command pattern) | Simpler implementation, easier to reason about. Each pushUndo stores a JSON deep copy of nodes + connections. 50-step limit keeps memory bounded (~250KB worst case) |
 | Undo is structural only | Text field edits use the browser's native Ctrl+Z. Canvas undo covers add/delete/connect/disconnect/drag. Separating these avoids interfering with normal text editing |
 | Token estimate uses 4 chars/token | Industry-standard approximation for English text and code. Good enough for cost awareness without needing a real tokenizer |
@@ -628,7 +628,7 @@ CSS styles
 HTML structure
   ├── Sidebar: Name & Requirements (workflow name + New Workflow + story input, Generate Refine Prompt, validation hint),
   │            Workflow Context (+ Generate Plan Prompt), Default Model, Repositories,
-  │            Add Nodes, Presets, App & UI Context, Repos & Context Paths, Workflow Management, MCP Integrations (leads with the Better-outcomes tip), Memory, Run Reports, Node Config
+  │            Node & Agent Palette, Presets, App & UI Context, Multi-Repo & Context Paths, Workflow Management, MCP Integrations (leads with the Better-outcomes tip), Memory, Run Reports, Node Config
   ├── Canvas: Toolbar (Select, Connect, Delete, Auto Layout, Fit, Zoom, Prompts, Help), SVG canvas, Empty state
   ├── Prompt Output: 5 format tabs, Copy button
   ├── Help Modal: Quick start, flows, output formats, shortcuts, power user tips

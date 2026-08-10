@@ -516,8 +516,8 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section" data-collapse-id="repositories">
-    <h3>Repos &amp; Context Paths <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Repos this workflow touches. Agents will check out the branch and pull latest before starting.</div>
+    <h3>Multi-Repo &amp; Context Paths</h3>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Launching inside the only repo you touch? Leave this empty. List repos when the work spans more than one, or when a repo must sit on a pinned branch - agents check out the branch and pull latest before starting.</div>
     <div id="repoList"></div>
     <button class="btn sm" onclick="addRepoRow()">+ Add Repository</button>
     <div style="height:1px;background:var(--border);opacity:.5;margin:14px 0 10px"></div>
@@ -578,7 +578,7 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section" data-collapse-id="add-nodes">
-    <h3>Add Nodes</h3>
+    <h3>Node &amp; Agent Palette</h3>
     <div class="palette-grid">
       <div class="palette-item" onclick="addNode('agent')">
         <span class="palette-dot" style="background:var(--agent)"></span>Agent
@@ -1186,7 +1186,7 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h3>Agent Library</h3>
 <p>Click the <strong>Agents</strong> button in the toolbar to open the Agent Library - reusable <em>agent presets</em>. Where the Prompt Library holds copy-paste text, an agent preset is a saved snapshot of an agent node's whole config (role, model, tools, prompt, and Agent Context) that you drop onto the canvas pre-wired. Build an agent that knows your API conventions once, reuse it in every workflow.</p>
-<p>Select an agent node on the canvas and click <strong>+ Save selected agent</strong> to save it (give it a name and an optional <em>version</em> you control). Saved agents are grouped by source - <strong>My Agents</strong> (yours, with Edit/Delete) and <strong>Org</strong> packs (shared, Add-only). Click <strong>Add to canvas</strong> to instantiate one as a normal agent node. Use the search box to filter by name once your library grows. <strong>Star</strong> an agent (the pin icon on its card) to add it to a <strong>Custom Agents</strong> group in the toolbar's <strong>Add Nodes</strong> palette, so your go-to agents are one click away while you build - works for your own agents and org ones alike, and the pin is your own preference (it survives org pack re-imports).</p>
+<p>Select an agent node on the canvas and click <strong>+ Save selected agent</strong> to save it (give it a name and an optional <em>version</em> you control). Saved agents are grouped by source - <strong>My Agents</strong> (yours, with Edit/Delete) and <strong>Org</strong> packs (shared, Add-only). Click <strong>Add to canvas</strong> to instantiate one as a normal agent node. Use the search box to filter by name once your library grows. <strong>Star</strong> an agent (the pin icon on its card) to add it to a <strong>Custom Agents</strong> group in the sidebar's <strong>Node &amp; Agent Palette</strong>, so your go-to agents are one click away while you build - works for your own agents and org ones alike, and the pin is your own preference (it survives org pack re-imports).</p>
 <p><strong>Sharing.</strong> <strong>Export mine</strong> downloads your agents as a pack; <strong>Import pack</strong> reads one back. Imports are source-partitioned and never overwrite your own agents - each agent has a namespaced id (e.g. <code>user:my-agent</code> vs <code>org:platform/api-agent</code>), so an org pack can only touch the org group. Re-importing is version-aware: a higher <code>version</code> updates in place, an equal or lower one is left alone. Everything is stored in your browser (localStorage); the pack format is <code>{ "format": "awd-agent-pack", "version": 1, "source": "user|org", "agents": [ ... ] }</code>.</p>
 
 <h3>Recommended Integrations</h3>
@@ -5898,7 +5898,7 @@ function getCustomAgents() {
 }
 function saveCustomAgents(arr) { localStorage.setItem(CUSTOM_AGENTS_KEY, JSON.stringify(Array.isArray(arr) ? arr : [])); }
 // Favorites are a SEPARATE user-owned list of agent ids (not a flag on the agent) so favoriting an org
-// agent survives a pack re-import. Favorited agents appear as quick-add buttons in the Add Nodes palette.
+// agent survives a pack re-import. Favorited agents appear as quick-add buttons in the Node & Agent Palette.
 const CUSTOM_AGENT_FAVS_KEY = 'awd_agent_favs';
 function getAgentFavs() {
   try { const a = JSON.parse(localStorage.getItem(CUSTOM_AGENT_FAVS_KEY) || '[]'); return Array.isArray(a) ? a : []; }
@@ -5914,7 +5914,7 @@ function toggleAgentFav(id) {
   rerenderAgentLib();
   renderAgentPalette();
 }
-// Render the "Custom Agents" quick-add section in the Add Nodes palette from favorited presets (resolved
+// Render the "Custom Agents" quick-add section in the Node & Agent Palette from favorited presets (resolved
 // against the current library, so a deleted agent drops out). Empty -> the section is hidden entirely.
 function renderAgentPalette() {
   const el = $('customAgentPalette'); if (!el) return;
@@ -6134,7 +6134,7 @@ function agentCardHtml(a) {
   const ver = a.version ? ' <span style="font-size:9px;font-weight:600;color:var(--accent);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;margin-left:6px;vertical-align:middle">v' + escHtml(a.version) + '</span>' : '';
   const fav = isAgentFav(a.id);
   let h = '<div class="plib-card">'
-    + '<button class="plib-fav' + (fav ? ' on' : '') + '" onclick="toggleAgentFav(\'' + a.id + '\')" title="' + (fav ? 'Pinned to Add Nodes palette - click to unpin' : 'Pin to the Add Nodes palette') + '">' + (fav ? '★' : '☆') + '</button>'
+    + '<button class="plib-fav' + (fav ? ' on' : '') + '" onclick="toggleAgentFav(\'' + a.id + '\')" title="' + (fav ? 'Pinned to the Node & Agent Palette - click to unpin' : 'Pin to the Node & Agent Palette') + '">' + (fav ? '★' : '☆') + '</button>'
     + '<div class="plib-card-body"><div class="plib-card-title">' + escHtml(a.name) + ver + '</div>'
     + '<div class="plib-card-desc">' + escHtml(role + ' · ' + ((a.config && a.config.model) || '')) + '</div></div>'
     + '<button class="btn sm" onclick="instantiateAgent(\'' + a.id + '\')" title="Drop this agent onto the canvas as a new node">Add to Canvas</button>';
@@ -9090,7 +9090,7 @@ function explainWorkflow(format) {
     ? decisions.length > 0 && state.nodes.filter(n => n.type === 'agent').every(a => getDownstreamDecisions(a.id).length === 0)
     : decisions.length > 0;
   rows.push(exRow('Decision section', decEmitted,
-    decisions.length === 0 ? 'no decision nodes - add one from Add Nodes to gate a step'
+    decisions.length === 0 ? 'no decision nodes - add one from the Node & Agent Palette to gate a step'
       : (decEmitted ? 'the orchestrator evaluates these gates and routes pass/revise'
                     : 'gates are carried inline on the steps in this format'),
     decEmitted ? decHeading : ''));
