@@ -689,7 +689,8 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section" id="appSourceSection" data-collapse-id="app-under-test">
-    <h3>App Under Test <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
+    <h3>App &amp; UI Context <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
+    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">App Under Test</div>
     <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Local path to the app being explored. Agents map its structure, screens, and (for UI test work) selectors.</div>
     <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Used by App Explorer steps (and the Test Automation preset) - add one to put this path to work.</div>
     <input type="text" id="appSourcePath" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px" placeholder="/path/to/app/repo" oninput="updatePrompt();savePrefsDebounced()"/>
@@ -698,13 +699,13 @@ svg.canvas{width:100%;height:100%;display:block}
       <option value="readonly" selected>Access: Read-only (default)</option>
       <option value="writable">Access: Writable</option>
     </select>
-  </div>
-
-  <div class="sidebar-section" id="uiContextSection" data-collapse-id="ui-context">
-    <h3>UI Context <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
+    <div style="height:1px;background:var(--border);opacity:.5;margin:14px 0 10px"></div>
+    <div id="uiContextSection">
+    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">UI Context</div>
     <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Styling preferences or migration notes. Leave blank and the agent will discover your design system automatically.</div>
     <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Used by Design Analyzer and UI-building steps.</div>
     <textarea id="uiContextNotes" class="story-input" style="min-height:48px;padding:6px 8px;font-size:12px" placeholder="e.g. Use vanilla-extract + clsx, avoid SCSS and MUI v4" oninput="updatePrompt();savePrefsDebounced()"></textarea>
+    </div>
   </div>
 
   <div class="sidebar-section" data-collapse-id="workflow-management">
@@ -736,7 +737,7 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section memory-section" data-collapse-id="mcp-integrations">
-    <h3>MCP Integrations <span style="color:var(--text3);font-weight:400;font-size:11px">prompt hints</span></h3>
+    <h3>MCP Integrations</h3>
   <div class="sidebar-tip" style="margin:8px 0 4px">
     <span class="tip-icon">⚡</span>
     <span><strong>Better outcomes:</strong> agents work best when an Atlassian MCP tool, Datadog MCP, and a language-appropriate LSP server are installed, authenticated, and available.
@@ -744,6 +745,7 @@ svg.canvas{width:100%;height:100%;display:block}
       <span style="display:none"><br><strong>Atlassian MCP setup:</strong><br><code style="font-size:10px;word-break:break-all;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">claude mcp add --transport http atlassian https://mcp.atlassian.com/v1/mcp --scope user</code><br><br><strong>Datadog MCP setup:</strong><br><code style="font-size:10px;word-break:break-all;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">curl -sSL https://coterm.datadoghq.com/mcp-cli/install.sh | bash</code><br>then <code style="font-size:10px;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">datadog_mcp_cli login</code> and <code style="font-size:10px;word-break:break-all;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">claude mcp add -s user datadog -- ~/.local/bin/datadog_mcp_cli --endpoint-path "/api/unstable/mcp-server/mcp?toolsets=core,alerting,apm"</code><br><br><strong>PR creation:</strong> GitHub repos use <code style="font-size:10px;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">gh</code> CLI (built-in). Bitbucket repos can use the same Atlassian MCP above. GitLab repos need <code style="font-size:10px;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">glab</code> CLI or a GitLab MCP.</span>
     </span>
   </div>
+    <div style="font-size:10px;color:var(--text3);margin:8px 0 6px">These toggles add usage hints to generated prompts so agents lean on the tools - they do not install or connect anything (see setup above).</div>
     <label class="memory-toggle">
       <input type="checkbox" id="mcpAtlassianToggle" onchange="toggleMcpAtlassian()" checked/>
       <span style="font-size:12px">Atlassian <span style="color:var(--text3);font-weight:400">(Jira &amp; Confluence)</span></span>

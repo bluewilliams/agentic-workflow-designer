@@ -11284,7 +11284,7 @@ describe('Agent Context label (matches the UI field name across all outputs)', (
 describe('Collapsible sidebar sections (toggle, persistence, auto-expand reveal paths)', () => {
   const KEY = 'awd_sidebarCollapsed';
   const ALL_IDS = ['requirements','workflow-context','default-model','repositories',
-    'add-nodes','presets','app-under-test','ui-context','workflow-management',
+    'add-nodes','presets','app-under-test','workflow-management',
     'mcp-integrations','memory-durable-record','run-reports','node-config'];
   function storedIds() {
     const raw = win.localStorage.getItem(KEY);
@@ -11304,13 +11304,13 @@ describe('Collapsible sidebar sections (toggle, persistence, auto-expand reveal 
     win.localStorage.removeItem(KEY);
   });
 
-  it('decorates exactly 13 sidebar sections, each with a stable literal id, a collapse-header, and a chevron span', () => {
+  it('decorates exactly 12 sidebar sections, each with a stable literal id, a collapse-header, and a chevron span', () => {
     const secs = Array.from(win.document.querySelectorAll('.sidebar-section[data-collapse-id]'));
-    expect(secs.length).toBe(13);
+    expect(secs.length).toBe(12);
     const ids = secs.map(s => s.getAttribute('data-collapse-id'));
     ALL_IDS.forEach(id => expect(ids).toContain(id));
     // no duplicate ids
-    expect(new Set(ids).size).toBe(13);
+    expect(new Set(ids).size).toBe(12);
     // every section has a decorated header carrying a chevron element (state shown via CSS, not text)
     secs.forEach(s => {
       expect(!!s.querySelector('.collapse-header')).toBe(true);
@@ -11348,12 +11348,12 @@ describe('Collapsible sidebar sections (toggle, persistence, auto-expand reveal 
     expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(0);
   });
 
-  it('Collapse All collapses all 13 sections and persists them; Expand All restores every section and clears storage', () => {
+  it('Collapse All collapses all 12 sections and persists them; Expand All restores every section and clears storage', () => {
     win.collapseAllSections();
     const collapsed = Array.from(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]'));
-    expect(collapsed.length).toBe(13);
+    expect(collapsed.length).toBe(12);
     const st = storedIds();
-    expect(Object.keys(st).length).toBe(13);
+    expect(Object.keys(st).length).toBe(12);
     ALL_IDS.forEach(id => expect(st[id]).toBe(true));
     win.expandAllSections();
     expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(0);
@@ -11448,13 +11448,13 @@ describe('Collapsible sidebar sections (toggle, persistence, auto-expand reveal 
     win.initSidebarCollapse();
     const st = storedIds();
     expect(st && typeof st === 'object').toBe(true);
-    // exactly the 11 non-open ids are seeded true; requirements + presets stay open
-    expect(Object.keys(st).length).toBe(11);
+    // exactly the 10 non-open ids are seeded true; requirements + presets stay open
+    expect(Object.keys(st).length).toBe(10);
     expect('requirements' in st).toBe(false);
     expect('presets' in st).toBe(false);
     ALL_IDS.filter(id => id !== 'requirements' && id !== 'presets').forEach(id => expect(st[id]).toBe(true));
-    // DOM reflects the seed: 11 collapsed, requirements + presets expanded
-    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(11);
+    // DOM reflects the seed: 10 collapsed, requirements + presets expanded
+    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(10);
     expect(win.sectionEl('requirements').classList.contains('collapsed')).toBe(false);
     expect(win.sectionEl('presets').classList.contains('collapsed')).toBe(false);
   });
@@ -11606,7 +11606,7 @@ describe('Cross-suite contamination guard: collapse cleanup and boot normalizati
   it('the collapse-suite afterEach discipline (expandAll + remove key) restores every section and cannot leak collapsed state', () => {
     // Simulate a collapse-suite test that left sections collapsed AND persisted them.
     win.collapseAllSections();
-    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(13);
+    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(12);
     expect(win.localStorage.getItem(KEY)).toContain('true'); // persisted collapsed ids
     // Apply the mandated cleanup discipline.
     win.selectNode(null);
@@ -11621,8 +11621,8 @@ describe('Cross-suite contamination guard: collapse cleanup and boot normalizati
   it('the harness boot normalization strips the first-boot seed so a non-collapse suite starts all-expanded', () => {
     // Reproduce the iframe-load sequence: initSidebarCollapse (first-boot seed) then expandAllSections.
     win.localStorage.removeItem(KEY); // absent -> init will seed
-    win.initSidebarCollapse();        // first-boot seed collapses the 11 non-open sections
-    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(11);
+    win.initSidebarCollapse();        // first-boot seed collapses the 10 non-open sections
+    expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(10);
     win.expandAllSections();          // boot normalization the load handler performs
     // Post-normalization baseline is fully expanded with clean storage.
     expect(win.document.querySelectorAll('.sidebar-section.collapsed[data-collapse-id]').length).toBe(0);
@@ -12030,7 +12030,7 @@ document.getElementById('app').addEventListener('load', function() {
   // Clear localStorage to start fresh
   clearStorage();
   resetState();
-  // initSidebarCollapse runs at iframe load (before clearStorage), first-boot seeding 11
+  // initSidebarCollapse runs at iframe load (before clearStorage), first-boot seeding 10
   // sections .collapsed in the DOM. Strip those classes and write {} so every suite starts
   // from the all-expanded baseline it expects.
   win.expandAllSections();
