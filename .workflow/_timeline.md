@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-08-07 - context-agent-types (update) - "App Source" -> "App Under Test" across emitted headings, Explain row (OFF reason: NOT your project source, test-automation only), advisor rules; Explain OFF reasons repointed at the post-merge section names - .workflow/context-agent-types.md
 2026-08-07 - sidebar-collapse (update) - display renames: "Multi-Repo & Context Paths" (optionality in the name, skip-if-single-repo guidance) and "Node & Agent Palette" (ids unchanged) - .workflow/sidebar-collapse.md
 2026-08-07 - context-agent-types (update) - App Source / UI Context machinery audit: role-addressed exploration prose + everyone-else access line, UI Context framing line (authoritative, any platform), SDK access-selector bug fixed (hardcoded READ-ONLY), sidebar copy broadened beyond web, OpenSpec forwards both. 1574 -> 1578 - .workflow/context-agent-types.md
 2026-08-07 - sidebar-collapse (update) - third merge: UI Context folds into App Under Test ("App & UI Context", sub-labels inside); MCP Integrations heading loses the "prompt hints" suffix to an explanatory body line; 12 sections, seed 10+2; merge campaign closed - .workflow/sidebar-collapse.md

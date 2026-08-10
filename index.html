@@ -991,7 +991,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li>Paste requirements into the <strong>Requirements</strong> field (or a Jira ticket URL)</li>
   <li>Click <strong>Auto Workflow</strong> to auto-build a workflow from keywords, or pick a <strong>Preset</strong> below</li>
   <li>Customize nodes by clicking them: change agent types, models, prompts, and tools</li>
-  <li>Two context-specialist agent types consume their own always-present sidebar sections: <strong>App Explorer</strong> (maps the App Under Test path - structure, surfaces, contracts, and, for UI test work, selectors; read-only unless the App Under Test section's Access selector says Writable) and <strong>Design Analyzer</strong> (the UI Context notes it treats as authoritative styling constraints). Each section says which steps use it, so the capability is discoverable by scanning the sidebar</li>
+  <li>Two context-specialist agent types consume their own always-present sidebar sections: <strong>App Explorer</strong> (maps the App Under Test path - structure, surfaces, contracts, and, for UI test work, selectors; read-only unless the App &amp; UI Context section's Access selector says Writable) and <strong>Design Analyzer</strong> (the UI Context notes it treats as authoritative styling constraints). Each section says which steps use it, so the capability is discoverable by scanning the sidebar</li>
   <li>Pick an export format tab at the bottom, then <strong>Copy</strong> the prompt into Claude Code</li>
 </ol>
 <p><strong>Auto Workflow</strong> stays disabled until you've pasted enough prose to auto-pick a workflow - roughly a sentence (at least 6 words once any URL or ticket key is set aside). A bare Jira key (like <code>PROJ-42</code>) prompts you to paste the full URL; a ticket URL on its own opens a workflow-type picker. <strong>Generate Refine Prompt</strong> and <strong>Generate Plan Prompt</strong> are both available as soon as the box isn't empty (they work with a Jira URL too, since they fetch the ticket), so you can refine or plan before Auto Workflow lights up. Both also self-check on click as a safety net.</p>
@@ -8444,7 +8444,7 @@ function adviseWorkflow() {
     || n.config.prompt === PROMPTS.appExplorer || n.config.prompt === PROMPTS.uiAppExplorer);
   _appExplorerConsumers.forEach(n => {
     if (getAppSource()) return;
-    s.push({ msg: '"' + n.label + '" has no App Source configured - set the path (and optional branch) in the App Under Test section so it has an application to explore.' });
+    s.push({ msg: '"' + n.label + '" has no App Under Test path configured - set the path (and optional branch) in the App & UI Context section so it has an application to explore.' });
   });
 
   // (i) The inverse mismatch: a stale App Source rides every workflow (appSourceBlock is
@@ -8454,7 +8454,7 @@ function adviseWorkflow() {
   // (h) = consumer without path, (i) = path without consumer; both silent when matched
   // or when both are absent - no third state, since (h) and (i) share the predicate.
   if (getAppSource() && _appExplorerConsumers.length === 0) {
-    s.push({ msg: 'App Source is set but no step consumes it - clear it in App Under Test, or add an App Explorer step if this workflow should explore the app.' });
+    s.push({ msg: 'An App Under Test path is set but no step consumes it - clear it in App & UI Context, or add an App Explorer step if this workflow should explore the app.' });
   }
 
   // (f) Telemetry-informed advice, only when run reports exist for this workflow.
@@ -8722,7 +8722,7 @@ function explainAgentNode(node, format) {
   const veStep = verifyInstructionsStepHint(node);
   rows.push(exRow('Verification-instructions step hint', !!veStep,
     veStep ? 'verification paths configured and this step is the owning verification step (the last Verifier in execution order, else the last Tester)'
-       : ((!state.verifyPaths || !state.verifyPaths.length) ? 'no verification paths configured - add them under Repo Context Paths (Verification instructions)'
+       : ((!state.verifyPaths || !state.verifyPaths.length) ? 'no verification paths configured - add them under Multi-Repo & Context Paths (Verification instructions)'
           : 'not the owning verification step (mandates go to ONE step - the last verifier-type node, else the last tester - so an expensive check never runs twice; reviewers audit, they do not execute)'),
     veStep));
   const fd = foundDefectNote(node);
@@ -9031,13 +9031,13 @@ function explainWorkflow(format) {
   rows.push(exRow('Requirements', !!story, story ? 'from the Requirements field' : 'Requirements field empty - section omitted', story));
   const plan = getPlan();
   rows.push(exRow('Workflow Context (plan)', !!plan, plan ? 'from the Workflow Context field - starting guidance, adapt-not-obey framing' : 'no Workflow Context pasted', plan ? 'Workflow Context (starting guidance - adapt based on findings)' : ''));
-  rows.push(exRow('App Source', !!getAppSource(), getAppSource() ? (getAppSourceAccess() === 'writable' ? 'app-source path set - WRITABLE by deliberate configuration (lever: the Access selector in App Under Test)' : 'app-source path set - read-only exploration target (lever: the Access selector in App Under Test)') : 'no app source configured - set the path in the App Under Test sidebar section; App Explorer steps (and the Test Automation preset) consume it', getAppSource() ? 'App Source' : ''));
+  rows.push(exRow('App Under Test', !!getAppSource(), getAppSource() ? (getAppSourceAccess() === 'writable' ? 'App Under Test path set - WRITABLE by deliberate configuration (lever: the Access selector in App & UI Context)' : 'App Under Test path set - read-only exploration target (lever: the Access selector in App & UI Context)') : 'no App Under Test path configured - the app-to-explore for test automation, NOT your project source; set it in the App & UI Context sidebar section when App Explorer steps (or the Test Automation preset) need an app to mine selectors from', getAppSource() ? 'App Under Test' : ''));
   const uiN = $('uiContextNotes') ? $('uiContextNotes').value.trim() : '';
-  rows.push(exRow('UI Context', !!uiN, uiN ? 'UI/styling constraints set' : 'no UI context set - add notes in the UI Context sidebar section; Design Analyzer and UI-building steps consume it', uiN ? 'UI Context' : ''));
+  rows.push(exRow('UI Context', !!uiN, uiN ? 'UI/styling constraints set' : 'no UI context set - add notes in the App & UI Context sidebar section (UI Context area); Design Analyzer and UI-building steps consume it', uiN ? 'UI Context' : ''));
   const dfmts = deliveryFormats();
   const dwinner = dfmts.includes('pr') ? 'Pull Request Creation' : dfmts.includes('commit') ? 'Commit' : dfmts.includes('report') ? 'Report' : dfmts.includes('docs') ? 'Documentation' : 'no-commit discipline';
   rows.push(exRow('Delivery block', true, 'orchestrator-owned, emitted once; driver by priority pr > commit > report > docs: ' + dwinner, dfmts.includes('pr') ? 'Pull Request Creation' : ''));
-  rows.push(exRow('Repositories', getRepositories().length > 0, getRepositories().length > 0 ? getRepositories().length + ' repositories listed' : 'no repositories listed - add them in the Repositories sidebar section', getRepositories().length > 0 ? 'Repositories' : ''));
+  rows.push(exRow('Repositories', getRepositories().length > 0, getRepositories().length > 0 ? getRepositories().length + ' repositories listed' : 'no repositories listed - only needed for multi-repo work or pinned branches; add them in the Multi-Repo & Context Paths sidebar section', getRepositories().length > 0 ? 'Repositories' : ''));
   const atlT = atlassianTicketFetchHint(getWorkflowAtlassianUrls());
   rows.push(exRow('Atlassian ticket fetch', !!atlT, atlT ? 'ticket URL(s) found in the requirements/nodes - toggle-independent, orchestrator fetches once' : 'no Atlassian URLs found in the workflow - paste a ticket URL into Requirements to include one', atlT));
   const atlG = atlassianGeneralHint();
@@ -9046,11 +9046,11 @@ function explainWorkflow(format) {
   rows.push(exRow('Code search (workflow-level)', !!csH, csH ? 'Code search toggle on' : 'Code search toggle off', csH));
   rows.push(exRow('Conventions', true, 'always emitted - comment discipline + test-convention discovery', conventionsHint()));
   const ru = rulesPathsHint();
-  rows.push(exRow('Repo rules / constitution', !!ru, ru ? 'rules paths configured (BINDING constraints)' : 'no rules paths configured - add them under Repo Context Paths (Rules / constitution)', ru));
+  rows.push(exRow('Repo rules / constitution', !!ru, ru ? 'rules paths configured (BINDING constraints)' : 'no rules paths configured - add them under Multi-Repo & Context Paths (Rules / constitution)', ru));
   const pd = productDocsHint();
-  rows.push(exRow('Product / architecture docs', !!pd, pd ? 'doc paths configured (goals to SERVE)' : 'no doc paths configured - add them under Repo Context Paths (Product docs)', pd));
+  rows.push(exRow('Product / architecture docs', !!pd, pd ? 'doc paths configured (goals to SERVE)' : 'no doc paths configured - add them under Multi-Repo & Context Paths (Product docs)', pd));
   const ve = verifyInstructionsHint();
-  rows.push(exRow('Verification instructions', !!ve, ve ? 'verification paths configured (routed to the owning verification step - Verifier if present, else final Tester; posture ' + (state.verifyFailRun ? 'fails the run' : 'report-only') + ')' : 'no verification paths configured - add them under Repo Context Paths (Verification instructions)', ve));
+  rows.push(exRow('Verification instructions', !!ve, ve ? 'verification paths configured (routed to the owning verification step - Verifier if present, else final Tester; posture ' + (state.verifyFailRun ? 'fails the run' : 'report-only') + ')' : 'no verification paths configured - add them under Multi-Repo & Context Paths (Verification instructions)', ve));
   // The sdk format returns its own single summary row above and never reaches here, so this
   // row covers the prose formats plus the by-design Claude.ai skip.
   const ef = format === 'claude' ? null : effortHint();
@@ -9249,7 +9249,7 @@ function getAppSourceAccess() {
 function appSourceBlock(heading) {
   const app = getAppSource();
   if (!app) return [];
-  const h = heading || '### App Source';
+  const h = heading || '### App Under Test';
   const lines = [h, '', '- **Path**: `' + app.path + '`'];
   if (app.branch) lines.push('- **Branch**: `' + app.branch + '`');
   lines.push('');
@@ -9583,7 +9583,7 @@ function genWorkflow() {
   requirementsBlock(story, '### Requirements').forEach(l => p.push(l));
   const _wfPlan = getPlan();
   if (_wfPlan) { p.push('### Workflow Context (starting guidance - adapt based on findings)'); p.push(''); p.push('The following context provides codebase-specific guidance from an initial analysis. Use it as a starting point, not a rigid constraint. If your research reveals better approaches, contradictory patterns, or additional considerations, update the approach accordingly and note what changed and why.'); p.push(''); p.push(_wfPlan); p.push(''); }
-  appSourceBlock('### App Source').forEach(l => p.push(l));
+  appSourceBlock('### App Under Test').forEach(l => p.push(l));
   uiContextBlock('### UI Context').forEach(l => p.push(l));
   deliveryBlock('###').forEach(l => p.push(l));
   repoBlock('### Repositories').forEach(l => p.push(l));
@@ -9922,7 +9922,7 @@ function genSubAgents() {
     }
 
     requirementsBlock(story, '## Requirements').forEach(l => promptLines.push(l));
-    appSourceBlock('## App Source').forEach(l => promptLines.push(l));
+    appSourceBlock('## App Under Test').forEach(l => promptLines.push(l));
     uiContextBlock('## UI Context').forEach(l => promptLines.push(l));
     deliveryAgentNote('##').forEach(l => promptLines.push(l));
     repoBlock('## Repositories').forEach(l => promptLines.push(l));
@@ -10091,7 +10091,7 @@ function genAgentTeams() {
     p.push(_atPlan);
     p.push('');
   }
-  appSourceBlock('## App Source').forEach(l => p.push(l));
+  appSourceBlock('## App Under Test').forEach(l => p.push(l));
   uiContextBlock('## UI Context').forEach(l => p.push(l));
   deliveryBlock('##').forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
@@ -10701,7 +10701,7 @@ function genClaudePrompt() {
     p.push(_cpPlan);
     p.push('');
   }
-  appSourceBlock('## App Source').forEach(l => p.push(l));
+  appSourceBlock('## App Under Test').forEach(l => p.push(l));
   uiContextBlock('## UI Context').forEach(l => p.push(l));
   deliveryBlock('##').forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
