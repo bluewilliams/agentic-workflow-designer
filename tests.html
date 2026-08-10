@@ -5943,18 +5943,18 @@ describe('Agent craft batch', () => {
       expect(win.openSpecContextBlock()).toBe('');
       resetState();
     });
-    it('the App Source Explain row reflects the access mode and names the Access selector as its lever', () => {
+    it('the App Under Test Explain row reflects the access mode and names the Access selector as its lever', () => {
       resetState();
       win.document.getElementById('appSourcePath').value = '/tmp/proj-app';
       win.document.getElementById('appSourceAccess').value = 'readonly';
       win.addNode('agent', 100, 100, 'Explorer', { agentType: 'appExplorer', tools: ['Read'], prompt: '', maxTurns: 5 });
       let rows = win.explainWorkflow('subagent');
-      let row = rows.find(r => r.part === 'App Source');
+      let row = rows.find(r => r.part === 'App Under Test');
       expect(row.reason).toContain('read-only exploration target');
       expect(row.reason).toContain('lever: the Access selector');
       win.document.getElementById('appSourceAccess').value = 'writable';
       rows = win.explainWorkflow('subagent');
-      row = rows.find(r => r.part === 'App Source');
+      row = rows.find(r => r.part === 'App Under Test');
       expect(row.reason).toContain('WRITABLE by deliberate configuration');
       win.document.getElementById('appSourcePath').value = '';
       win.document.getElementById('appSourceAccess').value = 'readonly';
@@ -6004,7 +6004,7 @@ describe('Agent craft batch', () => {
       // always-visible changes DISCOVERY only - emission still gates on content
       expect(win.document.getElementById('appSourcePath').value).toBe('');
       expect(win.appSourceBlock().length).toBe(0);
-      expect(win.genSubAgents()).toNotContain('### App Source');
+      expect(win.genSubAgents()).toNotContain('## App Under Test');
       win.setSectionCollapsed('app-under-test', true);
       win.render();
       expect(win.document.getElementById('appSourceSection').style.display).toBe('');
@@ -6056,11 +6056,12 @@ describe('Agent craft batch', () => {
       resetState();
       win.addNode('agent', 100, 200, 'Solo', { agentType: 'coder', prompt: 'x', tools: ['Read'], maxTurns: 5 });
       const rows = win.explainWorkflow('subagent');
-      const app = rows.find(r => r.part === 'App Source').reason;
-      expect(app).toContain('set the path in the App Under Test sidebar section');
+      const app = rows.find(r => r.part === 'App Under Test').reason;
+      expect(app).toContain('set it in the App & UI Context sidebar section');
+      expect(app).toContain('NOT your project source');   // disambiguates from the workflow's own repo
       expect(app).toContain('App Explorer steps');
       const ui = rows.find(r => r.part === 'UI Context').reason;
-      expect(ui).toContain('UI Context sidebar section');
+      expect(ui).toContain('App & UI Context sidebar section (UI Context area)');
       expect(ui).toContain('Design Analyzer');
     });
     it('skeptic lens: both types review under the researcher lens (grounded-in-real-sources critique)', () => {
@@ -6071,7 +6072,7 @@ describe('Agent craft batch', () => {
       resetState();
       win.addNode('agent', 100, 200, 'Explorer', { agentType: 'appExplorer', prompt: '', tools: ['Read'], maxTurns: 5 });
       const sugs = win.adviseWorkflow();
-      expect(sugs.some(x => x.msg.indexOf('has no App Source configured') !== -1)).toBe(true);
+      expect(sugs.some(x => x.msg.indexOf('has no App Under Test path configured') !== -1)).toBe(true);
       win.document.getElementById('appSourcePath').value = '/tmp/app';
       expect(win.adviseWorkflow().some(x => x.msg.indexOf('App Source') !== -1)).toBe(false);
       win.document.getElementById('appSourcePath').value = '';
@@ -6087,14 +6088,14 @@ describe('Agent craft batch', () => {
       win.addNode('agent', 100, 480, 'Explorer', { agentType: 'appExplorer', prompt: '', tools: ['Read'], maxTurns: 5 });
       expect(win.adviseWorkflow().some(x => x.msg.indexOf('App Source') !== -1)).toBe(false); // matched: both silent
       win.document.getElementById('appSourcePath').value = '';
-      expect(win.adviseWorkflow().some(x => x.msg.indexOf('has no App Source configured') !== -1)).toBe(true); // (h) takes over
+      expect(win.adviseWorkflow().some(x => x.msg.indexOf('has no App Under Test path configured') !== -1)).toBe(true); // (h) takes over
       expect(win.adviseWorkflow().some(x => x.msg.indexOf('no step consumes it') !== -1)).toBe(false);
       resetState();
     });
     it('advisor rule (h) covers legacy template carriers: a researcher-typed explorer without a path gets the nudge; with a path, both rules stay silent', () => {
       resetState();
       win.addNode('agent', 100, 200, 'Old Explorer', { agentType: 'researcher', prompt: win.PROMPTS.uiAppExplorer, tools: ['Read'], maxTurns: 5 });
-      expect(win.adviseWorkflow().some(x => x.msg.indexOf('has no App Source configured') !== -1)).toBe(true);
+      expect(win.adviseWorkflow().some(x => x.msg.indexOf('has no App Under Test path configured') !== -1)).toBe(true);
       win.document.getElementById('appSourcePath').value = '/tmp/app';
       expect(win.adviseWorkflow().some(x => x.msg.indexOf('App Source') !== -1)).toBe(false);
       win.document.getElementById('appSourcePath').value = '';
@@ -10049,7 +10050,7 @@ describe('Workflow advisor (non-blocking suggestions)', () => {
     win.loadPreset('test_automation');
     const sugs = win.adviseWorkflow();
     expect(sugs.length).toBe(1);
-    expect(sugs[0].msg).toContain('has no App Source configured');
+    expect(sugs[0].msg).toContain('has no App Under Test path configured');
     win.document.getElementById('appSourcePath').value = '/tmp/app-under-test';
     expect(win.adviseWorkflow().length).toBe(0);
     win.document.getElementById('appSourcePath').value = '';
