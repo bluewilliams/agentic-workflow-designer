@@ -2,6 +2,9 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-08-07 - self-improvement-loop (update) - record fence lint in the suite (fetches every indexed record; fails CI on spliced fences / odd counts / invalid awd:record JSON; canary-proven, 99 records swept clean). 1600 -> 1601 - .workflow/self-improvement-loop.md
+2026-08-07 - verification-instructions (update) - Verifier status line refreshes in place on sidebar config edits (paths/notes/posture seams; no reselect, no panel rebuild). 1601 -> 1602 - .workflow/verification-instructions.md
+2026-08-07 - verification-instructions (update) - inline verification notes (fileless mandates, same classification/posture, one hasVerifyMandates predicate across all consumers, envelope round-trip) + Verifier-only config-panel mandate status line; record fence corruption from a buggy History append repaired - .workflow/verification-instructions.md
 2026-08-07 - self-improvement-loop (update) - pulse staleness fix: renderVerifyRows refreshes the badge so path edits track live (updateValidation only ran on canvas renders). 1594 -> 1595 - .workflow/self-improvement-loop.md
 2026-08-07 - self-improvement-loop (update) - health-badge attention pulse: narrow config-contradiction roster (sole member: ownerless verify mandates) pulses the badge, ack-on-view, reduced-motion silenced, badge stays issues-only green. 1591 -> 1594 - .workflow/self-improvement-loop.md
 2026-08-07 - verification-instructions (update) - ownerless gap closed: orchestrator-executes fallback clause in the beat, advisor rule (j) for verify-paths-without-owner, SDK routing drift fixed (reviewers never execute mandates). 1588 -> 1591 - .workflow/verification-instructions.md

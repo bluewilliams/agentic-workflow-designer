@@ -126,7 +126,7 @@ Every generated prompt is a composition: role templates, tool lines, MCP hints, 
 
 ## Repo Context Paths
 
-The **Repo Context Paths** area (inside the Multi-Repo & Context Paths sidebar section) lets you point agents at a repo's own rules and product docs, so generated workflows read and honor more than just the per-task spec. It captures path strings only (the designer never touches your filesystem); the agents do the reading. Three optional chip lists, each with a text input, an Add button, per-chip remove, Clear-all, and one-click quick-add suggestions:
+The **Repo Context Paths** area (inside the Multi-Repo & Context Paths sidebar section) lets you point agents at a repo's own rules and product docs, so generated workflows read and honor more than just the per-task spec. It captures path strings only (the designer never touches your filesystem); the agents do the reading. Verification instructions also take inline notes - type "mutation testing MUST keep the kill score >= 80%" straight into the box when the mandate has no file to live in; the MUST/SHOULD language classifies it exactly like a file-borne check. Three optional chip lists, each with a text input, an Add button, per-chip remove, Clear-all, and one-click quick-add suggestions:
 
 - **Rules / constitution paths** (binding; CLAUDE.md already read) - paths whose rules and conventions are binding constraints on HOW you build. Quick-add: `.claude/rules`, `CONVENTIONS.md`, `CONTRIBUTING.md`.
 - **Product docs (PRD / ADR)** (goals/direction to honor) - paths describing the goals and direction the work must serve and not contradict. Quick-add: `docs/`, `ARCHITECTURE.md`, `docs/adr/`.

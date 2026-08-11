@@ -5446,6 +5446,40 @@ describe('Verification instructions', () => {
 // Covers the reviewer's routed gaps: per-step end-to-end across every per-step
 // format, real-DOM sidebar interaction, renderVerifyRows, and the awd:meta
 // posture-serialization guard (explicit false).
+// ─── Suite: Durable record integrity (fence lint) ────────────────────────────
+describe('Durable record integrity (fence lint)', () => {
+  // Born from a real incident: a buggy scripted History append anchored on a bare ``` line and
+  // spliced prose into every fence of verification-instructions.md - and the corruption was
+  // committed, because nothing linted the records. Now the suite does: any fence line carrying
+  // glued prose, an unbalanced fence count, or an unparseable awd:record fence fails CI.
+  // The suite runs over http (run-tests.sh + the CI job) where fetch works; opened via file://
+  // where fetch may be blocked, the lint skips rather than fake-fail - CI remains the enforcer.
+  async function fetchText(path) {
+    try { const r = await fetch(path); return r.ok ? await r.text() : null; } catch (e) { return null; }
+  }
+  it('every record listed in _index.md exists with clean fence lines, balanced fences, and a valid awd:record fence where present', async () => {
+    const idx = await fetchText('.workflow/_index.md');
+    if (idx === null) return;   // file:// context - the http-served CI run enforces this lint
+    const paths = [...idx.matchAll(/- record: (\.workflow\/[a-z0-9-]+\.md)/g)].map(m => m[1]);
+    expect(paths.length >= 50).toBe(true);   // the corpus is large; a tiny match count means the regex broke
+    for (const pth of paths) {
+      const txt = await fetchText(pth);
+      if (txt === null) throw new Error('index lists a missing record: ' + pth);
+      const fences = txt.split('\n').filter(l => l.trimStart().startsWith('```'));
+      fences.forEach(l => {
+        // a fence line is backticks + an optional info string - NOTHING else (glued prose = splice corruption)
+        if (!/^`{3,}[\w:+-]*\s*$/.test(l.trim())) throw new Error(pth + ' has a corrupted fence line: ' + l.slice(0, 80));
+      });
+      if (fences.filter(l => !l.trimStart().startsWith('````')).length % 2 !== 0) throw new Error(pth + ' has an odd number of fence lines');
+      const m = txt.match(/```awd:record\n([\s\S]*?)\n```/);
+      if (m) {
+        const j = JSON.parse(m[1]);   // throws (fails the test) on spliced/invalid JSON
+        if (!j.slug) throw new Error(pth + ' awd:record fence has no slug');
+      }
+    }
+  });
+});
+
 describe('Verification instructions (run-level matrix)', () => {
   const BEAT_MARK = 'Verification instructions (verifier / tester owned)';
   const STEP_MARK = 'executed-with-result';
@@ -5512,6 +5546,85 @@ describe('Verification instructions (run-level matrix)', () => {
       expect(sdk).toContain('reviewers audit outcomes, they do not execute');
       expect(sdk).toNotContain('tester/verifier/reviewer');
       win.state.verifyPaths = [];
+    });
+  });
+
+  // ── Inline verification notes: fileless mandates through the same machinery ──
+  describe('inline verification notes (free text beside the file paths)', () => {
+    afterEach(() => { win.setVerifyNotes(''); win.state.verifyPaths = []; win._attnAcked = ''; win.updateValidation(); });
+    it('notes-only config emits the beat (no file-list lines) and the owning step hint; posture rides along', () => {
+      workflowWith('Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.setVerifyNotes('Mutation testing MUST keep the kill score >= 80%');
+      const out = win.genSubAgents();
+      expect(out).toContain(BEAT_MARK);
+      expect(out).toContain('Inline verification notes');
+      expect(out).toContain('kill score >= 80%');
+      expect(out).toNotContain('Read only what is listed below');   // file-only lines stay gated on paths
+      expect(out).toContain(STEP_MARK);                             // owner still carries the step hint
+    });
+    it('notes are OFF-state silent and pulse the badge when ownerless', () => {
+      workflowWith('Coder', { agentType:'coder', model:'opus-5', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
+      expect(win.genSubAgents()).toNotContain('Inline verification notes');
+      win.setVerifyNotes('The integration suite MUST pass');
+      expect(win.document.getElementById('validationInfo').classList.contains('attn-pulse')).toBe(true);
+      expect(win.adviseWorkflow().map(x => x.msg).join(' ')).toContain('no step owns them');
+      win.setVerifyNotes('');
+      expect(win.document.getElementById('validationInfo').classList.contains('attn-pulse')).toBe(false);
+    });
+    it('notes ride the handoff envelope and are adopted on import only when the importer has none', () => {
+      workflowWith('Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.setVerifyNotes('Coverage SHOULD stay above 70%');
+      const meta = win.openSpecExtractMeta(win.buildOpenSpecSchema().schemaYaml);
+      expect(meta.verifyNotes).toBe('Coverage SHOULD stay above 70%');
+      win.setVerifyNotes('');
+      win.openSpecAdoptContextPaths(meta);
+      expect(win.state.verifyNotes).toBe('Coverage SHOULD stay above 70%');
+      win.setVerifyNotes('my own notes');
+      win.openSpecAdoptContextPaths(meta);   // importer already has notes - never clobbered
+      expect(win.state.verifyNotes).toBe('my own notes');
+    });
+    it('SDK and OpenSpec context carry the notes beside the file machinery', () => {
+      workflowWith('Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.setVerifyNotes('E2E smoke MUST pass');
+      expect(win.genAgentSDK()).toContain('Inline verification notes');
+      expect(win.openSpecContextBlock()).toContain('Inline verification notes');
+      expect(win.openSpecContextBlock()).toContain('E2E smoke MUST pass');
+    });
+  });
+
+  // ── Verifier node mandate status (config panel, Verifier agent type only) ──
+  describe('Verifier config-panel mandate status line', () => {
+    afterEach(() => { win.selectNode(null); win.state.verifyPaths = []; win.setVerifyNotes(''); });
+    const statusOf = () => { const el = win.document.querySelector('#configFields .config-verify-status'); return el ? el.textContent : null; };
+    it('the status line refreshes IN PLACE as sidebar verify config changes (no reselect needed)', () => {
+      const v = workflowWith('Checker', { agentType:'verifier', model:'opus-5', tools:['Read','Bash'], prompt:'Verify it.', maxTurns:8 });
+      win.selectNode(v.id);
+      expect(statusOf()).toContain('No repo verification mandates configured');
+      win.addVerifyPath('VERIFY.md');            // sidebar edit while the node stays selected
+      expect(statusOf()).toContain('Owns this workflow');
+      expect(statusOf()).toContain('1 file');
+      win.setVerifyNotes('E2E MUST pass');
+      expect(statusOf()).toContain('1 file + inline notes');
+      win.setVerifyFailRun(false);
+      expect(statusOf()).toContain('report-only');
+      win.setVerifyFailRun(true);
+      win.clearVerifyPaths();
+      win.setVerifyNotes('');
+      expect(statusOf()).toContain('No repo verification mandates configured');
+    });
+    it('unconfigured: points at the section; owner: names ownership and posture; non-verifier roles show nothing', () => {
+      const v = workflowWith('Checker', { agentType:'verifier', model:'opus-5', tools:['Read','Bash'], prompt:'Verify it.', maxTurns:8 });
+      win.selectNode(v.id);
+      expect(statusOf()).toContain('No repo verification mandates configured');
+      win.state.verifyPaths = ['VERIFY.md'];
+      win.setVerifyNotes('Kill score MUST stay >= 80%');
+      win.selectNode(null); win.selectNode(v.id);   // rebuild the panel
+      expect(statusOf()).toContain('Owns this workflow');
+      expect(statusOf()).toContain('1 file + inline notes');
+      expect(statusOf()).toContain('fail the run');
+      const t = win.addNode('agent', 700, 200, 'Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test.', maxTurns:5 });
+      win.selectNode(t.id);
+      expect(statusOf()).toBe(null);   // Verifier-only, per design
     });
   });
 

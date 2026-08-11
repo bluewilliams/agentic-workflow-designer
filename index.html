@@ -573,6 +573,8 @@ svg.canvas{width:100%;height:100%;display:block}
         <button onclick="addVerifyPath('rules/E2E.md')">rules/E2E.md</button>
       </div>
       <button class="path-clear" id="verifyPathClear" onclick="clearVerifyPaths()" style="display:none">Clear All</button>
+      <div style="font-size:10px;color:var(--text3);margin:8px 0 3px">Inline notes (optional) - mandates without a file; same MUST/SHOULD severity language:</div>
+      <textarea id="verifyNotesInput" class="story-input" style="min-height:44px;padding:6px 8px;font-size:12px" placeholder="e.g. The E2E checkout flow MUST pass (npm run test:e2e). Lighthouse performance SHOULD stay >= 90." oninput="setVerifyNotes(this.value)"></textarea>
       <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text3);margin-top:6px;cursor:pointer">
         <input type="checkbox" id="verifyFailRunToggle" checked onchange="setVerifyFailRun(this.checked)" style="margin:0"/>
         <span>Unmet required verifications fail the run</span>
@@ -1092,7 +1094,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>Two sidebar sections give agents the right context across one or many repositories:</p>
 <ul>
   <li><strong>Repositories</strong> - list each repo with its branch; the prompts tell agents to check out the right branch and pull before starting.</li>
-  <li><strong>Repo Context Paths</strong> - point agents at a repo's own rules and product docs so they honor more than the per-task spec. <strong>Rules / constitution</strong> paths (e.g. <code>.claude/rules</code>, <code>CONVENTIONS.md</code>) are binding constraints on <em>how</em> to build; <strong>Product docs</strong> (e.g. <code>docs/</code>, ADRs) are goals the work must not contradict; <strong>Verification instructions</strong> (e.g. <code>VERIFY.md</code>, <code>rules/E2E.md</code>) are the checks a change must prove - the orchestrator reads them and routes them into the OWNING verification step's brief (the Verifier when the workflow has one, else the final Tester; one owner means an expensive check never runs twice, and the mandates ADD to that step's own verification method rather than replacing it). Each check is classified Required or Recommended by the file's own MUST/SHOULD wording (they say <em>what</em> to prove, never restrict which tools to use - tools stay suggestions). These files are the natural home for repo-mandated checks like mutation testing (e.g. "run npx stryker run; required: kill score stays &gt;= 80%"). The <strong>Unmet required verifications fail the run</strong> checkbox sets the posture: on, a blocked required check fails the run; off, it is recorded but report-only. All three lists are sticky - they persist across workflows in the same repo.</li>
+  <li><strong>Repo Context Paths</strong> - point agents at a repo's own rules and product docs so they honor more than the per-task spec. <strong>Rules / constitution</strong> paths (e.g. <code>.claude/rules</code>, <code>CONVENTIONS.md</code>) are binding constraints on <em>how</em> to build; <strong>Product docs</strong> (e.g. <code>docs/</code>, ADRs) are goals the work must not contradict; <strong>Verification instructions</strong> (e.g. <code>VERIFY.md</code>, <code>rules/E2E.md</code>) are the checks a change must prove - the orchestrator reads them and routes them into the OWNING verification step's brief (the Verifier when the workflow has one, else the final Tester; one owner means an expensive check never runs twice, and the mandates ADD to that step's own verification method rather than replacing it). Each check is classified Required or Recommended by the file's own MUST/SHOULD wording (they say <em>what</em> to prove, never restrict which tools to use - tools stay suggestions). These files are the natural home for repo-mandated checks like mutation testing (e.g. "run npx stryker run; required: kill score stays &gt;= 80%"). No file handy? An <strong>inline notes</strong> box takes the same mandates as free text, with the same MUST/SHOULD classification and posture. Each Verifier node's configuration panel also shows its mandate status - what it owns, or where to configure some. The <strong>Unmet required verifications fail the run</strong> checkbox sets the posture: on, a blocked required check fails the run; off, it is recorded but report-only. All three lists are sticky - they persist across workflows in the same repo.</li>
 </ul>
 <p><strong>Multi-repo rules - handled for you.</strong> On its own, Claude Code only auto-loads <code>CLAUDE.md</code> and <code>.claude/rules/</code> for the repo the session launched in, so it would miss the others. The generated multi-repo prompt closes that gap: it tells each agent to read every in-scope repo's own <code>CLAUDE.md</code> and <code>.claude/rules/</code> before changing it, and any <strong>Rule Paths</strong> you list (e.g. <code>.claude/rules</code>) are resolved <em>within each repo</em> and scoped to it. So with three repos selected and <code>.claude/rules</code> listed once, each repo's own rules are honored for changes made in that repo - no per-repo entry needed, and no environment variable required.</p>
 <p>The setup below is an <em>optional</em> reliability boost - it makes Claude Code <em>also</em> auto-load each added repo's <code>CLAUDE.md</code> at startup - but the prompt's explicit per-repo read works no matter how the session was launched:</p>
@@ -1619,25 +1621,36 @@ function productDocsHint() {
 // default when a file does not distinguish. Hyphens only, no fences, provider-neutral. Suggestion
 // semantics: these files say WHAT to prove, never restrict HOW (selected tools stay suggestions).
 function verifyInstructionsHint() {
-  if (!state.verifyPaths || !state.verifyPaths.length) return null;
-  const list = state.verifyPaths.map(p => `>   - \`${p}\``).join('\n');
+  if (!hasVerifyMandates()) return null;
+  const paths = (state.verifyPaths || []).filter(Boolean);
+  const notes = (state.verifyNotes || '').trim();
+  const list = paths.map(p => `>   - \`${p}\``).join('\n');
   const posture = state.verifyFailRun
     ? '> Posture (configured): a blocked REQUIRED verification fails the run - do not report the run as successful while a required check is unmet.'
     : '> Posture (configured): report-only - a blocked REQUIRED verification is recorded and surfaced, but it does not fail the run.';
   const r = [];
   r.push('> **Verification instructions (verifier / tester owned).** These paths hold the checks a change must PROVE before it is done - test checklists, verification and E2E guides, and review gates. You, the orchestrator, own discovering them: read the configured filenames and paths that apply, and route them into the OWNING verification step\'s brief - the Verifier when this workflow has one, else the final Tester - so that ONE step executes the mandates (never two steps duplicating an expensive check) and inherits them instead of re-crawling. Reviewers audit the reported outcomes; they do not execute the mandates. If this workflow has neither a Verifier nor a Tester, YOU own the mandates: execute the applicable checks yourself at close-out and report each under the same posture - configured verification never goes unexecuted for lack of an owner. These mandates ADD to the owning step\'s own verification method - they never replace it.');
   r.push('>');
-  r.push('> Read only what is listed below - do not blind-hunt for other verification files:');
-  r.push(list);
-  r.push('>');
-  r.push('> Scope which files apply by where the change lands: a root-level match (a listed file at a repository root) ALWAYS applies to work in that repository; a nested match (a listed file inside a subdirectory) applies only when the change\'s blast area intersects that file\'s directory subtree. A path that is absent in a given repository is simply no-extra-context there, not an error.');
-  r.push('>');
+  if (paths.length) {
+    r.push('> Read only what is listed below - do not blind-hunt for other verification files:');
+    r.push(list);
+    r.push('>');
+    r.push('> Scope which files apply by where the change lands: a root-level match (a listed file at a repository root) ALWAYS applies to work in that repository; a nested match (a listed file inside a subdirectory) applies only when the change\'s blast area intersects that file\'s directory subtree. A path that is absent in a given repository is simply no-extra-context there, not an error.');
+    r.push('>');
+  }
+  if (notes) {
+    r.push('> Inline verification notes (workflow-configured; classify and execute these exactly like the file-borne checks - same MUST/SHOULD severity language, same posture):');
+    notes.split('\n').forEach(n => r.push('> ' + n));
+    r.push('>');
+  }
   r.push('> Classify each step\'s checks by the file\'s OWN language: wording that says MUST or required marks a REQUIRED verification; wording that says SHOULD or recommended marks a recommended one. When a file does not distinguish, treat the configured posture below as the default severity.');
   r.push(posture);
   r.push('>');
   r.push('> Surface a blocked REQUIRED verification everywhere it matters: in the responsible step\'s gate verdict line, in the durable record\'s Verify section, and in the awd:run fence notes - it never silently passes. These files mandate WHAT must be proven, never HOW; the listed tools stay suggestions, not restrictions.');
-  r.push('>');
-  r.push('> Multi-repo scoping: when more than one repository is in scope, resolve each listed path within each in-scope repository, and let a repository\'s own verification files govern only that repository\'s work. Never carry one repository\'s verification checks into another repository\'s work.');
+  if (paths.length) {
+    r.push('>');
+    r.push('> Multi-repo scoping: when more than one repository is in scope, resolve each listed path within each in-scope repository, and let a repository\'s own verification files govern only that repository\'s work. Never carry one repository\'s verification checks into another repository\'s work.');
+  }
   return r.join('\n');
 }
 
@@ -1913,11 +1926,11 @@ function resolveVerifyOwnerId() {
   return null;
 }
 function verifyInstructionsStepHint(node) {
-  if (!state.verifyPaths || !state.verifyPaths.length) return '';
+  if (!hasVerifyMandates()) return '';
   if (!node || !node.config || !node.id) return '';
   const owner = resolveVerifyOwnerId();
   if (owner === null || node.id !== owner) return '';
-  return 'Verification instructions apply to this step - you are this workflow\'s OWNING verification step for the repo\'s verification mandates (one step owns them so an expensive check never runs twice). The orchestrator has routed the applicable verification files into your brief - work through every applicable check and report each one as executed-with-result, not-applicable-with-reason, or blocked-with-reason. These repo-mandated checks are IN ADDITION to your own verification method, not a substitute for it - execute them alongside the judgment-driven verification your role already requires; they extend the definition of done, they do not narrow it. A blocked REQUIRED verification is a gate-failing finding: surface it in your verdict line, in the durable record\'s Verify section and Verification ledger (when a record is in use), and in the awd:run fence notes - never let it silently pass. These files define WHAT must be proven, not HOW; treat any tools they mention as suggestions, never restrictions.';
+  return 'Verification instructions apply to this step - you are this workflow\'s OWNING verification step for the repo\'s verification mandates (one step owns them so an expensive check never runs twice). The orchestrator has routed the applicable verification mandates (files and inline notes) into your brief - work through every applicable check and report each one as executed-with-result, not-applicable-with-reason, or blocked-with-reason. These repo-mandated checks are IN ADDITION to your own verification method, not a substitute for it - execute them alongside the judgment-driven verification your role already requires; they extend the definition of done, they do not narrow it. A blocked REQUIRED verification is a gate-failing finding: surface it in your verdict line, in the durable record\'s Verify section and Verification ledger (when a record is in use), and in the awd:run fence notes - never let it silently pass. These files define WHAT must be proven, not HOW; treat any tools they mention as suggestions, never restrictions.';
 }
 
 // Maps agentType to a PROMPTS key for fallback when user leaves prompt blank
@@ -2185,6 +2198,7 @@ let state = {
   rulesPaths: [],
   productDocPaths: [],
   verifyPaths: [],
+  verifyNotes: '',
   verifyFailRun: true
 };
 
@@ -2795,6 +2809,7 @@ function savePrefs() {
       rulesPaths: state.rulesPaths,
       productDocPaths: state.productDocPaths,
       verifyPaths: state.verifyPaths,
+      verifyNotes: state.verifyNotes,
       verifyFailRun: state.verifyFailRun,
       plibOpen: state.plibOpen || null,
       plibFavs: state.plibFavs || null
@@ -2868,6 +2883,7 @@ function restorePrefs() {
     if (Array.isArray(p.rulesPaths)) { state.rulesPaths = p.rulesPaths; renderRulesRows(); }
     if (Array.isArray(p.productDocPaths)) { state.productDocPaths = p.productDocPaths; renderProductDocRows(); }
     if (Array.isArray(p.verifyPaths)) { state.verifyPaths = p.verifyPaths; renderVerifyRows(); }
+    if (typeof p.verifyNotes === 'string') { state.verifyNotes = p.verifyNotes; const vn = $('verifyNotesInput'); if (vn) vn.value = p.verifyNotes; }
     if (typeof p.verifyFailRun === 'boolean') { state.verifyFailRun = p.verifyFailRun; const _vft = $('verifyFailRunToggle'); if (_vft) _vft.checked = p.verifyFailRun; }
     if (Array.isArray(p.plibOpen)) state.plibOpen = p.plibOpen;
     if (Array.isArray(p.plibFavs)) state.plibFavs = p.plibFavs;
@@ -3054,6 +3070,39 @@ function removeVerifyPath(path) {
   savePrefsDebounced();
   updatePrompt();
 }
+// Verification mandates exist when EITHER file paths or inline notes are configured - every
+// consumer (beat, step hint, SDK, OpenSpec, Explain, attention pulse) gates on this one predicate.
+function hasVerifyMandates() {
+  return !!((state.verifyPaths && state.verifyPaths.length) || (state.verifyNotes || '').trim());
+}
+// The Verifier config-panel mandate status message (built by updateConfig, refreshed in
+// place when sidebar verify config changes while a Verifier is selected).
+function verifyStatusHtml(node) {
+  const owner = (typeof resolveVerifyOwnerId === 'function') ? resolveVerifyOwnerId() : null;
+  if (!hasVerifyMandates()) {
+    return 'No repo verification mandates configured - this Verifier proves outcomes by its own judgment. Add files or inline notes under <a href="#" onclick="event.preventDefault();jumpToSection(\'repositories\')" style="color:var(--accent)">Multi-Repo &amp; Context Paths</a>.';
+  }
+  if (owner === node.id) {
+    const n = (state.verifyPaths || []).length;
+    return 'Owns this workflow\'s verification mandates (' + (n ? n + ' file' + (n !== 1 ? 's' : '') : '') + (n && (state.verifyNotes || '').trim() ? ' + ' : '') + ((state.verifyNotes || '').trim() ? 'inline notes' : '') + ') - they route into this step\'s brief; posture: ' + (state.verifyFailRun ? 'unmet required checks fail the run' : 'report-only') + '.';
+  }
+  const ownerNode = state.nodes.find(n => n.id === owner);
+  return 'Verification mandates are owned by "' + escHtml(ownerNode ? ownerNode.label : 'another step') + '" (the last verification step in the flow) - one owner, so an expensive check never runs twice.';
+}
+function refreshVerifyStatusLine() {
+  const el = document.querySelector('#configFields .config-verify-status');
+  if (!el) return;
+  const node = state.nodes.find(n => n.id === state.selectedId);
+  if (!node || !node.config || node.config.agentType !== 'verifier') return;
+  el.innerHTML = verifyStatusHtml(node);
+}
+function setVerifyNotes(v) {
+  state.verifyNotes = v;
+  savePrefsDebounced();
+  updatePrompt();
+  if (typeof updateValidation === 'function') updateValidation();   // the pulse tracks notes too
+  refreshVerifyStatusLine();
+}
 function clearVerifyPaths() {
   state.verifyPaths = [];
   renderVerifyRows();
@@ -3064,6 +3113,7 @@ function renderVerifyRows() {
   // Verify paths feed the badge's attention pulse, and editing them happens without a canvas
   // render - refresh the badge here so the pulse tracks the config in BOTH directions.
   if (typeof updateValidation === 'function') updateValidation();
+  if (typeof refreshVerifyStatusLine === 'function') refreshVerifyStatusLine();
   const list = $('verifyPathChips');
   if (!list) return;
   list.innerHTML = '';
@@ -3084,6 +3134,7 @@ function setVerifyFailRun(on) {
   state.verifyFailRun = !!on;
   savePrefsDebounced();
   updatePrompt();
+  if (typeof refreshVerifyStatusLine === 'function') refreshVerifyStatusLine();   // the status line names the posture
 }
 
 // -- Workflow serialization --
@@ -4766,12 +4817,21 @@ function updateConfig() {
         [{ value: 'balanced', label: 'Balanced (default) - fix blockers + low-hanging fruit in your path' },
          { value: 'record-only', label: 'Record-only - surgical: report everything, fix only true blockers' },
          { value: 'aggressive', label: 'Aggressive - opportunistically heal the working area (tested + declared)' }]);
+
     } else if (node.config.agentType === 'reviewer') {
       H[H.length] = configSelect('Defect Posture', 'defectPosture', nodeDefectPosture(node),
         [{ value: 'balanced', label: 'Balanced (default) - note pre-existing defects, never gate on them' },
          { value: 'surgical', label: 'Surgical - judge only the change; ignore pre-existing defects' },
          { value: 'aggressive', label: 'Aggressive - sweep near the diff, flag pre-existing defects to the orchestrator' }]);
     }
+
+    if (node.config.agentType === 'verifier') {
+      // Mandate visibility at the node (director-requested, Verifier only): what repo-configured
+      // verification this step will receive, or where to configure it. Display-only; refreshed
+      // in place by refreshVerifyStatusLine when sidebar verify config changes mid-selection.
+      H[H.length] = '<div class="config-verify-status" style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.45">' + verifyStatusHtml(node) + '</div>';
+    }
+
     H[H.length] = configTextarea('Agent Prompt', 'prompt', node.config.prompt,
       'Instructions for this agent...', 'class="agent-prompt-textarea"');
     H[H.length] = agentPromptStatusBlock(node);
@@ -5280,7 +5340,7 @@ document.addEventListener('keydown', e => {
 let _textExpandSource = null;
 const _TEXT_EXPAND_TITLES = { storyInput: 'Requirements', planInput: 'Workflow Context',
   customAgentPrompt: 'Agent Prompt', customAgentNotes: 'Agent Context', customPromptBody: 'Prompt',
-  uiContextNotes: 'UI Context', mcpCustomNotes: 'Custom MCP notes', plibInputText: 'Your input' };
+  uiContextNotes: 'UI Context', verifyNotesInput: 'Verification notes', mcpCustomNotes: 'Custom MCP notes', plibInputText: 'Your input' };
 
 function textExpandIsOpen() { const o = $('textExpandOverlay'); return !!(o && o.classList.contains('show')); }
 
@@ -5383,7 +5443,7 @@ function enhanceExpandableTextarea(el) {
 }
 (function initExpandableTextareas() {
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initExpandableTextareas); return; }
-  ['storyInput', 'planInput', 'customPromptBody', 'customAgentPrompt', 'customAgentNotes', 'uiContextNotes', 'mcpCustomNotes']
+  ['storyInput', 'planInput', 'customPromptBody', 'customAgentPrompt', 'customAgentNotes', 'uiContextNotes', 'verifyNotesInput', 'mcpCustomNotes']
     .forEach(function(id) { enhanceExpandableTextarea($(id)); });
 })();
 // === end Expand-to-modal text editing ===
@@ -8526,7 +8586,7 @@ function advisorAttachSkeptic(nodeId) {
 // A configuration contradiction that will affect the run's honesty: verification mandates
 // configured with no step to own them. Shared by advisor rule (j) and the badge attention pulse.
 function verifyOwnerlessMisconfig() {
-  return !!(state.verifyPaths && state.verifyPaths.length) && resolveVerifyOwnerId() === null;
+  return hasVerifyMandates() && resolveVerifyOwnerId() === null;
 }
 // The attention tier: advisory conditions loud enough to pulse the health badge. Deliberately
 // narrow - ONLY configuration contradictions that change what a run reports (never taste-level
@@ -10506,15 +10566,21 @@ function genAgentSDK() {
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
-  if (state.verifyPaths && state.verifyPaths.length) {
+  if (hasVerifyMandates()) {
     p.push('# ── Verification instructions (verifier / tester owned) ──────────────────────────');
     p.push('# The checks a change must PROVE before it is done. The orchestrator (this harness)');
     p.push('# discovers, scopes, and reads them, then routes them into the OWNING verification');
     p.push("# step's brief (the Verifier if present, else the final Tester; with neither, the harness");
     p.push('# executes them itself at close-out; reviewers audit outcomes, they do not execute).');
     p.push('# That step reports each check as executed / not-applicable / blocked.');
-    p.push('# Read only what is listed (no blind-hunt):');
-    state.verifyPaths.forEach(pth => p.push(`#   - ${pth}`));
+    if (state.verifyPaths && state.verifyPaths.length) {
+      p.push('# Read only what is listed (no blind-hunt):');
+      state.verifyPaths.forEach(pth => p.push(`#   - ${pth}`));
+    }
+    if ((state.verifyNotes || '').trim()) {
+      p.push('# Inline verification notes (same severity language and posture as the files):');
+      (state.verifyNotes || '').trim().split('\n').forEach(n => p.push('#   ' + n));
+    }
     p.push('# Scope: a root-level match always applies in that repo; a nested match applies only when');
     p.push('# the change\'s blast area intersects that file\'s directory subtree.');
     p.push('# Severity: the file\'s own MUST/required vs SHOULD/recommended language classifies a check;');
@@ -11013,13 +11079,15 @@ function openSpecContextBlock() {
   const rules = (state.rulesPaths || []).filter(Boolean);
   const docs = (state.productDocPaths || []).filter(Boolean);
   const verify = (state.verifyPaths || []).filter(Boolean);
+  const vnotes = (state.verifyNotes || '').trim();
   const app = (typeof getAppSource === 'function') ? getAppSource() : null;
   const uiNotes = ($('uiContextNotes') ? $('uiContextNotes').value : '').trim();
-  if (!rules.length && !docs.length && !verify.length && !app && !uiNotes) return '';
+  if (!rules.length && !docs.length && !verify.length && !vnotes && !app && !uiNotes) return '';
   const lines = ['Repo context to read and honor (resolve each path in each repo in scope; read only what is listed):'];
   if (rules.length) lines.push('- Rules / constitution (BINDING - follow them): ' + rules.join(', '));
   if (docs.length) lines.push('- Product / architecture docs (serve, do not contradict): ' + docs.join(', '));
   if (verify.length) lines.push('- Verification instructions (verifier / tester owned - report each check as executed / not-applicable / blocked' + (state.verifyFailRun ? '; a blocked or failed REQUIRED check fails the run' : '; blocked checks are recorded, not run-failing') + '): ' + verify.join(', '));
+  if (vnotes) lines.push('- Inline verification notes (same severity and posture as verification files): ' + vnotes.replace(/\s*\n+\s*/g, '; '));
   if (app) lines.push('- App under test at ' + app.path + (app.branch ? ' (branch ' + app.branch + ')' : '') + ' - ' + (getAppSourceAccess() === 'writable' ? 'writable by deliberate configuration; declare every modification' : 'READ-ONLY') + '; exploration/test steps mine UI selectors from it');
   if (uiNotes) lines.push('- UI/design constraints (authoritative for UI work, any platform): ' + uiNotes.replace(/\s*\n+\s*/g, '; '));
   return lines.join('\n');
@@ -11122,6 +11190,9 @@ function openSpecAdoptContextPaths(meta) {
   }
   if (meta && Array.isArray(meta.verifyPaths) && meta.verifyPaths.length && !(state.verifyPaths || []).length) {
     meta.verifyPaths.forEach(p => addVerifyPath(p)); adopted += meta.verifyPaths.length;
+  }
+  if (meta && typeof meta.verifyNotes === 'string' && meta.verifyNotes.trim() && !(state.verifyNotes || '').trim()) {
+    setVerifyNotes(meta.verifyNotes); const vn = $('verifyNotesInput'); if (vn) vn.value = meta.verifyNotes; adopted += 1;
   }
   return adopted;
 }
@@ -11360,7 +11431,7 @@ function buildOpenSpecSchema() {
   L.push('');
   L.push('# Round-trip metadata for the Agentic Workflow Designer (ignored by openspec validate).');
   L.push('# Re-import this file into the designer to edit the workflow visually.');
-  L.push('# awd:meta ' + JSON.stringify({ format: 'agentic-workflow-designer', version: 1, rulesPaths: state.rulesPaths || [], productDocPaths: state.productDocPaths || [], verifyPaths: state.verifyPaths || [], verifyFailRun: state.verifyFailRun, ...serializeWorkflow() }));
+  L.push('# awd:meta ' + JSON.stringify({ format: 'agentic-workflow-designer', version: 1, rulesPaths: state.rulesPaths || [], productDocPaths: state.productDocPaths || [], verifyPaths: state.verifyPaths || [], verifyNotes: state.verifyNotes || '', verifyFailRun: state.verifyFailRun, ...serializeWorkflow() }));
 
   // Graph position for each artifact's record (task-inclusive, straight off the requires we built).
   const idLabel = {};
@@ -11877,7 +11948,7 @@ function genTuningPrompt() {
   L.push('## Current workflow definition (awd JSON)');
   L.push('');
   L.push('```json');
-  L.push(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, rulesPaths: state.rulesPaths || [], productDocPaths: state.productDocPaths || [], verifyPaths: state.verifyPaths || [], verifyFailRun: state.verifyFailRun, ...serializeWorkflow() }, null, 2));
+  L.push(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, rulesPaths: state.rulesPaths || [], productDocPaths: state.productDocPaths || [], verifyPaths: state.verifyPaths || [], verifyNotes: state.verifyNotes || '', verifyFailRun: state.verifyFailRun, ...serializeWorkflow() }, null, 2));
   L.push('```');
   return L.join('\n');
 }
