@@ -6849,6 +6849,47 @@ describe('Usability & Help', () => {
     });
   });
 
+  describe('shared hint preamble', () => {
+    it('all four prompt generators emit workflow-level hints through pushSharedHints (one source, no re-inlining)', () => {
+      ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt'].forEach(fn => {
+        expect(win[fn].toString().indexOf('pushSharedHints') !== -1).toBe(true);
+      });
+      // Claude.ai deliberately excludes the effort hint (no per-step effort mechanism there)
+      expect(win.genClaudePrompt.toString()).toContain("pushSharedHints(p, 'claude', false)");
+      // proven byte-identical at consolidation: 17 presets x 5 formats x 3 toggle combos, zero drift
+    });
+  });
+
+  describe('config panel hardening', () => {
+    beforeEach(() => { resetState(); });
+    it('configSelect escapes an unknown value in its fallback label (imported JSON is user data)', () => {
+      const html = win.configSelect('Model', 'model', '<img src=x onerror="window.__pwned=1">', [{ value: 'a', label: 'A' }]);
+      expect(html.indexOf('<img')).toBe(-1);
+      expect(html).toContain('&lt;img');
+      // end to end: a node holding the hostile value renders no element into the panel
+      const n = win.addNode('agent', 100, 100, 'X', { agentType: 'coder', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      n.config.model = '<img src=x>';
+      win.selectNode(n.id);
+      expect(!!win.document.getElementById('configFields').querySelector('img')).toBe(false);
+      win.selectNode(null);
+    });
+    it('updateConfig assigns innerHTML exactly once per rebuild (array build, no O(n^2) reparse)', () => {
+      const n = win.addNode('agent', 100, 100, 'X', { agentType: 'coder', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const fields = win.document.getElementById('configFields');
+      let sets = 0;
+      const proto = win.Object.getOwnPropertyDescriptor(win.Element.prototype, 'innerHTML');
+      win.Object.defineProperty(fields, 'innerHTML', {
+        get() { return proto.get.call(this); },
+        set(v) { sets++; return proto.set.call(this, v); },
+        configurable: true
+      });
+      win.selectNode(n.id);
+      expect(sets).toBe(1);
+      delete fields.innerHTML;   // drop the instance spy, restore prototype accessor
+      win.selectNode(null);
+    });
+  });
+
   describe('story input validation hint', () => {
     it('should show hint for bare Jira key', () => {
       const si = win.document.getElementById('storyInput');

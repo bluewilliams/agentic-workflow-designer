@@ -4723,61 +4723,64 @@ function updateConfig() {
     return;
   }
   panel.classList.add('visible');
-  fields.innerHTML = '';
+  // Build the whole panel into an array and assign innerHTML ONCE at the end: the old
+  // per-fragment `innerHTML +=` reserialized and reparsed the entire panel ~30 times
+  // (O(n^2)) and is the classic way to silently drop listeners on earlier fragments.
+  const H = [];
 
   // Node type badge
   const defaults = NODE_DEFAULTS[node.type];
-  fields.innerHTML += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+  H[H.length] = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
     <span style="width:10px;height:10px;border-radius:50%;background:${defaults.color};flex-shrink:0"></span>
     <span style="font-size:12px;font-weight:600;color:${defaults.color};text-transform:capitalize">${node.type} Node</span>
   </div>`;
 
   // Common: Label
-  fields.innerHTML += configInput('Label', 'label', node.label);
+  H[H.length] = configInput('Label', 'label', node.label);
 
   if (node.type === 'agent') {
-    fields.innerHTML += configSelect('Agent Type', 'agentType', node.config.agentType,
+    H[H.length] = configSelect('Agent Type', 'agentType', node.config.agentType,
       AGENT_TYPES.map(a => ({ value: a.id, label: a.name })));
     if (node.config.agentType === 'writer') {
-      fields.innerHTML += configSelect('Writing Style', 'writingStyle', node.config.writingStyle || 'technical',
+      H[H.length] = configSelect('Writing Style', 'writingStyle', node.config.writingStyle || 'technical',
         WRITING_STYLES.map(s => ({ value: s.id, label: s.name })));
     }
-    fields.innerHTML += configSelect('Model', 'model', node.config.model,
+    H[H.length] = configSelect('Model', 'model', node.config.model,
       MODELS.map(m => ({ value: m.value, label: m.label })));
     // Effort rides beside Model: same seam, same skin. Options are filtered to what THIS
     // step's model accepts, so the panel cannot offer a level that would be silently dropped.
-    fields.innerHTML += configSelect('Effort', 'effort', node.config.effort || '',
+    H[H.length] = configSelect('Effort', 'effort', node.config.effort || '',
       [{ value: '', label: effortInheritLabel() }]
         .concat(modelEffortLevels(node.config.model).map(l => ({ value: l, label: effortOptionLabel(l) }))));
     // Defect posture: two knobs, two homes. The coder family tunes fix-vs-record; the
     // reviewer tunes flag-back intensity (spot-and-report to the orchestrator, never fix,
     // never gate-failing). Testers/verifiers carry the balanced protocol without a knob.
     if (DEFECT_KNOB_ROLES.has(node.config.agentType)) {
-      fields.innerHTML += configSelect('Defect Posture', 'defectPosture', nodeDefectPosture(node),
+      H[H.length] = configSelect('Defect Posture', 'defectPosture', nodeDefectPosture(node),
         [{ value: 'balanced', label: 'Balanced (default) - fix blockers + low-hanging fruit in your path' },
          { value: 'record-only', label: 'Record-only - surgical: report everything, fix only true blockers' },
          { value: 'aggressive', label: 'Aggressive - opportunistically heal the working area (tested + declared)' }]);
     } else if (node.config.agentType === 'reviewer') {
-      fields.innerHTML += configSelect('Defect Posture', 'defectPosture', nodeDefectPosture(node),
+      H[H.length] = configSelect('Defect Posture', 'defectPosture', nodeDefectPosture(node),
         [{ value: 'balanced', label: 'Balanced (default) - note pre-existing defects, never gate on them' },
          { value: 'surgical', label: 'Surgical - judge only the change; ignore pre-existing defects' },
          { value: 'aggressive', label: 'Aggressive - sweep near the diff, flag pre-existing defects to the orchestrator' }]);
     }
-    fields.innerHTML += configTextarea('Agent Prompt', 'prompt', node.config.prompt,
+    H[H.length] = configTextarea('Agent Prompt', 'prompt', node.config.prompt,
       'Instructions for this agent...', 'class="agent-prompt-textarea"');
-    fields.innerHTML += agentPromptStatusBlock(node);
-    fields.innerHTML += configTextarea('Agent Context', 'notes', node.config.notes,
+    H[H.length] = agentPromptStatusBlock(node);
+    H[H.length] = configTextarea('Agent Context', 'notes', node.config.notes,
       "Added to THIS agent only - extra context, constraints, or details for this step, appended to its prompt (it does not replace the Agent Prompt above).");
-    fields.innerHTML += configInput('Max Turns', 'maxTurns', node.config.maxTurns, 'number', '', 'min="1" max="50"');
-    fields.innerHTML += `<div class="config-field"><label>Tools</label><div class="tools-grid" id="toolsGrid"></div></div>`;
+    H[H.length] = configInput('Max Turns', 'maxTurns', node.config.maxTurns, 'number', '', 'min="1" max="50"');
+    H[H.length] = `<div class="config-field"><label>Tools</label><div class="tools-grid" id="toolsGrid"></div></div>`;
   } else if (node.type === 'task') {
-    fields.innerHTML += configTextarea('Description', 'description', node.config.description, 'What this task does...');
-    fields.innerHTML += configTextarea('Acceptance Criteria', 'acceptance', node.config.acceptance, 'Done when...');
+    H[H.length] = configTextarea('Description', 'description', node.config.description, 'What this task does...');
+    H[H.length] = configTextarea('Acceptance Criteria', 'acceptance', node.config.acceptance, 'Done when...');
   } else if (node.type === 'decision') {
-    fields.innerHTML += configTextarea('Condition', 'condition', node.config.condition, 'Criteria to evaluate (e.g. acceptance criteria)');
-    fields.innerHTML += configInput('Yes Label', 'yesLabel', node.config.yesLabel);
-    fields.innerHTML += configInput('No Label', 'noLabel', node.config.noLabel);
-    fields.innerHTML += configInput('Max Revisions', 'maxRevisions', node.config.maxRevisions || 3, 'number', '', 'min="1" max="20"');
+    H[H.length] = configTextarea('Condition', 'condition', node.config.condition, 'Criteria to evaluate (e.g. acceptance criteria)');
+    H[H.length] = configInput('Yes Label', 'yesLabel', node.config.yesLabel);
+    H[H.length] = configInput('No Label', 'noLabel', node.config.noLabel);
+    H[H.length] = configInput('Max Revisions', 'maxRevisions', node.config.maxRevisions || 3, 'number', '', 'min="1" max="20"');
     // Review-loop decisions (from Add skeptic review / Add verification) can route their
     // failure branch back to a different node - e.g. loop a Verifier's "Not verified"
     // back to the Planner. The candidate list is the work nodes; review nodes are not
@@ -4790,36 +4793,36 @@ function updateConfig() {
         .filter(n => (n.type === 'agent' || n.type === 'task') && !(n.config && (n.config.agentType === 'adversary' || n.config.agentType === 'verifier')))
         .map(n => ({ value: n.id, label: escHtml(n.label || '') }));
       if (candidates.length) {
-        fields.innerHTML += configSelect(`On "${escHtml(noLabel)}", route back to`, 'reviewLoopBackTo', currentTarget, candidates);
+        H[H.length] = configSelect(`On "${escHtml(noLabel)}", route back to`, 'reviewLoopBackTo', currentTarget, candidates);
       }
     }
   } else if (node.type === 'parallel') {
-    fields.innerHTML += configSelect('Strategy', 'strategy', node.config.strategy,
+    H[H.length] = configSelect('Strategy', 'strategy', node.config.strategy,
       [{ value:'all', label:'Wait for All' },{ value:'any', label:'First Complete' },{ value:'race', label:'Race' }]);
-    fields.innerHTML += configTextarea('Description', 'description', node.config.description, 'Parallel execution context...');
+    H[H.length] = configTextarea('Description', 'description', node.config.description, 'Parallel execution context...');
     // Research fork: mode + anti-anchoring option slot + evaluation bias.
     if (node.config.researchMode) {
-      fields.innerHTML += configSelect('Research Mode', 'researchMode', node.config.researchMode,
+      H[H.length] = configSelect('Research Mode', 'researchMode', node.config.researchMode,
         RESEARCH_MODES.map(m => ({ value: m.value, label: m.label })));
-      fields.innerHTML += configTextarea('Options to Evaluate (one per line)', 'options',
+      H[H.length] = configTextarea('Options to Evaluate (one per line)', 'options',
         parseResearchOptions(node.config.options).join('\n'),
         'Leave blank to let agents enumerate. e.g.\nfull artifact manager\nlightweight manifest\ndo nothing');
-      fields.innerHTML += configTextarea('Evaluation Bias / Principle', 'evaluationBias',
+      H[H.length] = configTextarea('Evaluation Bias / Principle', 'evaluationBias',
         node.config.evaluationBias || '', 'Leave blank for the default less-is-more principle');
     }
   } else if (node.type === 'input') {
-    fields.innerHTML += configSelect('Source', 'source', node.config.source,
+    H[H.length] = configSelect('Source', 'source', node.config.source,
       [{ value:'freeform', label:'Freeform' },{ value:'story', label:'User Story' },{ value:'prd', label:'PRD' }]);
-    fields.innerHTML += configTextarea('Description', 'description', node.config.description, 'Input details...');
+    H[H.length] = configTextarea('Description', 'description', node.config.description, 'Input details...');
   } else if (node.type === 'output') {
-    fields.innerHTML += configSelect('Format', 'format', node.config.format,
+    H[H.length] = configSelect('Format', 'format', node.config.format,
       [{ value:'code', label:'Leave Uncommitted' },{ value:'commit', label:'Commit' },{ value:'pr', label:'Pull Request' },{ value:'report', label:'Report' },{ value:'docs', label:'Documentation' }]);
-    fields.innerHTML += configInput('Deliverable', 'deliverable', node.config.deliverable);
+    H[H.length] = configInput('Deliverable', 'deliverable', node.config.deliverable);
     if (node.config.format === 'pr' || node.config.format === 'commit') {
-      fields.innerHTML += configInput('Branch Name', 'branchName', node.config.branchName || '', 'text', 'e.g. feature/PRJ-6069-profile-redesign');
+      H[H.length] = configInput('Branch Name', 'branchName', node.config.branchName || '', 'text', 'e.g. feature/PRJ-6069-profile-redesign');
     }
     if (node.config.format === 'pr') {
-      fields.innerHTML += configInput('Target Branch', 'targetBranch', node.config.targetBranch || '', 'text', 'e.g. main, develop (default: main)');
+      H[H.length] = configInput('Target Branch', 'targetBranch', node.config.targetBranch || '', 'text', 'e.g. main, develop (default: main)');
     }
   }
 
@@ -4827,7 +4830,7 @@ function updateConfig() {
   if (typeof runReportStatsFor === 'function' && node) {
     const _rs = runReportStatsFor(node);
     if (_rs && (_rs.runs > 0 || _rs.cycleRuns > 0)) {
-      fields.innerHTML += '<div class="config-run-history" style="font-size:11px;color:var(--text-dim,#8b95a7);margin-top:6px">Run history: ' + escHtml(runStatsSummary(_rs)) + '</div>';
+      H[H.length] = '<div class="config-run-history" style="font-size:11px;color:var(--text-dim,#8b95a7);margin-top:6px">Run history: ' + escHtml(runStatsSummary(_rs)) + '</div>';
     }
   }
 
@@ -4835,6 +4838,8 @@ function updateConfig() {
   // what the selected export format will emit for this node, and why.
   if (typeof explainNode === 'function' && ['agent', 'decision', 'parallel', 'output'].includes(node.type)) {
   }
+
+  fields.innerHTML = H.join('');
 
   // Text edits undo at editing-session grain: the FIRST input on a field since it was
   // (re)built or last blurred snapshots the pre-edit state. Registered BEFORE the
@@ -5029,7 +5034,10 @@ function configSelect(label, key, value, options) {
   // rather than silently borrowing the first option's label (which made the panel disagree with
   // the emitted prompt). Recognized values are unaffected.
   const known = options.find(o => o.value === value);
-  const selected = known || (value ? { value: value, label: String(value) } : options[0]);
+  // The unknown-value fallback renders USER DATA (a config value, possibly from an imported
+  // workflow JSON someone shared) into innerHTML - escape it. Known options are trusted
+  // constants (the one dynamic caller, reviewLoopBackTo, escapes its own labels).
+  const selected = known || (value ? { value: value, label: escHtml(String(value)) } : options[0]);
   const optHtml = options.map(o =>
     `<div class="custom-select-option${o.value === value ? ' selected' : ''}" data-value="${o.value}">${o.label}</div>`
   ).join('');
@@ -9619,6 +9627,39 @@ function toolScopeNote(tools) {
   if (!tools || tools.length === 0) return '';
   return 'These are suggestions, not limits - prefer them where they fit, but use any other tool available to you (other core tools, MCP servers connected to your session, task tracking, anything your runtime provides) whenever the task genuinely calls for it. Let your role guide you: an investigative or review step should prefer reporting findings over changing things, unless its instructions say otherwise.';
 }
+// The shared workflow-level hint preamble, emitted identically by the four prompt
+// generators (the SDK renders its own comment form). ONE source: adding a hint here
+// adds it to every format at once - the cross-format parity tests used to police four
+// hand-kept copies of this exact sequence. `format` feeds consumeRecordsHint;
+// includeEffort is false only for Claude.ai (no per-step effort mechanism there - a
+// deliberate, pre-existing difference, not an omission).
+function pushSharedHints(p, format, includeEffort) {
+  const atlT = atlassianTicketFetchHint(getWorkflowAtlassianUrls());
+  if (atlT) { p.push(atlT); p.push(''); }
+  const atlG = atlassianGeneralHint();
+  if (atlG) { p.push(atlG); p.push(''); }
+  const sb = codeSearchHint();
+  if (sb) { p.push(sb); p.push(''); }
+  const co = conventionsHint(); p.push(co); p.push('');
+  const ru = rulesPathsHint();
+  if (ru) { p.push(ru); p.push(''); }
+  const pd = productDocsHint();
+  if (pd) { p.push(pd); p.push(''); }
+  const ve = verifyInstructionsHint();
+  if (ve) { p.push(ve); p.push(''); }
+  if (includeEffort !== false) {
+    const ef = effortHint();
+    if (ef) { p.push(ef); p.push(''); }
+  }
+  const cr = consumeRecordsHint(format);
+  if (cr) { p.push(cr); p.push(''); }
+  const cl = clarifyFirstHint();
+  if (cl) { p.push(cl); p.push(''); }
+  const dd = datadogGroundingHint();
+  if (dd) { p.push(dd); p.push(''); }
+  const cm = customMcpHint();
+  if (cm) { p.push(cm); p.push(''); }
+}
 function genWorkflow() {
   const story = getStory(), name = getName();
   const ordered = topologicalSort();
@@ -9638,30 +9679,7 @@ function genWorkflow() {
   uiContextBlock('### UI Context').forEach(l => p.push(l));
   deliveryBlock('###').forEach(l => p.push(l));
   repoBlock('### Repositories').forEach(l => p.push(l));
-  const _wfAtlUrls = getWorkflowAtlassianUrls();
-  const _wfAtlT = atlassianTicketFetchHint(_wfAtlUrls);
-  if (_wfAtlT) { p.push(_wfAtlT); p.push(''); }
-  const _wfAtlG = atlassianGeneralHint();
-  if (_wfAtlG) { p.push(_wfAtlG); p.push(''); }
-  const _wfSb = codeSearchHint();
-  if (_wfSb) { p.push(_wfSb); p.push(''); }
-  const _wfCo = conventionsHint(); p.push(_wfCo); p.push('');
-  const _wfRu = rulesPathsHint();
-  if (_wfRu) { p.push(_wfRu); p.push(''); }
-  const _wfPd = productDocsHint();
-  if (_wfPd) { p.push(_wfPd); p.push(''); }
-  const _wfVe = verifyInstructionsHint();
-  if (_wfVe) { p.push(_wfVe); p.push(''); }
-  const _wfEf = effortHint();
-  if (_wfEf) { p.push(_wfEf); p.push(''); }
-  const _wfCr = consumeRecordsHint('prompt');
-  if (_wfCr) { p.push(_wfCr); p.push(''); }
-  const _wfCl = clarifyFirstHint();
-  if (_wfCl) { p.push(_wfCl); p.push(''); }
-  const _wfDd = datadogGroundingHint();
-  if (_wfDd) { p.push(_wfDd); p.push(''); }
-  const _wfCm = customMcpHint();
-  if (_wfCm) { p.push(_wfCm); p.push(''); }
+  pushSharedHints(p, 'prompt');
 
   // Identify parallel groups - nodeToForkId maps each child to its specific fork
   const parallelChildren = new Set();
@@ -9848,30 +9866,7 @@ function genSubAgents() {
     p.push(_saPlan);
     p.push('');
   }
-  const _saAtlUrls = getWorkflowAtlassianUrls();
-  const _saAtlT = atlassianTicketFetchHint(_saAtlUrls);
-  if (_saAtlT) { p.push(_saAtlT); p.push(''); }
-  const _saAtlG = atlassianGeneralHint();
-  if (_saAtlG) { p.push(_saAtlG); p.push(''); }
-  const _saSb = codeSearchHint();
-  if (_saSb) { p.push(_saSb); p.push(''); }
-  const _saCo = conventionsHint(); p.push(_saCo); p.push('');
-  const _saRu = rulesPathsHint();
-  if (_saRu) { p.push(_saRu); p.push(''); }
-  const _saPd = productDocsHint();
-  if (_saPd) { p.push(_saPd); p.push(''); }
-  const _saVe = verifyInstructionsHint();
-  if (_saVe) { p.push(_saVe); p.push(''); }
-  const _saEf = effortHint();
-  if (_saEf) { p.push(_saEf); p.push(''); }
-  const _saCr = consumeRecordsHint('subagent');
-  if (_saCr) { p.push(_saCr); p.push(''); }
-  const _saCl = clarifyFirstHint();
-  if (_saCl) { p.push(_saCl); p.push(''); }
-  const _saDd = datadogGroundingHint();
-  if (_saDd) { p.push(_saDd); p.push(''); }
-  const _saCm = customMcpHint();
-  if (_saCm) { p.push(_saCm); p.push(''); }
+  pushSharedHints(p, 'subagent');
 
   if (state.memoryEnabled) {
     p.push('## Memory System (CRITICAL)');
@@ -10146,30 +10141,7 @@ function genAgentTeams() {
   uiContextBlock('## UI Context').forEach(l => p.push(l));
   deliveryBlock('##').forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
-  const _atAtlUrls = getWorkflowAtlassianUrls();
-  const _atAtlT = atlassianTicketFetchHint(_atAtlUrls);
-  if (_atAtlT) { p.push(_atAtlT); p.push(''); }
-  const _atAtlG = atlassianGeneralHint();
-  if (_atAtlG) { p.push(_atAtlG); p.push(''); }
-  const _atSb = codeSearchHint();
-  if (_atSb) { p.push(_atSb); p.push(''); }
-  const _atCo = conventionsHint(); p.push(_atCo); p.push('');
-  const _atRu = rulesPathsHint();
-  if (_atRu) { p.push(_atRu); p.push(''); }
-  const _atPd = productDocsHint();
-  if (_atPd) { p.push(_atPd); p.push(''); }
-  const _atVe = verifyInstructionsHint();
-  if (_atVe) { p.push(_atVe); p.push(''); }
-  const _atEf = effortHint();
-  if (_atEf) { p.push(_atEf); p.push(''); }
-  const _atCr = consumeRecordsHint('teams');
-  if (_atCr) { p.push(_atCr); p.push(''); }
-  const _atCl = clarifyFirstHint();
-  if (_atCl) { p.push(_atCl); p.push(''); }
-  const _atDd = datadogGroundingHint();
-  if (_atDd) { p.push(_atDd); p.push(''); }
-  const _atCm = customMcpHint();
-  if (_atCm) { p.push(_atCm); p.push(''); }
+  pushSharedHints(p, 'teams');
 
   p.push('## Team Delegation Plan');
   p.push('');
@@ -10756,28 +10728,7 @@ function genClaudePrompt() {
   uiContextBlock('## UI Context').forEach(l => p.push(l));
   deliveryBlock('##').forEach(l => p.push(l));
   repoBlock('## Repositories').forEach(l => p.push(l));
-  const _cpAtlUrls = getWorkflowAtlassianUrls();
-  const _cpAtlT = atlassianTicketFetchHint(_cpAtlUrls);
-  if (_cpAtlT) { p.push(_cpAtlT); p.push(''); }
-  const _cpAtlG = atlassianGeneralHint();
-  if (_cpAtlG) { p.push(_cpAtlG); p.push(''); }
-  const _cpSb = codeSearchHint();
-  if (_cpSb) { p.push(_cpSb); p.push(''); }
-  const _cpCo = conventionsHint(); p.push(_cpCo); p.push('');
-  const _cpRu = rulesPathsHint();
-  if (_cpRu) { p.push(_cpRu); p.push(''); }
-  const _cpPd = productDocsHint();
-  if (_cpPd) { p.push(_cpPd); p.push(''); }
-  const _cpVe = verifyInstructionsHint();
-  if (_cpVe) { p.push(_cpVe); p.push(''); }
-  const _cpCr = consumeRecordsHint('claude');
-  if (_cpCr) { p.push(_cpCr); p.push(''); }
-  const _cpCl = clarifyFirstHint();
-  if (_cpCl) { p.push(_cpCl); p.push(''); }
-  const _cpDd = datadogGroundingHint();
-  if (_cpDd) { p.push(_cpDd); p.push(''); }
-  const _cpCm = customMcpHint();
-  if (_cpCm) { p.push(_cpCm); p.push(''); }
+  pushSharedHints(p, 'claude', false);
 
   if (agents.length > 0) {
     p.push('## Workflow');

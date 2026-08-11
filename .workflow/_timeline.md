@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-08-07 - external-review-hardening - CI test gate for Pages (red suite cannot deploy; self-heal deploy-failures-only), updateConfig single innerHTML assignment, configSelect fallback escaping, pushSharedHints consolidation (byte-identical across 255 snapshot cases). 1585 -> 1588 - .workflow/external-review-hardening.md
 2026-08-07 - self-improvement-loop (update) - clipboard import hardened per pre-commit review: any-info-string + CRLF fence regex, raw text to all import stages, artifacts: sniff for pasted YAML, Import menu dismissal parity. 1581 -> 1585 - .workflow/self-improvement-loop.md
 2026-08-07 - prompt-library-overhaul (update) - review catches fixed: Deep Doc + Onboarding write-file contradiction (now default-checked like the API generator, baked lines removed), lone-checkbox double label; shared literal hoisted - .workflow/prompt-library-overhaul.md
 2026-08-07 - sidebar-collapse (update) - stale New Workflow location fixed in README/TECHNICAL (controls row, not the section heading) - .workflow/sidebar-collapse.md

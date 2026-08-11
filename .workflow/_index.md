@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## external-review-hardening
+
+- record: .workflow/external-review-hardening.md
+- intent: an outside agent's ranked review applied where risk stays near zero - CI now gates Pages deploys on the suite (test job + needs, self-heal guarded to deploy failures, per-ref concurrency); updateConfig builds via array + single innerHTML assignment (was O(n^2) appends); configSelect escapes its unknown-value fallback (imported JSON is user data); the four generators' hint preambles consolidated into pushSharedHints (proven byte-identical across 17 presets x 5 formats x 3 toggle combos via a stash-diff snapshot harness; net -49 lines). Function-size decomposition deliberately declined in favor of on-touch.
+- files: .github/workflows/pages.yml, index.html (updateConfig, configSelect, pushSharedHints + 4 call sites), tests.html (+3)
+- status: current | date: 2026-08-07 | note: 1585 -> 1588.
+
 ## url-picker-input-gate
 
 - record: .workflow/url-picker-input-gate.md
