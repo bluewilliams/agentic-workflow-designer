@@ -138,6 +138,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 .plib-input-modal .plib-input-label:first-child{margin-top:0}
 .plib-input-modal .plib-input-check{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text);margin:10px 0 4px;cursor:pointer;line-height:1.4}
 .plib-input-modal .plib-input-check input{margin:2px 0 0;flex-shrink:0}
+.attn-pulse{animation:attnPulse 1.6s ease-in-out infinite}
+@keyframes attnPulse{0%,100%{opacity:1;text-shadow:none}50%{opacity:.55;text-shadow:0 0 8px #f59e0b}}
+@media (prefers-reduced-motion: reduce){.attn-pulse{animation:none}}
 .plib-input-modal .plib-input-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
 /* === Expand-to-modal text editing (summon a large editor for any textarea) - REMOVABLE === */
 .text-expand-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;display:none;align-items:center;justify-content:center}
@@ -1622,7 +1625,7 @@ function verifyInstructionsHint() {
     ? '> Posture (configured): a blocked REQUIRED verification fails the run - do not report the run as successful while a required check is unmet.'
     : '> Posture (configured): report-only - a blocked REQUIRED verification is recorded and surfaced, but it does not fail the run.';
   const r = [];
-  r.push('> **Verification instructions (verifier / tester owned).** These paths hold the checks a change must PROVE before it is done - test checklists, verification and E2E guides, and review gates. You, the orchestrator, own discovering them: read the configured filenames and paths that apply, and route them into the OWNING verification step\'s brief - the Verifier when this workflow has one, else the final Tester - so that ONE step executes the mandates (never two steps duplicating an expensive check) and inherits them instead of re-crawling. Reviewers audit the reported outcomes; they do not execute the mandates. These mandates ADD to the owning step\'s own verification method - they never replace it.');
+  r.push('> **Verification instructions (verifier / tester owned).** These paths hold the checks a change must PROVE before it is done - test checklists, verification and E2E guides, and review gates. You, the orchestrator, own discovering them: read the configured filenames and paths that apply, and route them into the OWNING verification step\'s brief - the Verifier when this workflow has one, else the final Tester - so that ONE step executes the mandates (never two steps duplicating an expensive check) and inherits them instead of re-crawling. Reviewers audit the reported outcomes; they do not execute the mandates. If this workflow has neither a Verifier nor a Tester, YOU own the mandates: execute the applicable checks yourself at close-out and report each under the same posture - configured verification never goes unexecuted for lack of an owner. These mandates ADD to the owning step\'s own verification method - they never replace it.');
   r.push('>');
   r.push('> Read only what is listed below - do not blind-hunt for other verification files:');
   r.push(list);
@@ -3058,6 +3061,9 @@ function clearVerifyPaths() {
   updatePrompt();
 }
 function renderVerifyRows() {
+  // Verify paths feed the badge's attention pulse, and editing them happens without a canvas
+  // render - refresh the badge here so the pulse tracks the config in BOTH directions.
+  if (typeof updateValidation === 'function') updateValidation();
   const list = $('verifyPathChips');
   if (!list) return;
   list.innerHTML = '';
@@ -8472,6 +8478,14 @@ function adviseWorkflow() {
     s.push({ msg: 'An App Under Test path is set but no step consumes it - clear it in App & UI Context, or add an App Explorer step if this workflow should explore the app.' });
   }
 
+  // (j) Verification mandates with no owning step: the beat routes the files to the
+  // Verifier (else the final Tester); with neither, the orchestrator must improvise at
+  // close-out. Surface the gap - emission is untouched (config binds; the fallback clause
+  // in the beat covers the ownerless run honestly).
+  if (verifyOwnerlessMisconfig()) {
+    s.push({ msg: 'Verification instructions are configured but no step owns them - add a Verifier or Tester so the repo\'s mandated checks have a dedicated executor (until then the orchestrator itself runs them at close-out).' });
+  }
+
   // (f) Telemetry-informed advice, only when run reports exist for this workflow.
   if (typeof hasRunReportData === 'function' && hasRunReportData()) {
     const wf = loadRunReports()[getName() || 'workflow'] || {};
@@ -8509,6 +8523,22 @@ function advisorAttachSkeptic(nodeId) {
 }
 // ═══ end WORKFLOW ADVISOR ═══
 
+// A configuration contradiction that will affect the run's honesty: verification mandates
+// configured with no step to own them. Shared by advisor rule (j) and the badge attention pulse.
+function verifyOwnerlessMisconfig() {
+  return !!(state.verifyPaths && state.verifyPaths.length) && resolveVerifyOwnerId() === null;
+}
+// The attention tier: advisory conditions loud enough to pulse the health badge. Deliberately
+// narrow - ONLY configuration contradictions that change what a run reports (never taste-level
+// advice like attach-a-Skeptic). Each entry is an individual design decision, not a pattern.
+function advisorAttention() {
+  const a = [];
+  if (verifyOwnerlessMisconfig()) a.push('verify-ownerless');
+  return a;
+}
+// Acknowledged-on-view: once the user opens the review modal, the pulse stops until the
+// SET of attention conditions changes. `var` so the test iframe can reset it directly.
+var _attnAcked = '';
 function updateValidation() {
   const el = $('validationInfo');
   if (!el) return;
@@ -8523,8 +8553,16 @@ function updateValidation() {
     el.style.color = '#f59e0b';
     el.title = warnings.length + ' issue' + (warnings.length !== 1 ? 's' : '') + ' found (click for details)';
   }
+  // Attention pulse: advisory-tier config contradictions grab the eye without touching the
+  // issues-only badge semantics (the checkmark stays green - attention is not an issue).
+  const attn = advisorAttention();
+  const live = attn.length > 0 && attn.join(',') !== _attnAcked;
+  el.classList.toggle('attn-pulse', live);
+  if (live) el.title += ' - a configuration suggestion needs a look (click)';
 }
 function showValidation() {
+  _attnAcked = advisorAttention().join(',');   // seen: stop pulsing until the attention set changes
+  updateValidation();
   const warnings = validateWorkflow();
   const suggestions = (typeof adviseWorkflow === 'function') ? adviseWorkflow() : [];
   if (warnings.length === 0 && suggestions.length === 0) { showToast('No workflow issues found', 2000); return; }
@@ -10471,8 +10509,10 @@ function genAgentSDK() {
   if (state.verifyPaths && state.verifyPaths.length) {
     p.push('# ── Verification instructions (verifier / tester owned) ──────────────────────────');
     p.push('# The checks a change must PROVE before it is done. The orchestrator (this harness)');
-    p.push('# discovers, scopes, and reads them, then routes them into the tester/verifier/reviewer');
-    p.push('# briefs; those steps report each check as executed / not-applicable / blocked.');
+    p.push('# discovers, scopes, and reads them, then routes them into the OWNING verification');
+    p.push("# step's brief (the Verifier if present, else the final Tester; with neither, the harness");
+    p.push('# executes them itself at close-out; reviewers audit outcomes, they do not execute).');
+    p.push('# That step reports each check as executed / not-applicable / blocked.');
     p.push('# Read only what is listed (no blind-hunt):');
     state.verifyPaths.forEach(pth => p.push(`#   - ${pth}`));
     p.push('# Scope: a root-level match always applies in that repo; a nested match applies only when');

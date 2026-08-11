@@ -5483,6 +5483,84 @@ describe('Verification instructions (run-level matrix)', () => {
     });
   });
 
+  // ── Ownerless mandates: fallback clause + advisor rule (j) ──
+  describe('verification with no owning step (no Verifier, no Tester)', () => {
+    it('the workflow beat carries the orchestrator-executes fallback clause; advisor rule (j) surfaces the gap', () => {
+      workflowWith('Coder', { agentType:'coder', model:'opus-5', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
+      win.state.verifyPaths = ['VERIFY.md'];
+      expect(win.resolveVerifyOwnerId()).toBe(null);
+      const out = win.genSubAgents();
+      expect(out).toContain('If this workflow has neither a Verifier nor a Tester, YOU own the mandates');
+      expect(out).toContain('never goes unexecuted for lack of an owner');
+      const msgs = win.adviseWorkflow().map(x => x.msg).join(' ');
+      expect(msgs).toContain('no step owns them');
+      win.state.verifyPaths = [];
+      expect(win.adviseWorkflow().map(x => x.msg).join(' ')).toNotContain('no step owns them');   // gated on paths
+    });
+    it('advisor rule (j) goes silent once a Tester exists (owner resolved)', () => {
+      workflowWith('Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.state.verifyPaths = ['VERIFY.md'];
+      expect(win.resolveVerifyOwnerId() !== null).toBe(true);
+      expect(win.adviseWorkflow().map(x => x.msg).join(' ')).toNotContain('no step owns them');
+      win.state.verifyPaths = [];
+    });
+    it('the SDK comment names the owning-step routing and never sends mandates to reviewers', () => {
+      workflowWith('Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.state.verifyPaths = ['VERIFY.md'];
+      const sdk = win.genAgentSDK();
+      expect(sdk).toContain('OWNING verification');
+      expect(sdk).toContain('reviewers audit outcomes, they do not execute');
+      expect(sdk).toNotContain('tester/verifier/reviewer');
+      win.state.verifyPaths = [];
+    });
+  });
+
+  // ── Attention pulse: the badge grabs the eye for config contradictions, ack-on-view ──
+  describe('health badge attention pulse (ownerless verification mandates)', () => {
+    afterEach(() => { win._attnAcked = ''; win.state.verifyPaths = []; win.updateValidation(); });
+    it('pulses the badge (class + title cue) when verify paths have no owning step; checkmark stays green', () => {
+      workflowWith('Coder', { agentType:'coder', model:'opus-5', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
+      win.state.verifyPaths = ['VERIFY.md'];
+      win._attnAcked = '';
+      win.updateValidation();
+      const el = win.document.getElementById('validationInfo');
+      expect(el.classList.contains('attn-pulse')).toBe(true);
+      expect(el.title).toContain('configuration suggestion');
+      expect(el.style.color).toBe('rgb(16, 185, 129)');   // issues-only badge semantics hold: still green
+    });
+    it('opening the review acknowledges the pulse; it stays off until the attention set changes', () => {
+      workflowWith('Coder', { agentType:'coder', model:'opus-5', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
+      win.state.verifyPaths = ['VERIFY.md'];
+      win._attnAcked = '';
+      win.updateValidation();
+      expect(win.document.getElementById('validationInfo').classList.contains('attn-pulse')).toBe(true);
+      win.showValidation();   // ack-on-view
+      win.closeValidation();
+      expect(win.document.getElementById('validationInfo').classList.contains('attn-pulse')).toBe(false);
+      win.updateValidation(); // still acknowledged - no re-pulse for the same condition
+      expect(win.document.getElementById('validationInfo').classList.contains('attn-pulse')).toBe(false);
+    });
+    it('the pulse tracks path edits live in both directions (no canvas render needed)', () => {
+      workflowWith('Coder', { agentType:'coder', model:'opus-5', tools:['Read','Write','Edit'], prompt:'Build it.', maxTurns:10 });
+      win._attnAcked = '';
+      const el = win.document.getElementById('validationInfo');
+      win.addVerifyPath('VERIFY.md');            // add via the real mutator - pulse starts
+      expect(el.classList.contains('attn-pulse')).toBe(true);
+      win.clearVerifyPaths();                    // remove via the real mutator - pulse stops
+      expect(el.classList.contains('attn-pulse')).toBe(false);
+    });
+    it('no pulse when a Tester owns the mandates, and none when no paths are configured', () => {
+      workflowWith('Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
+      win.state.verifyPaths = ['VERIFY.md'];
+      win._attnAcked = '';
+      win.updateValidation();
+      expect(win.document.getElementById('validationInfo').classList.contains('attn-pulse')).toBe(false);
+      win.state.verifyPaths = [];
+      win.updateValidation();
+      expect(win.document.getElementById('validationInfo').classList.contains('attn-pulse')).toBe(false);
+    });
+  });
+
   // ── Gap 5: awd:meta serialization locks verifyFailRun with an explicit false ──
   describe('awd:meta posture serialization (explicit false round-trips; no defensive default)', () => {
     it('verifyFailRun false survives into awd:meta as strict boolean false (not dropped, not defaulted to true)', () => {
