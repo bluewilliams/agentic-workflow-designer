@@ -3520,9 +3520,45 @@ describe('Preset Loading', () => {
       win.loadPreset('fullstack');
       expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
     });
-    it('should load review preset with 4 agents', () => {
+    it('review preset: 4 agents, change-scoped reviewer, adversarial findings audit behind a gate, one severity vocabulary', () => {
       win.loadPreset('review');
       expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+      const r = win.state.nodes.find(n => n.label === 'Reviewer');
+      expect(r.config.prompt).toBe(win.PROMPTS.changeScopedReviewer);
+      expect(r.config.prompt).toContain('scope the review to the change, not the codebase');
+      expect(r.config.prompt).toContain('Blocking / Important / Nit');
+      expect(r.config.prompt).toContain('adversarially audited');           // the reviewer knows its findings face audit
+      expect(r.config.prompt).toContain('Requirements coverage');           // reviews AGAINST the ticket, not just quality
+      expect(r.config.prompt).toContain('Clean-diff fast path');
+      // the Skeptic audits the REVIEW through the dedicated review lens, wired as a revise loop on the Reviewer
+      const sk = win.state.nodes.find(n => n.label === 'Skeptic audit: Findings');
+      expect(sk.config.agentType).toBe('adversary');
+      expect(sk.config.adversaryRole).toBe('reviewer');
+      expect(sk.config.reviewLoopFor).toBe(r.id);
+      // the lens lives INSIDE the adversary frame: its severity tags grade the REVIEW, the
+      // adjudication table always rides the report, and refutations are success, never defects
+      const lens = win.buildAdversaryPrompt('reviewer');
+      expect(lens).toContain('Adjudicate every finding');
+      expect(lens).toContain('grade the REVIEW, not the code');
+      expect(lens).toContain('Always emit the adjudication table');
+      expect(lens).toContain('Refutations are a SUCCESS of this audit');
+      // both review steps carry Bash - their prompts run git
+      [r, sk].forEach(n => expect(n.config.tools.indexOf('Bash') !== -1).toBe(true));
+      const sd = win.state.nodes.find(n => n.type === 'decision' && n.label === 'Findings sound?');
+      expect(!!sd).toBe(true);
+      expect(sd.config.reviewLoopDecisionFor).toBe(r.id);
+      expect(sd.config.condition).toContain('refuted findings are a pass, not a failure');
+      expect(sd.config.yesLabel).toBe('Passed');   // consistent with every sibling adversary gate
+      // downstream chain: audit-aware improver, fast-pathed validator, one severity vocabulary
+      const im = win.state.nodes.find(n => n.label === 'Improver');
+      expect(im.config.prompt).toContain('SURVIVED the audit');
+      expect(im.config.prompt).toContain('Zero-findings fast path');
+      expect(im.config.prompt).toContain('no drive-by refactors');
+      const v = win.state.nodes.find(n => n.label === 'Validator');
+      expect(v.config.prompt).toContain('Zero-changes fast path');
+      expect(v.config.prompt).toContain('every Blocking finding that SURVIVED the audit MUST be addressed');
+      expect(v.config.prompt).toContain('resolved by refutation');
+      [im, v].forEach(n => expect(n.config.prompt).toNotContain('Critical and High'));   // dead vocabulary never returns
     });
     it('should load parallel_research preset with 4 agents', () => {
       win.loadPreset('parallel_research');
@@ -3563,6 +3599,13 @@ describe('Preset Loading', () => {
     it('should load data_migration preset with 5 agents', () => {
       win.loadPreset('data_migration');
       expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+    });
+    it('Requirements Analyst treats the Cartographer as a parallel sibling, not an upstream input', () => {
+      const p = win.PROMPTS.requirementsAnalyst;
+      expect(p).toContain('a parallel sibling, not an upstream input');
+      expect(p).toContain('never wait for them');                       // memory notes are opportunistic, never blocking
+      expect(p).toContain('TARGETED reading');                          // no duplicate full survey alongside the Cartographer
+      expect(p).toNotContain('findings where available');               // the sideways dependency phrasing never returns
     });
     it('should load delivery_swarm preset with 11 agents', () => {
       win.loadPreset('delivery_swarm');
@@ -7432,6 +7475,54 @@ describe('Usability & Help', () => {
       expect(text).toNotContain('[your objective]');   // no leftover placeholder
       expect(text.startsWith('> **Your input**')).toBe(false); // preamble removed
     });
+    it('Branch Diff Review: optional branch + merge-target inputs with honest fallbacks, no-checkout contract, three-dot diff', () => {
+      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Git & Code Review');
+      const p = cat.prompts.find(x => x.title === 'Branch Diff Review');
+      expect(!!p).toBe(true);
+      expect(p.inputs.length).toBe(5);
+      expect(p.inputs[0].optional).toBe(true);
+      expect(p.inputs[0].fallback).toBe('the currently checked-out branch');
+      expect(p.inputs[1].optional).toBe(true);
+      expect(p.inputs[1].fallback).toContain('default branch');
+      // feedback level + output format dials, both defaulting sensibly
+      const lvl = p.inputs.find(f => f.find === '[feedback level]');
+      expect(lvl.kind).toBe('select');
+      expect(lvl.default).toBe('standard');
+      expect(lvl.options.some(o => o.value === 'blocking only')).toBe(true);
+      expect(lvl.options.some(o => o.value === 'everything')).toBe(true);
+      const fmt = p.inputs.find(f => f.find === '[output format]');
+      expect(fmt.kind).toBe('select');
+      expect(fmt.default).toBe('numbered list');
+      expect(fmt.options.some(o => o.value === 'review comments')).toBe(true);
+      expect(p.inputs[4].find).toBe('[output destination]');   // the shared save-to-file checkbox
+      // the level filters the write-up, never the examination; the verdict survives every level
+      expect(p.prompt).toContain('the level governs what is written up, never what is examined');
+      expect(p.prompt).toContain('withheld severities are acknowledged by count');
+      const body = p.prompt;
+      expect(body).toContain('Branch under review: [branch to review]');
+      expect(body).toContain('Merge target: [merge target]');
+      expect(body).toContain('do NOT check out, switch branches, stash, or modify anything');
+      expect(body).toContain('git diff <target>...<branch>');           // merge-base three-dot
+      expect(body).toContain('git show <branch>:<path>');               // branch-tree reads, not working tree
+      expect(body).toContain('resolves to `origin/<name>`');           // remote-only branches are the NORMAL case
+      expect(body).toContain('STOP and say so');                        // unknown ref never guessed
+      expect(body).toContain('Only the change gates');
+      expect(body).toContain('APPROVE / APPROVE WITH NITS / REQUEST CHANGES');
+    });
+    it('Branch Diff Review copies with both fallbacks when the fields are left empty', () => {
+      const catIdx = win.PROMPT_LIBRARY.findIndex(c => c.category === 'Git & Code Review');
+      const pIdx = win.PROMPT_LIBRARY[catIdx].prompts.findIndex(p => p.title === 'Branch Diff Review');
+      let copied = '';
+      win.navigator.clipboard.writeText = (t) => { copied = t; return Promise.resolve(); };
+      win.copyLibPrompt(pIdx, catIdx);
+      win.confirmPlibInput();   // both texts optional - empty is a valid copy; dials ride their defaults
+      expect(copied).toContain('Branch under review: the currently checked-out branch');
+      expect(copied).toContain('Merge target: the repository default branch');
+      expect(copied).toContain('FEEDBACK LEVEL: standard');
+      expect(copied).toContain('OUTPUT FORMAT: numbered list');
+      ['[branch to review]', '[merge target]', '[feedback level]', '[output format]', '[output destination]'].forEach(t =>
+        expect(copied.indexOf(t)).toBe(-1));
+    });
     it('Software & Framework Upgrade lives in Migrations & Upgrades with dial tokens in the body and conservative select defaults', () => {
       const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Migrations & Upgrades');
       const p = cat.prompts.find(x => x.title === 'Software & Framework Upgrade');
@@ -9875,8 +9966,8 @@ describe('Auto Workflow tailored research prompts', () => {
     const fork = win.state.nodes.find(n => n.type === 'parallel' && n.config.researchMode);
     expect(!!fork).toBe(true);
   });
-  it('dead PROMPTS keys are gone (synthesizer, docResearcher, patternAnalyzer, codebaseExplorer)', () => {
-    ['synthesizer','docResearcher','patternAnalyzer','codebaseExplorer'].forEach(k => {
+  it('dead PROMPTS keys are gone (synthesizer, docResearcher, patternAnalyzer, codebaseExplorer, codeReviewer)', () => {
+    ['synthesizer','docResearcher','patternAnalyzer','codebaseExplorer','codeReviewer'].forEach(k => {
       expect(win.PROMPTS[k] === undefined).toBe(true);
     });
   });
