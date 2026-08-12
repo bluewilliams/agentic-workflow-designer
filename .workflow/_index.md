@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## review-preset-efficiency
+
+- record: .workflow/review-preset-efficiency.md
+- intent: the Review preset made change-proportional AND structurally differentiated (4 agents: findings adversarially audited via the new review lens before fixes are spent, requirements-coverage review, per-finding evidence, fast paths; the 10-turn whole-codebase Analyzer folded into the Reviewer's diff-sized step 0; Improver/Validator aligned to the Blocking/Important/Nit vocabulary with no-drive-by + proportional-diff discipline) and a Branch Diff Review library prompt (no-checkout git-plumbing review of any branch vs any merge target, three-dot merge-base diff, optional inputs with honest fallbacks).
+- files: index.html (changeScopedReviewer + improver/validator/requirementsAnalyst prompts, ADVERSARY_LENSES.review, review + delivery_swarm presets, Branch Diff Review entry), tests.html
+- status: current | date: 2026-08-11 | note: 1602 -> 1605.
+
 ## external-review-hardening
 
 - record: .workflow/external-review-hardening.md
