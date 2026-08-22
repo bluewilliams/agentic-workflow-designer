@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-08-22 - epic-run-feedback - nine run-evidenced improvements integrated (conditional execution model, authoritative memory delivery, scoped revise routing + approved-branch fencing, orchestrator decision log, tester discrimination proof, do-not-fake + contention beats, finalize strand-sweep, environment capability survey). 1605 -> 1612 - .workflow/epic-run-feedback.md
 2026-08-11 - review-preset-efficiency (update) - delivery_swarm sideways dependency fixed in the prompt, not the topology (Analyst = parallel sibling doing targeted reads, opportunistic memory notes, never waits; serializing rejected as costing the showcase's parallelism). 1604 -> 1605 - .workflow/review-preset-efficiency.md
 2026-08-11 - review-preset-efficiency (update) - cross-preset contract sweep: one real gap (Improver suggested-tools lacked Bash its prompt asks for; fixed), one hedged awareness note; vocabularies/sections/gates/labels verified clean across all 17 presets + shapes - .workflow/review-preset-efficiency.md
 2026-08-11 - review-preset-efficiency (update) - Branch Diff Review dials: FEEDBACK LEVEL (filters write-up, never examination; withheld counts acknowledged) + OUTPUT FORMAT (list / report / paste-ready comments) - .workflow/review-preset-efficiency.md

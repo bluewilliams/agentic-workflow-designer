@@ -66,6 +66,7 @@ Toggle **Enable workflow memory** in the sidebar to inject a compaction-resilien
 - Each agent reads memory files **before** starting work (step zero)
 - Each agent writes progress + breadcrumb **after** completing work (final step)
 - Compaction recovery is automatic. Agents detect missing breadcrumbs and re-read state from disk
+- The orchestrator reads each step's full report from its memory file (the authoritative copy - inline results can truncate; files don't) and logs its own gate decisions to `shared.md`, so its history survives compaction too
 - Inter-agent communication flows through `shared.md` using TOON notation
 - Memory files: `shared.md` (append-only), `@{agent}.md` (per-agent)
 - Duplicate agent labels are handled automatically with unique slug suffixes
