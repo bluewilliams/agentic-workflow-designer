@@ -518,22 +518,22 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-section" data-collapse-id="repositories">
     <h3>Multi-Repo &amp; Context Paths</h3>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Launching inside the only repo you touch? Leave this empty. List repos when the work spans more than one, or when a repo must sit on a pinned branch - agents check out the branch and pull latest before starting.</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Leave this empty when you launch inside the only repo you touch. List repos when work spans more than one, or to pin a branch - agents check it out and pull latest first.</div>
     <div id="repoList"></div>
     <button class="btn sm" onclick="addRepoRow()">+ Add Repository</button>
     <div style="height:1px;background:var(--border);opacity:.5;margin:14px 0 10px"></div>
     <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">Repo Context Paths</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Paths the agents should read and honor across this repo. CLAUDE.md auto-loads for the repo you launch in (in multi-repo runs the generated prompt has agents read each other repo's CLAUDE.md too); these add extra context. Sticky: they carry across workflows and survive New Workflow.</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Extra paths agents read and honor. CLAUDE.md is already covered (auto-loaded in the launch repo; the generated prompt has agents read the other repos' copies). Sticky: they carry across workflows and survive New Workflow.</div>
 
     <div style="margin-bottom:10px">
       <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px">Rules / constitution paths</div>
-      <div style="font-size:10px;color:var(--text3);margin-bottom:5px">(binding; CLAUDE.md auto-read in the launch repo)</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:5px">(binding constraints on how to build)</div>
       <div class="path-input-row">
         <input type="text" id="rulesPathInput" placeholder="e.g. .claude/rules or CONVENTIONS.md" onkeydown="if(event.key==='Enter'){event.preventDefault();addRulesPathFromInput();}"/>
         <button class="btn sm" onclick="addRulesPathFromInput()">Add</button>
       </div>
       <div class="path-chips" id="rulesPathChips"></div>
-      <div class="path-suggest">
+      <div class="path-suggest" id="rulesPathSuggest">
         <button onclick="addRulesPath('.claude/rules')">.claude/rules</button>
         <button onclick="addRulesPath('CONVENTIONS.md')">CONVENTIONS.md</button>
         <button onclick="addRulesPath('CONTRIBUTING.md')">CONTRIBUTING.md</button>
@@ -549,7 +549,7 @@ svg.canvas{width:100%;height:100%;display:block}
         <button class="btn sm" onclick="addProductDocPathFromInput()">Add</button>
       </div>
       <div class="path-chips" id="productDocPathChips"></div>
-      <div class="path-suggest">
+      <div class="path-suggest" id="productDocPathSuggest">
         <button onclick="addProductDocPath('README.md')">README.md</button>
         <button onclick="addProductDocPath('docs/')">docs/</button>
         <button onclick="addProductDocPath('ARCHITECTURE.md')">ARCHITECTURE.md</button>
@@ -560,18 +560,18 @@ svg.canvas{width:100%;height:100%;display:block}
 
     <div style="margin-top:10px">
       <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px">Verification instructions (verifier / tester owned)</div>
-      <div style="font-size:10px;color:var(--text3);margin-bottom:5px">(what a change must prove; routed to the workflow's owning verification step - the Verifier if present, else the final Tester)</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:5px">(what a change must prove; routed to the owning Verifier, else the final Tester)</div>
       <div class="path-input-row">
         <input type="text" id="verifyPathInput" placeholder="e.g. VERIFY.md or rules/E2E.md" onkeydown="if(event.key==='Enter'){event.preventDefault();addVerifyPathFromInput();}"/>
         <button class="btn sm" onclick="addVerifyPathFromInput()">Add</button>
       </div>
       <div class="path-chips" id="verifyPathChips"></div>
-      <div class="path-suggest">
+      <div class="path-suggest" id="verifyPathSuggest">
         <button onclick="addVerifyPath('VERIFY.md')">VERIFY.md</button>
         <button onclick="addVerifyPath('rules/E2E.md')">rules/E2E.md</button>
       </div>
       <button class="path-clear" id="verifyPathClear" onclick="clearVerifyPaths()" style="display:none">Clear All</button>
-      <div style="font-size:10px;color:var(--text3);margin:8px 0 3px">Inline notes (optional) - mandates without a file; same MUST/SHOULD severity language:</div>
+      <div style="font-size:10px;color:var(--text3);margin:8px 0 3px">Inline notes (optional): mandates without a file, same MUST/SHOULD language:</div>
       <textarea id="verifyNotesInput" class="story-input" style="min-height:44px;padding:6px 8px;font-size:12px" placeholder="e.g. The E2E checkout flow MUST pass (npm run test:e2e). Lighthouse performance SHOULD stay >= 90." oninput="setVerifyNotes(this.value)"></textarea>
       <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text3);margin-top:6px;cursor:pointer">
         <input type="checkbox" id="verifyFailRunToggle" checked onchange="setVerifyFailRun(this.checked)" style="margin:0"/>
@@ -2989,6 +2989,16 @@ function clearRulesPaths() {
   savePrefsDebounced();
   updatePrompt();
 }
+// Hide a suggestion button once its path is configured; it returns when the chip is removed.
+// Called from each group's render function, which every mutation path and prefs-restore runs through.
+function syncPathSuggest(suggestId, paths) {
+  const box = $(suggestId);
+  if (!box) return;
+  const have = paths || [];
+  Array.from(box.querySelectorAll('button')).forEach(b => {
+    b.style.display = have.indexOf(b.textContent) === -1 ? '' : 'none';
+  });
+}
 function renderRulesRows() {
   const list = $('rulesPathChips');
   if (!list) return;
@@ -3003,6 +3013,7 @@ function renderRulesRows() {
   });
   const clr = $('rulesPathClear');
   if (clr) clr.style.display = (state.rulesPaths && state.rulesPaths.length) ? 'inline' : 'none';
+  syncPathSuggest('rulesPathSuggest', state.rulesPaths);
 }
 function addProductDocPath(path) {
   const v = (path || '').trim();
@@ -3047,6 +3058,7 @@ function renderProductDocRows() {
   });
   const clr = $('productDocPathClear');
   if (clr) clr.style.display = (state.productDocPaths && state.productDocPaths.length) ? 'inline' : 'none';
+  syncPathSuggest('productDocPathSuggest', state.productDocPaths);
 }
 function addVerifyPath(path) {
   const v = (path || '').trim();
@@ -3128,6 +3140,7 @@ function renderVerifyRows() {
   });
   const clr = $('verifyPathClear');
   if (clr) clr.style.display = (state.verifyPaths && state.verifyPaths.length) ? 'inline' : 'none';
+  syncPathSuggest('verifyPathSuggest', state.verifyPaths);
 }
 // The fail-the-run posture is a sticky boolean pref (not a per-workflow value): update state,
 // persist, and refresh the prompt so the workflow-level beat re-renders with the new posture text.

@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## repo-section-declutter
+
+- record: .workflow/repo-section-declutter.md
+- intent: calmer Multi-Repo & Context Paths sidebar section, sibling pass to memory-section-declutter - five copy trims (both intros, the Rules and Verification sub-lines, the inline-notes label; CLAUDE.md auto-reading stated once instead of twice), plus suggestion-chip dedupe: `syncPathSuggest` hides a dashed suggestion while its path is configured and restores it on removal, hooked into the three chip renderers so every mutation path and prefs-restore stays covered.
+- files: index.html (section copy, three suggest-container ids, syncPathSuggest + three render hooks), tests.html (sub-line pin migrated, dedupe test added)
+- status: current | date: 2026-08-22 | note: 1613 -> 1614. Copy + render-time visibility only; state shape, persistence, and emitted prompts untouched.
+
 ## memory-section-declutter
 
 - record: .workflow/memory-section-declutter.md
