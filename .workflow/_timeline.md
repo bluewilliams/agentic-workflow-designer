@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-08-22 - memory-section-declutter - sidebar Memory & Durable Record section decluttered: memory path inline chip line, Handoff tip removed, two help texts trimmed; ids and behavior untouched. 1613 tests - .workflow/memory-section-declutter.md
 2026-08-22 - epic-run-feedback (update) - review fixes (export-block greenfield escape, two-corpus vocabulary, collision anchor, openspec: telemetry entries, discriminating pins) + precedence-on-conflict and archive-parity clauses. 1613 tests - .workflow/epic-run-feedback.md
 2026-08-22 - epic-run-feedback (update) - grounding harvest deepened: SDK step-list gap fixed, change design docs + collision protocol, both-corpora role routing + Risks/Found-bugs harvest, canonical multiRepo per-repo sweep step. 1613 tests - .workflow/epic-run-feedback.md
 2026-08-22 - epic-run-feedback (update) - grounding reads OpenSpec docs too (bounded: names as index, grep to narrow, few files opened; auto with the toggle; direction-(d) ruling partially superseded by director decision); toggle descriptions shortened. 1612 -> 1613 - .workflow/epic-run-feedback.md

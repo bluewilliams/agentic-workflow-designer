@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## memory-section-declutter
+
+- record: .workflow/memory-section-declutter.md
+- intent: calmer Memory & Durable Record sidebar section with zero behavior change - the derived memory path demoted from label + boxed display to one inline code-chip line (same `memoryPathDisplay` id, textContent contract intact), the Export -> Handoff tip removed (Help modal + export toast still cover it), two help texts trimmed one line each, dead `memory-hint` CSS dropped. Editable Artifact Path keeps its label; derived displays do not - that contrast marks what the user can change.
+- files: index.html (sidebar memory section markup + memory-section CSS only; no JS, no emitted prompts)
+- status: current | date: 2026-08-22 | note: 1613 tests unchanged; presentation only, all show/hide ids and nesting pinned.
+
 ## epic-run-feedback
 
 - record: .workflow/epic-run-feedback.md
