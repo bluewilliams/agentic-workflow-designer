@@ -5,9 +5,9 @@ Scan-then-open: read this index first, match an entry against the files or capab
 ## epic-run-feedback
 
 - record: .workflow/epic-run-feedback.md
-- intent: nine run-evidenced improvements from a real two-repo epic run - capability-conditional execution model (continue-don't-respawn where the harness allows; one-shot stays baseline), memory file promoted to the authoritative report channel, revise routing scoped to the faulted targets with approved-branch fencing, orchestrator decisions logged to shared.md, tester discrimination proof + reviewer corroboration, do-not-fake and machine-contention beats, durable-content sweep before finalize strips scaffolding, and a once-per-run environment capability survey inherited by downstream steps.
-- files: index.html (execution-model fragments, revise emission, memory protocol x2, tester/validator/changeScopedReviewer/planner/architect templates, durable-record spec), tests.html (+7)
-- status: current | date: 2026-08-22 | note: 1605 -> 1612. Integration gate honored: every change carries run evidence.
+- intent: nine run-evidenced improvements from a real two-repo epic run - capability-conditional execution model (continue-don't-respawn where the harness allows; one-shot stays baseline), memory file promoted to the authoritative report channel, revise routing scoped to the faulted targets with approved-branch fencing, orchestrator decisions logged to shared.md, tester discrimination proof + reviewer corroboration, do-not-fake and machine-contention beats, durable-content sweep before finalize strips scaffolding, and a once-per-run environment capability survey inherited by downstream steps. 2026-08-22: grounding also scans openspec/ docs, bounded like the index scan (auto with the toggle).
+- files: index.html (execution-model fragments, revise emission, memory protocol x2, tester/validator/changeScopedReviewer/planner/architect templates, durable-record spec, groundingLookupSteps + consumeRecordsHint + openSpecGroundingBlock + genAgentSDK grounding, sidebar toggle text, help modal, Explain reasons, kickoff narration), tests.html, README.md, TECHNICAL.md
+- status: current | date: 2026-08-22 | note: 1605 -> 1613. Integration gate honored: every change carries run evidence.
 
 ## review-preset-efficiency
 

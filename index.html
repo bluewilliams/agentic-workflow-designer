@@ -774,7 +774,7 @@ svg.canvas{width:100%;height:100%;display:block}
       <input type="checkbox" id="consumeRecordsToggle" onchange="toggleConsumeRecords()" checked/>
       <span>Ground in prior records</span>
     </label>
-    <p class="memory-help">Before planning, agents scan committed <code>.workflow</code> records and inherit the relevant decisions, gotchas, and surface area - reading each record's present-tense <em>Current behavior</em> section first and its history only for the why. The read side of the durable record; a no-op on greenfield work.</p>
+    <p class="memory-help">Agents scan committed <code>.workflow</code> records - and any OpenSpec docs they find - before planning, and inherit the relevant decisions, gotchas, and surface area. No-op on greenfield work.</p>
     <div style="border-top:1px solid var(--border);margin:12px 0"></div>
     <label class="memory-toggle">
       <input type="checkbox" id="memoryToggle" onchange="toggleMemory()" checked/>
@@ -789,7 +789,7 @@ svg.canvas{width:100%;height:100%;display:block}
           <input type="checkbox" id="durableRecordToggle" onchange="toggleDurableRecord()" checked/>
           <span>Keep a durable record</span>
         </label>
-        <p class="memory-help">Also writes a committable <strong>spec + state</strong> document the agents maintain: a resumable handoff while work is in progress, an auditable artifact once it is done. Lives in your repo, versioned with the code.</p>
+        <p class="memory-help">Also writes a committable <strong>spec + state</strong> document: a resumable handoff in progress, an auditable artifact when done. Versioned with your code.</p>
         <div id="artifactPathField" style="display:block;margin-top:8px">
           <span class="memory-path-label">Artifact Path</span>
           <input type="text" id="artifactPathInput" class="memory-path" oninput="onArtifactPathInput()" placeholder=".workflow/untitled.md" style="width:100%;box-sizing:border-box;border:1px solid var(--surface2);background:var(--surface);color:var(--text);font-family:inherit"/>
@@ -1159,8 +1159,8 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>A breadcrumb index at <code>.workflow/_index.md</code> keeps one entry per record, grouped by capability. It is scanned first (scan-then-open) so future work reads only the relevant records instead of all of them. Supersession lineage keeps history one hop away: a re-worked capability leaves the old record marked superseded with the new one linked, so the index always points at current behavior. Partial changes are right-sized: an amendment updates the old record in place (plus a one-line History entry naming the amending record) instead of archiving it.</p>
 
 <h3>Ground in Prior Records</h3>
-<p>The <strong>Ground in prior records</strong> toggle (on by default) is the read side. Before planning, the orchestrator scans <code>.workflow/_index.md</code> if it exists, opens only the records relevant to the files and capability the change touches (preferring current ones), and folds their decisions and gotchas into the plan. It is self-gating - a no-op on greenfield repos with no records yet. Producing a record is opt-in; benefiting from existing ones is automatic.</p>
-<p>Together, <strong>Keep a durable record</strong> (the write side) and <strong>Ground in prior records</strong> (the read side) form a flywheel: every run leaves behind its decisions, gotchas, and a tested spec, and the next run reads them before planning - so workflows in the same repo get sharper and stop repeating the same mistakes over time, with nobody curating anything by hand. The more you run, the better-grounded each new workflow starts.</p>
+<p>The <strong>Ground in prior records</strong> toggle (on by default) is the read side. Before planning, the orchestrator scans <code>.workflow/_index.md</code> if it exists, opens only the records relevant to the files and capability the change touches (preferring current ones), and folds their decisions and gotchas into the plan. It also grounds in any <code>openspec/</code> documents it finds, with the same bounded discipline (capability names first, grep to narrow, only the few matching files opened) - so a repo run by OpenSpec-based tooling informs designer runs automatically. It is self-gating - a no-op on greenfield repos with neither. Producing a record is opt-in; benefiting from existing ones is automatic.</p>
+<p>Together, <strong>Keep a durable record</strong> (the write side) and <strong>Ground in prior records</strong> (the read side) form a flywheel: every run leaves behind its decisions, gotchas, and a tested spec, and the next run reads them before planning - so workflows in the same repo get sharper and stop repeating the same mistakes over time, with nobody curating anything by hand. The more you run, the better-grounded each new workflow starts. The flywheel is OpenSpec-compatible on both sides: runs ground in <code>openspec/</code> specs and active changes they find, and the OpenSpec export's runs scan our records - the two systems inform each other.</p>
 
 <h3>Handoff</h3>
 <p>The <strong>Handoff package</strong> option in the <strong>Export</strong> menu (under <strong>Workflow Management</strong>) downloads a single resume package (<code>.md</code>) so another engineer can pick up in-progress work: how to resume, the durable-record path, the ready-to-run prompt, and the full workflow definition. The live run state travels with your git branch and the durable record, not this file - so enable <strong>Keep a durable record</strong> before running for a truly resumable handoff.</p>
@@ -1715,7 +1715,9 @@ function groundingLookupSteps() {
     scanIndex: 'If a record index exists at `.workflow/_index.md` in a repository in scope, scan it first (a cheap one-line-per-record breadcrumb). Match entries by the files and capability your change touches; prefer entries marked `status: current`, and skip anything in the index\'s "Archive (superseded)" section unless you are deliberately investigating history. If the index is large, do NOT read it whole - `Grep` it for the file names, symbols, and capability slug your change touches and read only the matching entries, so your context stays bounded no matter how many entries the index holds. Then open ONLY the matched records; in each, read its "Current behavior" section first - that is the present-tense truth of the capability in one read - and descend into the history below it only when you need the why behind a decision. Carry their behavior, decisions, gotchas, surface-area map, and requirements into your plan.',
     noTransitive: 'Do not read every record, and do not follow a record\'s cross-repository `siblings` link unless a matched entry shows a real dependency on that repository - never follow links transitively.',
     supersede: 'If a matched record or entry is marked superseded, follow its `superseded_by` pointer forward and ground on the current record instead. Right-size the lineage plan against what your change actually does to a current record\'s capability. REPLACING it whole: reconcile your plan against that record and plan to supersede it at finalize (set `supersedes` on the new entry and flip the old entry to `superseded`). Merely ALTERING a behavior it describes, without replacing the capability: do NOT supersede - plan to update that record\'s Current behavior so it stays present-tense truth, append one dated History line there naming your slug and the why, and leave its status `current` (its index intent line gets re-checked at finalize). Replacing only a SLICE of it: plan to flip that entry\'s status to `partial` with `superseded_by` naming your record for the replaced slice, and rewrite its Current behavior to state exactly what it still covers.',
-    greenfield: 'If no index exists or no entry matches, proceed normally - this adds nothing to greenfield work.'
+    openSpecDocs: 'If an `openspec/` directory exists in a repository in scope, ground in its documents with the SAME bounded discipline as the index scan. The directory listing IS the index: one `ls openspec/specs/` gives the capability names for one tool call regardless of corpus size; match those NAMES against the capability and files your change touches, and when names alone do not settle it, `grep -l` the specific symbols and file names across `openspec/specs/` and take only the hits. Open at most the FEW best-matching spec files (each is the current truth of one capability - the peer of a record\'s Current behavior). Then list `openspec/changes/` folder names the same way and open only the matching ACTIVE proposals - in-flight work you could collide with - and a matched change\'s design document when present (it holds the decisions and rejected alternatives, the peer of a record\'s Approach section). On a genuine collision, SURFACE it: name the in-flight change in your one visible grounding line and the affected steps\' briefs, and coordinate around it - never silently duplicate or contradict work mid-flight. Skip archived changes (like our index\'s Archive section, consult them only when deliberately investigating history - a completed change\'s durable truth already lives in the spec it updated). Precedence on conflict: when a matched spec and a matched `.workflow` record describe the same capability and disagree, recency wins (date the record by its History, the spec by its change history); when you cannot date them, the CODE is the arbiter - read the actual behavior - and surface the conflict in your visible grounding line either way. Zero matches means zero documents read - a large corpus with nothing relevant costs two directory listings and nothing more. No `openspec/` directory means skip this silently.',
+    multiRepo: 'Multi-repo: when more than one repository is in scope, run this grounding scan in EACH of them - every repo\'s `.workflow/` records and `openspec/` documents ground that repo\'s work. A finding that describes a cross-repo contract (a shared API, a wire format, an event shape) goes into EVERY affected repo\'s briefs, not only its home repo\'s.',
+    greenfield: 'If neither a record index nor an `openspec/` directory exists, or nothing in EITHER corpus matched, proceed normally - this adds nothing to greenfield work.'
   };
 }
 function wrapComment(text, width) {
@@ -1753,7 +1755,7 @@ function runReportDirective() {
   r.push('');
   r.push('- One `steps` entry per step, in execution order. `slug` is the step label lowercased and hyphenated (the same slug as its memory file). `status` is done, skipped, or failed.');
   r.push('- Include `turns` and `cap` only if you actually tracked them - omit any field you do not know, never invent numbers. Include `repo` (the repository name the run executed against) when there is one; omit it otherwise.');
-  if (state.consumeRecords) r.push('- Include `grounded`: an array of the record slugs that actually informed this run (matched at the grounding scan AND used - briefed into a step, cited in a decision, or re-verified). Omit the field entirely when none did; never list a record that merely appeared in the index.');
+  if (state.consumeRecords) r.push('- Include `grounded`: an array of the record slugs that actually informed this run (matched at the grounding scan AND used - briefed into a step, cited in a decision, or re-verified); matched-and-used OpenSpec docs ride the same array as `openspec:<capability>` entries, so they never collide with record slugs. Omit the field entirely when nothing was used; never list a document that merely appeared in a listing.');
   r.push('- One `gates` entry per decision gate: the revise `cycles` actually used and the `final` verdict.');
   r.push('- ALSO append the exact same fence to `~/.awd/run-reports.md`, creating the directory and file if missing - that file is the workflow designer\'s telemetry drop and its canonical feed (a copy inside a durable record is archival context). If writing outside the working directory is not permitted, skip this silently; the response fence still stands.');
   r.push('- The fence is data, not prose - place it at the very end of the final response. If a memory breadcrumb comment is required, the breadcrumb stays the very last line and this fence goes immediately before it.');
@@ -1765,12 +1767,12 @@ function consumeRecordsHint(fmt) {
   const s = groundingLookupSteps();
   const r = [];
   r.push('> **Ground in prior committed records (if any).** The orchestrator (the top-level agent that drives this workflow and spawns its steps - ' + orchestratorIdentity(fmt) + ', even when there is no named Planner step) does this once before the work begins, and folds what it finds into the brief it gives the steps so they inherit it without re-reading.');
-  [s.tiers, s.scanIndex, s.noTransitive, s.supersede, s.greenfield].forEach(step => r.push('> - ' + step));
-  r.push('> - **Route what you find by role, not only into the plan.** Matched records\' Gotchas and documented invariants go into the implementing step\'s brief; their Requirements and verifying-test names go into the reviewer\'s and tester\'s briefs; a skeptic or plan-review step is told to check the plan against the matched records\' documented invariants. Distribute EXCERPTS - the relevant lines, with the source record named - not whole records: steps do not each re-scan the index or re-read whole records.');
-  r.push('> - **Reviewers and critics treat matched current records\' Requirements and Gotchas as review criteria**: a change that violates a documented invariant of a current record is a finding, not a style note.');
+  [s.tiers, s.scanIndex, s.noTransitive, s.supersede, s.openSpecDocs, s.multiRepo, s.greenfield].forEach(step => r.push('> - ' + step));
+  r.push('> - **Route what you find by role, not only into the plan - from BOTH corpora.** Matched records\' (and matched OpenSpec specs\') Gotchas, scenarios, and documented invariants go into the implementing step\'s brief; their Requirements, spec scenarios, and verifying-test names go into the reviewer\'s and tester\'s briefs; matched records\' Risks go into the skeptic\'s brief, and their Found bugs into every relevant brief - a known deferred defect in the area is reported as pre-existing, never rediscovered as new; a skeptic or plan-review step is told to check the plan against the matched documents\' invariants. Distribute EXCERPTS - the relevant lines, with the source record named - not whole records: steps do not each re-scan the index or re-read whole records.');
+  r.push('> - **Reviewers and critics treat matched current records\' Requirements and Gotchas - and matched OpenSpec spec scenarios - as review criteria**: a change that violates a documented invariant of a current record is a finding, not a style note.');
   r.push('> - **A tester step re-runs the `verify` commands of matched records whose files overlap the change** as regression confirmation, and reports the real results.');
   r.push('> - **Steps note which record informed a material decision** as they work, so (when a durable record is being maintained) its `Grounds on / touches:` line is written at finalize from the run rather than reconstructed.');
-  r.push('> - **Tell the user what grounding bought them.** After the scan, say in one visible line which records matched and what they contributed ("Grounded on payment-retry and batch-item-filter: inherited the idempotency invariant and two gotchas") - or that none matched (greenfield, expected). Repeat the payoff in your FINAL report: name the records whose decisions, gotchas, or verify commands shaped this run. The flywheel only earns its keep when its owner can see it turning.');
+  r.push('> - **Tell the user what grounding bought them.** After the scan, say in one visible line which records and OpenSpec docs matched and what they contributed ("Grounded on payment-retry and batch-item-filter: inherited the idempotency invariant and two gotchas") - or that none matched (greenfield, expected). Repeat the payoff in your FINAL report: name the records AND OpenSpec docs whose decisions, gotchas, scenarios, or verify commands shaped this run. The flywheel only earns its keep when its owner can see it turning.');
   return r.join('\n');
 }
 
@@ -9100,7 +9102,7 @@ function orchestratorRunPlan(format) {
 
   const kick = [];
   if (getWorkflowAtlassianUrls().length > 0) kick.push('Resolve the Atlassian ticket(s) once, up front - the resolved spec becomes the source for the plan');
-  if (state.consumeRecords) kick.push('Ground in prior records: scan .workflow/ (timeline, then index, then only the matched records)');
+  if (state.consumeRecords) kick.push('Ground in prior records: scan .workflow/ (timeline, then index, then only the matched records) and any openspec/ docs found (names, then grep, then only the matched few)');
   if (state.mcpDatadog) kick.push('Bounded Datadog read to shape the plan (self-gated on telemetry relevance)');
   if (state.memoryEnabled && state.durableRecord) kick.push('Create the durable record and author its task checklist up front');
   if (kick.length) { lines.push('Kickoff:'); kick.forEach(item); }
@@ -9250,7 +9252,7 @@ function explainWorkflow(format) {
       : 'no step carries an effort level - the run uses whatever the runner defaults to (high on the API, xhigh in Claude Code); set one per step in Node Configuration or set Default Effort in the sidebar';
   rows.push(exRow('Effort', format !== 'claude' && workflowHasEffort(), efReason, ef || ''));
   const cr = consumeRecordsHint(format);
-  rows.push(exRow('Grounding in prior records', !!cr, cr ? 'Ground-in-prior-records toggle on - three-tier lookup, Current behavior first' : 'Ground-in-prior-records toggle off', cr));
+  rows.push(exRow('Grounding in prior records', !!cr, cr ? 'Ground-in-prior-records toggle on - three-tier lookup, Current behavior first; also scans any openspec/ docs found (bounded: names first, grep to narrow, few files opened)' : 'Ground-in-prior-records toggle off', cr));
   const cl = clarifyFirstHint();
   rows.push(exRow('Clarify-first gate', !!cl, cl ? 'Clarify-requirements-first toggle on - the workflow opens with one round of clarifying questions before any work begins; answers fold into the plan' : 'Clarify-first toggle off', cl));
   const ddG = datadogGroundingHint();
@@ -10565,7 +10567,7 @@ function genAgentSDK() {
     // the prompt outputs and the OpenSpec export use, so the protocol stays DRY. Backticks stripped (no
     // markdown in Python comments). Full step set (the SDK runs the whole workflow, like the prompt side).
     const gls = groundingLookupSteps();
-    [gls.tiers, gls.scanIndex, gls.noTransitive, gls.supersede, gls.greenfield]
+    [gls.tiers, gls.scanIndex, gls.noTransitive, gls.supersede, gls.openSpecDocs, gls.multiRepo, gls.greenfield]
       .forEach(step => wrapComment(step.replace(/`/g, ''), 79).forEach(l => p.push(l)));
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
@@ -11137,12 +11139,13 @@ function openSpecGroundingBlock() {
   // so it is harmless on greenfield repos. Caller rides this on the FIRST artifact only (the entry step);
   // downstream steps inherit through requires. Renders the SHARED canonical three-tier protocol
   // (groundingLookupSteps) as plain instruction bullets - same source the prompt outputs use, so the
-  // protocol stays DRY; the read-relevant subset only (skips the write-side supersede step and the
-  // multi-repo siblings step - an OpenSpec run reads to inform its work, it does not maintain our index).
+  // protocol stays DRY; the read-relevant subset only (skips the write-side supersede step, the
+  // multi-repo siblings step, the openSpecDocs step - an OpenSpec run natively manages that corpus - and the
+  // shared two-corpus greenfield, replaced by a single-corpus local wording so its escape can actually fire).
   if (!state.consumeRecords) return '';
   const s = groundingLookupSteps();
   return ['Ground in prior records first (if any), before doing this step\'s work:']
-    .concat([s.tiers, s.scanIndex, s.greenfield].map(step => '- ' + step))
+    .concat([s.tiers, s.scanIndex, 'If no record index exists or no entry matches, proceed normally - this adds nothing to greenfield work.'].map(step => '- ' + step))
     .join('\n');
 }
 function openSpecInstruction(node) {
