@@ -412,11 +412,9 @@ svg.canvas{width:100%;height:100%;display:block}
   letter-spacing:.5px;margin-bottom:4px;display:block}
 .memory-section .memory-help{font-size:11px;color:var(--text3);line-height:1.45;margin:4px 0 0 22px}
 .memory-section .memory-help code{background:var(--surface2);padding:1px 4px;border-radius:3px;
-  font-family:var(--mono);font-size:10px}
+  font-family:var(--mono);font-size:10px;overflow-wrap:anywhere}
 .memory-section .memory-help strong{color:var(--text2);font-weight:600}
 .memory-section .durable-block{margin-top:12px;padding-left:10px;border-left:2px solid var(--surface2)}
-.memory-section .memory-hint{font-size:11px;color:var(--accent);line-height:1.45;margin:6px 0 0 0}
-.memory-section .memory-hint strong{font-weight:700}
 /* Repo rows */
 .repo-row{display:flex;gap:4px;align-items:center;margin-bottom:4px}
 .repo-row input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);color:var(--text);
@@ -774,26 +772,24 @@ svg.canvas{width:100%;height:100%;display:block}
       <input type="checkbox" id="consumeRecordsToggle" onchange="toggleConsumeRecords()" checked/>
       <span>Ground in prior records</span>
     </label>
-    <p class="memory-help">Agents scan committed <code>.workflow</code> records - and any OpenSpec docs they find - before planning, and inherit the relevant decisions, gotchas, and surface area. No-op on greenfield work.</p>
+    <p class="memory-help">Agents scan committed <code>.workflow</code> records and any OpenSpec docs before planning, and inherit prior decisions and gotchas. No-op on greenfield work.</p>
     <div style="border-top:1px solid var(--border);margin:12px 0"></div>
     <label class="memory-toggle">
       <input type="checkbox" id="memoryToggle" onchange="toggleMemory()" checked/>
       <span>Enable workflow memory</span>
     </label>
     <p class="memory-help">Agents save progress to disk so a long run survives context compaction. Ephemeral working state in <code>~/.claude</code>, nothing is committed.</p>
-    <div id="memoryPathField" style="display:block;margin-top:8px">
-      <span class="memory-path-label">Memory Path</span>
-      <div class="memory-path" id="memoryPathDisplay">~/.claude/workflow-memory/untitled/</div>
+    <div id="memoryPathField" style="display:block">
+      <p class="memory-help" style="margin-top:6px">Memory path: <code id="memoryPathDisplay">~/.claude/workflow-memory/untitled/</code></p>
       <div class="durable-block" id="durableRecordField">
         <label class="memory-toggle">
           <input type="checkbox" id="durableRecordToggle" onchange="toggleDurableRecord()" checked/>
           <span>Keep a durable record</span>
         </label>
-        <p class="memory-help">Also writes a committable <strong>spec + state</strong> document: a resumable handoff in progress, an auditable artifact when done. Versioned with your code.</p>
+        <p class="memory-help">Also writes a committable <strong>spec + state</strong> document: a resumable handoff in progress, an auditable artifact when done.</p>
         <div id="artifactPathField" style="display:block;margin-top:8px">
           <span class="memory-path-label">Artifact Path</span>
           <input type="text" id="artifactPathInput" class="memory-path" oninput="onArtifactPathInput()" placeholder=".workflow/untitled.md" style="width:100%;box-sizing:border-box;border:1px solid var(--surface2);background:var(--surface);color:var(--text);font-family:inherit"/>
-          <p class="memory-hint">Tip: use <strong>Export &#9662; &rarr; Handoff package</strong> under Workflow Management to export a resume package for another engineer.</p>
         </div>
       </div>
     </div>
