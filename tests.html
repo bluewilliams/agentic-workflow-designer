@@ -946,6 +946,50 @@ describe('Memory Protocol', () => {
     });
   });
 
+  describe('OpenSpec grounding (read side, bounded)', () => {
+    afterEach(() => { win.state.consumeRecords = true; resetState(); });
+    it('the grounding hint scans openspec/ docs with the same bounded discipline as the index scan, gated on the toggle', () => {
+      buildTestWorkflow('linear');
+      win.state.consumeRecords = true;
+      const hint = win.consumeRecordsHint('subagent');
+      expect(hint).toContain('If an `openspec/` directory exists');
+      expect(hint).toContain('SAME bounded discipline as the index scan');
+      expect(hint).toContain('The directory listing IS the index');
+      expect(hint).toContain('Open at most the FEW best-matching spec files');
+      expect(hint).toContain('a large corpus with nothing relevant costs two directory listings and nothing more');
+      expect(hint).toContain('consult them only when deliberately investigating history');
+      expect(hint).toContain('Precedence on conflict');
+      expect(hint).toContain('recency wins');
+      expect(hint).toContain('the CODE is the arbiter');
+      // depth harvest: design docs, collision protocol, both-corpora routing, per-repo sweep
+      expect(hint).toContain("a matched change's design document when present");
+      expect(hint).toContain('never silently duplicate or contradict work mid-flight');
+      expect(hint).toContain('from BOTH corpora');
+      expect(hint).toContain('reported as pre-existing, never rediscovered as new');
+      expect(hint).toContain('run this grounding scan in EACH of them');
+      expect(hint).toContain("goes into EVERY affected repo's briefs");
+      // the SDK render carries the full step set too
+      buildTestWorkflow('linear');
+      win.state.consumeRecords = true;
+      const sdk = win.genAgentSDK();
+      // the SDK word-wraps comment prose at 79 chars - pin short tokens that cannot split
+      expect(sdk).toContain('grep -l');            // unique to the openSpecDocs step (survives comment wrapping)
+      expect(sdk).toContain('Multi-repo:');
+      // the OpenSpec export's grounding block deliberately EXCLUDES both new steps - it manages that corpus
+      const blk = win.openSpecGroundingBlock();
+      expect(blk).toNotContain('grep -l');
+      expect(blk).toNotContain('Multi-repo:');
+      expect(blk).toContain('If no record index exists or no entry matches');   // single-corpus greenfield, escape can fire
+      // fence spec: OpenSpec grounding rides grounded as collision-proof prefixed entries
+      expect(win.genSubAgents()).toContain('openspec:<capability>');
+      expect(hint).toContain('No `openspec/` directory means skip this silently');
+      // greenfield covers both systems now
+      expect(hint).toContain('neither a record index nor an `openspec/` directory');
+      win.state.consumeRecords = false;
+      expect(win.consumeRecordsHint('subagent')).toBe(null);   // toggle gating holds; afterEach restores
+    });
+  });
+
   describe('epic-run feedback beats (nine findings from a real two-repo run)', () => {
     afterEach(() => { resetState(); });
     it('execution model: one-shot stays the baseline contract; addressable harnesses continue the agent instead', () => {
@@ -1743,7 +1787,7 @@ describe('Consume prior records (read side)', () => {
     expect(h).toContain('see it turning');
     let rd = win.runReportDirective();
     expect(rd).toContain('`grounded`');
-    expect(rd).toContain('Omit the field entirely when none did');
+    expect(rd).toContain('Omit the field entirely when nothing was used');
     win.state.consumeRecords = false;
     rd = win.runReportDirective();
     expect(rd).toNotContain('`grounded`');
