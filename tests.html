@@ -5144,9 +5144,24 @@ describe('Repo context paths', () => {
       // descriptive labels + helper text present
       const html = doc.querySelector('body').innerHTML;
       expect(html).toContain('Rules / constitution paths');
-      expect(html).toContain('(binding; CLAUDE.md auto-read in the launch repo)');
+      expect(html).toContain('(binding constraints on how to build)');
       expect(html).toContain('Product docs (PRD / ADR)');
       expect(html).toContain('(goals/direction to honor)');
+    });
+    it('suggestion buttons hide while their path is configured and return on removal', () => {
+      const doc = win.document;
+      const btn = Array.from(doc.querySelectorAll('#rulesPathSuggest button')).find(b => b.textContent === '.claude/rules');
+      expect(!!btn).toBe(true);
+      win.addRulesPath('.claude/rules');
+      expect(btn.style.display).toBe('none');
+      win.removeRulesPath('.claude/rules');
+      expect(btn.style.display).toBe('');
+      const vbtn = Array.from(doc.querySelectorAll('#verifyPathSuggest button')).find(b => b.textContent === 'VERIFY.md');
+      expect(!!vbtn).toBe(true);
+      win.addVerifyPath('VERIFY.md');
+      expect(vbtn.style.display).toBe('none');
+      win.clearVerifyPaths();
+      expect(vbtn.style.display).toBe('');
     });
   });
 
