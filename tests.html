@@ -946,6 +946,81 @@ describe('Memory Protocol', () => {
     });
   });
 
+  describe('epic-run feedback beats (nine findings from a real two-repo run)', () => {
+    afterEach(() => { resetState(); });
+    it('execution model: one-shot stays the baseline contract; addressable harnesses continue the agent instead', () => {
+      buildTestWorkflow('linear');
+      const out = win.genSubAgents();
+      expect(out).toContain('Baseline contract: each step is a ONE-SHOT sub-agent');
+      expect(out).toContain('prefer CONTINUING the existing agent for revise cycles');
+      expect(out).toContain('never the preferred path where it does');   // re-spawn demoted to fallback
+    });
+    it('revise routing: feedback goes ONLY to the faulted target(s); approved parallel branches are fenced off', () => {
+      resetState();
+      const i = win.addNode('input', 80, 200, 'In');
+      const a = win.addNode('agent', 300, 120, 'Left', { agentType:'coder', tools:['Read'], prompt:'x', maxTurns:5 });
+      const b = win.addNode('agent', 300, 280, 'Right', { agentType:'coder', tools:['Read'], prompt:'x', maxTurns:5 });
+      const d = win.addNode('decision', 560, 200, 'Gate?', { condition:'ok', yesLabel:'Pass', noLabel:'Revise', maxRevisions:3 });
+      const o = win.addNode('output', 800, 200, 'Out', { deliverable:'r', format:'code' });
+      win.addConnection(i.id, a.id); win.addConnection(i.id, b.id);
+      win.addConnection(a.id, d.id); win.addConnection(b.id, d.id);
+      win.addConnection(d.id, o.id, 'Pass');
+      win.addConnection(d.id, a.id, 'Revise'); win.addConnection(d.id, b.id, 'Revise');
+      const out = win.genSubAgents();
+      expect(out).toContain("route the feedback ONLY to the target(s) the verdict's findings actually name");
+      expect(out).toContain('forbid touching the approved work');
+      expect(out).toContain('a passed branch re-spawned is an invitation to break it');
+    });
+    it('delivery contract: the memory file is the AUTHORITATIVE report and the orchestrator logs its own decisions (memory-gated)', () => {
+      buildTestWorkflow('linear');
+      win.state.memoryEnabled = true;
+      const out = win.genSubAgents();
+      expect(out).toContain('AUTHORITATIVE report');
+      expect(out).toContain('do not re-spawn a step whose file shows completed work');
+      expect(out).toContain('Orchestrator decisions log');
+      expect(win.genMemoryProtocol()).toContain('Log your own decisions');
+      win.state.memoryEnabled = false;
+      const off = win.genSubAgents();
+      expect(off).toNotContain('AUTHORITATIVE report');
+      expect(off).toNotContain('Orchestrator decisions log');
+      expect(off).toNotContain("predecessor's memory file");   // the execution directive's clause gates too
+    });
+    it('tester proves discrimination, refuses to fake impossible checks, and guards against machine contention', () => {
+      const t = win.PROMPTS.tester;
+      expect(t).toContain('prove your load-bearing tests DISCRIMINATE');
+      expect(t).toContain('Report the failure output as evidence');
+      expect(t).toContain('never fake it');
+      expect(t).toContain('state plainly that you did not run it');
+      expect(t).toContain('Machine contention is a real failure mode');
+    });
+    it('reviewer corroborates discrimination; validator refuses fakes and re-runs flakes in isolation', () => {
+      expect(win.PROMPTS.changeScopedReviewer).toContain('Do the load-bearing new tests DISCRIMINATE');
+      const v = win.PROMPTS.validator;
+      expect(v).toContain('never fake it');
+      expect(v).toContain('in isolation before reporting it as a failure');
+    });
+    it('record spec: durable content routes out of scaffolding, finalize sweeps before stripping, and the first step surveys the environment', () => {
+      buildTestWorkflow('linear');
+      win.state.memoryEnabled = true; win.state.durableRecord = true;
+      // assert the COMPOSED emission first - the helper is toggle-independent, the export is not
+      const composed = win.genSubAgents();
+      expect(composed).toContain('environment capability survey');
+      expect(composed).toContain('nothing durable was stranded');
+      const proto = win.genDurableRecordProtocol('subagent');
+      expect(proto).toContain('Write here only what dies happily with the handoff');
+      expect(proto).toContain('BEFORE stripping, sweep the sections');
+      expect(proto).toContain('nothing durable was stranded in a stripped section');
+      expect(proto).toContain('environment capability survey');
+      expect(proto).toContain('no step may silently skip a check by assuming impossibility');
+      win.state.durableRecord = false; win.state.memoryEnabled = false;
+      expect(win.genSubAgents()).toNotContain('environment capability survey');   // durable-gated
+    });
+    it('planner and architect carry the survey-once beat', () => {
+      expect(win.PROMPTS.planner).toContain('Survey the environment once, for everyone');
+      expect(win.PROMPTS.architect).toContain('Survey the environment once, for everyone');
+    });
+  });
+
   describe('agent memory postamble', () => {
     it('should include breadcrumb template', () => {
       const post = win.genAgentMemoryPostamble('Planner', 'planner');
@@ -5986,12 +6061,20 @@ describe('Agent craft batch', () => {
         expect(out).toNotContain('entire jurisdiction');
       });
     });
-    it('the handling line dispatch is format-aware: teams re-messages the teammate, sub-agents respawn onto the memory file, claude self-directs', () => {
+    it('the handling line dispatch is format-aware and capability-conditional: teams re-message, sub-agents continue-else-respawn (memory clause gated), claude self-directs', () => {
       buildReviewerWorkflow('aggressive');
       expect(win.genAgentTeams()).toContain('SAME implementer teammate');
-      expect(win.genSubAgents()).toContain('its own memory file');
+      const sub = win.genSubAgents();
+      expect(sub).toContain('continue that step\'s agent with a follow-up brief when your harness can message a completed agent');
+      // the memory-file pointer emits only when memory is on (memory-gated-emission rule)
+      if (win.state.memoryEnabled) { expect(sub).toContain('its own memory file'); }
+      else { expect(sub).toNotContain('pointed at its own memory file'); }
+      win.state.memoryEnabled = true;
+      expect(win.genSubAgents()).toContain('pointed at its own memory file');
+      win.state.memoryEnabled = false;
+      expect(win.genSubAgents()).toNotContain('pointed at its own memory file');
       expect(win.genClaudePrompt()).toContain('You play both roles here');
-      expect(win.genSubAgents()).toNotContain('SAME implementer teammate');
+      expect(sub).toNotContain('SAME implementer teammate');
     });
     it('with NO drawn revise edge the handling line is RECORD-ONLY and forbids inventing a route', () => {
       buildReviewerWorkflow('aggressive', false);
@@ -6383,11 +6466,14 @@ describe('Agent craft batch', () => {
   });
 
   describe('spot-mutation tester default (item 3)', () => {
-    it('the tester template closes by proving its tests can fail', () => {
-      expect(win.PROMPTS.tester).toContain('prove your tests can fail');
-      expect(win.PROMPTS.tester).toContain('confirm the suite goes red, then revert');
-      expect(win.PROMPTS.tester).toContain('mutation-proofed');
-      expect(win.PROMPTS.tester).toContain('say you skipped');
+    it('the tester template closes with ONE discrimination mandate: prove, scale honestly, never silently skip', () => {
+      const t = win.PROMPTS.tester;
+      expect(t).toContain('prove your load-bearing tests DISCRIMINATE');
+      expect(t).toContain('confirm the suite goes red, revert');
+      expect(t).toContain('name the rest as unproven - never silently skip');
+      // exactly one mandate: the old standalone paragraph and the old skip clause are gone
+      expect(t.split('DISCRIMINATE').length).toBe(2);
+      expect(t).toNotContain('say you skipped');
     });
     it('the help modal names full mutation testing as a repo-mandated verification check', () => {
       expect(win.document.body.innerHTML).toContain('stryker');
