@@ -247,6 +247,7 @@ function resetState() {
   win.state.rulesPaths = [];       // repo context paths default empty (or undefined in tests)
   win.state.productDocPaths = [];
   win.state.verifyPaths = [];      // verification instructions default empty
+  win.state.verifyNotes = '';      // notes arm hasVerifyMandates too - reset with the paths, always
   win.state.verifyFailRun = true;  // fail-the-run posture default ON (app default)
   // Reset DOM inputs
   const wfName = win.document.getElementById('workflowName');
@@ -263,6 +264,8 @@ function resetState() {
   if (artField) artField.style.display = 'none';
   const artInput = win.document.getElementById('artifactPathInput');
   if (artInput) artInput.value = '';
+  const vNotes = win.document.getElementById('verifyNotesInput');
+  if (vNotes) vNotes.value = '';
 }
 
 function clearStorage() {
@@ -1792,6 +1795,17 @@ describe('Consume prior records (read side)', () => {
     rd = win.runReportDirective();
     expect(rd).toNotContain('`grounded`');
     win.state.consumeRecords = true;
+  });
+  it('run-report fence documents blockedVerifications only when verification mandates exist', () => {
+    win.state.verifyPaths = ['VERIFY.md'];
+    win.state.verifyNotes = '';
+    expect(win.runReportDirective()).toContain('`blockedVerifications`');
+    expect(win.runReportDirective()).toContain('never invent entries');
+    win.state.verifyPaths = [];
+    expect(win.runReportDirective()).toNotContain('blockedVerifications');
+    win.state.verifyNotes = 'The E2E flow MUST pass.';   // inline notes alone arm the field too
+    expect(win.runReportDirective()).toContain('`blockedVerifications`');
+    win.state.verifyNotes = '';
   });
   it('consumeRecordsHint is null when the toggle is off, present when on', () => {
     win.state.consumeRecords = false;
@@ -5518,7 +5532,7 @@ describe('Verification instructions', () => {
       expect(h).toContain('never replace it');
       expect(h).toContain('MUST or required');
       expect(h).toContain('durable record');
-      expect(h).toContain('awd:run fence notes');
+      expect(h).toContain('awd:run fence\'s `blockedVerifications` array');
       expect(h).toContain('suggestions, not restrictions');
       expect(h).toNotContain('—');
       expect(h).toNotContain('–');
@@ -5894,6 +5908,7 @@ describe('Verification instructions (run-level matrix)', () => {
     afterEach(() => {
       win.state.verifyPaths = [];
       win.clearVerifyPaths();
+      win.setVerifyNotes('');                 // notes arm the checkbox too - never leak them across tests
       win.state.verifyFailRun = true;
       const t = doc().getElementById('verifyFailRunToggle'); if (t) t.checked = true;
       win.selectNode(null);
@@ -5964,11 +5979,32 @@ describe('Verification instructions (run-level matrix)', () => {
       expect(clr.style.display).toBe('inline');
     });
 
+    it('fail-the-run checkbox arms only with mandates: disabled + hint while inert, enabled by a path or a note, state sticky throughout', () => {
+      const t = doc().getElementById('verifyFailRunToggle');
+      const hint = doc().getElementById('verifyFailRunHint');
+      win.setVerifyNotes('');
+      win.clearVerifyPaths();                          // no mandates: inert
+      expect(t.disabled).toBe(true);
+      expect(hint.style.display).toBe('block');
+      expect(win.state.verifyFailRun).toBe(true);      // sticky: never cleared while inert
+      win.addVerifyPath('VERIFY.md');                  // a path arms it
+      expect(t.disabled).toBe(false);
+      expect(hint.style.display).toBe('none');
+      win.clearVerifyPaths();
+      expect(t.disabled).toBe(true);
+      win.setVerifyNotes('The E2E flow MUST pass.');   // notes alone arm it too
+      expect(t.disabled).toBe(false);
+      win.setVerifyNotes('');
+      expect(t.disabled).toBe(true);
+      expect(win.state.verifyFailRun).toBe(true);
+    });
+
     it('toggling verifyFailRunToggle onchange live-refreshes the generated prompt (posture text flips)', () => {
       workflowWith('Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'Test it.', maxTurns:5 });
       const toggle = doc().getElementById('verifyFailRunToggle');
       toggle.checked = true; win.state.verifyFailRun = true;   // workflowWith reset state; re-sync ON
       win.state.verifyPaths = ['VERIFY.md'];
+      win.renderVerifyRows();                                  // arm the checkbox: it is disabled until a mandate renders
       win.updatePrompt();
       const out = doc().getElementById('promptOutput');
       expect(out.textContent).toContain('fails the run');
@@ -11192,6 +11228,27 @@ describe('Run report loop', () => {
     win.localStorage.removeItem('awd_run_reports');
     resetState();
   });
+  it('ingestion stores blockedVerifications (newest last, capped at 5) and the tuning prompt surfaces them; absent when never reported', () => {
+    seedWorkflow();
+    win.localStorage.removeItem('awd_run_reports');
+    const name = win.document.getElementById('workflowName').value || 'workflow';
+    for (let i = 1; i <= 6; i++) {
+      win.ingestRunReport({ workflow: name, steps: [{ slug: 'planner', status: 'done' }], gates: [], blockedVerifications: ['mutation check ' + i + ' - no device grid'] }, { source: 'test' });
+    }
+    const wf = win.loadRunReports()[name];
+    expect(wf.blockedVerifications.length).toBe(5);
+    expect(wf.blockedVerifications[4]).toBe('mutation check 6 - no device grid');
+    expect(wf.blockedVerifications[0]).toBe('mutation check 2 - no device grid');
+    let tp = win.genTuningPrompt();
+    expect(tp).toContain('Required verifications that could not run');
+    expect(tp).toContain('mutation check 6 - no device grid');
+    win.localStorage.removeItem('awd_run_reports');
+    win.ingestRunReport({ workflow: name, steps: [{ slug: 'planner', status: 'done' }], gates: [] }, { source: 'test' });
+    tp = win.genTuningPrompt();
+    expect(tp).toNotContain('Required verifications that could not run');
+    win.localStorage.removeItem('awd_run_reports');
+    resetState();
+  });
   it('the Run Reports section is the one home: below the toggles, tuning gated there, not in Export', () => {
     const section = win.document.getElementById('runReportSection');
     expect(!!section).toBe(true);
@@ -11245,6 +11302,16 @@ describe('Workflow-level telemetry home (~/.awd)', () => {
     const schema = win.buildOpenSpecSchema();
     expect(schema.schemaYaml).toContain('~/.awd/run-reports.md');
     expect(schema.schemaYaml).toContain('"repo"');
+  });
+  it('the OpenSpec apply instruction documents blockedVerifications only when verification mandates exist', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-4.8', tools:['Read','Write'], prompt:'', maxTurns:10 });
+    const o = win.addNode('output', 200, 0, 'Done', { format:'code' });
+    win.addConnection(a.id, o.id);
+    expect(win.buildOpenSpecSchema().schemaYaml).toNotContain('blockedVerifications');
+    win.state.verifyPaths = ['VERIFY.md'];
+    expect(win.buildOpenSpecSchema().schemaYaml).toContain('blockedVerifications');
+    win.state.verifyPaths = [];
   });
   it('a flat ~/.awd-shaped folder (no .workflow subdir, multi-fence run-reports.md) scans correctly', async () => {
     const fences = '```awd:run\n{"workflow":"wf-x","steps":[{"slug":"a","status":"done"}]}\n```\n\n' +
