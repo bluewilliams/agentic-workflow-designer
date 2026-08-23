@@ -574,9 +574,10 @@ svg.canvas{width:100%;height:100%;display:block}
       <div style="font-size:10px;color:var(--text3);margin:8px 0 3px">Inline notes (optional): mandates without a file, same MUST/SHOULD language:</div>
       <textarea id="verifyNotesInput" class="story-input" style="min-height:44px;padding:6px 8px;font-size:12px" placeholder="e.g. The E2E checkout flow MUST pass (npm run test:e2e). Lighthouse performance SHOULD stay >= 90." oninput="setVerifyNotes(this.value)"></textarea>
       <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text3);margin-top:6px;cursor:pointer">
-        <input type="checkbox" id="verifyFailRunToggle" checked onchange="setVerifyFailRun(this.checked)" style="margin:0"/>
+        <input type="checkbox" id="verifyFailRunToggle" checked disabled onchange="setVerifyFailRun(this.checked)" style="margin:0"/>
         <span>Unmet required verifications fail the run</span>
       </label>
+      <div id="verifyFailRunHint" style="font-size:10px;color:var(--text3);margin:2px 0 0 20px">Add a verification path or an inline note to enable.</div>
     </div>
   </div>
 
@@ -1090,7 +1091,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>Two sidebar sections give agents the right context across one or many repositories:</p>
 <ul>
   <li><strong>Repositories</strong> - list each repo with its branch; the prompts tell agents to check out the right branch and pull before starting.</li>
-  <li><strong>Repo Context Paths</strong> - point agents at a repo's own rules and product docs so they honor more than the per-task spec. <strong>Rules / constitution</strong> paths (e.g. <code>.claude/rules</code>, <code>CONVENTIONS.md</code>) are binding constraints on <em>how</em> to build; <strong>Product docs</strong> (e.g. <code>docs/</code>, ADRs) are goals the work must not contradict; <strong>Verification instructions</strong> (e.g. <code>VERIFY.md</code>, <code>rules/E2E.md</code>) are the checks a change must prove - the orchestrator reads them and routes them into the OWNING verification step's brief (the Verifier when the workflow has one, else the final Tester; one owner means an expensive check never runs twice, and the mandates ADD to that step's own verification method rather than replacing it). Each check is classified Required or Recommended by the file's own MUST/SHOULD wording (they say <em>what</em> to prove, never restrict which tools to use - tools stay suggestions). These files are the natural home for repo-mandated checks like mutation testing (e.g. "run npx stryker run; required: kill score stays &gt;= 80%"). No file handy? An <strong>inline notes</strong> box takes the same mandates as free text, with the same MUST/SHOULD classification and posture. Each Verifier node's configuration panel also shows its mandate status - what it owns, or where to configure some. The <strong>Unmet required verifications fail the run</strong> checkbox sets the posture: on, a blocked required check fails the run; off, it is recorded but report-only. All three lists are sticky - they persist across workflows in the same repo.</li>
+  <li><strong>Repo Context Paths</strong> - point agents at a repo's own rules and product docs so they honor more than the per-task spec. <strong>Rules / constitution</strong> paths (e.g. <code>.claude/rules</code>, <code>CONVENTIONS.md</code>) are binding constraints on <em>how</em> to build; <strong>Product docs</strong> (e.g. <code>docs/</code>, ADRs) are goals the work must not contradict; <strong>Verification instructions</strong> (e.g. <code>VERIFY.md</code>, <code>rules/E2E.md</code>) are the checks a change must prove - the orchestrator reads them and routes them into the OWNING verification step's brief (the Verifier when the workflow has one, else the final Tester; one owner means an expensive check never runs twice, and the mandates ADD to that step's own verification method rather than replacing it). Each check is classified Required or Recommended by the file's own MUST/SHOULD wording (they say <em>what</em> to prove, never restrict which tools to use - tools stay suggestions). These files are the natural home for repo-mandated checks like mutation testing (e.g. "run npx stryker run; required: kill score stays &gt;= 80%"). No file handy? An <strong>inline notes</strong> box takes the same mandates as free text, with the same MUST/SHOULD classification and posture. Each Verifier node's configuration panel also shows its mandate status - what it owns, or where to configure some. The <strong>Unmet required verifications fail the run</strong> checkbox sets the posture: on, a blocked required check fails the run; off, it is recorded but report-only. The checkbox stays disabled until a path or an inline note is configured - the posture is a modifier on mandates, and with none configured there is nothing to enforce. All three lists are sticky - they persist across workflows in the same repo.</li>
 </ul>
 <p><strong>Multi-repo rules - handled for you.</strong> On its own, Claude Code only auto-loads <code>CLAUDE.md</code> and <code>.claude/rules/</code> for the repo the session launched in, so it would miss the others. The generated multi-repo prompt closes that gap: it tells each agent to read every in-scope repo's own <code>CLAUDE.md</code> and <code>.claude/rules/</code> before changing it, and any <strong>Rule Paths</strong> you list (e.g. <code>.claude/rules</code>) are resolved <em>within each repo</em> and scoped to it. So with three repos selected and <code>.claude/rules</code> listed once, each repo's own rules are honored for changes made in that repo - no per-repo entry needed, and no environment variable required.</p>
 <p>The setup below is an <em>optional</em> reliability boost - it makes Claude Code <em>also</em> auto-load each added repo's <code>CLAUDE.md</code> at startup - but the prompt's explicit per-repo read works no matter how the session was launched:</p>
@@ -1642,7 +1643,7 @@ function verifyInstructionsHint() {
   r.push('> Classify each step\'s checks by the file\'s OWN language: wording that says MUST or required marks a REQUIRED verification; wording that says SHOULD or recommended marks a recommended one. When a file does not distinguish, treat the configured posture below as the default severity.');
   r.push(posture);
   r.push('>');
-  r.push('> Surface a blocked REQUIRED verification everywhere it matters: in the responsible step\'s gate verdict line, in the durable record\'s Verify section, and in the awd:run fence notes - it never silently passes. These files mandate WHAT must be proven, never HOW; the listed tools stay suggestions, not restrictions.');
+  r.push('> Surface a blocked REQUIRED verification everywhere it matters: in the responsible step\'s gate verdict line, in the durable record\'s Verify section, and in the awd:run fence\'s `blockedVerifications` array - it never silently passes. These files mandate WHAT must be proven, never HOW; the listed tools stay suggestions, not restrictions.');
   if (paths.length) {
     r.push('>');
     r.push('> Multi-repo scoping: when more than one repository is in scope, resolve each listed path within each in-scope repository, and let a repository\'s own verification files govern only that repository\'s work. Never carry one repository\'s verification checks into another repository\'s work.');
@@ -1752,6 +1753,7 @@ function runReportDirective() {
   r.push('- One `steps` entry per step, in execution order. `slug` is the step label lowercased and hyphenated (the same slug as its memory file). `status` is done, skipped, or failed.');
   r.push('- Include `turns` and `cap` only if you actually tracked them - omit any field you do not know, never invent numbers. Include `repo` (the repository name the run executed against) when there is one; omit it otherwise.');
   if (state.consumeRecords) r.push('- Include `grounded`: an array of the record slugs that actually informed this run (matched at the grounding scan AND used - briefed into a step, cited in a decision, or re-verified); matched-and-used OpenSpec docs ride the same array as `openspec:<capability>` entries, so they never collide with record slugs. Omit the field entirely when nothing was used; never list a document that merely appeared in a listing.');
+  if (hasVerifyMandates()) r.push('- Include `blockedVerifications` only when a REQUIRED verification mandate could not be executed: an array of short strings, each naming the check and why it could not run. Omit the field when every required check ran; never invent entries.');
   r.push('- One `gates` entry per decision gate: the revise `cycles` actually used and the `final` verdict.');
   r.push('- ALSO append the exact same fence to `~/.awd/run-reports.md`, creating the directory and file if missing - that file is the workflow designer\'s telemetry drop and its canonical feed (a copy inside a durable record is archival context). If writing outside the working directory is not permitted, skip this silently; the response fence still stands.');
   r.push('- The fence is data, not prose - place it at the very end of the final response. If a memory breadcrumb comment is required, the breadcrumb stays the very last line and this fence goes immediately before it.');
@@ -1928,7 +1930,7 @@ function verifyInstructionsStepHint(node) {
   if (!node || !node.config || !node.id) return '';
   const owner = resolveVerifyOwnerId();
   if (owner === null || node.id !== owner) return '';
-  return 'Verification instructions apply to this step - you are this workflow\'s OWNING verification step for the repo\'s verification mandates (one step owns them so an expensive check never runs twice). The orchestrator has routed the applicable verification mandates (files and inline notes) into your brief - work through every applicable check and report each one as executed-with-result, not-applicable-with-reason, or blocked-with-reason. These repo-mandated checks are IN ADDITION to your own verification method, not a substitute for it - execute them alongside the judgment-driven verification your role already requires; they extend the definition of done, they do not narrow it. A blocked REQUIRED verification is a gate-failing finding: surface it in your verdict line, in the durable record\'s Verify section and Verification ledger (when a record is in use), and in the awd:run fence notes - never let it silently pass. These files define WHAT must be proven, not HOW; treat any tools they mention as suggestions, never restrictions.';
+  return 'Verification instructions apply to this step - you are this workflow\'s OWNING verification step for the repo\'s verification mandates (one step owns them so an expensive check never runs twice). The orchestrator has routed the applicable verification mandates (files and inline notes) into your brief - work through every applicable check and report each one as executed-with-result, not-applicable-with-reason, or blocked-with-reason. These repo-mandated checks are IN ADDITION to your own verification method, not a substitute for it - execute them alongside the judgment-driven verification your role already requires; they extend the definition of done, they do not narrow it. A blocked REQUIRED verification is a gate-failing finding: surface it in your verdict line, in the durable record\'s Verify section and Verification ledger (when a record is in use), and in the awd:run fence\'s `blockedVerifications` array - never let it silently pass. These files define WHAT must be proven, not HOW; treat any tools they mention as suggestions, never restrictions.';
 }
 
 // Maps agentType to a PROMPTS key for fallback when user leaves prompt blank
@@ -3115,6 +3117,7 @@ function setVerifyNotes(v) {
   updatePrompt();
   if (typeof updateValidation === 'function') updateValidation();   // the pulse tracks notes too
   refreshVerifyStatusLine();
+  if (typeof syncVerifyFailRunUI === 'function') syncVerifyFailRunUI();   // notes alone arm the posture
 }
 function clearVerifyPaths() {
   state.verifyPaths = [];
@@ -3141,6 +3144,19 @@ function renderVerifyRows() {
   const clr = $('verifyPathClear');
   if (clr) clr.style.display = (state.verifyPaths && state.verifyPaths.length) ? 'inline' : 'none';
   syncPathSuggest('verifyPathSuggest', state.verifyPaths);
+  if (typeof syncVerifyFailRunUI === 'function') syncVerifyFailRunUI();
+}
+// Run-evidenced fix: the fail-the-run checkbox is a posture modifier on verification mandates,
+// not an independent gate - with no mandates configured, no emission site can carry the posture,
+// so a checked box enforced nothing. Disable it while inert (state stays sticky so the preference
+// re-arms the moment a mandate is added) and say why in a hint instead.
+function syncVerifyFailRunUI() {
+  const cb = $('verifyFailRunToggle');
+  if (!cb) return;
+  const armed = hasVerifyMandates();
+  cb.disabled = !armed;
+  const hint = $('verifyFailRunHint');
+  if (hint) hint.style.display = armed ? 'none' : 'block';
 }
 // The fail-the-run posture is a sticky boolean pref (not a per-workflow value): update state,
 // persist, and refresh the prompt so the workflow-level beat re-renders with the new posture text.
@@ -11465,7 +11481,7 @@ function buildOpenSpecSchema() {
   // designer-native .workflow index so our grounding picks this run up unchanged (the
   // converge-on-one-index close for cross-tool grounding direction (d)). Self-gating:
   // the breadcrumb applies only where a .workflow/ system exists; never creates files.
-  applyInstr += '\n\nRun report: end your final output with exactly one fenced code block tagged `awd:run` holding one JSON object: {"workflow": ' + JSON.stringify(wfName) + ', "repo": "<repository name, omit if not applicable>", "steps": [{"slug": "<step-slug>", "status": "done|skipped|failed"}], "gates": [{"slug": "<gate-slug>", "cycles": n, "final": "<verdict>"}], "notes": ""}. One steps entry per artifact executed, in order; omit fields you did not track, never invent numbers. ALSO append the same fence to `~/.awd/run-reports.md` (create if missing - the workflow designer\'s canonical telemetry feed); skip silently if writing there is not permitted.';
+  applyInstr += '\n\nRun report: end your final output with exactly one fenced code block tagged `awd:run` holding one JSON object: {"workflow": ' + JSON.stringify(wfName) + ', "repo": "<repository name, omit if not applicable>", "steps": [{"slug": "<step-slug>", "status": "done|skipped|failed"}], "gates": [{"slug": "<gate-slug>", "cycles": n, "final": "<verdict>"}], "notes": ""}. One steps entry per artifact executed, in order; omit fields you did not track, never invent numbers.' + (hasVerifyMandates() ? ' Add `blockedVerifications` (an array of short strings, each naming a REQUIRED verification check and why it could not run) only when such a check could not be executed; omit it when every required check ran.' : '') + ' ALSO append the same fence to `~/.awd/run-reports.md` (create if missing - the workflow designer\'s canonical telemetry feed); skip silently if writing there is not permitted.';
   applyInstr += '\n\nDesigner breadcrumb: if the repository keeps a `.workflow/` record system (a `.workflow/_timeline.md` exists), prepend ONE line to `.workflow/_timeline.md` in its format: `<date> - ' + wfName + ' - <one line: what this run changed> - openspec/schemas/' + wfName + '/schema.yaml`. If `.workflow/_index.md` has no entry covering this capability, add a one-line entry in its format too. One static line per run; do not create `.workflow/` or any files if the system is absent.';
   L.push('');
   L.push('apply:');
@@ -11897,6 +11913,12 @@ function ingestRunReport(rep, opts) {
     wf.groundedCounts = wf.groundedCounts || {};
     wf.groundedCounts[g] = (wf.groundedCounts[g] || 0) + 1;
   });
+  // Blocked required verifications are first-class telemetry (a run that shipped around an
+  // unrunnable mandate is the loop's strongest tuning signal): kept newest-last, capped at 5.
+  (Array.isArray(rep.blockedVerifications) ? rep.blockedVerifications : []).forEach(b => {
+    if (typeof b !== 'string' || !b.trim()) return;
+    wf.blockedVerifications = (wf.blockedVerifications || []).concat([b.trim()]).slice(-5);
+  });
   wf.lastReport = rep;
   wf.lastDate = new Date().toISOString().slice(0, 10);
   wf.reports = (wf.reports || 0) + 1;
@@ -11993,6 +12015,12 @@ function genTuningPrompt() {
     L.push('## Durable records that informed these runs (times used)');
     L.push('');
     Object.entries(_wfStats.groundedCounts).forEach(([g, c]) => L.push('- ' + g + ': ' + c));
+    L.push('');
+  }
+  if ((_wfStats.blockedVerifications || []).length) {
+    L.push('## Required verifications that could not run (newest last - each one is a gap between what the workflow promises to prove and what the environment let it prove)');
+    L.push('');
+    _wfStats.blockedVerifications.forEach(b => L.push('- ' + b));
     L.push('');
   }
   L.push('## Current workflow definition (awd JSON)');
@@ -12279,6 +12307,7 @@ initDefaultModelSelect();
 initEffortSelect();
 initSidebarCollapse();
 restorePrefs();
+syncVerifyFailRunUI();
 const _autoRestored = restoreAutoSave();
 if (!_autoRestored) { updateTransform(); render(); }
 renderSavedWorkflowList();
