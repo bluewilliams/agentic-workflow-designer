@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-08-24 - preset-prompt-craft - 42-template composability audit: materiality bars, honesty clauses, minimality, scope bounds, Brief fallback, comment discipline across 17 prompts; lanes preserved. 1618 -> 1627 - .workflow/preset-prompt-craft.md
 2026-08-22 - verification-instructions (update) - run-evidenced: fail-the-run checkbox disables with a hint while no mandates exist (was checked-but-inert on a real epic run); blocked required checks gain a structured awd:run blockedVerifications field, ingested and surfaced in the tuning prompt. 1614 -> 1618 - .workflow/verification-instructions.md
 2026-08-22 - repo-section-declutter - Multi-Repo & Context Paths decluttered: five copy trims (CLAUDE.md stated once), suggestion chips hide while configured. 1613 -> 1614 - .workflow/repo-section-declutter.md
 2026-08-22 - memory-section-declutter - sidebar Memory & Durable Record section decluttered: memory path inline chip line, Handoff tip removed, two help texts trimmed; ids and behavior untouched. 1613 tests - .workflow/memory-section-declutter.md

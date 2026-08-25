@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## preset-prompt-craft
+
+- record: .workflow/preset-prompt-craft.md
+- intent: composability audit of all 42 preset prompt templates (4 criteria: verdict discipline, handoff, evidence, proportionality) - 17 tuned with ~20 sentences: materiality bars on the specialized gate-feeding reviewers (fullstackReviewer/testReviewer/uiReviewer; default PASS, only Critical/High gate), honesty clauses on e2eTester/bugTester (blocked is never a pass), minimality on backend/frontend + non-destructive verification on devopsEngineer, Brief-absent fallback on uiImplementer, stream-conflict tiebreaker on integrator, input-scoping on securityAuditor/qualityAnalyst, severity preservation on reportBuilder, investigator proportionality, uiAppExplorer ff-only branch sync, and a flag-narrating-comments dimension on the three production-code reviewers. Lane discipline preserved (reviewers read, testers/verifiers execute, Skeptic refutes); no runner-specific review skill wired in (provider-neutral).
+- files: index.html (PROMPTS templates only; no machinery), tests.html (Preset prompt craft batch suite + one deliberate freeze-pin migration)
+- status: current | date: 2026-08-24 | note: 1618 -> 1627. Presets adopt at apply time; saved workflows keep baked prompts by design.
+
 ## repo-section-declutter
 
 - record: .workflow/repo-section-declutter.md

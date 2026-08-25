@@ -6017,7 +6017,61 @@ describe('Verification instructions (run-level matrix)', () => {
   });
 });
 
-// ─── Suite 13: Implementation Plan ──────────────────────────
+// ─── Suite 12f: Preset prompt craft batch (composability audit) - every beat added
+// by the 42-prompt audit gets a discriminating pin so a later rewrite cannot
+// silently drop it. Prompts are static templates: no gating, so no OFF assertions.
+describe('Preset prompt craft batch', () => {
+  it('gate-feeding reviewers carry the materiality bar and verdict gating', () => {
+    expect(win.PROMPTS.fullstackReviewer).toContain('The materiality bar');
+    expect(win.PROMPTS.fullstackReviewer).toContain('only Critical or High findings make the verdict NEEDS REVISION');
+    expect(win.PROMPTS.fullstackReviewer).toContain('review them as hard as the code');
+    expect(win.PROMPTS.testReviewer).toContain('The materiality bar');
+    expect(win.PROMPTS.testReviewer).toContain('Scale depth to the change');
+    expect(win.PROMPTS.uiReviewer).toContain('Your default verdict is PASS');
+    expect(win.PROMPTS.uiReviewer).toContain('non-blocking notes');
+  });
+  it('test agents carry the honesty clause (blocked is never a pass)', () => {
+    expect(win.PROMPTS.e2eTester).toContain('never fake, stub, or hardcode');
+    expect(win.PROMPTS.e2eTester).toContain('the output is the evidence');
+    expect(win.PROMPTS.bugTester).toContain('never fake, stub, or weaken');
+  });
+  it('builder specialists carry the minimality sentence; devops verification is non-destructive', () => {
+    expect(win.PROMPTS.backend).toContain('no drive-by refactors');
+    expect(win.PROMPTS.frontend).toContain('no drive-by refactors');
+    expect(win.PROMPTS.devopsEngineer).toContain('NEVER apply, deploy, destroy');
+  });
+  it('composability fallbacks: uiImplementer works without a Brief, integrator names stream conflicts', () => {
+    expect(win.PROMPTS.uiImplementer).toContain('If no Brief is available');
+    expect(win.PROMPTS.integrator).toContain('the architectural design is the tiebreaker');
+  });
+  it('all four swarm auditors scope to the input; reportBuilder preserves upstream severities', () => {
+    ['securityAuditor', 'qualityAnalyst', 'perfProfiler', 'archReviewer'].forEach(k => {
+      expect(win.PROMPTS[k]).toContain('Scope to the input');
+      expect(win.PROMPTS[k]).toContain('what you covered and what you did not');
+    });
+    expect(win.PROMPTS.reportBuilder).toContain('you aggregate, you do not soften');
+  });
+  it('investigator proportionality: shallow proven causes skip the two-hypothesis ceremony', () => {
+    expect(win.PROMPTS.investigator).toContain('genuinely uncertain causes');
+  });
+  it('production-code reviewers flag low-value comments (director default: why, gotcha, or API docs only)', () => {
+    // the base reviewer's own comment beat is pinned in the comment-conventions group; only the newly-edited three here
+    expect(win.PROMPTS.fullstackReviewer).toContain('narrating or redundant comments');
+    expect(win.PROMPTS.uiReviewer).toContain('narrating or redundant comments');
+    expect(win.PROMPTS.changeScopedReviewer).toContain('narrating or redundant comments');
+  });
+  it('uiAppExplorer branch sync matches the safe App Under Test form (ff-only, no forcing)', () => {
+    expect(win.PROMPTS.uiAppExplorer).toContain('pull --ff-only');
+    expect(win.PROMPTS.uiAppExplorer).toContain('do NOT force or resolve anything');
+  });
+  it('every prompt template in PROMPTS is em/en-dash free', () => {
+    Object.keys(win.PROMPTS).forEach(k => {
+      expect(win.PROMPTS[k]).toNotContain('—');
+      expect(win.PROMPTS[k]).toNotContain('–');
+    });
+  });
+});
+
 // ─── Suite 12e: Agent craft batch (found-defect protocol, spot-mutation, verifier
 // strengthening, Verification ledger, Found bugs, polish) ─────────────────────
 describe('Agent craft batch', () => {
@@ -6422,8 +6476,8 @@ describe('Agent craft batch', () => {
       expect(win.document.getElementById('appSourceSection').style.display).toBe('');
       win.setSectionCollapsed('app-under-test', false);
     });
-    it('the frozen uiAppExplorer template is byte-identical to the pre-split selector text', () => {
-      const frozen = 'Explore the app source code for test automation.\n\n\nExtract the element selectors, screen structure, and navigation flows the test agents need.\n\n**IMPORTANT - Branch setup**: If an app branch is specified, run `git -C {appPath} fetch && git -C {appPath} checkout {branch} && git -C {appPath} pull` before exploring. If no branch is specified, use whatever is currently checked out. If the path is not a valid git repo, skip branch operations and proceed with what exists.\n\n1. Use `Glob` on the app source path to map the project structure - identify UI component directories, screen/view files, navigation configs, and asset directories\n2. Use `Grep` to search for accessibility identifiers: `accessibilityLabel`, `accessibilityIdentifier`, `testID`, `data-testid`, `contentDescription`, `resource-id`, `AutomationId`, or framework-specific equivalents\n3. Use `Grep` to find the specific screens and components related to the feature under test - search for feature names, screen names, and relevant keywords\n4. Read the relevant component/view files to extract:\n   - Element identifiers (accessibility IDs, test IDs, resource IDs)\n   - Interactive elements (buttons, inputs, toggles, pickers) and their identifiers\n   - Component hierarchy and nesting structure\n   - Conditional UI elements (shown/hidden based on state)\n5. Use `Grep` to trace navigation flows - find route definitions, navigation actions, and screen transition logic to understand how a user reaches each screen\n6. Use `LSP documentSymbol` on component files to understand their props/parameters and exported API\n7. Use `LSP findReferences` on shared UI components to understand which screens use them\n8. Identify any elements that lack accessibility identifiers - these are gaps the app team should address, and the test author will need to use fallback locator strategies for\n\nOutput a structured selector map organized by screen, with each element listing: element purpose, recommended locator strategy (accessibility ID preferred, XPath as fallback), the actual identifier value from source code, and platform notes (Android vs iOS differences if any).\n\n## Handoff Summary\nEnd your response with:\n- **Screens Mapped**: Each screen with its source file path\n- **Selector Map**: Per-screen table of element → locator strategy → identifier value\n- **Navigation Flow**: How to reach each screen from the app entry point\n- **Missing Identifiers**: Elements lacking accessibility IDs (recommend app team add them)\n- **Platform Differences**: Elements with different identifiers or behavior on iOS vs Android\n- **Branch Used**: Which branch was checked out (or "default" if none specified)';
+    it('the preset uiAppExplorer template is byte-pinned (frozen copy; migrate deliberately on any prompt change)', () => {
+      const frozen = 'Explore the app source code for test automation.\n\n\nExtract the element selectors, screen structure, and navigation flows the test agents need.\n\n**IMPORTANT - Branch setup**: If an app branch is specified, run `git -C {appPath} fetch && git -C {appPath} checkout {branch} && git -C {appPath} pull --ff-only` before exploring; if the tree is dirty or the pull cannot fast-forward, do NOT force or resolve anything - proceed with the current state and say so in your handoff. If no branch is specified, use whatever is currently checked out. If the path is not a valid git repo, skip branch operations and proceed with what exists.\n\n1. Use `Glob` on the app source path to map the project structure - identify UI component directories, screen/view files, navigation configs, and asset directories\n2. Use `Grep` to search for accessibility identifiers: `accessibilityLabel`, `accessibilityIdentifier`, `testID`, `data-testid`, `contentDescription`, `resource-id`, `AutomationId`, or framework-specific equivalents\n3. Use `Grep` to find the specific screens and components related to the feature under test - search for feature names, screen names, and relevant keywords\n4. Read the relevant component/view files to extract:\n   - Element identifiers (accessibility IDs, test IDs, resource IDs)\n   - Interactive elements (buttons, inputs, toggles, pickers) and their identifiers\n   - Component hierarchy and nesting structure\n   - Conditional UI elements (shown/hidden based on state)\n5. Use `Grep` to trace navigation flows - find route definitions, navigation actions, and screen transition logic to understand how a user reaches each screen\n6. Use `LSP documentSymbol` on component files to understand their props/parameters and exported API\n7. Use `LSP findReferences` on shared UI components to understand which screens use them\n8. Identify any elements that lack accessibility identifiers - these are gaps the app team should address, and the test author will need to use fallback locator strategies for\n\nOutput a structured selector map organized by screen, with each element listing: element purpose, recommended locator strategy (accessibility ID preferred, XPath as fallback), the actual identifier value from source code, and platform notes (Android vs iOS differences if any).\n\n## Handoff Summary\nEnd your response with:\n- **Screens Mapped**: Each screen with its source file path\n- **Selector Map**: Per-screen table of element → locator strategy → identifier value\n- **Navigation Flow**: How to reach each screen from the app entry point\n- **Missing Identifiers**: Elements lacking accessibility IDs (recommend app team add them)\n- **Platform Differences**: Elements with different identifiers or behavior on iOS vs Android\n- **Branch Used**: Which branch was checked out (or "default" if none specified)';
       expect(win.PROMPTS.uiAppExplorer === frozen).toBe(true);
     });
     it('the type default is the general cartographer template; the selector body lives only in the preset variant', () => {
@@ -6683,6 +6737,7 @@ describe('Agent craft batch', () => {
 });
 
 
+// ─── Suite 13: Implementation Plan ──────────────────────────
 describe('Implementation Plan', () => {
   beforeEach(() => { resetState(); });
 
