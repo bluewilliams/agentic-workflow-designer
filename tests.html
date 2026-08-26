@@ -7229,6 +7229,104 @@ describe('Auto Layout', () => {
     });
   });
 
+  describe('revise loop into fork siblings (fullstack shape)', () => {
+    // Regression: DFS-only cycle-breaking is visit-order dependent - the decision's revise
+    // edge to the not-yet-visited sibling read as a forward dependency, flinging Frontend
+    // to the decision's next rank (beside Tester). Revise edges now seed as back-edges
+    // (same isReviseBackEdge authority as topologicalSort) whenever they truly close a loop.
+    function fullstackShape() {
+      const i = win.addNode('input', 0, 0, 'Spec');
+      const fork = win.addNode('parallel', 0, 0, 'Dev', { strategy:'all' });
+      const be = win.addNode('agent', 0, 0, 'Backend', { agentType:'backend', model:'opus-5', tools:['Read','Write'], prompt:'b', maxTurns:5 });
+      const fe = win.addNode('agent', 0, 0, 'Frontend', { agentType:'frontend', model:'opus-5', tools:['Read','Write'], prompt:'f', maxTurns:5 });
+      const r = win.addNode('agent', 0, 0, 'Reviewer', { agentType:'reviewer', model:'opus-5', tools:['Read'], prompt:'r', maxTurns:5 });
+      const d = win.addNode('decision', 0, 0, 'Review passed?', { condition:'ok', yesLabel:'Approved', noLabel:'Revise', maxRevisions:3 });
+      const t = win.addNode('agent', 0, 0, 'Tester', { agentType:'tester', model:'opus-5', tools:['Read','Bash'], prompt:'t', maxTurns:5 });
+      const o = win.addNode('output', 0, 0, 'Done', { deliverable:'x', format:'code' });
+      win.addConnection(i.id, fork.id);
+      win.addConnection(fork.id, be.id); win.addConnection(fork.id, fe.id);
+      win.addConnection(be.id, r.id); win.addConnection(fe.id, r.id);
+      win.addConnection(r.id, d.id);
+      // the triggering order: Approved first, then the two Revise edges
+      win.addConnection(d.id, t.id, 'Approved');
+      win.addConnection(d.id, be.id, 'Revise'); win.addConnection(d.id, fe.id, 'Revise');
+      win.addConnection(t.id, o.id);
+      return { be, fe, r, d, t };
+    }
+    it('fork siblings share a layer even when the decision revises into both', () => {
+      const refs = fullstackShape();
+      win.autoLayout();
+      expect(refs.be.x).toBe(refs.fe.x);
+      expect(refs.fe.x < refs.r.x).toBe(true);
+      expect(refs.t.x > refs.d.x).toBe(true);
+    });
+    it('a No branch that goes genuinely forward (no loop back) keeps its forward layer', () => {
+      const i = win.addNode('input', 0, 0, 'Spec');
+      const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'b', maxTurns:5 });
+      const d = win.addNode('decision', 0, 0, 'OK?', { condition:'ok', yesLabel:'Yes', noLabel:'Escalate', maxRevisions:3 });
+      const esc = win.addNode('agent', 0, 0, 'Escalation Writer', { agentType:'writer', writingStyle:'technical', model:'opus-5', tools:['Read','Write'], prompt:'e', maxTurns:5 });
+      const o = win.addNode('output', 0, 0, 'Done', { deliverable:'x', format:'code' });
+      win.addConnection(i.id, a.id); win.addConnection(a.id, d.id);
+      win.addConnection(d.id, o.id, 'Yes'); win.addConnection(d.id, esc.id, 'Escalate');
+      win.autoLayout();
+      expect(esc.x > d.x).toBe(true);
+    });
+    it('a remediation node whose ONLY inbound edge is the revise edge stays right of its decision (never layer 0)', () => {
+      const i = win.addNode('input', 0, 0, 'Spec');
+      const b = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'b', maxTurns:5 });
+      const r = win.addNode('agent', 0, 0, 'Reviewer', { agentType:'reviewer', model:'opus-5', tools:['Read'], prompt:'r', maxTurns:5 });
+      const d = win.addNode('decision', 0, 0, 'Gate', { condition:'ok', yesLabel:'Approved', noLabel:'Revise', maxRevisions:3 });
+      const fix = win.addNode('agent', 0, 0, 'Fixer', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'f', maxTurns:5 });
+      const o = win.addNode('output', 0, 0, 'Done', { deliverable:'x', format:'code' });
+      win.addConnection(i.id, b.id); win.addConnection(b.id, r.id); win.addConnection(r.id, d.id);
+      win.addConnection(d.id, o.id, 'Approved');
+      win.addConnection(d.id, fix.id, 'Revise'); win.addConnection(fix.id, r.id);
+      win.autoLayout();
+      expect(fix.x > d.x).toBe(true);
+      expect(fix.x === i.x).toBe(false);
+    });
+    it('chained revise loops (return path through another decision No branch) still stack fork siblings', () => {
+      const i = win.addNode('input', 0, 0, 'Spec');
+      const fork = win.addNode('parallel', 0, 0, 'Dev', { strategy:'all' });
+      const be = win.addNode('agent', 0, 0, 'Backend', { agentType:'backend', model:'opus-5', tools:['Read','Write'], prompt:'b', maxTurns:5 });
+      const fe = win.addNode('agent', 0, 0, 'Frontend', { agentType:'frontend', model:'opus-5', tools:['Read','Write'], prompt:'f', maxTurns:5 });
+      const d2 = win.addNode('decision', 0, 0, 'Build OK?', { condition:'ok', yesLabel:'Pass', noLabel:'NeedsWork', maxRevisions:3 });
+      const d1 = win.addNode('decision', 0, 0, 'Retry?', { condition:'ok', yesLabel:'Pass', noLabel:'Revise', maxRevisions:3 });
+      const o = win.addNode('output', 0, 0, 'Done', { deliverable:'x', format:'code' });
+      win.addConnection(i.id, fork.id);
+      win.addConnection(fork.id, be.id); win.addConnection(fork.id, fe.id);
+      win.addConnection(be.id, d2.id); win.addConnection(fe.id, d2.id);
+      win.addConnection(d2.id, o.id, 'Pass'); win.addConnection(d2.id, d1.id, 'NeedsWork');
+      win.addConnection(d1.id, o.id, 'Pass');
+      win.addConnection(d1.id, be.id, 'Revise'); win.addConnection(d1.id, fe.id, 'Revise');
+      win.autoLayout();
+      expect(be.x).toBe(fe.x);
+    });
+    it('a dangling connection target (importable ghost edge) neither throws nor aborts layout', () => {
+      const i = win.addNode('input', 0, 0, 'Spec');
+      const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'b', maxTurns:5 });
+      const o = win.addNode('output', 0, 0, 'Done', { deliverable:'x', format:'code' });
+      win.addConnection(i.id, a.id); win.addConnection(a.id, o.id);
+      win.state.connections.push({ id: 'cghost', from: a.id, to: 999999, label: '' });
+      win.autoLayout();
+      expect(a.x > i.x).toBe(true);
+      expect(o.x > a.x).toBe(true);
+      win.state.connections = win.state.connections.filter(c => c.id !== 'cghost');
+    });
+    it('deserializeWorkflow backfills missing connection ids uniquely (tuning round trips keep node ids only)', () => {
+      const i = win.addNode('input', 0, 0, 'Spec');
+      const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'b', maxTurns:5 });
+      const o = win.addNode('output', 0, 0, 'Done', { deliverable:'x', format:'code' });
+      win.addConnection(i.id, a.id); win.addConnection(a.id, o.id);
+      const blob = JSON.parse(JSON.stringify(win.serializeWorkflow()));
+      blob.canvas.connections.forEach(c => { delete c.id; });
+      win.deserializeWorkflow(blob);
+      const ids = win.state.connections.map(c => c.id);
+      expect(ids.every(id => typeof id === 'string' && id.length > 0)).toBe(true);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+  });
+
   describe('complex workflow', () => {
     it('should place output as rightmost node', () => {
       const refs = buildTestWorkflow('complex');

@@ -3216,6 +3216,16 @@ function deserializeWorkflow(data) {
   });
   state.connections = c.connections || [];
   state.nextId = c.nextId || (state.nodes.length + 1);
+  // Hand-edited or tuning-round-trip JSON may omit connection ids (only NODE ids are asked
+  // to be kept); every id-keyed consumer (autoLayout back-edge sets, delete-by-id) needs
+  // them present and unique, so backfill after nextId is restored.
+  const _connIds = new Set(state.connections.map(cc => cc.id).filter(Boolean));
+  state.connections.forEach(cc => {
+    if (!cc.id) {
+      do { cc.id = 'c' + state.nextId++; } while (_connIds.has(cc.id));
+      _connIds.add(cc.id);
+    }
+  });
   state.pan = c.pan || { x: 0, y: 0 };
   state.zoom = c.zoom || 1;
   state.selectedId = null;
@@ -6753,11 +6763,48 @@ function autoLayout() {
 
   // ── Step 1: Identify back-edges (cycles from decision revision loops) ──
   const backEdges = new Set();
+  // Seed with the app's revise semantics FIRST (isReviseBackEdge - the same authority
+  // topologicalSort uses): a decision's revise edge is a revision path, not a dependency.
+  // Left to the DFS alone, cycle-breaking is visit-order dependent: a revise edge to a
+  // not-yet-visited fork sibling reads as a forward dependency and flings that sibling
+  // to the decision's next rank (Frontend beside Tester in the fullstack preset).
+  // Two guards before seeding an edge:
+  // (1) it truly closes a loop - the target reaches the decision again through the
+  //     remaining edges (only the edge under test is excluded, so chained revise loops
+  //     that return through another decision's No branch still seed); a No branch that
+  //     goes genuinely forward, like an escalation path, keeps its forward role.
+  // (2) the target keeps at least one OTHER forward in-edge - a node whose only inbound
+  //     edge is the revise edge (Gate -Revise-> Fixer remediation shapes) would otherwise
+  //     strand at layer 0; for those, the DFS breaks the loop on the return edge as before.
+  const reviseIds = new Set(state.connections.filter(isReviseBackEdge).map(c => c.id));
+  const seedAdj = {};
+  state.nodes.forEach(n => { seedAdj[n.id] = []; });
+  state.connections.forEach(c => { if (seedAdj[c.from]) seedAdj[c.from].push(c); });
+  const fwdInDeg = {};
+  state.nodes.forEach(n => { fwdInDeg[n.id] = 0; });
+  state.connections.forEach(c => { if (!reviseIds.has(c.id) && fwdInDeg[c.to] !== undefined) fwdInDeg[c.to]++; });
+  function reachesBack(startId, targetId, skipEdgeId) {
+    const seen = new Set([startId]);
+    const stack = [startId];
+    while (stack.length) {
+      const id = stack.pop();
+      if (id === targetId) return true;
+      for (const c of (seedAdj[id] || [])) {
+        if (c.id === skipEdgeId || seen.has(c.to)) continue;
+        seen.add(c.to); stack.push(c.to);
+      }
+    }
+    return false;
+  }
+  state.connections.forEach(c => {
+    if (reviseIds.has(c.id) && fwdInDeg[c.to] > 0 && reachesBack(c.to, c.from, c.id)) backEdges.add(c.id);
+  });
   const color = {}; // DFS coloring: 0=white, 1=gray (in stack), 2=black (done)
   state.nodes.forEach(n => { color[n.id] = 0; });
   const fwdAdj = {};
   state.nodes.forEach(n => { fwdAdj[n.id] = []; });
   state.connections.forEach(c => {
+    if (backEdges.has(c.id)) return;   // seeded revise loops never enter the DFS as forward edges
     if (fwdAdj[c.from]) fwdAdj[c.from].push(c);
   });
   function dfs(id) {
@@ -6777,7 +6824,7 @@ function autoLayout() {
   state.nodes.forEach(n => { adj[n.id] = []; rev[n.id] = []; inDeg[n.id] = 0; });
   state.connections.forEach(c => {
     if (backEdges.has(c.id)) return;
-    if (adj[c.from]) {
+    if (adj[c.from] && rev[c.to]) {   // both endpoints must exist - an imported dangling edge must not abort layout
       adj[c.from].push(c.to);
       rev[c.to].push(c.from);
       inDeg[c.to] = (inDeg[c.to] || 0) + 1;
