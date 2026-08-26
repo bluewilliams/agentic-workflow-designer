@@ -2,6 +2,11 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-08-25 - markdown-preview-fences (update) - review hardening (NUL strip + record scrub) and #### headings render as h4 outside fences. 1641 -> 1643 - .workflow/markdown-preview-fences.md
+2026-08-25 - markdown-preview-fences (update) - placeholder protection: bold spans across code chips, globs stay literal, fence heading lines bold with hashes preserved. 1640 -> 1641 - .workflow/markdown-preview-fences.md
+2026-08-25 - explain-lever-audit + markdown-preview-fences (update) - review fixes: code-spans-first shared renderer (glob literals never bold), evidence heading levels match the emitting format, dead const dropped, blank path entries filtered. 1638 -> 1640 - both records
+2026-08-25 - markdown-preview-fences - prompt panel renders inline bold/code inside fenced agent blocks (display-only; Copy ships raw). 1637 -> 1638 - .workflow/markdown-preview-fences.md
+2026-08-25 - explain-lever-audit (update) - ON-row richness: six heading-placeholder evidence slots now unfold the real emitted blocks, reasons name configured values (repos @ branches, paths, model incl. base-alias explanation), previews render inline bold/code via escape-first exInlineMd. 1634 -> 1637 - .workflow/explain-lever-audit.md
 2026-08-25 - auto-layout-revise-edges (update) - review fixes: other-in-edge guard (revise-only Fixer stranded at layer 0), per-edge reachability (chained revise loops), ghost-edge endpoint guard, connection-id backfill on import, dead typeof guard dropped. 1630 -> 1634 - .workflow/auto-layout-revise-edges.md
 2026-08-25 - auto-layout-revise-edges - autoLayout seeds revise edges as back-edges (loop-closure guarded) so fork siblings share a layer by default; fixes Frontend flung beside Tester on Full Stack apply. 1628 -> 1630 - .workflow/auto-layout-revise-edges.md
 2026-08-24 - preset-prompt-craft (update) - selector craft de-Appiumed: framework-neutral locator order (role/label, test id, stable CSS; never hashed classes or indices), runtime-unconfirmed marks Explorer -> writer -> reviewer, vendor-neutral inspector language. 1627 -> 1628 - .workflow/preset-prompt-craft.md

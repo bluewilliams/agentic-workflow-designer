@@ -319,6 +319,7 @@ svg.canvas{width:100%;height:100%;display:block}
 .prompt-content.rendered h1{font-size:14px;font-weight:700;color:var(--text);margin:16px 0 6px;padding-bottom:3px;border-bottom:1px solid var(--border)}
 .prompt-content.rendered h2{font-size:13px;font-weight:700;color:var(--text);margin:16px 0 6px;padding-bottom:3px;border-bottom:1px solid var(--border)}
 .prompt-content.rendered h3{font-size:12px;font-weight:600;color:var(--text);margin:12px 0 4px}
+.prompt-content.rendered h4{font-size:12px;font-weight:600;color:var(--text2);margin:10px 0 4px}
 .prompt-content.rendered p{margin:4px 0}
 .prompt-content.rendered ul,.prompt-content.rendered ol{margin:4px 0 4px 20px;padding:0}
 .prompt-content.rendered li{margin:2px 0}
@@ -8869,6 +8870,12 @@ function jumpToSection(id) {
     sec.scrollIntoView({ block: 'start', behavior: _smoothOk ? 'smooth' : 'auto' });
   }
 }
+// Explain evidence must match the emitted heading level: the prompt format (and SDK) uses
+// the block helpers' '###' defaults; subagent/teams/claude emit these blocks at '##'.
+// One encoding of that truth, shared by explainWorkflow and explainOutputNode.
+function explainHeadingLevel(format) {
+  return (format === 'prompt' || format === 'sdk') ? '###' : '##';
+}
 function exRow(part, emitted, reason, text) {
   const probe = emitted ? explainProbe(text) : '';
   const snippet = probe.length > 120 ? probe.slice(0, 120) + '...' : probe;
@@ -8925,7 +8932,11 @@ function explainAgentNode(node, format) {
     'custom': 'custom prompt (user-edited; role templates not applied)'
   }[info.state];
   rows.push(exRow('Role instructions', true, roleReason, eff));
-  rows.push(exRow('Model', format !== 'claude', format === 'claude' ? 'Claude.ai format carries no model parameter' : 'always emitted', format === 'claude' ? '' : getTaskModelParam(node.config.model)));
+  const _mParam = getTaskModelParam(node.config.model);
+  const _mReason = format === 'claude' ? 'Claude.ai format carries no model parameter'
+    : 'this step runs ' + getModelLabel(node.config.model)
+      + (taskModelMap[node.config.model] ? ' - emitted as the base alias "' + _mParam + '", which the runner resolves to its newest build' : '');
+  rows.push(exRow('Model', format !== 'claude', _mReason, _mParam));   // exRow blanks probe/full itself when not emitted
   // Effort is set once for the whole run, but whether THIS step honors the level depends on its
   // model, so the step deserves its own row. Probe stays empty: the effort text is emitted at the
   // workflow level, not in this step's block, and a probe here would claim otherwise.
@@ -9123,11 +9134,10 @@ function explainOutputNode(node, format) {
   const rows = [];
   const fmts = deliveryFormats();
   const winner = fmts.includes('pr') ? 'pr' : fmts.includes('commit') ? 'commit' : fmts.includes('report') ? 'report' : fmts.includes('docs') ? 'docs' : 'none';
-  const winnerHeading = { pr: 'Pull Request Creation', commit: 'Commit', report: 'Report', docs: 'Documentation', none: 'Do not commit, push, or open a PR' }[winner];
   const mine = node.config.format;
   rows.push(exRow('Delivery block', true,
     "this output's format is '" + mine + "'; the delivery block is driven by priority pr > commit > report > docs across all output nodes ('" + winner + "' wins)" ,
-    mine === winner || (winner === 'none' && mine === 'code') ? winnerHeading : ''));
+    mine === winner || (winner === 'none' && mine === 'code') ? deliveryBlock(explainHeadingLevel(format)) : ''));
   if (mine === 'pr') {
     rows.push(exRow('Branches', true,
       (node.config.branchName ? 'feature branch: ' + node.config.branchName : 'feature branch derived from the ticket ID at run time')
@@ -9292,15 +9302,18 @@ function explainWorkflow(format) {
     format !== 'claude' ? orchestratorCraft(format, _ocPar) : ''));
   const story = getStory();
   rows.push(exRow('Requirements', !!story, story ? 'from the Requirements field' : 'Requirements field empty - section omitted', story));
+  const _exH = explainHeadingLevel(format);
   const plan = getPlan();
-  rows.push(exRow('Workflow Context (plan)', !!plan, plan ? 'from the Workflow Context field - starting guidance, adapt-not-obey framing' : 'no Workflow Context pasted', plan ? 'Workflow Context (starting guidance - adapt based on findings)' : ''));
-  rows.push(exRow('App Under Test', !!getAppSource(), getAppSource() ? (getAppSourceAccess() === 'writable' ? 'App Under Test path set - WRITABLE by deliberate configuration (lever: the Access selector in App & UI Context)' : 'App Under Test path set - read-only exploration target (lever: the Access selector in App & UI Context)') : 'no App Under Test path configured - the app-to-explore for test automation, NOT your project source; set it in the App & UI Context sidebar section when App Explorer steps (or the Test Automation preset) need an app to mine selectors from', getAppSource() ? 'App Under Test' : ''));
+  rows.push(exRow('Workflow Context (plan)', !!plan, plan ? 'from the Workflow Context field - starting guidance, adapt-not-obey framing' : 'no Workflow Context pasted', plan));
+  const _exApp = getAppSource();
+  rows.push(exRow('App Under Test', !!_exApp, _exApp ? (_exApp.path + (_exApp.branch ? ' @ ' + _exApp.branch : '') + (getAppSourceAccess() === 'writable' ? ' - WRITABLE by deliberate configuration (lever: the Access selector in App & UI Context)' : ' - read-only exploration target (lever: the Access selector in App & UI Context)')) : 'no App Under Test path configured - the app-to-explore for test automation, NOT your project source; set it in the App & UI Context sidebar section when App Explorer steps (or the Test Automation preset) need an app to mine selectors from', _exApp ? appSourceBlock(_exH + ' App Under Test') : ''));
   const uiN = $('uiContextNotes') ? $('uiContextNotes').value.trim() : '';
-  rows.push(exRow('UI Context', !!uiN, uiN ? 'UI/styling constraints set' : 'no UI context set - add notes in the App & UI Context sidebar section (UI Context area); Design Analyzer and UI-building steps consume it', uiN ? 'UI Context' : ''));
+  rows.push(exRow('UI Context', !!uiN, uiN ? 'UI/styling constraints set' : 'no UI context set - add notes in the App & UI Context sidebar section (UI Context area); Design Analyzer and UI-building steps consume it', uiN));
   const dfmts = deliveryFormats();
   const dwinner = dfmts.includes('pr') ? 'Pull Request Creation' : dfmts.includes('commit') ? 'Commit' : dfmts.includes('report') ? 'Report' : dfmts.includes('docs') ? 'Documentation' : 'no-commit discipline';
-  rows.push(exRow('Delivery block', true, 'orchestrator-owned, emitted once; driver by priority pr > commit > report > docs: ' + dwinner, dfmts.includes('pr') ? 'Pull Request Creation' : ''));
-  rows.push(exRow('Repositories', getRepositories().length > 0, getRepositories().length > 0 ? getRepositories().length + ' repositories listed' : 'no repositories listed - only needed for multi-repo work or pinned branches; add them in the Multi-Repo & Context Paths sidebar section', getRepositories().length > 0 ? 'Repositories' : ''));
+  rows.push(exRow('Delivery block', true, 'orchestrator-owned, emitted once; driver by priority pr > commit > report > docs: ' + dwinner, deliveryBlock(_exH)));
+  const _exRepos = getRepositories();
+  rows.push(exRow('Repositories', _exRepos.length > 0, _exRepos.length > 0 ? _exRepos.length + ' repositor' + (_exRepos.length === 1 ? 'y' : 'ies') + ' listed: ' + _exRepos.map(r => r.path + (r.branch ? ' @ ' + r.branch : '')).join(', ') : 'no repositories listed - only needed for multi-repo work or pinned branches; add them in the Multi-Repo & Context Paths sidebar section', _exRepos.length > 0 ? repoBlock(_exH + ' Repositories') : ''));
   const atlT = atlassianTicketFetchHint(getWorkflowAtlassianUrls());
   rows.push(exRow('Atlassian ticket fetch', !!atlT, atlT ? 'ticket URL(s) found in the requirements/nodes - toggle-independent, orchestrator fetches once' : 'no Atlassian URLs found in the workflow - paste a ticket URL into Requirements to include one', atlT));
   const atlG = atlassianGeneralHint();
@@ -9309,11 +9322,13 @@ function explainWorkflow(format) {
   rows.push(exRow('Code search (workflow-level)', !!csH, csH ? 'Code search toggle on' : 'Code search toggle off', csH));
   rows.push(exRow('Conventions', true, 'always emitted - comment discipline + test-convention discovery', conventionsHint()));
   const ru = rulesPathsHint();
-  rows.push(exRow('Repo rules / constitution', !!ru, ru ? 'rules paths configured (BINDING constraints)' : 'no rules paths configured - add them under Multi-Repo & Context Paths (Rules / constitution)', ru));
+  rows.push(exRow('Repo rules / constitution', !!ru, ru ? 'rules paths configured (BINDING constraints): ' + (state.rulesPaths || []).filter(Boolean).join(', ') : 'no rules paths configured - add them under Multi-Repo & Context Paths (Rules / constitution)', ru));
   const pd = productDocsHint();
-  rows.push(exRow('Product / architecture docs', !!pd, pd ? 'doc paths configured (goals to SERVE)' : 'no doc paths configured - add them under Multi-Repo & Context Paths (Product docs)', pd));
+  rows.push(exRow('Product / architecture docs', !!pd, pd ? 'doc paths configured (goals to SERVE): ' + (state.productDocPaths || []).filter(Boolean).join(', ') : 'no doc paths configured - add them under Multi-Repo & Context Paths (Product docs)', pd));
   const ve = verifyInstructionsHint();
-  rows.push(exRow('Verification instructions', !!ve, ve ? 'verification paths configured (routed to the owning verification step - Verifier if present, else final Tester; posture ' + (state.verifyFailRun ? 'fails the run' : 'report-only') + ')' : 'no verification paths configured - add them under Multi-Repo & Context Paths (Verification instructions)', ve));
+  const _vePaths = (state.verifyPaths || []).filter(Boolean);
+  const _veNames = _vePaths.join(', ') + (((state.verifyNotes || '').trim()) ? (_vePaths.length ? ' + inline notes' : 'inline notes') : '');
+  rows.push(exRow('Verification instructions', !!ve, ve ? 'verification mandates configured: ' + _veNames + ' (routed to the owning verification step - Verifier if present, else final Tester; posture ' + (state.verifyFailRun ? 'fails the run' : 'report-only') + ')' : 'no verification paths configured - add them under Multi-Repo & Context Paths (Verification instructions)', ve));
   // The sdk format returns its own single summary row above and never reaches here, so this
   // row covers the prose formats plus the by-design Claude.ai skip.
   const ef = format === 'claude' ? null : effortHint();
@@ -9340,11 +9355,11 @@ function explainWorkflow(format) {
        : format === 'claude' ? genSingleAgentMemoryProtocol().replace(/^---\n/, '')
        : genMemoryProtocol().replace(/^---\n/, ''))
     : '';
-  rows.push(exRow('Memory protocol', memOn, memOn ? 'memory toggle on - per-agent files + shared handoff log + breadcrumbs; the orchestrator reads each step\'s report from its file (the authoritative copy) and logs its own gate decisions to shared.md' : 'memory toggle off', memFull));
+  rows.push(exRow('Memory protocol', memOn, memOn ? 'memory toggle on - files under ' + getMemoryPath() + '; per-agent files + shared handoff log + breadcrumbs; the orchestrator reads each step\'s report from its file (the authoritative copy) and logs its own gate decisions to shared.md' : 'memory toggle off', memFull));
   const durOn = memOn && state.durableRecord;
   const durFull = durOn ? genDurableRecordProtocol(format === 'subagent' ? 'subagent' : format === 'teams' ? 'teams' : 'prompt').replace(/^---\n/, '') : '';
   rows.push(exRow('Durable record protocol', durOn,
-    durOn ? 'durable-record toggle on - ONE record per unit of work, three surfaces only, Current behavior first, live-ticked checklist'
+    durOn ? 'durable-record toggle on - the record lives at ' + getArtifactPath() + '; ONE record per unit of work, three surfaces only, Current behavior first, live-ticked checklist'
           : (memOn ? 'durable-record toggle off' : 'requires memory: turn on Enable workflow memory, then Keep a durable record (both in Memory and Durable Record)'),
     durFull));
   const decisions = state.nodes.filter(n => n.type === 'decision');
@@ -9370,6 +9385,12 @@ function explainSelectedStep() {
   if (!node) { showToast('Select a step on the canvas first', 2500); return; }
   showExplain(node.id);
 }
+// Explain-evidence variant of the shared inlineFmt: same escape-first, code-spans-first
+// pipeline (one renderer, so the panel and the modal can never diverge), with the modal's
+// inline-styled <code> because the modal has no stylesheet <code> rule.
+function exInlineMd(s) {
+  return inlineFmt(s, 'background:rgba(255,255,255,0.08);padding:0 3px;border-radius:3px');
+}
 function showExplain(nodeId) {
   const fmt = state.exportFormat;
   const fmtName = EXPLAIN_FORMATS[fmt] || fmt;
@@ -9388,8 +9409,8 @@ function showExplain(nodeId) {
     const expandable = on && r.full && (r.full.length > (r.probe || '').length + 20 || (r.snippet || '').endsWith('...'));
     const body = !on || !r.snippet ? ''
       : expandable
-        ? '<details style="margin-top:2px"><summary style="cursor:pointer;font-size:10px;color:var(--text2,#aab4c6);font-family:monospace;overflow-wrap:anywhere">' + escHtml(r.snippet) + ' <span style="color:var(--accent,#5b9dd9)">[view full]</span></summary><pre style="font-size:10px;color:var(--text2,#aab4c6);white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow-y:auto;margin:4px 0 0;padding:6px;background:rgba(0,0,0,0.25);border-radius:4px">' + escHtml(r.full) + '</pre></details>'
-        : '<div style="font-size:10px;color:var(--text2,#aab4c6);font-family:monospace;margin-top:2px;overflow-wrap:anywhere">' + escHtml(r.snippet) + '</div>';
+        ? '<details style="margin-top:2px"><summary style="cursor:pointer;font-size:10px;color:var(--text2,#aab4c6);font-family:monospace;overflow-wrap:anywhere">' + exInlineMd(r.snippet) + ' <span style="color:var(--accent,#5b9dd9)">[view full]</span></summary><pre style="font-size:10px;color:var(--text2,#aab4c6);white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow-y:auto;margin:4px 0 0;padding:6px;background:rgba(0,0,0,0.25);border-radius:4px">' + exInlineMd(r.full) + '</pre></details>'
+        : '<div style="font-size:10px;color:var(--text2,#aab4c6);font-family:monospace;margin-top:2px;overflow-wrap:anywhere">' + exInlineMd(r.snippet) + '</div>';
     return '<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06);' + (on ? '' : 'opacity:.55') + '">'
       + '<span style="color:' + (on ? '#34d399' : 'var(--text3,#667085)') + ';flex:0 0 auto;font-size:12px">' + (on ? '&#10003;' : '&#183;') + '</span>'
       + '<div style="min-width:0;flex:1"><div style="font-weight:600;font-size:12px">' + escHtml(r.part) + '</div>'
@@ -9411,12 +9432,22 @@ function renderMarkdown(md) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.startsWith('```')) { if (inCode) { html += '</code></pre>'; } else { html += '<pre><code>'; } inCode = !inCode; continue; }
-    if (inCode) { html += escHtml(line) + '\n'; continue; }
+    // Inside a fence, keep the block literal (no h-tags/lists/tables) but render the
+    // INLINE marks - the sub-agent format embeds whole agent prompts in fences, and raw
+    // ** and backticks there read as broken formatting rather than intentional payload.
+    // Heading lines render as bold monospace lines with their hash marks preserved:
+    // structure without pretending the payload is not a payload.
+    // Display-only: Copy always ships _rawPrompt, never this HTML.
+    if (inCode) {
+      html += (/^#{1,6} /.test(line) ? '<strong>' + inlineFmt(line) + '</strong>' : inlineFmt(line)) + '\n';
+      continue;
+    }
     if (inList && !/^\s*[-*]\s/.test(line) && !/^\s*\d+\.\s/.test(line) && line.trim() !== '') { html += '</ul>'; inList = false; }
     if (inTable && !line.startsWith('|')) { html += '</tbody></table>'; inTable = false; }
     if (line.startsWith('# ') && !line.startsWith('## ')) { html += '<h2>' + inlineFmt(line.slice(2)) + '</h2>'; continue; }
     if (line.startsWith('## ')) { html += '<h2>' + inlineFmt(line.slice(3)) + '</h2>'; continue; }
     if (line.startsWith('### ')) { html += '<h3>' + inlineFmt(line.slice(4)) + '</h3>'; continue; }
+    if (/^#{4,6} /.test(line)) { html += '<h4>' + inlineFmt(line.replace(/^#{4,6} /, '')) + '</h4>'; continue; }
     if (line.startsWith('|')) {
       const cells = line.split('|').slice(1, -1).map(c => c.trim());
       if (cells.every(c => /^[-:]+$/.test(c))) continue;
@@ -9435,7 +9466,23 @@ function renderMarkdown(md) {
   if (inTable) html += '</tbody></table>';
   return html;
 }
-function inlineFmt(t) { return escHtml(t).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`(.+?)`/g, '<code>$1</code>'); }
+// Shared inline micro-renderer for every markdown preview (prompt panel + Explain evidence):
+// escape FIRST (user content never reaches innerHTML raw), then lift single-backtick code
+// spans into placeholders, run bold on what remains, and restore the spans. The placeholder
+// pass gets both hard cases right at once: code content stays byte-literal (glob patterns
+// like **/theme/** inside backticks never bold), while a bold that CONTAINS a code span
+// (**Shared log (`shared.md`) - ...**) still renders, because the placeholder carries no
+// asterisks for the bold pass to trip on. codeStyle carries the Explain modal's
+// inline-styled <code> variant.
+function inlineFmt(t, codeStyle) {
+  const open = codeStyle ? '<code style="' + codeStyle + '">' : '<code>';
+  const codes = [];
+  // Strip any literal NULs from the input first (imported JSON can smuggle them into
+  // prompt strings): the sentinel round trip must never collide with payload bytes.
+  let s = escHtml(String(t).replace(/\u0000/g, '')).replace(/`([^`\n]+)`/g, (m, c) => { codes.push(open + c + '</code>'); return '\u0000' + (codes.length - 1) + '\u0000'; });
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  return s.replace(/\u0000(\d+)\u0000/g, (m, i) => codes[i] || '');
+}
 
 let _rawPrompt = '';
 function estimateTokens(text) {
