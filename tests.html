@@ -6086,6 +6086,251 @@ describe('Preset prompt craft batch', () => {
   });
 });
 
+// ─── Suite 12h: Live Run Monitor core (parsers, merge, diff, scan, panel) ─────
+describe('Live Run Monitor core', () => {
+  afterEach(() => {
+    win.runMonitor.watches = []; win.runMonitor.open = false;
+    win.runMonitor.snapshot = {}; win.runMonitor.texts = {}; win.runMonitor.feed = [];
+    win.runMonitor.tasks = []; win.runMonitor.agents = {}; win.runMonitor.selected = null;
+    const p = win.document.getElementById('monitorPanel'); if (p) { p.style.display = 'none'; p.innerHTML = ''; }
+  });
+  it('parseToonEntries reads @slug and Step-N headers, statuses normalize, body lines attach', () => {
+    const text = '# @planner | Memory\n\n## @planner | 2026-02-22T10:30:00Z | \u{1F504}active\nd: working\n\n## Step 2: Implementer | 2026-02-22T11:00:00Z | ✅done\nf: a.ts:created';
+    const e = win.parseToonEntries(text);
+    expect(e.length).toBe(2);
+    expect(e[0].slug).toBe('planner');
+    expect(e[0].status).toBe('active');
+    expect(e[0].lines[0]).toBe('d: working');
+    expect(e[1].status).toBe('done');
+  });
+  it('parseTaskChecklist reads boxes, tick state, and owner tags', () => {
+    const t = win.parseTaskChecklist('- [ ] add validation (@backend)\n- [x] write the plan\nnot a task\n- [ ] no owner here');
+    expect(t.length).toBe(3);
+    expect(t[0].owner).toBe('backend');
+    expect(t[0].text).toBe('add validation');
+    expect(t[0].done).toBe(false);
+    expect(t[1].done).toBe(true);
+    expect(t[2].owner).toBe(null);
+  });
+  it('parseProvisionalTicks reads t: lines with done markers only', () => {
+    const p = win.parseProvisionalTicks('d: other\nt: add validation done\nt: still working on this\nt: wire the handler ✅');
+    expect(p.length).toBe(2);
+    expect(p[0]).toBe('add validation');
+    expect(p[1]).toBe('wire the handler');
+  });
+  it('monitorMergeTasks: confirmed beats provisional, normalized substring matching, open otherwise', () => {
+    const merged = win.monitorMergeTasks(
+      [{ text: 'Add validation', done: true, owner: null }, { text: 'Wire the handler', done: false, owner: 'backend' }, { text: 'Write tests', done: false, owner: null }],
+      ['wire the handler']);
+    expect(merged[0].tier).toBe('confirmed');
+    expect(merged[1].tier).toBe('provisional');
+    expect(merged[2].tier).toBe('open');
+  });
+  it('monitorAgentStatuses: own file gives latest status; a done handoff in shared.md wins', () => {
+    const s = win.monitorAgentStatuses({
+      '@backend.md': '## @backend | t1 | \u{1F504}active\nd: x',
+      '@frontend.md': '## @frontend | t1 | \u{1F6A7}blocked\nd: y',
+      'shared.md': '## @backend | t2 | ✅done\nd: handoff\n\n## @orchestrator | t3 | ✅done\nd: gate'
+    });
+    expect(s.backend).toBe('done');
+    expect(s.frontend).toBe('blocked');
+    expect(s.orchestrator === 'done').toBe(false);   // orchestrator log lines are not node statuses
+  });
+  it('monitorDiff reports new, changed, and removed paths', () => {
+    const d = win.monitorDiff(
+      { 'a.md': { mtime: 1, size: 5 }, 'gone.md': { mtime: 1, size: 1 } },
+      [{ path: 'a.md', mtime: 2, size: 5 }, { path: 'b.md', mtime: 1, size: 3 }]);
+    const kinds = {};
+    d.changed.forEach(c => { kinds[c.path] = c.kind; });
+    expect(kinds['a.md']).toBe('changed');
+    expect(kinds['b.md']).toBe('new');
+    expect(kinds['gone.md']).toBe('removed');
+    expect(d.next['b.md'].size).toBe(3);
+  });
+  it('monitorScanHandle walks fake nested handles with path prefixes and respects the file cap', async () => {
+    function fakeFile(name, text) {
+      return { kind: 'file', name, getFile: async () => ({ lastModified: 1, size: text.length, text: async () => text }) };
+    }
+    function fakeDir(name, entries) {
+      return { kind: 'directory', name, values: async function* () { for (const e of entries) yield e; } };
+    }
+    const root = fakeDir('root', [fakeFile('tasks.md', '- [ ] a'), fakeDir('sub', [fakeFile('shared.md', 'x')])]);
+    const files = await win.monitorScanHandle(root, '', 0, []);
+    const paths = files.map(f => f.path);
+    expect(paths).toContain('tasks.md');
+    expect(paths).toContain('sub/shared.md');
+  });
+  it('monitorRecompute finds tasks.md at any depth and scopes agents to its directory', () => {
+    win.runMonitor.texts = {
+      'mem/tasks.md': '- [ ] wire the handler (@backend)\n- [x] plan',
+      'mem/@backend.md': '## @backend | t1 | \u{1F504}active\nt: wire the handler done',
+      'other/readme.md': 'noise'
+    };
+    win.monitorRecompute();
+    expect(win.runMonitor.tasks.length).toBe(2);
+    expect(win.runMonitor.tasks[0].tier).toBe('provisional');
+    expect(win.runMonitor.tasks[1].tier).toBe('confirmed');
+    expect(win.runMonitor.agents.backend).toBe('active');
+  });
+  it('the panel renders three-tier tasks, agent chips, and the record chip in the viewer', () => {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'memdir', status: 'granted' }];
+    win.runMonitor.tasks = [
+      { text: 'plan', done: true, owner: null, tier: 'confirmed' },
+      { text: 'wire the handler', done: false, owner: 'backend', tier: 'provisional' },
+      { text: 'write tests', done: false, owner: null, tier: 'open' }];
+    win.runMonitor.agents = { backend: 'active' };
+    win.runMonitor.texts = { 'memdir/rec.md': '```awd:record\n{"slug": "demo-cap", "status": "current", "date": "2026-08-25"}\n```\n# Demo' };
+    win.runMonitor.selected = 'memdir/rec.md';
+    win.renderMonitorPanel();
+    const html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('1/3 confirmed');
+    expect(html).toContain('monitor-task provisional');
+    expect(html).toContain('@backend');
+    expect(html).toContain('record: demo-cap');
+    expect(html).toContain('current');
+  });
+  it('monitorNodeStatus feeds the canvas dot by label slug, null when nothing is watched', () => {
+    resetState();
+    const n = win.addNode('agent', 100, 100, 'Backend', { agentType: 'backend', model: 'opus-5', tools: ['Read'], prompt: 'b', maxTurns: 5 });
+    expect(win.monitorNodeStatus(n)).toBe(null);
+    win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
+    win.runMonitor.agents = { backend: 'done' };
+    expect(win.monitorNodeStatus(n)).toBe('done');
+    resetState();
+  });
+  it('short tasks are never falsely half-ticked by a longer unrelated tick (length guard)', () => {
+    const merged = win.monitorMergeTasks(
+      [{ text: 'plan', done: false, owner: null }, { text: 'update planning doc', done: false, owner: null }],
+      ['update planning doc']);
+    expect(merged[0].tier).toBe('open');          // "plan" is a substring but too short to count
+    expect(merged[1].tier).toBe('provisional');
+  });
+  it('a revise-dispatched agent shows active again: a LATER own-file entry beats an older shared done', () => {
+    const s = win.monitorAgentStatuses({
+      '@backend.md': '## @backend | 2026-01-01T10:00:00Z | ✅done\nd: x\n\n## @backend | 2026-01-01T11:00:00Z | \u{1F504}active\nd: revise pass',
+      'shared.md': '## @backend | 2026-01-01T10:00:00Z | ✅done\nd: handoff'
+    });
+    expect(s.backend).toBe('active');
+    const s2 = win.monitorAgentStatuses({
+      '@backend.md': '## @backend | 2026-01-01T10:00:00Z | \u{1F504}active\nd: x',
+      'shared.md': '## @backend | 2026-01-01T11:00:00Z | ✅done\nd: handoff'
+    });
+    expect(s2.backend).toBe('done');
+  });
+  it('a lapsed watch never wipes state: unscanned prefixes are exempt from removal', () => {
+    const d = win.monitorDiff(
+      { 'mem/tasks.md': { mtime: 1, size: 5 }, 'repo/rec.md': { mtime: 1, size: 5 } },
+      [{ path: 'repo/rec.md', mtime: 1, size: 5 }],
+      ['repo/']);
+    expect(d.changed.length).toBe(0);                       // mem/ was not scanned - not a removal
+    expect(!!d.next['mem/tasks.md']).toBe(true);            // its snapshot survives for the next cycle
+  });
+  it('the newest tasks.md wins when several runs are watched, and a capitalized Tasks.md still reads back', () => {
+    win.runMonitor.snapshot = { 'old/tasks.md': { mtime: 100, size: 1 }, 'new/Tasks.md': { mtime: 200, size: 1 } };
+    win.runMonitor.texts = {
+      'old/tasks.md': '- [ ] stale run task',
+      'new/Tasks.md': '- [x] live run task'
+    };
+    win.monitorRecompute();
+    expect(win.runMonitor.tasks.length).toBe(1);
+    expect(win.runMonitor.tasks[0].text).toBe('live run task');
+    expect(win.runMonitor.tasks[0].tier).toBe('confirmed');
+  });
+  it('duplicate-label nodes get dots through the emitted unique-slug map', () => {
+    resetState();
+    const r1 = win.addNode('agent', 0, 0, 'Reviewer', { agentType: 'reviewer', model: 'opus-5', tools: ['Read'], prompt: 'a', maxTurns: 5 });
+    const r2 = win.addNode('agent', 200, 0, 'Reviewer', { agentType: 'reviewer', model: 'opus-5', tools: ['Read'], prompt: 'b', maxTurns: 5 });
+    win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
+    win.runMonitor.agents = { 'reviewer-1': 'done', 'reviewer-2': 'active' };
+    const s1 = win.monitorNodeStatus(r1), s2 = win.monitorNodeStatus(r2);
+    expect(s1 === 'done' || s1 === 'active').toBe(true);
+    expect(s2 === 'done' || s2 === 'active').toBe(true);
+    expect(s1 === s2).toBe(false);
+    resetState();
+  });
+  it('a filename crafted with quote entities cannot break out of the file-row handler', () => {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
+    const hostile = 'x/a&quot;,alert(1),&quot;b.md';
+    win.runMonitor.texts = {}; win.runMonitor.texts[hostile] = 'content';
+    win.renderMonitorPanel();
+    const html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('monitorSelectFileIdx(0)');   // index-based - the path never enters a JS string
+    expect(html).toNotContain('onclick="monitorSelectFile(&');
+    win.monitorSelectFileIdx(0);
+    expect(win.runMonitor.selected).toBe(hostile);       // selection still works on the hostile name
+  });
+  it('the Monitor toolbar button exists and the panel div ships hidden', () => {
+    expect(!!win.document.getElementById('monitorBtn')).toBe(true);
+    expect(!!win.document.getElementById('monitorPanel')).toBe(true);
+  });
+  it('the toolbar stat block is a deliberate two-line stack with unbreakable count-word pairs', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Builder', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'b', maxTurns: 5 });
+    const o = win.addNode('output', 200, 0, 'Done', { deliverable: 'x', format: 'code' });
+    win.addConnection(a.id, o.id);
+    win.render();
+    const el = win.document.getElementById('nodeCount');
+    expect(el.innerHTML).toContain('<br>');                                   // connections forced to line 2
+    expect(/<br>1(&nbsp;|\u00A0)connections/.test(el.innerHTML)).toBe(true); // no separator dot before line 2
+    expect(el.textContent).toContain('2\u00A0nodes');                        // NBSP-glued pairs never split
+    expect(el.textContent).toContain('1\u00A0agents');
+    resetState();
+  });
+});
+
+// ─── Suite 12g: Live Run Monitor emissions (two-tier progress conventions) ────
+describe('Live Run Monitor emissions', () => {
+  beforeEach(() => { resetState(); });
+  function memOn() {
+    win.state.memoryEnabled = true;
+    win.addNode('agent', 100, 100, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'b', maxTurns:5 });
+  }
+  it('orchestrator seeds and ticks tasks.md in the multi-agent variants when memory is on', () => {
+    memOn();
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams()].forEach(out => {
+      expect(out).toContain('tasks.md');
+      expect(out).toContain('never one batch at the end');
+    });
+  });
+  it('the per-agent provisional t: clause rides the sub-agent preamble and the shared protocol', () => {
+    memOn();
+    expect(win.genSubAgents()).toContain('t: {task, named as your brief names it} done');
+    expect(win.genWorkflow()).toContain('t: {task, named as the checklist names it} done');
+  });
+  it('the single-session variant ticks tasks.md itself (the orchestrator IS the executor)', () => {
+    memOn();
+    const out = win.genClaudePrompt();
+    expect(out).toContain('Tick the matching box in');
+    expect(out).toContain('tasks.md');
+  });
+  it('the tasks.md source names the durable record only when a record is kept', () => {
+    memOn();
+    win.state.durableRecord = false;
+    expect(win.genSubAgents()).toContain('derived from the plan');
+    expect(win.genSubAgents()).toNotContain('copied from the durable record');
+    win.state.durableRecord = true;
+    expect(win.genSubAgents()).toContain('copied from the durable record');
+    win.state.durableRecord = false;
+  });
+  it('memory OFF emits none of the live-progress machinery', () => {
+    win.addNode('agent', 100, 100, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'b', maxTurns:5 });
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genClaudePrompt()].forEach(out => {
+      expect(out).toNotContain('tasks.md');
+      expect(out).toNotContain('live provisional signal');
+    });
+  });
+  it('the record protocol carries owner tags, the tasks.md mirror, and the concision discipline', () => {
+    win.state.memoryEnabled = true; win.state.durableRecord = true;
+    const proto = win.genDurableRecordProtocol();
+    expect(proto).toContain('owner tag `(@{slug})`');
+    expect(proto).toContain('Mirror the checklist into the memory directory');
+    expect(proto).toContain('Concision discipline');
+    win.state.durableRecord = false; win.state.memoryEnabled = false;
+  });
+});
+
 // ─── Suite 12e: Agent craft batch (found-defect protocol, spot-mutation, verifier
 // strengthening, Verification ledger, Found bugs, polish) ─────────────────────
 describe('Agent craft batch', () => {
@@ -12969,7 +13214,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
