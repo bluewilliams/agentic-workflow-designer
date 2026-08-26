@@ -9313,7 +9313,7 @@ function explainWorkflow(format) {
   const dwinner = dfmts.includes('pr') ? 'Pull Request Creation' : dfmts.includes('commit') ? 'Commit' : dfmts.includes('report') ? 'Report' : dfmts.includes('docs') ? 'Documentation' : 'no-commit discipline';
   rows.push(exRow('Delivery block', true, 'orchestrator-owned, emitted once; driver by priority pr > commit > report > docs: ' + dwinner, deliveryBlock(_exH)));
   const _exRepos = getRepositories();
-  rows.push(exRow('Repositories', _exRepos.length > 0, _exRepos.length > 0 ? _exRepos.length + ' repositor' + (_exRepos.length === 1 ? 'y' : 'ies') + ' listed: ' + _exRepos.map(r => r.path + (r.branch ? ' @ ' + r.branch : '')).join(', ') : 'no repositories listed - only needed for multi-repo work or pinned branches; add them in the Multi-Repo & Context Paths sidebar section', _exRepos.length > 0 ? repoBlock(_exH + ' Repositories') : ''));
+  rows.push(exRow('Repositories', _exRepos.length > 0, _exRepos.length > 0 ? _exRepos.length + ' repositor' + (_exRepos.length === 1 ? 'y' : 'ies') + ' listed:' + _exRepos.map(r => '\n- ' + r.path + (r.branch ? ' @ ' + r.branch : '')).join('') : 'no repositories listed - only needed for multi-repo work or pinned branches; add them in the Multi-Repo & Context Paths sidebar section', _exRepos.length > 0 ? repoBlock(_exH + ' Repositories') : ''));
   const atlT = atlassianTicketFetchHint(getWorkflowAtlassianUrls());
   rows.push(exRow('Atlassian ticket fetch', !!atlT, atlT ? 'ticket URL(s) found in the requirements/nodes - toggle-independent, orchestrator fetches once' : 'no Atlassian URLs found in the workflow - paste a ticket URL into Requirements to include one', atlT));
   const atlG = atlassianGeneralHint();
@@ -9414,7 +9414,7 @@ function showExplain(nodeId) {
     return '<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06);' + (on ? '' : 'opacity:.55') + '">'
       + '<span style="color:' + (on ? '#34d399' : 'var(--text3,#667085)') + ';flex:0 0 auto;font-size:12px">' + (on ? '&#10003;' : '&#183;') + '</span>'
       + '<div style="min-width:0;flex:1"><div style="font-weight:600;font-size:12px">' + escHtml(r.part) + '</div>'
-      + '<div style="font-size:11px;color:var(--text3,#8b95a7)">' + escHtml(r.reason)
+      + '<div style="font-size:11px;color:var(--text3,#8b95a7)">' + escHtml(r.reason).replace(/\n/g, '<br>')
       + (EXPLAIN_SECTION_LINKS[r.part] ? ' <a href="#" class="ex-jump" data-section="' + EXPLAIN_SECTION_LINKS[r.part] + '" onclick="event.preventDefault();jumpToSection(\'' + EXPLAIN_SECTION_LINKS[r.part] + '\')" style="font-size:10px;color:var(--accent,#5b9dd9);text-decoration:none;white-space:nowrap">' + (on ? 'open section' : 'configure') + ' &rarr;</a>' : '')
       + '</div>'
       + body
