@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## live-run-monitor
+
+- record: .workflow/live-run-monitor.md
+- intent: the canvas watches the run - a Chromium Monitor drawer polls up to 4 watched directories (File System Access, IndexedDB-persisted handles) and renders live telemetry: the tasks.md checklist in three tiers (confirmed orchestrator ticks / provisional per-agent `t: {task} done` lines / open), agent status chips + live canvas dots from TOON entries, a change feed, and a markdown file viewer with awd:record header chips (a .workflow watch doubles as a durable-record browser). One watch covers a multi-repo run's live surface (shared memory folder); emissions gained the two-tier progress convention across all four memory variants (orchestrator seeds/ticks tasks.md individually; sub-agents append provisional ticks to their OWN files - one writer per file) and the record protocol gained owner tags, the kickoff tasks.md mirror, and a concision discipline. Read-only, poll-based (no browser file-watch events), memory-gated with OFF pins. Supersedes the parked incremental-checkpoint patch by intent.
+- files: index.html (LIVE RUN MONITOR removable block, panel + button + CSS, canvas dot hook, memory-variant + record-protocol emission clauses), tests.html (Suites 12g emissions + 12h core), README.md, TECHNICAL.md, help modal
+- status: current | date: 2026-08-25 | note: 1643 -> 1667 (incl. 6 regression pins from the high-review fix cycle: handler injection, re-grant timer, lapsed-watch wipe guard, duplicate-label slug map, revise-status ordering, false-half-tick length guard). Visual proof over the fullstack preset.
+
 ## markdown-preview-fences
 
 - record: .workflow/markdown-preview-fences.md

@@ -2,6 +2,8 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-08-25 - live-run-monitor (update) - high-review fix cycle: handler injection killed (index selection), re-grant restarts polling, lapsed watches never wipe state, slug-map dots, revise-status ordering, tick length guard, parallel scans, stat-block two-line stack. 1660 -> 1667 - .workflow/live-run-monitor.md
+2026-08-25 - live-run-monitor - the canvas watches the run: multi-tree Monitor drawer (live three-tier task ticks, agent chips + canvas dots, change feed, record browser), two-tier progress emissions across all memory variants, record protocol owner tags + concision. 1643 -> 1660 - .workflow/live-run-monitor.md
 2026-08-25 - markdown-preview-fences (update) - review hardening (NUL strip + record scrub) and #### headings render as h4 outside fences. 1641 -> 1643 - .workflow/markdown-preview-fences.md
 2026-08-25 - markdown-preview-fences (update) - placeholder protection: bold spans across code chips, globs stay literal, fence heading lines bold with hashes preserved. 1640 -> 1641 - .workflow/markdown-preview-fences.md
 2026-08-25 - explain-lever-audit + markdown-preview-fences (update) - review fixes: code-spans-first shared renderer (glob literals never bold), evidence heading levels match the emitting format, dead const dropped, blank path entries filtered. 1638 -> 1640 - both records
