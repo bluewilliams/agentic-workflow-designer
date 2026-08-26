@@ -6423,6 +6423,73 @@ describe('Agent craft batch', () => {
       expect(win.openSpecContextBlock()).toBe('');
       resetState();
     });
+    it('the step Model row names the resolved model and explains the base-alias emission', () => {
+      resetState();
+      const n = win.addNode('agent', 100, 100, 'Builder', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      const rows = win.explainNode(n, 'subagent');
+      const m = rows.find(r => r.part === 'Model');
+      expect(m.reason).toContain('this step runs Opus 5');
+      expect(m.reason).toContain('base alias "opus"');
+      expect(m.reason).toContain('resolves to its newest build');
+      // generic across the alias map: every latest-family model explains its alias
+      n.config.model = 'sonnet-5';
+      const m2 = win.explainNode(n, 'subagent').find(r => r.part === 'Model');
+      expect(m2.reason).toContain('this step runs Sonnet 5');
+      expect(m2.reason).toContain('base alias "sonnet"');
+      resetState();
+    });
+    it('exInlineMd renders bold and code spans, escapes HTML, leaves unmatched markers alone', () => {
+      expect(win.exInlineMd('**Review passed?**: ok')).toContain('<strong>Review passed?</strong>');
+      expect(win.exInlineMd('read `VERIFY.md` first')).toContain('>VERIFY.md</code>');
+      expect(win.exInlineMd('<scr' + 'ipt>alert(1)</scr' + 'ipt>')).toNotContain('<scr' + 'ipt>');
+      expect(win.exInlineMd('a ** stray marker')).toContain('a ** stray marker');
+    });
+    it('code-span content stays byte-literal in BOTH renderers: glob patterns like **/theme/** never bold', () => {
+      // shared root: bold must never fire inside a code span (the Design Analyzer template
+      // carries `**/theme/**` globs; the preview must show what Copy ships)
+      const ex = win.exInlineMd('watch `**/theme/**` and `**/tokens/**`');
+      expect(ex).toContain('**/theme/**');
+      expect(ex).toContain('**/tokens/**');
+      expect(ex).toNotContain('<strong>');
+      const md = win.renderMarkdown('```\nwatch `**/theme/**` for changes\n```');
+      expect(md).toContain('**/theme/**');
+      expect(md).toNotContain('<strong>');
+    });
+    it('Explain evidence heading levels match the emitting format (## for subagent, ### for prompt)', () => {
+      resetState();
+      win.addNode('agent', 100, 200, 'Solo', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
+      win.state.repositories = [{ path: '/tmp/repo-a', branch: '' }];
+      let repo = win.explainWorkflow('subagent').find(r => r.part === 'Repositories');
+      expect(repo.full).toContain('## Repositories');
+      expect(repo.full).toNotContain('### Repositories');
+      repo = win.explainWorkflow('prompt').find(r => r.part === 'Repositories');
+      expect(repo.full).toContain('### Repositories');
+      win.state.repositories = [];
+      resetState();
+    });
+    it('Explain config rows carry configured values and real emitted evidence (no heading placeholders)', () => {
+      resetState();
+      win.addNode('agent', 100, 200, 'Solo', { agentType: 'coder', prompt: 'x', tools: ['Read'], maxTurns: 5 });
+      win.state.repositories = [{ path: '/tmp/repo-a', branch: 'feature/x' }, { path: '/tmp/repo-b', branch: '' }];
+      win.document.getElementById('uiContextNotes').value = 'Use tokens only.';
+      win.document.getElementById('appSourcePath').value = '/tmp/proj-app';
+      const rows = win.explainWorkflow('subagent');
+      const repo = rows.find(r => r.part === 'Repositories');
+      expect(repo.reason).toContain('/tmp/repo-a @ feature/x');
+      expect(repo.reason).toContain('/tmp/repo-b');
+      expect(repo.full).toContain('Check out the specified branch');   // real emitted block, not a bare heading
+      const uiRow = rows.find(r => r.part === 'UI Context');
+      expect(uiRow.full).toContain('Use tokens only.');
+      const app = rows.find(r => r.part === 'App Under Test');
+      expect(app.reason).toContain('/tmp/proj-app');
+      expect(app.full).toContain('application under test');
+      const del = rows.find(r => r.part === 'Delivery block');
+      expect(del.full.length > 60).toBe(true);                          // the real delivery block, not a heading token
+      win.document.getElementById('uiContextNotes').value = '';
+      win.document.getElementById('appSourcePath').value = '';
+      win.state.repositories = [];
+      resetState();
+    });
     it('the App Under Test Explain row reflects the access mode and names the Access selector as its lever', () => {
       resetState();
       win.document.getElementById('appSourcePath').value = '/tmp/proj-app';
@@ -9052,6 +9119,33 @@ describe('Markdown Preview & Copy Integrity', () => {
     it('should render code blocks', () => {
       const html = win.renderMarkdown('```\ncode here\n```');
       expect(html).toContain('<pre>');
+    });
+    it('renders inline bold and code spans INSIDE fences, keeps structure literal, escapes HTML', () => {
+      const html = win.renderMarkdown('```\n**Before doing ANYTHING else** read `shared.md`\n## Your Task\n```');
+      expect(html).toContain('<strong>Before doing ANYTHING else</strong>');
+      expect(html).toContain('<code>shared.md</code>');
+      expect(html).toContain('<strong>## Your Task</strong>');   // fence heading lines bold, hash marks preserved
+      expect(html).toNotContain('<h2>');                         // never a real heading inside a fence
+      const esc = win.renderMarkdown('```\n<b>x</b>\n```');
+      expect(esc).toNotContain('<b>x</b>');                      // HTML in fenced payloads stays escaped
+    });
+    it('bold that CONTAINS a code span renders (placeholder protection), and numbers in text survive', () => {
+      const html = win.inlineFmt('**Shared log (`shared.md`) - read by all:**');
+      expect(html).toContain('<strong>');
+      expect(html).toContain('<code>shared.md</code>');
+      expect(html).toNotContain('**');
+      expect(win.inlineFmt('affects 3 callers and 12 files')).toContain('affects 3 callers and 12 files');
+    });
+    it('four-or-more-hash headings render as h4 outside fences (the per-agent #### blocks)', () => {
+      expect(win.renderMarkdown('#### Frontend')).toContain('<h4>Frontend</h4>');
+      expect(win.renderMarkdown('##### Deep')).toContain('<h4>Deep</h4>');
+      expect(win.renderMarkdown('```\n#### Frontend\n```')).toNotContain('<h4>');   // fences keep payload literal
+    });
+    it('inlineFmt strips literal NUL bytes so smuggled payload bytes never collide with the sentinel', () => {
+      const s = 'a' + String.fromCharCode(0) + '3' + String.fromCharCode(0) + 'b `x`';
+      const out = win.inlineFmt(s);
+      expect(out).toContain('a3b');
+      expect(out).toContain('<code>x</code>');
     });
   });
 });
