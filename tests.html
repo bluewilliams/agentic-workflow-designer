@@ -1807,6 +1807,14 @@ describe('Consume prior records (read side)', () => {
     expect(win.runReportDirective()).toContain('`blockedVerifications`');
     win.state.verifyNotes = '';
   });
+  it('clarify-first orders the memory kickoff before the questions, only when memory is on', () => {
+    win.state.clarifyFirst = true;
+    win.state.memoryEnabled = true;
+    expect(win.clarifyFirstHint()).toContain('Run the memory kickoff FIRST');
+    win.state.memoryEnabled = false;
+    expect(win.clarifyFirstHint()).toNotContain('memory kickoff');
+    win.state.clarifyFirst = false;
+  });
   it('consumeRecordsHint is null when the toggle is off, present when on', () => {
     win.state.consumeRecords = false;
     expect(win.consumeRecordsHint()).toBe(null);
@@ -6092,6 +6100,7 @@ describe('Live Run Monitor core', () => {
     win.runMonitor.watches = []; win.runMonitor.open = false;
     win.runMonitor.snapshot = {}; win.runMonitor.texts = {}; win.runMonitor.feed = [];
     win.runMonitor.tasks = []; win.runMonitor.agents = {}; win.runMonitor.selected = null;
+    win.runMonitor.runs = []; win.runMonitor.runBase = null; win.runMonitor.runPin = null; win.runMonitor.tab = null; win.runMonitor.fileMode = 'artifacts';
     const p = win.document.getElementById('monitorPanel'); if (p) { p.style.display = 'none'; p.innerHTML = ''; }
   });
   it('parseToonEntries reads @slug and Step-N headers, statuses normalize, body lines attach', () => {
@@ -6172,6 +6181,17 @@ describe('Live Run Monitor core', () => {
     expect(win.runMonitor.tasks[1].tier).toBe('confirmed');
     expect(win.runMonitor.agents.backend).toBe('active');
   });
+  it('tasks.md owner tags seed pending chips for agents with no file yet; a real status is never downgraded', () => {
+    win.runMonitor.texts = {
+      'mem/tasks.md': '- [ ] wire the handler (@backend)\n- [ ] review the change (@reviewer)\n- [ ] confirm ticks (@orchestrator)',
+      'mem/@backend.md': '## @backend | t1 | \u{1F504}active\nd: started',
+      'mem/@orchestrator.md': '## @orchestrator | t1 | \u{1F504}active\nd: off-protocol own file'
+    };
+    win.monitorRecompute();
+    expect(win.runMonitor.agents.backend).toBe('active');    // a written file wins over the roster
+    expect(win.runMonitor.agents.reviewer).toBe('pending');  // dispatched-but-quiet: visible, gray
+    expect('orchestrator' in win.runMonitor.agents).toBe(false);  // never a chip - not via the roster, not even via an own file
+  });
   it('the panel renders three-tier tasks, agent chips, and the record chip in the viewer', () => {
     win.runMonitor.open = true;
     win.runMonitor.watches = [{ handle: {}, name: 'memdir', status: 'granted' }];
@@ -6183,12 +6203,91 @@ describe('Live Run Monitor core', () => {
     win.runMonitor.texts = { 'memdir/rec.md': '```awd:record\n{"slug": "demo-cap", "status": "current", "date": "2026-08-25"}\n```\n# Demo' };
     win.runMonitor.selected = 'memdir/rec.md';
     win.renderMonitorPanel();
-    const html = win.document.getElementById('monitorPanel').innerHTML;
-    expect(html).toContain('1/3 confirmed');
+    let html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('1/3 confirmed');            // tasks tab is the auto default (tasks exist)
     expect(html).toContain('monitor-task provisional');
     expect(html).toContain('@backend');
+    expect(html).toNotContain('record: demo-cap');      // the viewer lives in the Files tab now
+    win.monitorSetTab('files');
+    html = win.document.getElementById('monitorPanel').innerHTML;
     expect(html).toContain('record: demo-cap');
     expect(html).toContain('current');
+    expect(html).toNotContain('monitor-task provisional');   // tabs isolate content
+  });
+  it('liveness layer: LIVE beacon with an active timer, progress bar segments, pulsing active chips, colored feed kinds', () => {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
+    win.runMonitor.timer = 1;   // fabricated: a running poll
+    win.runMonitor.tasks = [
+      { text: 'a', owner: null, tier: 'confirmed' },
+      { text: 'b', owner: null, tier: 'provisional' },
+      { text: 'c', owner: null, tier: 'open' }];
+    win.runMonitor.agents = { backend: 'active', planner: 'done' };
+    win.runMonitor.feed = [{ t: '10:00:00', kind: 'new', path: 'x/tasks.md' }];
+    win.renderMonitorPanel();
+    let html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('monitor-live');
+    expect(html).toContain('seg-confirmed" style="width:33%');
+    expect(html).toContain('dot pulse');                       // active pulses
+    expect((html.match(/dot pulse/g) || []).length).toBe(1);   // done does not
+    win.monitorSetTab('changes');
+    html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('k-new');
+    win.runMonitor.timer = null;
+    win.monitorSetTab('tasks');
+    expect(win.document.getElementById('monitorPanel').innerHTML).toNotContain('monitor-live');
+  });
+  it('an AUTO-FOLLOW run switch clears the flash tracker (a re-run repeats task texts)', () => {
+    win.runMonitor.snapshot = { 'a/tasks.md': { mtime: 100, size: 1 } };
+    win.runMonitor.texts = { 'a/tasks.md': '- [x] build the thing' };
+    win.monitorRecompute();
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
+    win.renderMonitorPanel();   // stores tier confirmed for the shared task text
+    win.runMonitor.snapshot['b/tasks.md'] = { mtime: 200, size: 1 };
+    win.runMonitor.texts['b/tasks.md'] = '- [ ] build the thing';
+    win.monitorRecompute();     // auto-follow switches to run b - same text, open tier
+    win.renderMonitorPanel();
+    expect(win.document.getElementById('monitorPanel').innerHTML).toNotContain('just-changed');
+  });
+  it('a task whose tier advances flashes once, then settles', () => {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
+    win.runMonitor._prevTiers = {};
+    win.runMonitor.tasks = [{ text: 'wire it', owner: null, tier: 'open' }];
+    win.renderMonitorPanel();
+    win.runMonitor.tasks = [{ text: 'wire it', owner: null, tier: 'provisional' }];
+    win.renderMonitorPanel();
+    expect(win.document.getElementById('monitorPanel').innerHTML).toContain('just-changed');
+    win.renderMonitorPanel();
+    expect(win.document.getElementById('monitorPanel').innerHTML).toNotContain('just-changed');
+  });
+  it('clicking an agent chip opens its memory file in the Files viewer', () => {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
+    win.runMonitor.runBase = 'x/run1/';
+    win.runMonitor.texts = { 'x/run1/@backend.md': '## @backend | t1 | ✅done\nd: report' };
+    win.monitorOpenAgentFile('backend');
+    expect(win.runMonitor.selected).toBe('x/run1/@backend.md');
+    expect(win.runMonitor.tab).toBe('files');
+    win.runMonitor.selected = null;
+    win.monitorOpenAgentFile('nobody');
+    expect(win.runMonitor.selected).toBe(null);   // missing file: toast, no navigation
+  });
+  it('tab defaults: a live watch opens on Tasks, a records browse opens on Files, a click persists', () => {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
+    win.runMonitor.texts = { 'x/some-record.md': '# doc' };
+    win.renderMonitorPanel();
+    let html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('monitor-tab active" onclick="monitorSetTab(\'files\')');   // no runs: Files default
+    win.runMonitor.runs = [{ base: 'x/', mtime: 1 }];
+    win.renderMonitorPanel();
+    html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('monitor-tab active" onclick="monitorSetTab(\'tasks\')');   // runs: Tasks default
+    win.monitorSetTab('changes');
+    html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('monitor-tab active" onclick="monitorSetTab(\'changes\')');  // explicit click wins
   });
   it('monitorNodeStatus feeds the canvas dot by label slug, null when nothing is watched', () => {
     resetState();
@@ -6226,7 +6325,7 @@ describe('Live Run Monitor core', () => {
     expect(d.changed.length).toBe(0);                       // mem/ was not scanned - not a removal
     expect(!!d.next['mem/tasks.md']).toBe(true);            // its snapshot survives for the next cycle
   });
-  it('the newest tasks.md wins when several runs are watched, and a capitalized Tasks.md still reads back', () => {
+  it('the newest run wins when several runs are watched, and a capitalized Tasks.md still reads back', () => {
     win.runMonitor.snapshot = { 'old/tasks.md': { mtime: 100, size: 1 }, 'new/Tasks.md': { mtime: 200, size: 1 } };
     win.runMonitor.texts = {
       'old/tasks.md': '- [ ] stale run task',
@@ -6236,6 +6335,84 @@ describe('Live Run Monitor core', () => {
     expect(win.runMonitor.tasks.length).toBe(1);
     expect(win.runMonitor.tasks[0].text).toBe('live run task');
     expect(win.runMonitor.tasks[0].tier).toBe('confirmed');
+    expect(win.runMonitor.runBase).toBe('new/');
+    expect(win.runMonitor.runs.length).toBe(2);
+  });
+  it('pinning a run overrides auto-follow; the pin releases back to auto', () => {
+    win.runMonitor.snapshot = { 'old/tasks.md': { mtime: 100, size: 1 }, 'new/tasks.md': { mtime: 200, size: 1 } };
+    win.runMonitor.texts = { 'old/tasks.md': '- [ ] stale run task', 'new/tasks.md': '- [x] live run task' };
+    win.monitorPinRun(encodeURIComponent('old/'));
+    expect(win.runMonitor.runBase).toBe('old/');
+    expect(win.runMonitor.tasks[0].text).toBe('stale run task');
+    win.monitorPinRun('__auto__');
+    expect(win.runMonitor.runBase).toBe('new/');
+  });
+  it('a run dir without tasks.md (old-format run) is still a candidate via shared.md', () => {
+    win.runMonitor.snapshot = { 'r1/shared.md': { mtime: 50, size: 1 } };
+    win.runMonitor.texts = { 'r1/shared.md': '## @backend | t1 | \u{1F504}active\nd: x' };
+    win.monitorRecompute();
+    expect(win.runMonitor.runBase).toBe('r1/');
+    expect(win.runMonitor.agents.backend).toBe('active');
+  });
+  it('shared-only agents follow the FULL status progression, not their oldest entry', () => {
+    const s = win.monitorAgentStatuses({
+      'shared.md': '## @backend | 2026-01-01T10:00:00Z | \u{1F504}active\nd: x\n\n## @backend | 2026-01-01T11:00:00Z | \u{1F6A7}blocked\nd: stuck'
+    });
+    expect(s.backend).toBe('blocked');
+  });
+  it('Stop All clears the run pin so a re-watch auto-follows again', async () => {
+    win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
+    win.runMonitor.runPin = 'x/old-run/';
+    win.runMonitor.runs = [{ base: 'x/old-run/', mtime: 1 }];
+    await win.disconnectRunMonitor();
+    expect(win.runMonitor.runPin).toBe(null);
+    expect(win.runMonitor.runs.length).toBe(0);
+    expect(win.runMonitor.runBase).toBe(null);
+  });
+  it('the connect screen shows the pick-once PARENT path, matching what Copy Path copies', () => {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [];
+    win.renderMonitorPanel();
+    const html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('Pick-once path');
+    expect(html).toContain('workflow-memory/</code>');   // parent, not a run slug dir
+  });
+  it('the panel shows the Run selector when several runs exist', () => {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'workflow-memory', status: 'granted' }];
+    win.runMonitor.snapshot = { 'workflow-memory/a/tasks.md': { mtime: 1, size: 1 }, 'workflow-memory/b/tasks.md': { mtime: 2, size: 1 } };
+    win.runMonitor.texts = { 'workflow-memory/a/tasks.md': '- [ ] x', 'workflow-memory/b/tasks.md': '- [ ] y' };
+    win.monitorRecompute();
+    win.renderMonitorPanel();
+    const html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('Auto - follow the newest activity');
+    expect(html).toContain('monitorPinRun');
+    expect(html).toContain('>b</option>');   // run options show the run dir NAME, not the whole path
+  });
+  it('wheel events over the OPEN drawer scroll it natively; ctrl+wheel there still suppresses page zoom; canvas keeps capture', () => {
+    win.runMonitor.open = true;   // a closed drawer receives no wheel events in reality
+    const panel = win.document.getElementById('monitorPanel');
+    const overPanel = new win.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 40 });
+    panel.dispatchEvent(overPanel);
+    expect(overPanel.defaultPrevented).toBe(false);   // native drawer scroll survives
+    const pinch = new win.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 40, ctrlKey: true });
+    panel.dispatchEvent(pinch);
+    expect(pinch.defaultPrevented).toBe(true);        // pinch/ctrl-zoom never reaches the browser
+    const overCanvas = new win.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 40 });
+    win.document.getElementById('canvas').dispatchEvent(overCanvas);
+    expect(overCanvas.defaultPrevented).toBe(true);   // canvas keeps its zoom/pan capture
+  });
+  it('feed lines compact to the file name inside the active run, full path in the hover title', () => {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'workflow-memory', status: 'granted' }];
+    win.runMonitor.runBase = 'workflow-memory/very-long-run-name/';
+    win.runMonitor.feed = [{ t: '10:00:01', kind: 'changed', path: 'workflow-memory/very-long-run-name/@backend.md' }];
+    win.runMonitor.tab = 'changes';
+    win.renderMonitorPanel();
+    const html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('k-changed">changed</span> @backend.md');
+    expect(html).toNotContain('</span> workflow-memory/very-long-run-name/@backend.md');
+    expect(html).toContain('title="workflow-memory/very-long-run-name/@backend.md"');
   });
   it('duplicate-label nodes get dots through the emitted unique-slug map', () => {
     resetState();
@@ -6254,16 +6431,235 @@ describe('Live Run Monitor core', () => {
     win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
     const hostile = 'x/a&quot;,alert(1),&quot;b.md';
     win.runMonitor.texts = {}; win.runMonitor.texts[hostile] = 'content';
+    win.runMonitor.fileMode = 'all';
     win.renderMonitorPanel();
     const html = win.document.getElementById('monitorPanel').innerHTML;
-    expect(html).toContain('monitorSelectFileIdx(0)');   // index-based - the path never enters a JS string
+    expect(html).toContain('onclick="monitorSelectFile(this.dataset.path)"');   // the path never enters a JS string
+    expect(html).toContain('data-path="x/a&amp;quot;');  // attribute-escaped, decoded only by dataset
     expect(html).toNotContain('onclick="monitorSelectFile(&');
-    win.monitorSelectFileIdx(0);
+    win.monitorSelectFile(hostile);
     expect(win.runMonitor.selected).toBe(hostile);       // selection still works on the hostile name
   });
   it('the Monitor toolbar button exists and the panel div ships hidden', () => {
     expect(!!win.document.getElementById('monitorBtn')).toBe(true);
     expect(!!win.document.getElementById('monitorPanel')).toBe(true);
+  });
+  it('a directory reached with the budget spent is never enumerated; a late .gitignore still governs its directory', async () => {
+    function fakeFile(name) {
+      return { kind: 'file', name, getFile: async () => ({ lastModified: 1, size: 1, text: async () => '*.log\n' }) };
+    }
+    let touched = false;
+    const spentDir = { kind: 'directory', name: 'sub', values: async function* () { touched = true; } };
+    const full = []; for (let i = 0; i < win.MONITOR_MAX_FILES; i++) full.push({ path: 'p' + i });
+    await win.monitorScanHandle(spentDir, 'sub/', 0, full);
+    expect(touched).toBe(false);                                      // budget spent: no enumeration at all
+    // .gitignore sits BEYOND the bounded entry buffer - streamed name capture must still find
+    // it, and its rules must still exclude the buffered files.
+    const entries = []; for (let i = 0; i < win.MONITOR_MAX_FILES; i++) entries.push(fakeFile('f' + i + '.log'));
+    entries.push(fakeFile('keep.cs'));                                // also past the buffer: dropped, not scanned
+    entries.push(fakeFile('.gitignore'));
+    const big = { kind: 'directory', name: 'big', values: async function* () { for (const e of entries) yield e; } };
+    const acc = await win.monitorScanHandle(big, 'big/', 0, []);
+    expect(acc.length).toBe(0);                                       // every buffered .log ignored by the late rule
+  });
+  it('the scan skips dependency and build trees entirely (node_modules never churns the cap)', async () => {
+    function fakeFile(name) { return { kind: 'file', name, getFile: async () => ({ lastModified: 1, size: 1, text: async () => 'x' }) }; }
+    function fakeDir(name, entries) { return { kind: 'directory', name, values: async function* () { for (const e of entries) yield e; } }; }
+    const root = fakeDir('repo', [fakeFile('app.js'), fakeDir('node_modules', [fakeFile('lodash.js')]), fakeDir('.git', [fakeFile('HEAD')]), fakeDir('src', [fakeFile('main.js')])]);
+    const files = await win.monitorScanHandle(root, '', 0, []);
+    const paths = files.map(f => f.path);
+    expect(paths).toContain('app.js');
+    expect(paths).toContain('src/main.js');
+    expect(paths.some(p => p.indexOf('node_modules') !== -1)).toBe(false);
+    expect(paths.some(p => p.indexOf('.git') !== -1)).toBe(false);
+  });
+  it('the scan honors the project\'s own .gitignore - the general mechanism over any deny-list', async () => {
+    function fakeFile(name, text) { return { kind: 'file', name, getFile: async () => ({ lastModified: 1, size: (text || 'x').length, text: async () => text || 'x' }) }; }
+    function fakeDir(name, entries) { return { kind: 'directory', name, values: async function* () { for (const e of entries) yield e; } }; }
+    const gitignore = fakeFile('.gitignore', '# comment\nelectron/app/\n*.log\n/local-only.md\n!keep.log\n');
+    const root = fakeDir('repo', [
+      gitignore,
+      fakeDir('electron', [fakeFile('main.ts'), fakeDir('app', [fakeFile('bundle.js')])]),
+      fakeFile('debug.log'),
+      fakeFile('local-only.md'),
+      fakeDir('sub', [fakeFile('local-only.md')]),   // the rooted rule only matches at the root
+      fakeFile('keep.log'),                          // !keep.log un-ignores it (last matching rule wins)
+      fakeFile('service.cs')]);
+    const files = await win.monitorScanHandle(root, '', 0, []);
+    const paths = files.map(f => f.path);
+    expect(paths).toContain('electron/main.ts');          // only the ignored SUBDIR is skipped
+    expect(paths.some(p => p.indexOf('electron/app/') === 0)).toBe(false);
+    expect(paths).toNotContain('debug.log');
+    expect(paths).toNotContain('local-only.md');
+    expect(paths).toContain('sub/local-only.md');
+    expect(paths).toContain('keep.log');
+    expect(paths).toContain('service.cs');
+  });
+  it('generated build artifacts are skipped by SHAPE wherever a dev server writes them', async () => {
+    function fakeFile(name) { return { kind: 'file', name, getFile: async () => ({ lastModified: 1, size: 1, text: async () => 'x' }) }; }
+    function fakeDir(name, entries) { return { kind: 'directory', name, values: async function* () { for (const e of entries) yield e; } }; }
+    const root = fakeDir('app', [
+      fakeFile('vendors-node_modules_ionic_core_dist_esm_status-tap-BfJqFSLF_js.9d539c7f.chunk.js'),
+      fakeFile('main.9d539c7fabcd.js'),
+      fakeFile('styles.min.css'),
+      fakeFile('app.js.map'),
+      fakeFile('main.hot-update.json'),
+      fakeFile('ef6db8722c2c3f9a.png'),   // bundler-emitted content-hash asset
+      fakeFile('logo.png'),               // a NAMED image is real content - it survives
+      fakeFile('retryPolicy.ts'),
+      fakeFile('service.cs')]);
+    const files = await win.monitorScanHandle(root, '', 0, []);
+    const paths = files.map(f => f.path);
+    expect(paths).toContain('retryPolicy.ts');
+    expect(paths).toContain('service.cs');
+    expect(paths).toContain('logo.png');
+    expect(paths.length).toBe(3);   // every generated shape filtered, named content kept
+  });
+  it('the Files list orders newest first across all scanned files, with a no-preview fallback for code', () => {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'repo', status: 'granted' }];
+    win.runMonitor.snapshot = {
+      'repo/old.md': { mtime: 100, size: 1 },
+      'repo/newest.js': { mtime: 300, size: 1 },
+      'repo/middle.md': { mtime: 200, size: 1 }
+    };
+    win.runMonitor.texts = { 'repo/old.md': 'a', 'repo/middle.md': 'b' };   // .js is never text-read
+    win.runMonitor.fileMode = 'all';
+    const vis = win.monitorVisiblePaths();
+    expect(vis[0]).toBe('repo/newest.js');
+    expect(vis[2]).toBe('repo/old.md');
+    win.runMonitor.tab = 'files';
+    win.runMonitor.selected = 'repo/newest.js';
+    win.renderMonitorPanel();
+    const html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('repo/newest.js');
+    expect(html).toContain('No preview - not a text file');
+    expect(html).toContain('All 3');   // count = snapshot UNION texts (a snapshot-only .js counts)
+  });
+  it('the All list caps its DOM at the newest MONITOR_FILES_SHOWN with an honest footer; watch rows show their scanned file count', () => {
+    const n = win.MONITOR_FILES_SHOWN + 1;
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'repo', status: 'granted', fileN: n, capped: false }];
+    win.runMonitor.snapshot = {};
+    for (let i = 0; i < n; i++) win.runMonitor.snapshot['repo/f' + i + '.cs'] = { mtime: i, size: 1 };
+    win.runMonitor.tab = 'files';
+    win.runMonitor.fileMode = 'all';
+    win.renderMonitorPanel();
+    const html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain(n + ' files');                             // per-watch count in the row
+    expect(html).toContain('All ' + n);
+    expect(html).toContain('Showing the newest ' + win.MONITOR_FILES_SHOWN + ' of ' + n + '.');
+    expect((html.match(/monitor-file/g) || []).length).toBe(win.MONITOR_FILES_SHOWN);
+    expect(html).toContain('repo/f' + (n - 1) + '.cs');               // newest survives the cap
+    expect(html).toNotContain('>repo/f0.cs');                         // oldest is what falls off
+    win.monitorSelectFile('repo/f0.cs');                              // ...unless it is the open selection
+    const html2 = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html2).toContain('>repo/f0.cs');                           // appended past the cap, viewer intact
+    expect((html2.match(/monitor-file/g) || []).length).toBe(win.MONITOR_FILES_SHOWN + 1);
+  });
+  it('the Files tab defaults to Artifacts: current records + breadcrumbs + openspec, nothing else', () => {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'mem', status: 'granted' }, { handle: {}, name: 'repo', status: 'granted' }];
+    win.runMonitor.runs = [{ base: 'mem/run1/', mtime: 1 }];
+    win.runMonitor.runBase = 'mem/run1/';   // the chip click-through opens ACTIVE-run files only
+    win.runMonitor.texts = {
+      'mem/run1/@backend.md': 'x', 'mem/run1/shared.md': 'y', 'mem/run1/tasks.md': '- [ ] t',
+      'repo/.workflow/_index.md': '# idx',
+      'repo/.workflow/current-cap.md': '```awd:record\n{"slug": "cap", "status": "current"}\n```\n# c',
+      'repo/.workflow/old-cap.md': '```awd:record\n{"slug": "old", "status": "superseded"}\n```\n# o',
+      'repo/openspec/specs/login/spec.md': '# spec',
+      'repo/README.md': '# readme', 'repo/package.json': '{}'
+    };
+    win.runMonitor.tab = 'files';
+    win.renderMonitorPanel();
+    let html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('repo/.workflow/_index.md');
+    expect(html).toContain('repo/.workflow/current-cap.md');
+    expect(html).toContain('repo/openspec/specs/login/spec.md');
+    expect(html).toNotContain('old-cap.md');                    // superseded records filtered by fence status
+    expect(html).toNotContain('mem/run1/shared.md');            // run machinery is never an artifact
+    expect(html).toNotContain('README.md');                     // nor is anyone's readme
+    expect(html).toContain('Files 3');                          // tab count = curated count
+    win.monitorSetFileMode('all');
+    html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('mem/run1/shared.md');               // All shows everything scanned
+    expect(html).toContain('README.md');
+    win.monitorSetFileMode('artifacts');
+    win.monitorOpenAgentFile('backend');
+    html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('mem/run1/@backend.md');             // chip click-through pins its file visible
+  });
+  it('a baseline scan never floods the feed; only post-baseline changes are events', async () => {
+    function fakeFile(name, text, mtime) {
+      return { kind: 'file', name, getFile: async () => ({ lastModified: mtime, size: text.length, text: async () => text }) };
+    }
+    let entries = [fakeFile('shared.md', 'old content', 100), fakeFile('@backend.md', 'x', 100)];
+    const dir = { kind: 'directory', name: 'mem', values: async function* () { for (const e of entries) yield e; }, queryPermission: async () => 'granted' };
+    win.runMonitor.watches = [{ handle: dir, name: 'mem', status: 'granted' }];
+    win.runMonitor.timer = 1;   // fabricated: keeps monitorStart from spawning a real interval
+    await win.monitorPoll(false);
+    expect(win.runMonitor.feed.length).toBe(0);                 // weeks-old files: silent baseline
+    expect(Object.keys(win.runMonitor.texts).length).toBe(2);   // contents still load for the tabs
+    entries = [fakeFile('shared.md', 'old content grew', 300), fakeFile('@backend.md', 'x', 100), fakeFile('tasks.md', '- [ ] t', 200)];
+    await win.monitorPoll(false);
+    const kinds = win.runMonitor.feed.map(f => f.kind).sort();
+    expect(kinds.join(',')).toBe('changed,new');                // post-baseline events flow normally
+    win.runMonitor.timer = null;
+  });
+  it('a capped tree feeds only co-observed modifications - never phantom new files from the shifting sample', async () => {
+    function fakeFile(name, mtime) {
+      return { kind: 'file', name, getFile: async () => ({ lastModified: mtime, size: 1, text: async () => 'x' }) };
+    }
+    // One more file than the scan budget: the scan truncates and the watch flags capped.
+    let entries = [];
+    for (let i = 0; i < win.MONITOR_MAX_FILES; i++) entries.push(fakeFile('f' + i + '.cs', 100));
+    entries.push(fakeFile('tail.cs', 100));
+    const dir = { kind: 'directory', name: 'big', values: async function* () { for (const e of entries) yield e; }, queryPermission: async () => 'granted' };
+    win.runMonitor.watches = [{ handle: dir, name: 'big', status: 'granted' }];
+    win.runMonitor.timer = 1;   // fabricated: keeps monitorStart from spawning a real interval
+    await win.monitorPoll(false);
+    expect(win.runMonitor.feed.length).toBe(0);                       // silent baseline
+    expect(win.runMonitor.watches[0].capped).toBe(true);
+    expect(win.runMonitor.watches[0].fileN).toBe(win.MONITOR_MAX_FILES);
+    expect(win.runMonitor._bigScan).toBe(true);                       // big scans halve the poll cadence
+    // Cycle 2: enumeration order shifts - tail.cs enters the budget, f399.cs falls out.
+    // Neither is a real event: no phantom 'new', no phantom 'removed'.
+    entries = [entries[entries.length - 1]].concat(entries.slice(0, entries.length - 1));
+    await win.monitorPoll(false);
+    expect(win.runMonitor.feed.length).toBe(0);
+    expect(win.runMonitor.snapshot['big/tail.cs']).toBeTruthy();      // snapshot still unions the sample
+    expect(win.runMonitor.snapshot['big/f' + (win.MONITOR_MAX_FILES - 1) + '.cs']).toBeTruthy();   // removal suppressed
+    // Cycle 3: a file seen in both samples actually changes - that DOES feed.
+    entries[1] = fakeFile('f0.cs', 300);
+    await win.monitorPoll(false);
+    expect(win.runMonitor.feed.length).toBe(1);
+    expect(win.runMonitor.feed[0].kind).toBe('changed');
+    expect(win.runMonitor.feed[0].path).toBe('big/f0.cs');
+    win.runMonitor.timer = null;
+  });
+  it('the panel header carries a real close X (LIVE beside it); the folder-row X only removes its watch', () => {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'workflow-memory', status: 'granted' }];
+    win.runMonitor.timer = 1;
+    win.renderMonitorPanel();
+    const html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('monitor-head');
+    expect(html).toContain('onclick="toggleRunMonitor()"');
+    expect(html).toContain('watching continues in the background');
+    expect(html.indexOf('monitor-live') < html.indexOf('onclick="toggleRunMonitor()"')).toBe(true);   // LIVE sits beside the close X
+    expect(html).toContain('>Unwatch</button>');                    // destruction is a VERB, never an X
+    expect((html.match(/×/g) || []).length).toBe(1);                // exactly one X in the panel: close
+    win.runMonitor.timer = null;
+  });
+  it('the connect screen guides users past the hidden-folder picker wall (copy path + Cmd+Shift+G)', () => {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [];
+    win.renderMonitorPanel();
+    const html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('Copy Path');
+    expect(html).toContain('Cmd+Shift+G');
+    expect(html).toContain('Cmd+Shift+.');
+    expect(html).toContain('Chrome refuses the home folder itself');
   });
   it('the toolbar stat block is a deliberate two-line stack with unbreakable count-word pairs', () => {
     resetState();
@@ -6298,6 +6694,14 @@ describe('Live Run Monitor emissions', () => {
     memOn();
     expect(win.genSubAgents()).toContain('t: {task, named as your brief names it} done');
     expect(win.genWorkflow()).toContain('t: {task, named as the checklist names it} done');
+  });
+  it('agents announce themselves at start: an active entry BEFORE the first action, in preamble and protocol', () => {
+    memOn();
+    expect(win.genSubAgents()).toContain('BEFORE your first action');
+    expect(win.genWorkflow()).toContain('Your FIRST write comes BEFORE your first action');
+    [win.genSubAgents(), win.genWorkflow()].forEach(out => {
+      expect(out).toContain('invisible to the run monitor');
+    });
   });
   it('the single-session variant ticks tasks.md itself (the orchestrator IS the executor)', () => {
     memOn();
@@ -13214,7 +13618,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

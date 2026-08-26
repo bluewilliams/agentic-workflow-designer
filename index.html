@@ -450,7 +450,8 @@ svg.canvas{width:100%;height:100%;display:block}
 .monitor-task.confirmed{color:var(--text3)}
 .monitor-task .owner{color:var(--text3);font-size:10px;white-space:nowrap}
 .monitor-agent{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;margin:0 4px 4px 0;
-  border:1px solid var(--border);border-radius:10px;font-size:11px}
+  border:1px solid var(--border);border-radius:10px;font-size:11px;cursor:pointer}
+.monitor-agent:hover{border-color:var(--accent);color:var(--accent)}
 .monitor-agent .dot{width:7px;height:7px;border-radius:50%}
 .monitor-feed{font-family:var(--mono);font-size:10px;line-height:1.5;color:var(--text3)}
 .monitor-file{cursor:pointer;padding:2px 0;font-family:var(--mono);font-size:11px;overflow-wrap:anywhere}
@@ -461,6 +462,27 @@ svg.canvas{width:100%;height:100%;display:block}
 .monitor-viewer pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0;font-size:10px}
 .monitor-chip{display:inline-block;padding:1px 7px;border:1px solid var(--accent);border-radius:9px;
   color:var(--accent);font-size:10px;margin-bottom:6px}
+.monitor-head{display:flex;align-items:center;gap:8px}
+.monitor-head h3{margin:0}
+.monitor-live{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:#34d399;letter-spacing:.5px}
+.monitor-live .beacon{width:7px;height:7px;border-radius:50%;background:#34d399;animation:monitorPulse 1.6s ease-in-out infinite}
+@keyframes monitorPulse{0%,100%{opacity:1}50%{opacity:.25}}
+.monitor-progress{height:6px;border-radius:3px;background:var(--surface2);overflow:hidden;display:flex;margin:8px 0 4px}
+.monitor-progress .seg-confirmed{background:#34d399;transition:width .6s ease}
+.monitor-progress .seg-provisional{background:#3b82f6;opacity:.55;transition:width .6s ease}
+.monitor-task.just-changed{animation:monitorFlash 1.6s ease-out}
+@keyframes monitorFlash{0%{background:rgba(52,211,153,.22)}100%{background:transparent}}
+.monitor-agent .dot.pulse{animation:monitorPulse 1.6s ease-in-out infinite}
+.monitor-feed .k-new{color:#34d399}
+.monitor-feed .k-changed{color:#3b82f6}
+.monitor-feed .k-removed{color:#ef4444;opacity:.8}
+.monitor-dot-live{animation:monitorPulse 1.6s ease-in-out infinite}
+@media (prefers-reduced-motion: reduce){.monitor-live .beacon,.monitor-agent .dot.pulse,.monitor-task.just-changed,.monitor-dot-live{animation:none}}
+.monitor-tabs{display:flex;gap:4px;margin:12px 0 2px;border-bottom:1px solid var(--border);padding-bottom:6px}
+.monitor-tab{background:none;border:1px solid var(--border);color:var(--text3);border-radius:6px;
+  padding:3px 10px;font-size:11px;cursor:pointer;font-family:inherit}
+.monitor-tab:hover{color:var(--text)}
+.monitor-tab.active{color:var(--accent);border-color:var(--accent)}
 .path-suggest{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .path-suggest button{background:none;border:1px dashed var(--border);color:var(--text3);cursor:pointer;
   padding:2px 7px;border-radius:var(--radius-sm);font-size:10px;font-family:var(--font);transition:all .15s}
@@ -1191,7 +1213,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>Together, <strong>Keep a durable record</strong> (the write side) and <strong>Ground in prior records</strong> (the read side) form a flywheel: every run leaves behind its decisions, gotchas, and a tested spec, and the next run reads them before planning - so workflows in the same repo get sharper and stop repeating the same mistakes over time, with nobody curating anything by hand. The more you run, the better-grounded each new workflow starts. The flywheel is OpenSpec-compatible on both sides: runs ground in <code>openspec/</code> specs and active changes they find, and the OpenSpec export's runs scan our records - the two systems inform each other.</p>
 
 <h3>Live Run Monitor</h3>
-<p>The <strong>Monitor</strong> toolbar button (Chromium only) watches folders while a run executes: point it at the run's memory folder and the panel shows the task checklist ticking live (confirmed ticks from <code>tasks.md</code>, half-ticks from agents' provisional <code>t:</code> lines the moment each task completes), per-agent status chips, a change feed, and every file one click from view - while canvas nodes carry live status dots. One watch covers a multi-repo run's live surface (the memory folder is shared); add each repo's <code>.workflow</code> folder to browse its durable records in the same panel, rendered as markdown with a record chip. Read-only, polling-based, paused while the tab is hidden.</p>
+<p>The <strong>Monitor</strong> toolbar button (Chromium only) watches folders while a run executes: pick the <code>workflow-memory</code> folder once - the monitor follows whichever run is active (a Run selector appears when several exist) - and the panel shows the task checklist ticking live (confirmed ticks from <code>tasks.md</code>, half-ticks from agents' provisional <code>t:</code> lines the moment each task completes), per-agent status chips, a change feed, and every file one click from view - while canvas nodes carry live status dots. One watch covers a multi-repo run's live surface (the memory folder is shared); add each repo's <code>.workflow</code> folder to browse its durable records in the same panel, rendered as markdown with a record chip. To watch code changes too, pick the narrowest folder that holds the work (a repo's <code>src</code> beats its root): each tree's scan has a file budget, and an over-budget tree is flagged <strong>capped</strong> and reports only modifications to files it has already seen. Read-only, polling-based, paused while the tab is hidden.</p>
 <h3>Handoff</h3>
 <p>The <strong>Handoff package</strong> option in the <strong>Export</strong> menu (under <strong>Workflow Management</strong>) downloads a single resume package (<code>.md</code>) so another engineer can pick up in-progress work: how to resume, the durable-record path, the ready-to-run prompt, and the full workflow definition. The live run state travels with your git branch and the durable record, not this file - so enable <strong>Keep a durable record</strong> before running for a truly resumable handoff.</p>
 
@@ -1814,7 +1836,7 @@ function consumeRecordsHint(fmt) {
 function clarifyFirstHint() {
   if (!state.clarifyFirst) return null;
   const r = [];
-  r.push('> **Clarify ambiguous requirements before planning.** The orchestrator (the top-level agent driving this workflow and spawning its steps, even when there is no named Planner step) runs this gate once, before the first step begins.');
+  r.push('> **Clarify ambiguous requirements before planning.** The orchestrator (the top-level agent driving this workflow and spawning its steps, even when there is no named Planner step) runs this gate once, before the first step begins.' + (state.memoryEnabled ? ' Run the memory kickoff FIRST, before asking anything: the files must exist so your clarify answers can be logged to shared.md per the memory protocol, and so live tooling sees the run from its first moment.' : ''));
   r.push('> - Examine the requirements for material ambiguity across these areas: under-specified or conflicting behavior; edge, null or empty, and error cases; data shapes and contracts; scope boundaries and non-goals; and non-functional constraints (performance, security, backward compatibility). Note only the gaps that would actually change what gets built.');
   r.push('> - Lean toward ASKING, not silently resolving, when a genuine fork exists that changes observable behavior - even if one reading seems reasonable. The high-value forks: the semantics of null, empty, missing, or below-threshold inputs (included vs excluded vs error); behavior that two requirements describe differently; and the shape of a contract, schema, or response. A wrong silent choice on these is expensive to unwind. Resolve such a fork yourself only when it is genuinely low-stakes OR a project convention makes one reading clearly correct - and then state the assumption explicitly rather than burying it. This is a sensitivity floor for high-value forks, not a mandate to question everything.');
   r.push('> - If there are material gaps, STOP and ask the director a short, focused set of clarifying questions - prefer structured multiple-choice or yes/no, ask only what changes the build, and keep it to ONE round. Wait for the answers; do not guess past a real ambiguity.');
@@ -3684,6 +3706,7 @@ function genMemoryProtocol() {
   p.push('- **First turn of a fresh run**: no breadcrumb exists yet - that is expected, not a compaction signal; the missing-breadcrumb recovery applies to resumed work. If the memory files hold no prior entries either, you are starting fresh: proceed with your task.');
   p.push('');
   p.push('**2. DURING turn - Write progress to disk:**');
+  p.push('- Your FIRST write comes BEFORE your first action: on turn one, open `@{your-slug}.md` with an active entry (`## @{your-slug} | {ISO-timestamp} | \u{1F504}active` plus one `d:` line naming your mission). A silent start is invisible to the run monitor and indistinguishable from a failed spawn.');
   p.push('- After each significant action (file created, decision made, blocker hit), append a TOON entry to `@{your-slug}.md`');
   p.push('- Finished one of your planned tasks? Append `t: {task, named as the checklist names it} done` to `@{your-slug}.md` at that moment - one line per task as it completes, never a batch at the end. The orchestrator confirms these into `tasks.md`; your `t:` lines are the live provisional signal.');
   p.push('- **Anything not written to disk is permanently lost when compaction occurs** - write early, write often');
@@ -3758,7 +3781,8 @@ function genAgentMemoryPreamble(agentLabel, slug) {
   p.push('   - If **PRESENT** → context intact, proceed to your task');
   p.push('   - **First turn of a fresh run**: no breadcrumb exists yet - that is expected, not a compaction signal; if the memory files hold no prior entries either, you are starting fresh - proceed with your task');
   p.push('2. Read `' + path + 'shared.md` for upstream handoffs addressed to you (`→ @' + slug + ':`)');
-  p.push('3. As you work: the moment you finish one of your brief\'s planned tasks, append `t: {task, named as your brief names it} done` to `' + path + '@' + slug + '.md` - one line per task at completion, never a batch at the end (these provisional ticks feed the run\'s live progress surface)');
+  p.push('3. BEFORE your first action, open `' + path + '@' + slug + '.md` with an active entry (`## @' + slug + ' | {ISO-timestamp} | \u{1F504}active` plus one `d:` line naming your mission) - a silent start is invisible to the run monitor and indistinguishable from a failed spawn');
+  p.push('4. As you work: the moment you finish one of your brief\'s planned tasks, append `t: {task, named as your brief names it} done` to `' + path + '@' + slug + '.md` - one line per task at completion, never a batch at the end (these provisional ticks feed the run\'s live progress surface)');
   return p.join('\n');
 }
 
@@ -4261,6 +4285,7 @@ function renderNodes() {
       if (ms) {
         const mDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         mDot.setAttribute('cx', w - 8); mDot.setAttribute('cy', -4); mDot.setAttribute('r', 5);
+        if (ms === 'active') mDot.setAttribute('class', 'monitor-dot-live');   // a working agent visibly breathes
         mDot.setAttribute('fill', (typeof MONITOR_DOT !== 'undefined' && MONITOR_DOT[ms]) || '#8b95a7');
         mDot.setAttribute('stroke', 'rgba(0,0,0,.4)'); mDot.setAttribute('stroke-width', '1');
         const mT = document.createElementNS('http://www.w3.org/2000/svg', 'title');
@@ -5390,6 +5415,14 @@ wrap.addEventListener('mouseup', e => {
 });
 
 wrap.addEventListener('wheel', e => {
+  // The Run Monitor drawer lives inside the wrap: plain wheel over it must scroll the
+  // drawer natively (preventDefault would kill the scroll), while ctrl/pinch zoom stays
+  // suppressed everywhere (otherwise the BROWSER zooms the page). The cheap open-flag
+  // check keeps closest() off the canvas's hottest input path when the drawer is shut.
+  if (typeof runMonitor !== 'undefined' && runMonitor.open && e.target.closest('#monitorPanel')) {   // typeof = the monitor block's removability hook
+    if (e.ctrlKey || e.metaKey) e.preventDefault();
+    return;
+  }
   e.preventDefault();
   if (e.ctrlKey || e.metaKey) {
     // Pinch-to-zoom or Ctrl+scroll → zoom
@@ -10187,7 +10220,7 @@ function genSubAgents() {
     p.push('');
     p.push('**Each agent is instructed to (enforced in their prompts below):**');
     p.push('- Read `' + getMemoryPath() + 'shared.md` on start for upstream agent output (inter-agent communication)');
-    p.push('- Write progress to `' + getMemoryPath() + '@{slug}.md` using TOON notation after each significant action');
+    p.push('- Open `' + getMemoryPath() + '@{slug}.md` with an active entry BEFORE the first action (a silent start is invisible to the run monitor), then write progress there using TOON notation after each significant action');
     p.push('- Append handoff to `' + getMemoryPath() + 'shared.md` on completion so downstream agents receive their output');
     p.push('- End every response with breadcrumb: `<!-- WF_BC: ' + (getName() || 'workflow') + ' @{slug} {ISO-timestamp} -->`');
     p.push('- After compaction (breadcrumb missing from context): read shared.md + own @{slug}.md immediately before resuming');
@@ -12395,8 +12428,14 @@ async function initRepoConnect() {
 // Multi-tree: a run can span repositories, so the monitor holds a LIST of watched
 // folders (the one memory dir covers the live surface for any repo count; per-repo
 // .workflow folders add durable-record browsing). Each entry: {handle, name, status}.
-const runMonitor = { watches: [], timer: null, open: false, snapshot: {}, texts: {}, feed: [], tasks: [], agents: {}, selected: null };
-const MONITOR_POLL_MS = 2500, MONITOR_MAX_FILES = 400, MONITOR_MAX_DEPTH = 3, MONITOR_MAX_BYTES = 400000, MONITOR_MAX_WATCHES = 4, MONITOR_FEED_MAX = 12;
+const runMonitor = { watches: [], timer: null, open: false, snapshot: {}, texts: {}, feed: [], tasks: [], agents: {}, selected: null, runs: [], runBase: null, runPin: null, tab: null, fileMode: 'artifacts', _prevTiers: {} };
+// Scan and display are independent budgets. The scan budget bounds per-poll stat cost,
+// not junk (the gitignore-honoring scan and skip lists handle junk) - sized to cover a
+// real source tree in full, with depth for real src nesting; big scans halve the poll
+// cadence to keep the per-second cost flat. The display cap only bounds DOM rows (the
+// newest files) - it never limits what gets polled. A tree that still overflows the
+// scan budget is flagged capped: modifications-only fidelity.
+const MONITOR_POLL_MS = 2500, MONITOR_MAX_FILES = 4000, MONITOR_MAX_DEPTH = 8, MONITOR_MAX_BYTES = 400000, MONITOR_MAX_WATCHES = 4, MONITOR_FEED_MAX = 12, MONITOR_FILES_SHOWN = 100;
 function monitorSupported() { return repoConnectSupported(); }   // same API surface, one truth
 
 // ── Pure parsers (string in, data out - the testable core) ──
@@ -12433,7 +12472,7 @@ function parseTaskChecklist(text) {
 }
 // Per-agent provisional ticks: `t: {task} done` lines appended the moment a task completes.
 // SYNC CONTRACT: this format is emitted at three sites (genMemoryProtocol section 2,
-// genAgentMemoryPreamble step 3, and tasks.md tick discipline in the orchestrator variants)
+// genAgentMemoryPreamble step 4, and tasks.md tick discipline in the orchestrator variants)
 // - a format change there must land here, or the Monitor silently stops matching ticks.
 function parseProvisionalTicks(text) {
   const out = [];
@@ -12463,8 +12502,8 @@ function monitorMergeTasks(checklist, provisionalTexts) {
 // handoff in shared.md confirms completion when the agent file lags - but never
 // overrides a LATER entry in the agent's own file (a revise-dispatched agent goes
 // active again after its earlier done handoff; ISO timestamps compare lexically).
-function monitorAgentStatuses(files) {
-  const status = {}, lastTs = {};
+function monitorAgentStatuses(files, rosterTasks) {
+  const status = {}, lastTs = {}, own = {};
   Object.keys(files || {}).forEach(name => {
     const m = name.match(/^@(.+)\.md$/i);
     if (!m) return;
@@ -12473,13 +12512,29 @@ function monitorAgentStatuses(files) {
       const last = entries[entries.length - 1];
       status[m[1]] = last.status;
       lastTs[m[1]] = last.ts || '';
+      own[m[1]] = true;
     }
   });
   parseToonEntries((files || {})['shared.md'] || '').forEach(e => {
-    if (e.status === 'done' && e.slug && e.slug !== 'orchestrator') {
-      if (!lastTs[e.slug] || !e.ts || e.ts >= lastTs[e.slug]) status[e.slug] = 'done';
+    if (!e.slug) return;
+    if (!own[e.slug]) {
+      // No own file (old-format run, or a lean agent): shared entries carry the FULL
+      // status progression - the latest timestamped entry wins, whatever its status.
+      if (lastTs[e.slug] === undefined || !e.ts || e.ts >= lastTs[e.slug]) {
+        status[e.slug] = e.status;
+        lastTs[e.slug] = e.ts || '';
+      }
+      return;
     }
+    if (e.status === 'done' && (!lastTs[e.slug] || !e.ts || e.ts >= lastTs[e.slug])) status[e.slug] = 'done';
   });
+  // Roster: tasks.md owner tags name agents BEFORE their first write - a dispatched-but-
+  // quiet step gets a pending chip instead of being invisible until its first disk write.
+  (rosterTasks || []).forEach(t => { if (t.owner && !(t.owner in status)) status[t.owner] = 'pending'; });
+  // The orchestrator is never a chip: it is not a step agent, its log lives in shared.md,
+  // and even an off-protocol @orchestrator.md must not resurrect one. This single choke
+  // point covers every ingestion path (own files, shared entries, the roster above).
+  delete status.orchestrator;
   return status;
 }
 // Snapshot diff (pure): what changed since the last poll. scannedPrefixes (optional)
@@ -12501,19 +12556,84 @@ function monitorDiff(prevSnapshot, files, scannedPrefixes) {
   });
   return { changed: changed, next: next };
 }
+// Dependency and build trees are never agent work product - scanning them churns the
+// cap with junk (a node_modules walk alone can eat the whole budget and make every
+// cycle capture a DIFFERENT 400-file subset, flip-flopping new/removed forever).
+const MONITOR_SKIP_DIRS = { 'node_modules': 1, '.git': 1, 'dist': 1, 'build': 1, 'out': 1, 'coverage': 1, '.next': 1, '.nuxt': 1, 'vendor': 1, '__pycache__': 1, '.venv': 1, 'venv': 1, 'target': 1, 'DerivedData': 1, 'Pods': 1, 'bin': 1, 'obj': 1, '.gradle': 1, '.idea': 1, 'www': 1, '.angular': 1, '.ionic': 1, 'platforms': 1, 'plugins': 1, '.expo': 1, '.dart_tool': 1 };
+// Generated build artifacts are recognizable by SHAPE regardless of where a dev server
+// writes them (hashed chunks, source maps, minified bundles, hot-update files) - a
+// running dev server would otherwise churn the feed and eat the scan budget forever.
+const MONITOR_SKIP_FILE = /(\.chunk\.(js|css)|\.map|\.min\.(js|css)|\.hot-update\.\w+)$|\.[0-9a-f]{8,}\.(js|css)$|^[0-9a-f]{12,}\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot)$/i;
+// THE GENERAL MECHANISM: the project's own .gitignore declares its junk - build output
+// is virtually always ignored there, so honoring it beats any deny-list we could grow.
+// Pragmatic subset: name globs, *.ext, dir/, /rooted, path globs with * and ** - enough
+// for real ignore files; negations and other exotica are skipped (never over-ignore).
+// The MONITOR_SKIP_* lists above remain as the FALLBACK for folders without a .gitignore.
+function monitorParseIgnore(text, basePrefix) {
+  const rules = [];
+  String(text || '').split('\n').forEach(line => {
+    line = line.trim();
+    if (!line || line.charAt(0) === '#') return;
+    let neg = false;
+    if (line.charAt(0) === '!') { neg = true; line = line.slice(1); }
+    let dirOnly = false;
+    if (line.slice(-1) === '/') { dirOnly = true; line = line.slice(0, -1); }
+    let rooted = false;
+    if (line.charAt(0) === '/') { rooted = true; line = line.slice(1); }
+    const rx = new RegExp('^' + line.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\u0001').replace(/\*/g, '[^/]*').replace(/\u0001/g, '.*').replace(/\?/g, '[^/]') + '$');
+    rules.push({ rx: rx, neg: neg, dirOnly: dirOnly, rooted: rooted, hasSlash: line.indexOf('/') !== -1, base: basePrefix });
+  });
+  return rules;
+}
+function monitorIgnored(rules, path, name, isDir) {
+  // Gitignore semantics: rules apply in order, the LAST matching rule wins, and a
+  // negation (!pattern) un-ignores what an earlier rule caught.
+  let verdict = false;
+  for (const r of (rules || [])) {
+    if (r.dirOnly && !isDir) continue;
+    if (path.indexOf(r.base) !== 0) continue;
+    const rel = path.slice(r.base.length);
+    const hit = (r.hasSlash || r.rooted) ? r.rx.test(rel) : r.rx.test(name);
+    if (hit) verdict = !r.neg;
+  }
+  return verdict;
+}
 // Bounded recursive scan over anything speaking the directory-handle iterator
 // protocol (fake-handle testable, the scanRunReportsFromHandle precedent).
-async function monitorScanHandle(dirHandle, prefix, depth, acc) {
-  prefix = prefix || ''; depth = depth || 0; acc = acc || [];
-  if (depth > MONITOR_MAX_DEPTH) return acc;
+async function monitorScanHandle(dirHandle, prefix, depth, acc, rules) {
+  prefix = prefix || ''; depth = depth || 0; acc = acc || []; rules = rules || [];
+  if (depth > MONITOR_MAX_DEPTH || acc.length >= MONITOR_MAX_FILES) return acc;
+  // The .gitignore pre-read needs the directory buffered before filtering, but the
+  // buffer is BOUNDED: a pathological flat directory (a data dump no ignore rule
+  // covers) must not have tens of thousands of handles buffered every poll. Entries
+  // past the file budget could never survive the acc cap anyway; enumeration continues
+  // unbuffered only until the ignore file is found.
+  const entries = [];
+  let gi = null;
   for await (const entry of dirHandle.values()) {
-    if (acc.length >= MONITOR_MAX_FILES) break;
     if (!entry) continue;
+    if (!gi && entry.kind === 'file' && entry.name === '.gitignore') gi = entry;
+    if (entries.length < MONITOR_MAX_FILES) entries.push(entry);
+    else if (gi) break;
+  }
+  // The directory's own .gitignore governs everything beneath it - read it first.
+  if (gi) {
+    try {
+      const t = await (await gi.getFile()).text();
+      rules = rules.concat(monitorParseIgnore(t, prefix));
+    } catch (e) { /* unreadable ignore file - fall back to the built-in lists */ }
+  }
+  for (const entry of entries) {
+    if (acc.length >= MONITOR_MAX_FILES) break;
     if (entry.kind === 'directory') {
-      if (typeof entry.values === 'function') await monitorScanHandle(entry, prefix + entry.name + '/', depth + 1, acc);
+      if (MONITOR_SKIP_DIRS[entry.name]) continue;
+      if (monitorIgnored(rules, prefix + entry.name, entry.name, true)) continue;
+      if (typeof entry.values === 'function') await monitorScanHandle(entry, prefix + entry.name + '/', depth + 1, acc, rules);
       continue;
     }
     if (entry.kind !== 'file') continue;
+    if (MONITOR_SKIP_FILE.test(entry.name || '')) continue;
+    if (monitorIgnored(rules, prefix + entry.name, entry.name, false)) continue;
     try {
       const f = await entry.getFile();
       acc.push({ path: prefix + entry.name, name: entry.name, mtime: f.lastModified || 0, size: f.size || 0, _file: f });
@@ -12523,33 +12643,60 @@ async function monitorScanHandle(dirHandle, prefix, depth, acc) {
 }
 // Recompute derived state from the text cache. tasks.md may sit one level down
 // (the user picked the workflow-memory parent) - the run base is wherever it lives.
-function monitorRecompute() {
-  // Several watched trees (or several run dirs under a watched parent) may each hold a
-  // tasks.md - the NEWEST one (by scanned mtime) is the live run, never insertion order.
-  const candidates = Object.keys(runMonitor.texts).filter(p => /(^|\/)tasks\.md$/i.test(p));
-  let taskPath = null, best = -1;
-  candidates.forEach(p => {
+// Every directory that looks like a run (holds tasks.md, shared.md, or progress.md),
+// newest activity first - so a user watches the workflow-memory PARENT once and new
+// runs appear on their own, no re-picking.
+function monitorRunCandidates() {
+  const runs = {};
+  Object.keys(runMonitor.texts).forEach(p => {
+    const name = p.slice(p.lastIndexOf('/') + 1).toLowerCase();
+    if (name !== 'tasks.md' && name !== 'shared.md' && name !== 'progress.md') return;
+    const base = p.slice(0, p.length - name.length);
     const snap = runMonitor.snapshot[p];
     const mt = snap ? snap.mtime : 0;
-    if (mt >= best) { best = mt; taskPath = p; }
+    if (runs[base] === undefined || mt > runs[base]) runs[base] = mt;
   });
-  const taskName = taskPath ? taskPath.slice(taskPath.lastIndexOf('/') + 1) : 'tasks.md';
-  const base = taskPath ? taskPath.slice(0, taskPath.length - taskName.length) : '';
+  return Object.keys(runs).map(b => ({ base: b, mtime: runs[b] })).sort((a, b) => b.mtime - a.mtime);
+}
+function monitorRecompute() {
+  // Auto-follow: the run with the newest activity is the live one - unless the user
+  // pinned a specific run in the panel's Run selector.
+  const runs = monitorRunCandidates();
+  runMonitor.runs = runs;
+  let base = null;
+  if (runMonitor.runPin !== null && runs.some(r => r.base === runMonitor.runPin)) base = runMonitor.runPin;
+  else if (runs.length) base = runs[0].base;
+  // ANY run switch clears the flash tracker - auto-follow included, not only manual pins:
+  // a re-run of the same workflow repeats task texts, and stale tiers would false-flash.
+  if (base !== runMonitor.runBase) runMonitor._prevTiers = {};
+  runMonitor.runBase = base;
   const local = {};
-  Object.keys(runMonitor.texts).forEach(p => {
-    if (p.indexOf(base) === 0 && p.slice(base.length).indexOf('/') === -1) local[p.slice(base.length)] = runMonitor.texts[p];
-  });
+  if (base !== null) {
+    Object.keys(runMonitor.texts).forEach(p => {
+      if (p.indexOf(base) === 0 && p.slice(base.length).indexOf('/') === -1) local[p.slice(base.length)] = runMonitor.texts[p];
+    });
+  }
+  const taskKey = Object.keys(local).find(n => n.toLowerCase() === 'tasks.md');
   const prov = [];
   Object.keys(local).forEach(n => { if (/^@.+\.md$/i.test(n)) prov.push.apply(prov, parseProvisionalTicks(local[n])); });
-  runMonitor.tasks = monitorMergeTasks(parseTaskChecklist(taskPath ? local[taskName] || '' : ''), prov);
-  runMonitor.agents = monitorAgentStatuses(local);
+  runMonitor.tasks = monitorMergeTasks(parseTaskChecklist(taskKey ? local[taskKey] : ''), prov);
+  runMonitor.agents = monitorAgentStatuses(local, runMonitor.tasks);
+}
+function monitorPinRun(v) {
+  runMonitor.runPin = v === '__auto__' ? null : decodeURIComponent(v);
+  runMonitor._prevTiers = {};   // a different run's tiers must never flash as fresh ticks
+  monitorRecompute();
+  renderMonitorPanel();
+  render();
 }
 // One poll cycle across every watched tree: permission per tree, scans in parallel with
 // the tree's name as the path prefix, diff once (removals guarded by which trees actually
 // scanned), changed-file reads in parallel, canvas re-render only when a status changed.
 async function monitorPoll(interactive) {
   if (!runMonitor.watches.length) return;
-  const scannedPrefixes = [];
+  const scannedPrefixes = [];   // fully-scanned trees: only these may report removals
+  const cyclePrefixes = [];     // every tree attempted this cycle: baseline accounting
+  const statusBefore = runMonitor.watches.map(w => w.status + (w.capped ? '!' : '')).join(',');
   const perWatch = await Promise.all(runMonitor.watches.map(async w => {
     try {
       let perm = await w.handle.queryPermission({ mode: 'read' });
@@ -12557,13 +12704,26 @@ async function monitorPoll(interactive) {
       if (perm !== 'granted') { w.status = 'prompt'; return []; }
       w.status = 'granted';
       const acc = await monitorScanHandle(w.handle, w.name + '/', 0, []);
-      scannedPrefixes.push(w.name + '/');
+      // A capped scan sees a different arbitrary subset each cycle - it must never report
+      // removals OR new files (both are phantom churn from the shifting subset, not real
+      // events); only co-observed modifications are trustworthy. The panel flags it capped.
+      w.capped = acc.length >= MONITOR_MAX_FILES;
+      w.fileN = acc.length;
+      if (!w.capped) scannedPrefixes.push(w.name + '/');
+      cyclePrefixes.push(w.name + '/');
       return acc;
     } catch (e) { w.status = 'prompt'; return []; }
   }));
   // A re-grant mid-session (or after restart) must resume live polling, not one manual scan.
   if (!runMonitor.timer && runMonitor.watches.some(w => w.status === 'granted')) monitorStart();
   const files = [].concat.apply([], perWatch);
+  runMonitor._bigScan = files.length > 1500;
+  // A watch's FIRST scan is a baseline: pre-existing files are new to the monitor, not
+  // news - they must not flood the feed stamped with scan time (weeks-old runs would
+  // read as just created). Only changes AFTER a tree's baseline are events.
+  const prevKeys = Object.keys(runMonitor.snapshot);
+  const baselinePrefix = {};
+  cyclePrefixes.forEach(pre => { baselinePrefix[pre] = !prevKeys.some(p => p.indexOf(pre) === 0); });
   const d = monitorDiff(runMonitor.snapshot, files, scannedPrefixes);
   runMonitor.snapshot = d.next;
   await Promise.all(d.changed.map(async c => {
@@ -12571,19 +12731,39 @@ async function monitorPoll(interactive) {
     if (!/\.(md|txt|json|ya?ml)$/i.test(c.path) || c.f.size > MONITOR_MAX_BYTES) return;
     try { runMonitor.texts[c.path] = await c.f._file.text(); } catch (e) { /* skip */ }
   }));
+  const feedworthy = d.changed.filter(c => {
+    if (c.kind !== 'new') return true;
+    const pre = cyclePrefixes.find(x => c.path.indexOf(x) === 0);
+    if (!pre) return true;
+    // Baseline scans and capped trees both surface pre-existing files as 'new'. Absorb
+    // both silently (snapshot and texts still grow): only a fully-scanned tree can tell
+    // a genuinely created file from one the shifting capped subset finally reached.
+    return !baselinePrefix[pre] && scannedPrefixes.indexOf(pre) !== -1;
+  });
   if (d.changed.length) {
     const now = new Date();
-    d.changed.forEach(c => runMonitor.feed.unshift({ t: now.toTimeString().slice(0, 8), path: c.path, kind: c.kind }));
+    feedworthy.forEach(c => runMonitor.feed.unshift({ t: now.toTimeString().slice(0, 8), path: c.path, kind: c.kind }));
     runMonitor.feed = runMonitor.feed.slice(0, MONITOR_FEED_MAX);
     const beforeAgents = JSON.stringify(runMonitor.agents);
     monitorRecompute();
     renderMonitorPanel();
     if (JSON.stringify(runMonitor.agents) !== beforeAgents) render();   // dots changed - repaint canvas
-  } else if (interactive) renderMonitorPanel();
+  } else if (interactive || runMonitor.watches.map(w => w.status + (w.capped ? '!' : '')).join(',') !== statusBefore) {
+    // A watch's status changed (a permission lapsed or came back) with no file changes:
+    // the panel must still re-render, or a stale LIVE beacon keeps pulsing over a dead poll.
+    renderMonitorPanel();
+  }
 }
 function monitorStart() {
   if (runMonitor.timer) clearInterval(runMonitor.timer);
-  runMonitor.timer = setInterval(function () { if (!document.hidden) monitorPoll(false); }, MONITOR_POLL_MS);
+  runMonitor.timer = setInterval(function () {
+    if (document.hidden) return;
+    // Big scans (over 1500 files across the watches) poll every second tick, keeping
+    // the per-second stat cost flat as the scan budget covers large trees in full.
+    runMonitor._tick = (runMonitor._tick || 0) + 1;
+    if (runMonitor._bigScan && runMonitor._tick % 2) return;
+    monitorPoll(false);
+  }, MONITOR_POLL_MS);
 }
 // Watch exactly what the user picked: no slug-guess descent (the canvas may hold a
 // DIFFERENT workflow than the run being watched, and monitorRecompute already locates
@@ -12617,6 +12797,7 @@ async function monitorRemoveWatch(name) {
   runMonitor.snapshot = {}; runMonitor.texts = {}; runMonitor.selected = null;
   if (!runMonitor.watches.length && runMonitor.timer) { clearInterval(runMonitor.timer); runMonitor.timer = null; }
   runMonitor.feed = []; runMonitor.tasks = []; runMonitor.agents = {};
+  runMonitor.runs = []; runMonitor.runBase = null; runMonitor.runPin = null; runMonitor._prevTiers = {};
   await monitorPersist();
   if (runMonitor.watches.length) await monitorPoll(true);
   renderMonitorPanel();
@@ -12626,6 +12807,8 @@ async function disconnectRunMonitor() {
   if (runMonitor.timer) clearInterval(runMonitor.timer);
   runMonitor.watches = []; runMonitor.timer = null;
   runMonitor.snapshot = {}; runMonitor.texts = {}; runMonitor.feed = []; runMonitor.tasks = []; runMonitor.agents = {}; runMonitor.selected = null;
+  runMonitor.runs = []; runMonitor.runBase = null; runMonitor.runPin = null;   // a stale pin must not survive Stop All
+  runMonitor._prevTiers = {};
   try { await awdIdbDel('monitorDirs'); } catch (e) {}
   renderMonitorPanel();
   render();
@@ -12640,9 +12823,74 @@ function toggleRunMonitor() {
 // onclick string, where a filename containing quote entities could break out of the
 // attribute and execute injected script (paths come from watched directories agents
 // write to; they are data, not trusted markup).
-function monitorSelectFileIdx(i) {
-  const paths = Object.keys(runMonitor.texts).sort();
-  const path = paths[i];
+// The workflow-memory PARENT (the pick-once target) - one derivation, used by the
+// copy button and the connect screen alike so they can never disagree.
+function monitorMemoryParentPath() { return getMemoryPath().replace(/[^/]+\/$/, ''); }
+function monitorCopyPath() {
+  const p = monitorMemoryParentPath();
+  try {
+    navigator.clipboard.writeText(p)
+      .then(() => showToast('workflow-memory path copied - press Cmd+Shift+G in the picker and paste it'))
+      .catch(() => showToast('Copy failed - the path is shown below the button'));
+  }
+  catch (e) { showToast('Copy failed - the path is shown below the button'); }
+}
+// Chip click-through: from an agent's status to its evidence (the memory file) in one
+// click - the Files tab opens with that file selected.
+function monitorOpenAgentFile(slug) {
+  // The chip shows the ACTIVE run's status - only the active run's file may open for it
+  // (a cross-run suffix fallback could silently show a STALE run's evidence).
+  // Chips only render when a run's agents parsed, which requires runBase - so the
+  // active run's exact path is the one and only lookup.
+  const target = runMonitor.runBase && runMonitor.texts[runMonitor.runBase + '@' + slug + '.md'] !== undefined
+    ? runMonitor.runBase + '@' + slug + '.md' : null;
+  if (!target) { showToast('No memory file for @' + slug + ' in this run yet'); return; }
+  runMonitor.selected = target;
+  runMonitor.tab = 'files';
+  renderMonitorPanel();
+}
+// The Files tab has a PURPOSE, not a listing: the default Artifacts view shows the
+// designer's own documents - durable records (superseded ones filtered out by their
+// awd:record fence status), the _index/_timeline breadcrumbs, and OpenSpec docs.
+// Run machinery lives in the other tabs; READMEs, package.json, and code are nobody's
+// browsing artifacts. "All files" is one click away: everything scanned, newest first.
+function monitorIsArtifact(p) {
+  if (/(^|\/)\.workflow\/[^/]+\.md$/i.test(p)) {
+    const t = runMonitor.texts[p];
+    if (t) {
+      const m = t.match(/```awd:record\n([\s\S]*?)\n```/);
+      if (m) { try { if (JSON.parse(m[1]).status === 'superseded') return false; } catch (e) { /* unparseable fence - keep */ } }
+    }
+    return true;
+  }
+  return /(^|\/)openspec\/.+\.(md|ya?ml)$/i.test(p);
+}
+function monitorVisiblePaths() {
+  // Newest first across ALL scanned files - the All view reads as "what the agents
+  // touched most recently"; the Artifacts view applies the curation filter.
+  const mt = {};
+  Object.keys(runMonitor.snapshot).forEach(p => { mt[p] = runMonitor.snapshot[p].mtime || 0; });
+  Object.keys(runMonitor.texts).forEach(p => { if (!(p in mt)) mt[p] = 0; });
+  const paths = Object.keys(mt).sort((a, b) => (mt[b] - mt[a]) || (a < b ? -1 : 1));
+  if (runMonitor.fileMode !== 'artifacts') return paths;
+  const visible = paths.filter(monitorIsArtifact);
+  // Selection pins visibility: a chip click-through must show its run file regardless.
+  if (runMonitor.selected && visible.indexOf(runMonitor.selected) === -1 && paths.indexOf(runMonitor.selected) !== -1) visible.push(runMonitor.selected);
+  return visible;
+}
+function monitorSetFileMode(m) {
+  runMonitor.fileMode = m;
+  renderMonitorPanel();
+}
+function monitorTimeLabel(mtime) {
+  if (!mtime) return '';
+  const d = new Date(mtime), now = new Date();
+  return d.toDateString() === now.toDateString() ? d.toTimeString().slice(0, 8) : d.toISOString().slice(0, 10);
+}
+// Selection is by PATH via a data attribute (escHtml-escaped, the monitorRemoveWatch
+// pattern): injection-proof like the old index scheme, and immune to the poll re-sorting
+// the list between render and click (a stale index would open the wrong file).
+function monitorSelectFile(path) {
   runMonitor.selected = (!path || runMonitor.selected === path) ? null : path;
   renderMonitorPanel();
 }
@@ -12656,65 +12904,146 @@ function monitorNodeStatus(node) {
   return runMonitor.agents[slug] || runMonitor.agents[slugify(node.label)] || null;
 }
 const MONITOR_DOT = { active: '#3b82f6', done: '#34d399', blocked: '#ef4444', failed: '#ef4444' };
+// Smart default tab: a live watch (run candidates or tasks) opens on Tasks; a records
+// browse (a .workflow folder - files but no runs) opens on Files. An explicit click wins.
+function monitorActiveTab() {
+  if (runMonitor.tab) return runMonitor.tab;
+  return (runMonitor.runs.length || runMonitor.tasks.length) ? 'tasks' : 'files';
+}
+function monitorSetTab(t) {
+  runMonitor.tab = t;
+  renderMonitorPanel();
+}
 function renderMonitorPanel() {
   const p = $('monitorPanel');
   if (!p || !runMonitor.open) return;
   const H = [];
   if (!runMonitor.watches.length) {
-    H.push('<h3>Live Run Monitor</h3>');
+    H.push('<div class="monitor-head"><h3>Live Run Monitor</h3><span style="flex:1"></span><button class="btn sm" onclick="toggleRunMonitor()" title="Close the monitor panel (watching continues in the background)">&#215;</button></div>');
     H.push('<div style="line-height:1.5">Watch a run\'s memory folder live (tasks ticking, agent status, the shared log) or browse a repo\'s <code>.workflow</code> records. A multi-repo run needs only ONE watch for the live surface (the memory folder is shared); add each repo\'s <code>.workflow</code> to browse its records too.</div>');
-    H.push('<div style="margin-top:8px"><button class="btn sm" onclick="connectRunMonitor()">Watch Folder</button></div>');
-    H.push('<div style="margin-top:8px;color:var(--text3);font-size:11px">This workflow\'s memory path:<br><code style="overflow-wrap:anywhere">' + escHtml(getMemoryPath()) + '</code></div>');
+    H.push('<div style="margin-top:8px"><button class="btn sm" onclick="connectRunMonitor()">Watch Folder</button> <button class="btn sm" onclick="monitorCopyPath()" title="Copy this workflow\'s memory path to paste into the folder picker">Copy Path</button></div>');
+    H.push('<div style="margin-top:8px;color:var(--text3);font-size:11px">Pick-once path (all runs live inside it):<br><code style="overflow-wrap:anywhere">' + escHtml(monitorMemoryParentPath()) + '</code></div>');
+    H.push('<div style="margin-top:8px;color:var(--text3);font-size:11px;line-height:1.5"><strong style="color:var(--text2)">Pick once</strong>: choose the <code>workflow-memory</code> folder itself - every run lives inside it, the monitor follows whichever run is active (newest activity wins), and a Run selector appears when several exist. <strong style="color:var(--text2)">Hidden-folder tip</strong>: memory lives under <code>~/.claude</code>, which pickers hide by default. Copy the path above, click Watch Folder, then press <code>Cmd+Shift+G</code> in the picker and paste it (or <code>Cmd+Shift+.</code> to show hidden folders). Chrome refuses the home folder itself - pick <code>workflow-memory</code> directly. The picker remembers your last spot.</div>');
   } else {
-    H.push('<h3>Watching (' + runMonitor.watches.length + ')</h3>');
+    const _live = !!runMonitor.timer && runMonitor.watches.some(w => w.status === 'granted');
+    H.push('<div class="monitor-head"><h3>Watching (' + runMonitor.watches.length + ')</h3><span style="flex:1"></span>'
+      + (_live ? '<span class="monitor-live"><span class="beacon"></span>LIVE</span>' : '')
+      + '<button class="btn sm" onclick="toggleRunMonitor()" title="Close the monitor panel (watching continues in the background)">&#215;</button></div>');
     runMonitor.watches.forEach(function (w, i) {
       H.push('<div style="display:flex;align-items:center;gap:6px;padding:2px 0"><code style="overflow-wrap:anywhere;flex:1">' + escHtml(w.name) + '/</code>'
+        + (w.fileN ? '<span style="color:var(--text3);font-size:10px" title="Files this tree contributed to the last scan (after ignore rules)">' + w.fileN + ' files</span>' : '')
+        + (w.capped ? '<span style="color:#f59e0b;font-size:10px" title="This folder holds more files than the scan budget - the view is a partial sample, so only modifications are reported (new and removed files are not tracked). Watch a more specific folder for full fidelity.">capped</span>' : '')
         + (w.status === 'prompt' ? '<button class="btn sm" onclick="monitorPoll(true)">Re-grant</button>' : '')
-        + '<button class="btn sm" data-watch-name="' + escHtml(w.name) + '" onclick="monitorRemoveWatch(this.dataset.watchName)" title="Stop watching this folder">&#215;</button></div>');
+        + '<button class="btn sm" data-watch-name="' + escHtml(w.name) + '" onclick="monitorRemoveWatch(this.dataset.watchName)" title="Stop watching this folder (re-add it anytime with + Add Folder)">Unwatch</button></div>');
     });
     H.push('<div style="margin-top:4px"><button class="btn sm" onclick="monitorPoll(true)">Rescan</button> '
       + (runMonitor.watches.length < MONITOR_MAX_WATCHES ? '<button class="btn sm" onclick="connectRunMonitor()">+ Add Folder</button> ' : '')
       + '<button class="btn sm" onclick="disconnectRunMonitor()">Stop All</button></div>');
-    if (runMonitor.tasks.length) {
-      const doneN = runMonitor.tasks.filter(t => t.tier === 'confirmed').length;
+    if (runMonitor.runs.length > 1) {
+      H.push('<h3>Run</h3><select class="story-input" style="min-height:auto;padding:4px 6px;font-size:11px;width:100%" onchange="monitorPinRun(this.value)">');
+      H.push('<option value="__auto__"' + (runMonitor.runPin === null ? ' selected' : '') + '>Auto - follow the newest activity</option>');
+      runMonitor.runs.forEach(r => {
+        const segs = r.base.replace(/\/$/, '').split('/');
+        const label = segs[segs.length - 1] || 'watched folder root';
+        H.push('<option value="' + encodeURIComponent(r.base) + '"' + (runMonitor.runPin === r.base ? ' selected' : '') + '>' + escHtml(label) + '</option>');
+      });
+      H.push('</select>');
+    } else if (runMonitor.runBase) {
+      const _rbSegs = runMonitor.runBase.replace(/\/$/, '').split('/');
+      H.push('<div style="margin-top:6px;color:var(--text3);font-size:11px" title="' + escHtml(runMonitor.runBase) + '">Run: <code style="overflow-wrap:anywhere">' + escHtml(_rbSegs[_rbSegs.length - 1] || 'watched folder root') + '</code></div>');
+    }
+    const _tab = monitorActiveTab();
+    const _fileN = monitorVisiblePaths().length;
+    const _doneN = runMonitor.tasks.filter(t => t.tier === 'confirmed').length;
+    H.push('<div class="monitor-tabs">'
+      + '<button class="monitor-tab' + (_tab === 'tasks' ? ' active' : '') + '" onclick="monitorSetTab(\'tasks\')">Tasks' + (runMonitor.tasks.length ? ' ' + _doneN + '/' + runMonitor.tasks.length : '') + '</button>'
+      + '<button class="monitor-tab' + (_tab === 'changes' ? ' active' : '') + '" onclick="monitorSetTab(\'changes\')">Changes' + (runMonitor.feed.length ? ' ' + runMonitor.feed.length : '') + '</button>'
+      + '<button class="monitor-tab' + (_tab === 'files' ? ' active' : '') + '" onclick="monitorSetTab(\'files\')">Files' + (_fileN ? ' ' + _fileN : '') + '</button>'
+      + '</div>');
+    if (_tab === 'tasks' && runMonitor.tasks.length) {
       const provN = runMonitor.tasks.filter(t => t.tier === 'provisional').length;
-      H.push('<h3>Tasks (' + doneN + '/' + runMonitor.tasks.length + ' confirmed' + (provN ? ', ' + provN + ' in progress' : '') + ')</h3>');
+      H.push('<h3>Tasks (' + _doneN + '/' + runMonitor.tasks.length + ' confirmed' + (provN ? ', ' + provN + ' in progress' : '') + ')</h3>');
+      // Stacked progress bar: solid green = confirmed, translucent blue = provisional in flight.
+      const total = runMonitor.tasks.length;
+      H.push('<div class="monitor-progress"><div class="seg-confirmed" style="width:' + Math.round(_doneN / total * 100) + '%"></div><div class="seg-provisional" style="width:' + Math.round(provN / total * 100) + '%"></div></div>');
+      // A task whose tier advanced since the last render flashes once - the tick you SEE land.
+      const prevT = runMonitor._prevTiers || {};
+      const nextT = {};
       runMonitor.tasks.forEach(t => {
+        nextT[t.text] = t.tier;
+        const flash = prevT[t.text] !== undefined && prevT[t.text] !== t.tier ? ' just-changed' : '';
         const mark = t.tier === 'confirmed' ? '\u2713' : t.tier === 'provisional' ? '\u2248' : '';
-        H.push('<div class="monitor-task ' + t.tier + '"><span class="tick">' + mark + '</span><span>' + escHtml(t.text)
+        H.push('<div class="monitor-task ' + t.tier + flash + '"><span class="tick">' + mark + '</span><span>' + escHtml(t.text)
           + (t.owner ? ' <span class="owner">@' + escHtml(t.owner) + '</span>' : '') + '</span></div>');
       });
+      runMonitor._prevTiers = nextT;
     }
     const slugs = Object.keys(runMonitor.agents);
-    if (slugs.length) {
+    if (_tab === 'tasks' && slugs.length) {
       H.push('<h3>Agents</h3><div>');
       slugs.forEach(s => {
         const st = runMonitor.agents[s];
-        H.push('<span class="monitor-agent"><span class="dot" style="background:' + (MONITOR_DOT[st] || '#8b95a7') + '"></span>@' + escHtml(s) + ' ' + escHtml(st) + '</span>');
+        H.push('<span class="monitor-agent" data-slug="' + escHtml(s) + '" onclick="monitorOpenAgentFile(this.dataset.slug)" title="Open @' + escHtml(s) + '\'s memory file"><span class="dot' + (st === 'active' ? ' pulse' : '') + '" style="background:' + (MONITOR_DOT[st] || '#8b95a7') + '"></span>@' + escHtml(s) + ' ' + escHtml(st) + '</span>');
       });
       H.push('</div>');
     }
-    if (runMonitor.feed.length) {
+    if (_tab === 'changes' && runMonitor.feed.length) {
       H.push('<h3>Changes</h3><div class="monitor-feed">');
-      runMonitor.feed.forEach(f => H.push(escHtml(f.t + ' ' + f.kind + ' ' + f.path) + '<br>'));
+      runMonitor.feed.forEach(f => {
+        // Compact display (run names can be enormous): file name alone inside the active
+        // run, last two segments elsewhere; the full path lives in the hover title.
+        let disp = f.path;
+        if (runMonitor.runBase && f.path.indexOf(runMonitor.runBase) === 0) disp = f.path.slice(runMonitor.runBase.length);
+        else { const segs = f.path.split('/'); if (segs.length > 2) disp = '…/' + segs.slice(-2).join('/'); }
+        H.push('<span title="' + escHtml(f.path) + '">' + escHtml(f.t) + ' <span class="k-' + escHtml(f.kind) + '">' + escHtml(f.kind) + '</span> ' + escHtml(disp) + '</span><br>');
+      });
       H.push('</div>');
     }
-    const paths = Object.keys(runMonitor.texts).sort();
-    if (paths.length) {
-      H.push('<h3>Files (' + paths.length + ')</h3>');
-      paths.forEach((pt, pi) => {
-        H.push('<div class="monitor-file' + (runMonitor.selected === pt ? ' sel' : '') + '" onclick="monitorSelectFileIdx(' + pi + ')">' + escHtml(pt) + '</div>');
+    const paths = monitorVisiblePaths();
+    // Union of everything scanned plus everything read - the same set the All view lists,
+    // so the count and the list always agree (texts alone undercounts non-text files).
+    const _allN = Object.keys(Object.assign({}, runMonitor.snapshot, runMonitor.texts)).length;
+    if (_tab === 'files' && _allN) {
+      H.push('<h3>Files (' + paths.length + (paths.length !== _allN ? ' of ' + _allN : '') + ')</h3>');
+      H.push('<div class="monitor-tabs" style="margin:2px 0 6px;border-bottom:none;padding-bottom:0">'
+        + '<button class="monitor-tab' + (runMonitor.fileMode === 'artifacts' ? ' active' : '') + '" onclick="monitorSetFileMode(\'artifacts\')" title="Durable records (current only - superseded ones are filtered by their fence status), the index and timeline breadcrumbs, and OpenSpec docs">Artifacts</button>'
+        + '<button class="monitor-tab' + (runMonitor.fileMode !== 'artifacts' ? ' active' : '') + '" onclick="monitorSetFileMode(\'all\')" title="Everything scanned, newest first - during a run this reads as what the agents touched most recently">All ' + _allN + '</button>'
+        + '</div>');
+      if (runMonitor.fileMode === 'artifacts' && !paths.length) {
+        H.push('<div style="color:var(--text3);font-size:11px;margin:4px 0">No durable artifacts in the watched folders - a repo\'s <code>.workflow</code> folder holds them. All files shows everything scanned.</div>');
+      }
+      // The list is newest-first, so a display cap keeps the DOM light on big trees while
+      // still surfacing everything a run touches.
+      let _shown = paths.length > MONITOR_FILES_SHOWN ? paths.slice(0, MONITOR_FILES_SHOWN) : paths;
+      // The selected file must never be sliced out from under its own viewer - newer
+      // files pushing it past the cap would silently close an open read.
+      if (runMonitor.selected && _shown.indexOf(runMonitor.selected) === -1 && paths.indexOf(runMonitor.selected) !== -1) _shown = _shown.concat([runMonitor.selected]);
+      _shown.forEach(pt => {
+        const snap = runMonitor.snapshot[pt];
+        const tl = snap ? monitorTimeLabel(snap.mtime) : '';
+        H.push('<div class="monitor-file' + (runMonitor.selected === pt ? ' sel' : '') + '" data-path="' + escHtml(pt) + '" onclick="monitorSelectFile(this.dataset.path)">'
+          + (tl ? '<span style="color:var(--text3);margin-right:6px">' + escHtml(tl) + '</span>' : '') + escHtml(pt) + '</div>');
         if (runMonitor.selected === pt) {
           const txt = runMonitor.texts[pt];
-          const fm = txt.match(/```awd:record\n([\s\S]*?)\n```/);
-          let chip = '';
-          if (fm) { try { const j = JSON.parse(fm[1]); chip = '<span class="monitor-chip">record: ' + escHtml(j.slug || '?') + ' \u00B7 ' + escHtml(j.status || '?') + (j.date ? ' \u00B7 ' + escHtml(j.date) : '') + '</span>'; } catch (e) {} }
-          H.push('<div class="monitor-viewer">' + chip + (/\.md$/i.test(pt) ? renderMarkdown(txt) : '<pre>' + escHtml(txt) + '</pre>') + '</div>');
+          if (txt === undefined) {
+            H.push('<div class="monitor-viewer" style="color:var(--text3)">No preview - not a text file the monitor reads (.md, .txt, .json, .yaml), or over the size cap. The change feed still tracks it.</div>');
+          } else {
+            const fm = txt.match(/```awd:record\n([\s\S]*?)\n```/);
+            let chip = '';
+            if (fm) { try { const j = JSON.parse(fm[1]); chip = '<span class="monitor-chip">record: ' + escHtml(j.slug || '?') + ' \u00B7 ' + escHtml(j.status || '?') + (j.date ? ' \u00B7 ' + escHtml(j.date) : '') + '</span>'; } catch (e) {} }
+            H.push('<div class="monitor-viewer">' + chip + (/\.md$/i.test(pt) ? renderMarkdown(txt) : '<pre>' + escHtml(txt) + '</pre>') + '</div>');
+          }
         }
       });
+      if (paths.length > MONITOR_FILES_SHOWN) {
+        H.push('<div style="color:var(--text3);font-size:11px;margin:4px 0">Showing the newest ' + MONITOR_FILES_SHOWN + ' of ' + paths.length + '.</div>');
+      }
     }
-    if (!runMonitor.tasks.length && !slugs.length && !paths.length) {
-      H.push('<div style="margin-top:10px;color:var(--text3)">Nothing here yet - files appear as the run writes them.</div>');
+    const _tabEmpty = (_tab === 'tasks' && !runMonitor.tasks.length && !slugs.length)
+      || (_tab === 'changes' && !runMonitor.feed.length)
+      || (_tab === 'files' && !paths.length);
+    if (_tabEmpty) {
+      H.push('<div style="margin-top:10px;color:var(--text3)">Nothing here yet - content appears as the run writes it.</div>');
     }
   }
   const keepScroll = p.scrollTop;   // a live poll must not yank the user's scroll position

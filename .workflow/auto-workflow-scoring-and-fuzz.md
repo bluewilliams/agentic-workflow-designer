@@ -60,7 +60,7 @@ Fixes: (1) NEW **analysis** intent (13th category) - leading measure/quantify/fo
 
 ### Bug-report structure signal (3rd real ticket - a feature-gate-bypass bug fix)
 
-Blue sent a 3rd real ticket: a bug where a feature-gate selector (mirroring a prior fix) was not wired into two completed-tickets consumers, so an "Attachments" entry point still showed. It's a BUG FIX (recreation steps, expected/actual, regression test, "add unit tests"). Probe: it landed on **UI** (Design System Analyzer -> UI Implementer) - wrong. Root cause: "render"/"renders" used in bug-report PROSE ("the component renders the action unconditionally", "renders as before") is a UI keyword (weight 2) and appeared ~3x, inflating UI past bugfix - same class as audit-logging / vs-list (a domain word used descriptively).
+Blue sent a 3rd real ticket (details fictionalized): a bug where a feature-gate selector (mirroring a prior fix) was not wired into two list-view consumers, so a menu entry point still showed. It's a BUG FIX (recreation steps, expected/actual, regression test, "add unit tests"). Probe: it landed on **UI** (Design System Analyzer -> UI Implementer) - wrong. Root cause: "render"/"renders" used in bug-report PROSE ("the component renders the action unconditionally", "renders as before") is a UI keyword (weight 2) and appeared ~3x, inflating UI past bugfix - same class as audit-logging / vs-list (a domain word used descriptively).
 
 FIX (general): added a **bug-report structure** signal to the bugfix category - `steps to reproduce|recreation steps|reproduction steps|repro steps` (3) and `expected results|behaviour / actual results|behaviour` (2). Real bug tickets have this structure and no feature ticket does, so it reliably outweighs incidental domain words. Result: the ticket -> **bugfix** (Investigator->Fixer->Tester + Skeptic on plan + Verifier on Fixer), fmt code, 13 nodes, clean. Hardens detection for every future bug ticket, like denoise did for boilerplate. Test: a genericized bug-report-structured ticket WITH UI noise (toolbar/header/renders) -> asserts bugfix (not UI). Privacy: real ticket local-only; test genericized (no ticket IDs/product/filenames).
 
@@ -82,6 +82,10 @@ Locked in: a genericized boilerplate-heavy ticket test (denoiseForScoring strips
 
 - `api` still has no dedicated dominant shape (falls to a backend Implementer) - functionally fine, deprioritized (Tier 3).
 - Bag-of-words has inherent ambiguity ("write tests for the dashboard component"); handled via leading-verb weight + tie-break + the detection toast as the user's safety net.
+
+## History
+
+- 2026-08-25: content-scrub amendment - the third validation ticket's narrative carried content-lint-sensitive product detail (feature names, entry-point names); fictionalized to generic equivalents with the scoring lesson intact (by direct session)
 
 ## Built with (provenance)
 
