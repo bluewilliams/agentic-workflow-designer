@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## auto-layout-revise-edges
+
+- record: .workflow/auto-layout-revise-edges.md
+- intent: autoLayout's cycle-breaking now seeds revise edges (isReviseBackEdge, the topologicalSort authority) as back-edges before the DFS, guarded on true loop closure so forward No branches (escalation paths) keep downstream layers. Fixes the visit-order defect that flung a fork sibling to the decision's next rank (Frontend beside Tester on every Full Stack preset apply); generic for all presets and hand-built workflows since loadPreset runs autoLayout.
+- files: index.html (autoLayout Step 1 seeding + two-guard reachesBack, Step 2 endpoint guard, deserializeWorkflow connection-id backfill), tests.html (Suite 17: six layout-shape regressions incl. remediation, chained-revise, ghost-edge, id backfill)
+- status: current | date: 2026-08-25 | note: 1628 -> 1634. Layout + import hardening; ranking, ordering, positioning untouched. Gotcha: four divergent revise-reachability copies documented in the record, shared-helper extraction deferred.
+
 ## preset-prompt-craft
 
 - record: .workflow/preset-prompt-craft.md

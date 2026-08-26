@@ -2,6 +2,8 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-08-25 - auto-layout-revise-edges (update) - review fixes: other-in-edge guard (revise-only Fixer stranded at layer 0), per-edge reachability (chained revise loops), ghost-edge endpoint guard, connection-id backfill on import, dead typeof guard dropped. 1630 -> 1634 - .workflow/auto-layout-revise-edges.md
+2026-08-25 - auto-layout-revise-edges - autoLayout seeds revise edges as back-edges (loop-closure guarded) so fork siblings share a layer by default; fixes Frontend flung beside Tester on Full Stack apply. 1628 -> 1630 - .workflow/auto-layout-revise-edges.md
 2026-08-24 - preset-prompt-craft (update) - selector craft de-Appiumed: framework-neutral locator order (role/label, test id, stable CSS; never hashed classes or indices), runtime-unconfirmed marks Explorer -> writer -> reviewer, vendor-neutral inspector language. 1627 -> 1628 - .workflow/preset-prompt-craft.md
 2026-08-24 - preset-prompt-craft - 42-template composability audit: materiality bars, honesty clauses, minimality, scope bounds, Brief fallback, comment discipline across 17 prompts; lanes preserved. 1618 -> 1627 - .workflow/preset-prompt-craft.md
 2026-08-22 - verification-instructions (update) - run-evidenced: fail-the-run checkbox disables with a hint while no mandates exist (was checked-but-inert on a real epic run); blocked required checks gain a structured awd:run blockedVerifications field, ingested and surfaced in the tuning prompt. 1614 -> 1618 - .workflow/verification-instructions.md
