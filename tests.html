@@ -6475,8 +6475,8 @@ describe('Agent craft batch', () => {
       win.document.getElementById('appSourcePath').value = '/tmp/proj-app';
       const rows = win.explainWorkflow('subagent');
       const repo = rows.find(r => r.part === 'Repositories');
-      expect(repo.reason).toContain('/tmp/repo-a @ feature/x');
-      expect(repo.reason).toContain('/tmp/repo-b');
+      expect(repo.reason).toContain('\n- /tmp/repo-a @ feature/x');   // one repo per line under the count
+      expect(repo.reason).toContain('\n- /tmp/repo-b');
       expect(repo.full).toContain('Check out the specified branch');   // real emitted block, not a bare heading
       const uiRow = rows.find(r => r.part === 'UI Context');
       expect(uiRow.full).toContain('Use tokens only.');
