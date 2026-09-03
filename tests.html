@@ -491,39 +491,46 @@ describe('Pure Utilities', () => {
     it('should return correct label for known models', () => {
       expect(win.getModelLabel('opus-4.8')).toBe('Opus 4.8');
       expect(win.getModelLabel('sonnet-4.6')).toBe('Sonnet 4.6');
-      expect(win.getModelLabel('haiku')).toBe('Haiku 4.5');
+      expect(win.getModelLabel('haiku')).toBe('Haiku');
     });
     it('should return correct label and id for Fable 5 (and 1M variant)', () => {
-      expect(win.getModelLabel('fable-5')).toBe('Fable 5');
-      expect(win.getModelLabel('fable-5-1m')).toBe('Fable 5 [1M]');
+      expect(win.getModelLabel('fable-5')).toBe('Fable');
+      expect(win.getModelLabel('fable-5-1m')).toBe('Fable [1M]');
       expect(win.getModelId('fable-5')).toBe('claude-fable-5');
       expect(win.getModelId('fable-5-1m')).toBe('claude-fable-5');
       expect(win.getModelFamily('fable-5-1m')).toBe('fable-5');
     });
     it('should return correct label, id and family for Sonnet 5 (and 1M variant)', () => {
-      expect(win.getModelLabel('sonnet-5')).toBe('Sonnet 5');
-      expect(win.getModelLabel('sonnet-5-1m')).toBe('Sonnet 5 [1M]');
+      expect(win.getModelLabel('sonnet-5')).toBe('Sonnet');
+      expect(win.getModelLabel('sonnet-5-1m')).toBe('Sonnet [1M]');
       expect(win.getModelId('sonnet-5')).toBe('claude-sonnet-5');
       expect(win.getModelId('sonnet-5-1m')).toBe('claude-sonnet-5');
       expect(win.getModelFamily('sonnet-5')).toBe('sonnet-5');
       expect(win.getModelFamily('sonnet-5-1m')).toBe('sonnet-5');
+    });
+    it('naming rule: a floating (base-alias) model wears an unnumbered label; a pinned legacy model carries its number', () => {
+      win.MODELS.forEach(m => {
+        const floating = win.getTaskModelParam(m.value) !== win.getModelId(m.value);
+        const base = m.label.replace(/\s*\[1M\]$/, '');   // the context-size tag is not a version number
+        expect(/\d/.test(base)).toBe(!floating);   // the label stays honest as successors ship
+      });
     });
   });
 
   describe('default model', () => {
     it('ships defaulted to Opus 5; Fable 5 was added but is not the default', () => {
       // Shipped default trigger (index.html) reads Opus 5, not Fable 5.
-      expect(win.document.getElementById('defaultModelTrigger').textContent).toContain('Opus 5');
+      expect(win.document.getElementById('defaultModelTrigger').textContent).toContain('Opus');
       // Opus 5 entry is intact - Fable was added alongside, not substituted in.
-      expect(win.getModelLabel('opus-5')).toBe('Opus 5');
+      expect(win.getModelLabel('opus-5')).toBe('Opus');
       // Fable 5 is present as a separate, non-default option.
-      expect(win.getModelLabel('fable-5')).toBe('Fable 5');
+      expect(win.getModelLabel('fable-5')).toBe('Fable');
     });
     it('offers Opus 5 and Opus 5 [1M] in the default-model dropdown', () => {
       const optsHtml = win.document.getElementById('defaultModelOptions').innerHTML;
       expect(optsHtml).toContain('data-value="opus-5"');
       expect(optsHtml).toContain('data-value="opus-5-1m"');
-      expect(optsHtml).toContain('Opus 5 [1M]');
+      expect(optsHtml).toContain('Opus [1M]');
     });
     it('retires the superseded model families from every picker', () => {
       const optsHtml = win.document.getElementById('defaultModelOptions').innerHTML;
@@ -572,8 +579,8 @@ describe('Pure Utilities', () => {
       const optsHtml = win.document.getElementById('defaultModelOptions').innerHTML;
       expect(optsHtml).toContain('data-value="sonnet-5"');
       expect(optsHtml).toContain('data-value="sonnet-5-1m"');
-      expect(optsHtml).toContain('Sonnet 5');
-      expect(optsHtml).toContain('Sonnet 5 [1M]');
+      expect(optsHtml).toContain('Sonnet');
+      expect(optsHtml).toContain('Sonnet [1M]');
     });
     it('offers Sonnet 5 and Sonnet 5 [1M] in the per-node model picker (config panel reads MODELS)', () => {
       // The node-config Model dropdown must expose every MODELS entry, not just the default-model select.
@@ -586,8 +593,8 @@ describe('Pure Utilities', () => {
       const optsHtml = modelSelect.innerHTML;
       expect(optsHtml).toContain('data-value="sonnet-5"');
       expect(optsHtml).toContain('data-value="sonnet-5-1m"');
-      expect(optsHtml).toContain('Sonnet 5');
-      expect(optsHtml).toContain('Sonnet 5 [1M]');
+      expect(optsHtml).toContain('Sonnet');
+      expect(optsHtml).toContain('Sonnet [1M]');
       // cleanup: drop selection so configPanel loses .visible for unrelated suites
       win.selectNode(null); win.updateConfig();
     });
@@ -597,8 +604,8 @@ describe('Pure Utilities', () => {
       const optsHtml = win.document.getElementById('customAgentModel').innerHTML;
       expect(optsHtml).toContain('value="sonnet-5"');
       expect(optsHtml).toContain('value="sonnet-5-1m"');
-      expect(optsHtml).toContain('>Sonnet 5<');
-      expect(optsHtml).toContain('>Sonnet 5 [1M]<');
+      expect(optsHtml).toContain('>Sonnet<');
+      expect(optsHtml).toContain('>Sonnet [1M]<');
       win.closeAgentForm();
     });
   });
@@ -4578,7 +4585,7 @@ describe('Model Version Handling', () => {
       const impl = win.state.nodes.find(n => n.label === 'Implementer');
       impl.config.model = 'opus-5-1m';
       const output = win.genWorkflow();
-      expect(output).toContain('Opus 5 [1M]');
+      expect(output).toContain('Opus [1M]');
       expect(output).toContain('(`opus`)');
       expect(output).toContain('1M context intended');
     });
@@ -4828,7 +4835,7 @@ describe('Effort', () => {
       n.config.effort = 'xhigh';
       expect(win.buildOpenSpecSchema().schemaYaml).toContain('- Effort: xhigh');
       n.config.model = 'haiku';
-      expect(win.buildOpenSpecSchema().schemaYaml).toContain('not supported by Haiku 4.5');
+      expect(win.buildOpenSpecSchema().schemaYaml).toContain('not supported by Haiku');
     });
     it('normalizeAgentConfig keeps a valid effort and drops a bogus one', () => {
       const a = win.addNode('agent', 100, 100, 'A', { agentType:'coder', model:'opus-5', effort:'low', tools:['Read'], prompt:'x', maxTurns:5 });
@@ -6637,6 +6644,24 @@ describe('Live Run Monitor core', () => {
     expect(win.runMonitor.feed[0].path).toBe('big/f0.cs');
     win.runMonitor.timer = null;
   });
+  it('the active run surface is read authoritatively: a same-size same-mtime tick still lands (never a frozen board)', async () => {
+    function fakeFile(name, text, mtime) {
+      return { kind: 'file', name, getFile: async () => ({ lastModified: mtime, size: text.length, text: async () => text }) };
+    }
+    let entries = [fakeFile('tasks.md', '- [ ] alpha task one\n- [ ] beta task two', 100)];
+    const dir = { kind: 'directory', name: 'mem', values: async function* () { for (const e of entries) yield e; }, queryPermission: async () => 'granted' };
+    win.runMonitor.watches = [{ handle: dir, name: 'mem', status: 'granted' }];
+    win.runMonitor.timer = 1;   // fabricated: keeps monitorStart from spawning a real interval
+    await win.monitorPoll(false);
+    expect(win.runMonitor.tasks[0].tier).toBe('open');
+    // The tick flips one byte in place: identical length and (deliberately) identical mtime -
+    // invisible to the snapshot diff, exactly the write that used to freeze the board.
+    entries = [fakeFile('tasks.md', '- [x] alpha task one\n- [ ] beta task two', 100)];
+    await win.monitorPoll(false);
+    expect(win.runMonitor.tasks[0].tier).toBe('confirmed');
+    expect(win.runMonitor.feed.length).toBe(0);               // silent accuracy: board updates, no feed churn
+    win.runMonitor.timer = null;
+  });
   it('the panel header carries a real close X (LIVE beside it); the folder-row X only removes its watch', () => {
     win.runMonitor.open = true;
     win.runMonitor.watches = [{ handle: {}, name: 'workflow-memory', status: 'granted' }];
@@ -6745,6 +6770,13 @@ describe('Amend presets: Touch-Up and Record Sync', () => {
     expect(st.config.agentType).toBe('writer');
     expect(st.config.prompt).toBe(win.PROMPTS.artifactSteward);
     expect(st.config.tools.join(',')).toBe(win.WRITER_TOOL_DEFAULTS.technical.join(','));   // pristine set: type/style swaps keep working
+    // The node must OWN its array: an aliased shared default would let one tool click
+    // corrupt every writer node for the session (the pre-existing bug the review caught).
+    expect(st.config.tools === win.WRITER_TOOL_DEFAULTS.technical).toBe(false);
+    const beforeLen = win.WRITER_TOOL_DEFAULTS.technical.length;
+    st.config.tools.push('WebSearch');
+    expect(win.WRITER_TOOL_DEFAULTS.technical.length).toBe(beforeLen);   // the default stays pristine
+    st.config.tools.pop();
     const d = win.state.nodes.find(n => n.type === 'decision');
     const a = win.state.nodes.find(n => n.label === 'Amender');
     const revise = win.state.connections.find(c => c.from === d.id && c.to === a.id);
@@ -7191,13 +7223,13 @@ describe('Agent craft batch', () => {
       const n = win.addNode('agent', 100, 100, 'Builder', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 });
       const rows = win.explainNode(n, 'subagent');
       const m = rows.find(r => r.part === 'Model');
-      expect(m.reason).toContain('this step runs Opus 5');
+      expect(m.reason).toContain('this step runs Opus');
       expect(m.reason).toContain('base alias "opus"');
       expect(m.reason).toContain('resolves to its newest build');
       // generic across the alias map: every latest-family model explains its alias
       n.config.model = 'sonnet-5';
       const m2 = win.explainNode(n, 'subagent').find(r => r.part === 'Model');
-      expect(m2.reason).toContain('this step runs Sonnet 5');
+      expect(m2.reason).toContain('this step runs Sonnet');
       expect(m2.reason).toContain('base alias "sonnet"');
       resetState();
     });
@@ -8268,7 +8300,7 @@ describe('Usability & Help', () => {
       });
       // Claude.ai deliberately excludes the effort hint (no per-step effort mechanism there)
       expect(win.genClaudePrompt.toString()).toContain("pushSharedHints(p, 'claude', false)");
-      // proven byte-identical at consolidation: 17 presets x 5 formats x 3 toggle combos, zero drift
+      // proven byte-identical at consolidation: every preset x 5 formats x 3 toggle combos, zero drift
     });
   });
 
@@ -9671,7 +9703,7 @@ describe('Coverage Gaps', () => {
 
   describe('presets should have no validation warnings', () => {
     const presetNames = ['feature', 'bugfix', 'fullstack', 'review', 'parallel_research', 'swarm',
-      'test_automation', 'ui_component', 'refactoring', 'documentation', 'devops', 'performance', 'testing', 'data_migration'];
+      'test_automation', 'ui_component', 'refactoring', 'documentation', 'devops', 'performance', 'testing', 'data_migration', 'touchup', 'record_sync'];
     presetNames.forEach(preset => {
       it('should have zero warnings for ' + preset, () => {
         resetState();
@@ -11576,9 +11608,9 @@ describe('Workflow advisor (non-blocking suggestions)', () => {
     win.addConnection(r.id, d.id);
     expect(win.adviseWorkflow().map(x => x.msg).join(' | ')).toNotContain('routes nowhere');
   });
-  it('every preset yields zero suggestions (calibration pin - all 17 audited, none nags; test_automation carries its one deliberate setup pointer)', () => {
+  it('every preset yields zero suggestions (calibration pin - all 19 audited, none nags; test_automation carries its one deliberate setup pointer)', () => {
     cleanRunReports();
-    ['feature','bugfix','fullstack','ui_component','refactoring','documentation','devops','performance','data_migration','testing','review','parallel_research','swarm','delivery_swarm','analysis_forecast','incident_rca'].forEach(p2 => {
+    ['feature','bugfix','fullstack','ui_component','refactoring','documentation','devops','performance','data_migration','testing','review','parallel_research','swarm','delivery_swarm','analysis_forecast','incident_rca','touchup','record_sync'].forEach(p2 => {
       resetState();
       win.loadPreset(p2);
       const sugs = win.adviseWorkflow();

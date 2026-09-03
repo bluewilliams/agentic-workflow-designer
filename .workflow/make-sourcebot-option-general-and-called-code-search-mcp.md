@@ -69,8 +69,8 @@ index.html (all in scope unless noted):
 - 1609-1610 toggleMcpSourcebot() -> toggleMcpCodeSearch()
 - 1673 savePrefs entry
 - 1712-1715 restorePrefs entry (rename only; no reference to the old key)
-- 4078-4082 generateRefinePrompt inline `if (state.mcpSourcebot)` block (gating field rename + generalize the pushed line; fix the em dash in the `// Sourcebot hint —` comment at 4078)
-- 4176-4189 generatePlanPrompt inline `if (state.mcpSourcebot)` block: "## Codebase Exploration" + per-tool bullet list (gating field rename + generalize body; fix the em dash in the `// Sourcebot hint —` comment at 4176 and the em dashes in the bullet lines 4181-4185). NOTE the tool bullets here use ` — ` (em dash) separators that must become ` - `.
+- 4078-4082 generateRefinePrompt inline `if (state.mcpSourcebot)` block (gating field rename + generalize the pushed line; fix the em dash in the `// Sourcebot hint -` comment at 4078)
+- 4176-4189 generatePlanPrompt inline `if (state.mcpSourcebot)` block: "## Codebase Exploration" + per-tool bullet list (gating field rename + generalize body; fix the em dash in the `// Sourcebot hint -` comment at 4176 and the em dashes in the bullet lines 4181-4185). NOTE the tool bullets here use ` - ` (em dash) separators that must become ` - `.
 - 4991, 4996 New Workflow reset (state + checkbox)
 - 5359 / 5521 / 5779 / 6207 the four codeSearchHint() injection sites (_wfSb/_saSb/_atSb/_cpSb vars)
 - 5993-5994 comment (SDK) variant gating + header (generalize)
@@ -127,3 +127,4 @@ Produced by the workflow "Make Sourcebot option general and called Code Search M
 - Work item: none (dogfood)
 - Branch: main
 - PR: TBD
+- 2026-08-26: hygiene - two em dashes normalized to hyphens per the repo-wide no-dash rule (characters only, no content change) (by direct session)

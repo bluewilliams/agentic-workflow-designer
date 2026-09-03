@@ -552,7 +552,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <div class="sidebar-section" data-collapse-id="default-model">
     <h3>Default Model</h3>
     <div class="custom-select" id="defaultModelSelect">
-      <div class="custom-select-trigger" id="defaultModelTrigger">Opus 5</div>
+      <div class="custom-select-trigger" id="defaultModelTrigger">Opus</div>
       <div class="custom-select-options" id="defaultModelOptions"></div>
     </div>
     <div style="font-size:10px;color:var(--text3);margin-top:6px">New nodes, presets, and generated workflows will use this model.</div>
@@ -1494,18 +1494,23 @@ function toolsMatchAnyDefault(tools) {
 }
 
 const ALL_TOOLS = ['Read','Write','Edit','Bash','Grep','Glob','WebSearch','WebFetch','Task','LSP'];
+// Naming rule: an UNNUMBERED label marks the newest model of its family - it emits the
+// base alias (taskModelMap below) and floats to each new release, so the label never goes
+// stale when a successor ships. A NUMBERED label marks a deliberately pinned legacy model
+// (emits its full API id and stays put). Values and ids are storage/emission keys - never
+// rename them (saved workflows and run reports carry them).
 const MODELS = [
-  { value: 'fable-5',       label: 'Fable 5',       family: 'fable-5',    id: 'claude-fable-5' },
-  { value: 'fable-5-1m',    label: 'Fable 5 [1M]',  family: 'fable-5',    id: 'claude-fable-5' },
-  { value: 'opus-5',        label: 'Opus 5',        family: 'opus-5',     id: 'claude-opus-5' },
-  { value: 'opus-5-1m',     label: 'Opus 5 [1M]',   family: 'opus-5',     id: 'claude-opus-5' },
+  { value: 'fable-5',       label: 'Fable',       family: 'fable-5',    id: 'claude-fable-5' },
+  { value: 'fable-5-1m',    label: 'Fable [1M]',  family: 'fable-5',    id: 'claude-fable-5' },
+  { value: 'opus-5',        label: 'Opus',        family: 'opus-5',     id: 'claude-opus-5' },
+  { value: 'opus-5-1m',     label: 'Opus [1M]',   family: 'opus-5',     id: 'claude-opus-5' },
   { value: 'opus-4.8',      label: 'Opus 4.8',      family: 'opus-4.8',   id: 'claude-opus-4-8' },
   { value: 'opus-4.8-1m',   label: 'Opus 4.8 [1M]', family: 'opus-4.8',   id: 'claude-opus-4-8' },
-  { value: 'sonnet-5',      label: 'Sonnet 5',      family: 'sonnet-5',  id: 'claude-sonnet-5' },
-  { value: 'sonnet-5-1m',   label: 'Sonnet 5 [1M]', family: 'sonnet-5',  id: 'claude-sonnet-5' },
+  { value: 'sonnet-5',      label: 'Sonnet',      family: 'sonnet-5',  id: 'claude-sonnet-5' },
+  { value: 'sonnet-5-1m',   label: 'Sonnet [1M]', family: 'sonnet-5',  id: 'claude-sonnet-5' },
   { value: 'sonnet-4.6',    label: 'Sonnet 4.6',    family: 'sonnet-4.6', id: 'claude-sonnet-4-6' },
   { value: 'sonnet-4.6-1m', label: 'Sonnet 4.6 [1M]', family: 'sonnet-4.6', id: 'claude-sonnet-4-6' },
-  { value: 'haiku',         label: 'Haiku 4.5',     family: 'haiku-4.5',  id: 'claude-haiku-4-5-20251001' },
+  { value: 'haiku',         label: 'Haiku',     family: 'haiku-4.5',  id: 'claude-haiku-4-5-20251001' },
 ];
 function getModelLabel(val) { const m = MODELS.find(m => m.value === val); return m ? m.label : val; }
 function getModelFamily(val) { const m = MODELS.find(m => m.value === val); return m ? m.family : val; }
@@ -2170,7 +2175,7 @@ const PROMPTS = {
   touchupAmender: 'Apply the scoped delta to a capability that already works - the Scoper\'s task list is your work list, and existing behavior is the contract.\n\n**The touch-up discipline: the diff should read as "the delivered capability, adjusted" - never a new implementation.** Prefer the smallest change that satisfies the delta inside the existing structure; reshaping the structure is out of scope unless a task explicitly names it.\n\n1. Read the existing implementation before changing it (`LSP goToDefinition`; `findReferences` on every symbol you touch - a delivered capability has callers).\n2. Work the task list in order. Stay inside it: pre-existing warts you notice are reported, not fixed.\n3. Honor the Must Not Move list: after each change, check the adjacent behaviors the Scoper named.\n4. Update or add the tests the Verification Plan names, in the style of the newest neighboring tests. Never weaken an existing assertion to make the delta pass - if a guarding test genuinely must change, that IS a behavior change: flag it against the Delta.\n5. Run the focused tests after each task, and the full suite when one exists and is runnable before you finish.\n6. Signal each completed task the moment it completes - where workflow memory is on, that is a provisional `t: {task} done` line in your OWN memory file. The orchestrator owns the shared checklist and its ticks: never edit tasks.md or the record checklist yourself, and never batch at the end.\n\nReport: every change mapped to its task, test results, and anything you saw but deliberately did not touch.\n\n## Handoff Summary\nEnd your response with:\n- **Tasks Completed**: X of Y, each mapped to files changed\n- **Tests**: adjusted or added, and suite results\n- **Must Not Move Check**: adjacent behaviors verified intact\n- **Not Touched**: issues seen and left, with why\n- **Record Notes**: facts the artifact steward needs (behavior changes, new scenarios, files touched)',
   touchupReviewer: 'Review the touch-up delta - a change to a capability that was already delivered and reviewed once. Scope your review to the delta and its blast radius, not the whole capability.\n\n**Two review dimensions, both required:**\n\n**A. The change itself.** Establish the actual diff surface first. Then: correctness of the delta against the Scoper\'s Delta list, regression risk to the Must Not Move behaviors (read the callers, not just the changed lines), test adequacy (each changed behavior has a guarding test; no existing assertion was weakened), and proportionality (the diff is the delta, nothing more).\n\n**B. Artifact truth.** Where a durable record or openspec spec exists for this capability, check whether the delta makes any statement in it FALSE - a requirement, a scenario, a file map, a gotcha. List every such statement. You do not update the artifacts (the steward does); you name what is now untrue. When the delta touched multiple repositories, check the artifact surfaces of each touched repo.\n\nMateriality bars: the default verdict is PASS - only Critical or High findings gate, and a regression to a Must Not Move behavior is always at least High. Style preferences and pre-existing issues are noted, never gating. Call out low-value comments the change added; the default comment bar is why-comments, gotchas, or API docs only.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or NEEDS REVISION (only Critical/High gate)\n- **Findings**: each with severity, file:line, and the concrete fix\n- **Regression Check**: Must Not Move behaviors verified, with evidence\n- **Artifact Deltas**: every record/spec statement the change made untrue (for the steward)\n- **Noted, Not Gating**: pre-existing issues and style notes',
   artifactSteward: 'Bring the durable artifacts back to the truth: after this run\'s change, every artifact statement about the capability must match the working tree. You change ARTIFACTS ONLY - never code, never tests (a needed code change goes back as a finding, not an edit).\n\n**Inputs**: the upstream Handoff Summaries (the Scoper\'s Record Plan, the Amender\'s Record Notes, the Reviewer\'s Artifact Deltas - or, in a sync run, the Auditor\'s confirmed drift list). Verify each claim against the tree before writing it: you record what IS, not what was reported.\n\nWhen the run spans multiple repositories, do all of the below in EACH repository the change touched - every repo keeps its own record, index, and timeline, and sibling cross-links between related records must stay accurate.\n\n**Work each artifact surface that exists; skip silently what does not:**\n1. **Durable record** (where `.workflow/` holds one for this capability): amend IN PLACE - update the requirements and scenarios the delta changed, refresh the file map, tick or add task checklist boxes, re-confirm the record\'s own quality checklist where it has one, and append a dated History line stating what changed and why. Supersede only on an explicit, justified escalation from upstream. Never create a new record for a tweak.\n2. **Record index** (`.workflow/_index.md`): re-check the capability\'s entry - REWRITE its intent line whenever the amendment changes what a scanner should know (a stale intent line silently hides the change from every future grounding scan), and refresh its facets (files, status, date) - so the entry matches the amended record.\n3. **Timeline** (`.workflow/_timeline.md`): insert one line for this amendment as the FIRST entry below the header - newest on top is the file\'s convention.\n4. **OpenSpec** (where `openspec/` exists): `openspec/specs/` holds the CURRENT TRUTH per capability and `openspec/changes/` holds in-flight proposals - amend the affected spec so its requirements and scenarios match delivered behavior, in the spec file\'s own format and granularity. When an active change proposal covers this delta, complete it and archive it the way this repository archives changes (tasks ticked, then moved per its convention) - never leave an active change contradicting the spec it targets. When no proposal exists, the spec amendment alone is the correct end state for a delivered touch-up; do not manufacture a proposal after the fact.\n5. **Other capability docs** the record\'s file map names (README sections, API docs) IF the delta made them false - the smallest correcting edit only.\n\n**Fidelity rules**: every artifact edit must be traceable to a verified change in the tree. Do not editorialize, do not restructure documents while amending them, and preserve each document\'s existing format and conventions exactly.\n\n## Handoff Summary\nEnd your response with:\n- **Artifacts Amended**: each file with a one-line summary of the amendment\n- **History Line**: the line appended to the record (quoted)\n- **Skipped**: artifact surfaces that do not exist in this repo (expected, not a failure)\n- **Unresolvable**: any claimed change you could NOT verify in the tree (returned upstream, not recorded)',
-  driftAuditor: (function (g) { return 'Audit the durable artifacts against the working tree and produce a confirmed drift list - the places where the artifacts no longer tell the truth about the code.\n\n**Refute-first discipline: only PROVEN drift makes the list.** For every suspected drift, hold the artifact statement against the actual code (file:line) before recording it. An artifact statement you cannot prove false is not drift. If the scope input names an area, stay inside it.\n\n**Locate what to audit with the canonical grounding protocol, rendered below verbatim:**\n- ' + [g.scanIndex, g.openSpecDocs, g.multiRepo, g.greenfield].join('\n- ') + '\n\n**Then audit everything the scan surfaced:**\n1. Each matched record: hold its Current behavior, requirements, scenarios, file map, and outcome against the tree. A named verifying test that no longer exists or no longer covers its scenario is drift.\n2. Each matched spec: hold its requirements against delivered behavior the same way, and check `openspec/changes/` for active proposals whose work the tree shows delivered but never archived - a completed-but-still-active change is drift.\n3. The index and timeline themselves: entries whose intent line or facets (files, status) contradict their records.\n4. Classify each confirmed item: STALE (artifact says X, code does Y), MISSING (delivered behavior with no artifact statement), or ORPHANED (artifact claims something the tree no longer contains).\n5. For each item, state the correcting amendment in one sentence - the steward works from your list.\n\nCode changes are OUT of scope for this run. Where the truth is that the CODE is wrong (the artifact records the intent and the tree broke it), flag it as a defect for a separate touch-up run instead of proposing an artifact edit that would canonize the bug.\n\n## Handoff Summary\nEnd your response with:\n- **Confirmed Drift**: each item with artifact path, the statement, the contradicting evidence (file:line), and its classification\n- **Proposed Amendments**: one line each, for the steward\n- **Code Defects Flagged**: truth-is-broken items for a follow-up touch-up run, not for artifact edits\n- **Clean**: artifact areas checked and found truthful'; })(groundingLookupSteps()),
+  driftAuditor: (function (g) { return 'Audit the durable artifacts against the working tree and produce a confirmed drift list - the places where the artifacts no longer tell the truth about the code.\n\n**Refute-first discipline: only PROVEN drift makes the list.** For every suspected drift, hold the artifact statement against the actual code (file:line) before recording it. An artifact statement you cannot prove false is not drift. If the scope input names an area, stay inside it.\n\n**Locate what to audit with the canonical grounding protocol, rendered below verbatim:**\n- ' + [g.scanIndex, g.openSpecDocs, g.multiRepo, g.greenfield].join('\n- ') + '\n\n**Then audit everything the scan surfaced:**\n1. Each matched record: hold its Current behavior, requirements, scenarios, file map, and outcome against the tree. A named verifying test that no longer exists or no longer covers its scenario is drift.\n2. Each matched spec: hold its requirements against delivered behavior the same way, and check `openspec/changes/` for active proposals whose work the tree shows delivered but never archived - a completed-but-still-active change is drift.\n3. The breadcrumbs themselves (`.workflow/_index.md` and the newest-first `.workflow/_timeline.md`): entries whose intent line or facets (files, status) contradict their records.\n4. Classify each confirmed item: STALE (artifact says X, code does Y), MISSING (delivered behavior with no artifact statement), or ORPHANED (artifact claims something the tree no longer contains).\n5. For each item, state the correcting amendment in one sentence - the steward works from your list.\n\nCode changes are OUT of scope for this run. Where the truth is that the CODE is wrong (the artifact records the intent and the tree broke it), flag it as a defect for a separate touch-up run instead of proposing an artifact edit that would canonize the bug.\n\n## Handoff Summary\nEnd your response with:\n- **Confirmed Drift**: each item with artifact path, the statement, the contradicting evidence (file:line), and its classification\n- **Proposed Amendments**: one line each, for the steward\n- **Code Defects Flagged**: truth-is-broken items for a follow-up touch-up run, not for artifact edits\n- **Clean**: artifact areas checked and found truthful'; })(groundingLookupSteps()),
 
   // --- Research ---
 
@@ -4586,6 +4591,10 @@ function addNode(type, x, y, label, config) {
     h: d.h,
     config: config ? { ...d.config, ...config } : { ...d.config }
   };
+  // The tools array must be OWNED by the node: preset builders pass shared default arrays
+  // (WRITER_TOOL_DEFAULTS.*), and the config panel's tool toggle mutates in place - an
+  // aliased array would let one node's click corrupt the default for the whole session.
+  if (Array.isArray(node.config.tools)) node.config.tools = node.config.tools.slice();
   if (type === 'agent' && !(config && config.model)) {
     node.config.model = state.defaultModel;
   }
@@ -12776,11 +12785,21 @@ async function monitorPoll(interactive) {
   const baselinePrefix = {};
   cyclePrefixes.forEach(pre => { baselinePrefix[pre] = !prevKeys.some(p => p.indexOf(pre) === 0); });
   const d = monitorDiff(runMonitor.snapshot, files, scannedPrefixes);
+  const prevSnap = runMonitor.snapshot;
   runMonitor.snapshot = d.next;
+  const readOk = {};
   await Promise.all(d.changed.map(async c => {
     if (c.kind === 'removed') { delete runMonitor.texts[c.path]; return; }
     if (!/\.(md|txt|json|ya?ml)$/i.test(c.path) || c.f.size > MONITOR_MAX_BYTES) return;
-    try { runMonitor.texts[c.path] = await c.f._file.text(); } catch (e) { /* skip */ }
+    try { runMonitor.texts[c.path] = await c.f._file.text(); readOk[c.path] = 1; }
+    catch (e) {
+      // A read racing an active write fails silently; keeping the NEW stat in the snapshot
+      // would pair stale (or missing) text with a fresh mtime and never re-read. Restoring
+      // the prior stat - or dropping a first-seen file's entry entirely - makes the next
+      // scan re-report it, so the text self-heals (cost: one duplicate feed entry).
+      if (prevSnap[c.path]) runMonitor.snapshot[c.path] = prevSnap[c.path];
+      else delete runMonitor.snapshot[c.path];
+    }
   }));
   const feedworthy = d.changed.filter(c => {
     if (c.kind !== 'new') return true;
@@ -12791,7 +12810,28 @@ async function monitorPoll(interactive) {
     // a genuinely created file from one the shifting capped subset finally reached.
     return !baselinePrefix[pre] && scannedPrefixes.indexOf(pre) !== -1;
   });
-  if (d.changed.length) {
+  // The ACTIVE run's live surface (the .md files directly in the run directory: tasks.md,
+  // shared.md, the per-agent files) is read authoritatively every cycle, never trusted to
+  // the mtime+size diff: a checkbox tick is a SAME-SIZE write, so one missed mtime change
+  // (coarse timestamps, an equal-second append, a cached handle) would freeze the task
+  // board forever. It is a handful of small files - certainty is cheap. Silent by design:
+  // refreshed content updates the board without feed entries.
+  let surfaceChanged = false;
+  if (runMonitor.runBase) {
+    // Direct-child test pairs with monitorRecompute's local-file scoping - the surface
+    // refreshed here must cover exactly what that recompute consumes (tasks.md, shared.md,
+    // per-agent files). Files the changed-loop above already read this cycle are skipped.
+    const surface = files.filter(f => f.path.indexOf(runMonitor.runBase) === 0
+      && /^(tasks\.md|shared\.md|@[^/]+\.md)$/i.test(f.path.slice(runMonitor.runBase.length))
+      && f.size <= MONITOR_MAX_BYTES && !readOk[f.path]);
+    await Promise.all(surface.map(async f => {
+      try {
+        const t = await f._file.text();
+        if (runMonitor.texts[f.path] !== t) { runMonitor.texts[f.path] = t; surfaceChanged = true; }
+      } catch (e) { /* unreadable this cycle - keep the last good copy */ }
+    }));
+  }
+  if (d.changed.length || surfaceChanged) {
     const now = new Date();
     feedworthy.forEach(c => runMonitor.feed.unshift({ t: now.toTimeString().slice(0, 8), path: c.path, kind: c.kind }));
     runMonitor.feed = runMonitor.feed.slice(0, MONITOR_FEED_MAX);
@@ -12918,7 +12958,9 @@ function monitorIsArtifact(p) {
 }
 function monitorVisiblePaths() {
   // Newest first across ALL scanned files - the All view reads as "what the agents
-  // touched most recently"; the Artifacts view applies the curation filter.
+  // touched most recently"; the Artifacts view applies the curation filter. Ordering
+  // trusts on-disk mtimes: a write hidden behind a frozen mtime keeps its old rank
+  // (the surface refresh keeps the task BOARD truthful either way).
   const mt = {};
   Object.keys(runMonitor.snapshot).forEach(p => { mt[p] = runMonitor.snapshot[p].mtime || 0; });
   Object.keys(runMonitor.texts).forEach(p => { if (!(p in mt)) mt[p] = 0; });

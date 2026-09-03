@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## model-label-floating
+
+- record: .workflow/model-label-floating.md
+- intent: model display labels follow the emission semantics - unnumbered label = newest of family (emits the floating base alias, never goes stale when a successor ships), numbered label = deliberately pinned legacy (full API id). Values/ids untouched; a naming-rule invariant test enforces the convention.
+- files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
+- status: current | date: 2026-08-26 | note: 1707 -> 1708.
+
 ## touch-up-presets
 
 - record: .workflow/touch-up-presets.md
@@ -12,9 +19,9 @@ Scan-then-open: read this index first, match an entry against the files or capab
 ## live-run-monitor
 
 - record: .workflow/live-run-monitor.md
-- intent: the canvas watches the run - a Chromium Monitor drawer polls up to 4 watched directories (File System Access, IndexedDB-persisted handles) and renders live telemetry: the tasks.md checklist in three tiers (confirmed orchestrator ticks / provisional per-agent `t: {task} done` lines / open), agent status chips + live canvas dots from TOON entries, a change feed, and a markdown file viewer with awd:record header chips (a .workflow watch doubles as a durable-record browser). One watch covers a multi-repo run's live surface (shared memory folder); emissions gained the two-tier progress convention across all four memory variants (orchestrator seeds/ticks tasks.md individually; sub-agents append provisional ticks to their OWN files - one writer per file) and the record protocol gained owner tags, the kickoff tasks.md mirror, and a concision discipline. Read-only, poll-based (no browser file-watch events), memory-gated with OFF pins. Supersedes the parked incremental-checkpoint patch by intent.
+- intent: the canvas watches the run - a Chromium Monitor drawer polls up to 4 watched directories (File System Access, IndexedDB-persisted handles) and renders live telemetry: the tasks.md checklist in three tiers (confirmed orchestrator ticks / provisional per-agent `t: {task} done` lines / open), agent status chips + live canvas dots from TOON entries, a change feed, and a markdown file viewer with awd:record header chips (a .workflow watch doubles as a durable-record browser). One watch covers a multi-repo run's live surface (shared memory folder); emissions gained the two-tier progress convention across all four memory variants (orchestrator seeds/ticks tasks.md individually; sub-agents append provisional ticks to their OWN files - one writer per file) and the record protocol gained owner tags, the kickoff tasks.md mirror, and a concision discipline. The scan honors each project's own .gitignore (skip lists as fallback) with independent scan (4000 files, depth 8, big scans at half cadence) and display (newest 100) budgets; a capped tree reports modifications only. The active run's core files are content-read every cycle (a same-size tick with a hidden mtime change can never freeze the board), tasks.md owner tags seed pending chips before an agent's first write, and emissions have agents announce themselves before their first action. Read-only, poll-based (no browser file-watch events), memory-gated with OFF pins. Supersedes the parked incremental-checkpoint patch by intent.
 - files: index.html (LIVE RUN MONITOR removable block, panel + button + CSS, canvas dot hook, memory-variant + record-protocol emission clauses), tests.html (Suites 12g emissions + 12h core), README.md, TECHNICAL.md, help modal
-- status: current | date: 2026-08-25 | note: 1643 -> 1667 (incl. 6 regression pins from the high-review fix cycle: handler injection, re-grant timer, lapsed-watch wipe guard, duplicate-label slug map, revise-status ordering, false-half-tick length guard). Visual proof over the fullstack preset.
+- status: current | date: 2026-08-26 | note: 1643 -> 1708 across the build, live shakedown, and four review rounds (regression pins include handler injection, re-grant timer, lapsed-watch wipe, duplicate-label slugs, revise-status ordering, false half-ticks, capped phantom-new, frozen-board same-size ticks). Visual proof over the fullstack preset plus a real multi-hour run.
 
 ## markdown-preview-fences
 
