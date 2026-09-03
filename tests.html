@@ -237,6 +237,7 @@ function resetState() {
   win.state.exportFormat = 'prompt';
   win.state.memoryEnabled = false;  // app default is now ON; test baseline stays OFF so memory-gating is explicit per test
   win.state.durableRecord = false;  // app default is now ON; same deliberate OFF baseline
+  win.state.openSpecArtifacts = false;
   win.state.artifactPath = '';
   win.state.defaultModel = 'opus-5';
   win.state.effort = '';  // shipped state: inherit the runner default, emit nothing
@@ -6878,6 +6879,58 @@ describe('Amend presets: Touch-Up and Record Sync', () => {
     // start-work presets around it - the amend group is the list's stable bottom.
     expect(list.indexOf('preset-group-label') > list.indexOf('id="presetMore"')).toBe(true);
     expect(list.indexOf('data-preset="record_sync"') > list.indexOf('data-preset="delivery_swarm"')).toBe(true);
+  });
+});
+
+// ─── Suite 12j: OpenSpec artifacts (faithful change + delta-applied specs) ────
+describe('OpenSpec artifacts option', () => {
+  beforeEach(() => { resetState(); });
+  it('ON: kickoff creates the change, finalize applies and archives it, both doctrine carve-outs ride along', () => {
+    win.state.memoryEnabled = true; win.state.durableRecord = true; win.state.openSpecArtifacts = true;
+    win.addNode('agent', 100, 100, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'b', maxTurns:5 });
+    [win.genWorkflow(), win.genSubAgents()].forEach(out => {
+      expect(out).toContain('FAITHFUL, team-committable');
+      expect(out).toContain('OpenSpec artifacts kickoff');                 // the change is born at kickoff, not at finalize
+      expect(out).toContain('an interrupted run must leave an honest in-flight change');
+      expect(out).toContain('resume and update it, never create a duplicate');   // an earlier attempt's active change
+      expect(out).toContain('never your own');                             // self-collision guidance for grounding
+      expect(out).toContain('openspec/changes/{change-slug}/');            // the full change lifecycle, not a spec dump
+      expect(out).toContain('archive the change exactly the way this repository archives changes');
+      expect(out).toContain('as DELTAS');                                 // finalize merges into team-owned specs
+      expect(out).toContain('preserving every other line of an existing spec verbatim');
+      expect(out).toContain('Never stamp them as generated');             // faithful means unstamped
+      expect(out).toContain('ALWAYS outrank the shapes described here');  // the repo\'s own conventions win
+      expect(out).toContain('treat a validation failure as a completion-gate failure');
+      expect(out).toContain('the full lifecycle runs in each repository whose record you wrote');   // multi-repo parity
+      expect(out).toContain('sanctioned exception');                      // three-surfaces doctrine carve-out
+      expect(out).toContain('beyond the sanctioned OpenSpec artifacts');  // completion-gate carve-out
+    });
+  });
+  it('OFF pins: durable alone emits none of it; the option never rides without durable', () => {
+    win.state.memoryEnabled = true; win.state.durableRecord = true; win.state.openSpecArtifacts = false;
+    win.addNode('agent', 100, 100, 'B', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'b', maxTurns:5 });
+    let out = win.genSubAgents();
+    expect(out).toContain('EXACTLY three surfaces');
+    expect(out).toNotContain('OpenSpec artifacts (enabled');
+    expect(out).toNotContain('OpenSpec artifacts kickoff');
+    expect(out).toNotContain('sanctioned exception');
+    expect(out).toNotContain('beyond the sanctioned');          // the completion-gate clause is gated too
+    win.state.durableRecord = false; win.state.openSpecArtifacts = true;   // inconsistent state: the superset must still hold
+    out = win.genSubAgents();
+    expect(out).toNotContain('OpenSpec artifacts (enabled');
+  });
+  it('a strict subset of durable: turning durable off clears it, and workflow data carries the flag', () => {
+    win.state.memoryEnabled = true;
+    const dcb = win.document.getElementById('durableRecordToggle');
+    dcb.checked = true; win.toggleDurableRecord();
+    const scb = win.document.getElementById('openSpecArtifactsToggle');
+    scb.checked = true; win.toggleOpenSpecArtifacts();
+    expect(win.state.openSpecArtifacts).toBe(true);
+    dcb.checked = false; win.toggleDurableRecord();
+    expect(win.state.openSpecArtifacts).toBe(false);                    // a projection cannot outlive its record
+    expect(scb.checked).toBe(false);
+    expect(win.document.getElementById('openSpecArtifactsField').style.display).toBe('none');
+    expect(JSON.stringify(win.serializeWorkflow())).toContain('openSpecArtifacts');
   });
 });
 
