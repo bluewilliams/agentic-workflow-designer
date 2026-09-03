@@ -850,6 +850,12 @@ svg.canvas{width:100%;height:100%;display:block}
           <span class="memory-path-label">Artifact Path</span>
           <input type="text" id="artifactPathInput" class="memory-path" oninput="onArtifactPathInput()" placeholder=".workflow/untitled.md" style="width:100%;box-sizing:border-box;border:1px solid var(--surface2);background:var(--surface);color:var(--text);font-family:inherit"/>
         </div>
+        <div id="openSpecArtifactsField" style="display:block;margin-top:8px">
+          <label class="memory-toggle" title="The run also leaves faithful OpenSpec artifacts: a change under openspec/changes/ (proposal, tasks, design) archived at finalize, and delta-applied specs under openspec/specs/. First-class OpenSpec - committable, archivable, unstamped - for teams whose repos keep openspec/ and not .workflow/.">
+            <input type="checkbox" id="openSpecArtifactsToggle" onchange="toggleOpenSpecArtifacts()"/>
+            <span>Write OpenSpec artifacts (change + specs)</span>
+          </label>
+        </div>
       </div>
     </div>
   </div>
@@ -1220,7 +1226,7 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h3>Ground in Prior Records</h3>
 <p>The <strong>Ground in prior records</strong> toggle (on by default) is the read side. Before planning, the orchestrator scans <code>.workflow/_index.md</code> if it exists, opens only the records relevant to the files and capability the change touches (preferring current ones), and folds their decisions and gotchas into the plan. It also grounds in any <code>openspec/</code> documents it finds, with the same bounded discipline (capability names first, grep to narrow, only the few matching files opened) - so a repo run by OpenSpec-based tooling informs designer runs automatically. It is self-gating - a no-op on greenfield repos with neither. Producing a record is opt-in; benefiting from existing ones is automatic.</p>
-<p>Together, <strong>Keep a durable record</strong> (the write side) and <strong>Ground in prior records</strong> (the read side) form a flywheel: every run leaves behind its decisions, gotchas, and a tested spec, and the next run reads them before planning - so workflows in the same repo get sharper and stop repeating the same mistakes over time, with nobody curating anything by hand. The more you run, the better-grounded each new workflow starts. The flywheel is OpenSpec-compatible on both sides: runs ground in <code>openspec/</code> specs and active changes they find, and the OpenSpec export's runs scan our records - the two systems inform each other.</p>
+<p>Together, <strong>Keep a durable record</strong> (the write side) and <strong>Ground in prior records</strong> (the read side) form a flywheel: every run leaves behind its decisions, gotchas, and a tested spec, and the next run reads them before planning - so workflows in the same repo get sharper and stop repeating the same mistakes over time, with nobody curating anything by hand. The more you run, the better-grounded each new workflow starts. The flywheel is OpenSpec-compatible on both sides: runs ground in <code>openspec/</code> specs and active changes they find, and the OpenSpec export's runs scan our records - the two systems inform each other. And with <strong>Write OpenSpec artifacts</strong> (an option under the durable-record toggle), the run also leaves FAITHFUL OpenSpec artifacts: a change under <code>openspec/changes/</code> (proposal, tasks, design) archived at finalize, and specs under <code>openspec/specs/</code> updated by delta - first-class, unstamped, committable by teams whose repos keep <code>openspec/</code> and not <code>.workflow/</code>. The record remains the run's working spine (checklist, monitor, verify); whether it gets committed is the team's choice, and future runs ground on the OpenSpec artifacts either way.</p>
 
 <h3>Amend Presets: Touch-Up &amp; Record Sync</h3>
 <p>Every other preset STARTS work; the <strong>Amend an existing deliverable</strong> group in the Presets section changes work that already shipped - and keeps the durable artifacts telling the truth about it. <strong>Touch-Up</strong> is for follow-up changes to a delivered capability (post-run adjustments, PR feedback, a small behavior tweak): a Scoper grounds in the existing record or <code>openspec/</code> spec and defines the smallest delta plus the behaviors that must NOT move, an Amender applies it, a Delta Reviewer gates on regressions and lists every artifact statement the change made untrue, and an Artifact Steward amends the record IN PLACE (History line, refreshed index and timeline entries) - never minting a new record for a tweak. <strong>Record Sync</strong> touches no code at all: a Drift Auditor proves (with file-and-line evidence) where the records or specs stopped matching the working tree, and the Steward amends the artifacts back to reality - anywhere the CODE is what broke the truth, that gets flagged for a Touch-Up run instead of being papered over. Both presets self-gate on what exists (no <code>.workflow</code> or <code>openspec/</code> means they simply ground in code and tests), work per-repository on multi-repo workflows, and compose with every toggle - memory, records, the Live Run Monitor - like any other preset.</p>
@@ -2276,6 +2282,7 @@ let state = {
   mcpCodeSearch: true,
   mcpDatadog: false,
   consumeRecords: true,
+  openSpecArtifacts: false,
   clarifyFirst: false,
   mcpCustom: '',
   rulesPaths: [],
@@ -2769,11 +2776,29 @@ function toggleMemory() {
 // Durable Record handlers
 function toggleDurableRecord() {
   // Superset invariant: durable cannot be on without memory. Enforce at the source.
-  if (!state.memoryEnabled) { state.durableRecord = false; return; }
+  if (!state.memoryEnabled) { clearDurableRecord(); return; }
   state.durableRecord = $('durableRecordToggle').checked;
   const af = $('artifactPathField');
   if (af) af.style.display = state.durableRecord ? 'block' : 'none';
+  const smf = $('openSpecArtifactsField');
+  if (smf) smf.style.display = state.durableRecord ? 'block' : 'none';
+  if (!state.durableRecord) {
+    // The OpenSpec artifacts ride the record's lifecycle - never on without it.
+    state.openSpecArtifacts = false;
+    const oa = $('openSpecArtifactsToggle'); if (oa) oa.checked = false;
+  }
   updateArtifactPath();
+  updatePrompt();
+  savePrefs();
+}
+
+function toggleOpenSpecArtifacts() {
+  if (!state.durableRecord) {
+    state.openSpecArtifacts = false;
+    const cb = $('openSpecArtifactsToggle'); if (cb) cb.checked = false;
+    return;
+  }
+  state.openSpecArtifacts = $('openSpecArtifactsToggle').checked;
   updatePrompt();
   savePrefs();
 }
@@ -2789,18 +2814,27 @@ function onArtifactPathInput() {
 // Callers are responsible for persisting (savePrefs) and re-rendering (updatePrompt).
 function clearDurableRecord() {
   state.durableRecord = false;
+  state.openSpecArtifacts = false;
   const dcb = $('durableRecordToggle');
   if (dcb) dcb.checked = false;
+  const scb = $('openSpecArtifactsToggle');
+  if (scb) scb.checked = false;
   const af = $('artifactPathField');
   if (af) af.style.display = 'none';
+  const smf = $('openSpecArtifactsField');
+  if (smf) smf.style.display = 'none';
 }
 
 // Reflect state.durableRecord / state.artifactPath into the UI (restore/load/reset).
 function syncDurableUI() {
   const dcb = $('durableRecordToggle');
   if (dcb) dcb.checked = !!state.durableRecord;
+  const scb = $('openSpecArtifactsToggle');
+  if (scb) scb.checked = !!state.openSpecArtifacts;
   const af = $('artifactPathField');
   if (af) af.style.display = state.durableRecord ? 'block' : 'none';
+  const smf = $('openSpecArtifactsField');
+  if (smf) smf.style.display = state.durableRecord ? 'block' : 'none';
   const ai = $('artifactPathInput');
   if (ai) ai.value = state.artifactPath || '';
   updateArtifactPath();
@@ -2876,6 +2910,7 @@ function savePrefs() {
       effort: state.effort,
       memoryEnabled: state.memoryEnabled,
       durableRecord: state.durableRecord,
+      openSpecArtifacts: state.openSpecArtifacts,
       artifactPath: state.artifactPath,
       appSourcePath: $('appSourcePath') ? $('appSourcePath').value : '',
       appSourceBranch: $('appSourceBranch') ? $('appSourceBranch').value : '',
@@ -2926,6 +2961,7 @@ function restorePrefs() {
     // Durable Record (optional; only meaningful when memory is on)
     state.artifactPath = typeof p.artifactPath === 'string' ? p.artifactPath : '';
     state.durableRecord = !!p.durableRecord && state.memoryEnabled;
+    state.openSpecArtifacts = !!p.openSpecArtifacts && state.durableRecord;
     syncDurableUI();
     if (p.appSourcePath && $('appSourcePath')) $('appSourcePath').value = p.appSourcePath;
     if (p.appSourceBranch && $('appSourceBranch')) $('appSourceBranch').value = p.appSourceBranch;
@@ -3259,6 +3295,7 @@ function serializeWorkflow() {
     repositories: state.repositories,
     memoryEnabled: state.memoryEnabled,
     durableRecord: state.durableRecord,
+    openSpecArtifacts: state.openSpecArtifacts,
     artifactPath: state.artifactPath,
     canvas: {
       nodes: JSON.parse(JSON.stringify(state.nodes)),
@@ -3324,6 +3361,7 @@ function deserializeWorkflow(data) {
   // Restore Durable Record (optional; superset of memory, so gated on it)
   state.artifactPath = typeof data.artifactPath === 'string' ? data.artifactPath : '';
   state.durableRecord = !!data.durableRecord && state.memoryEnabled;
+  state.openSpecArtifacts = !!data.openSpecArtifacts && state.durableRecord;
   syncDurableUI();
   renderRepoRows();
   updateTransform();
@@ -4001,7 +4039,7 @@ function genDurableRecordProtocol(fmt) {
   p.push('');
   p.push('In addition to the ephemeral memory above, maintain ONE persistent, human-readable record for this workflow. The memory files are agent scratch state (under `~/.claude/`); this record is durable: it is the handoff document while work is in progress and the committable artifact when work is done.');
   p.push('');
-  p.push('**The durable system is EXACTLY three surfaces**: this one record per change/capability, the `.workflow/_index.md` breadcrumb index, and the `.workflow/_timeline.md` line. Never create any other durable document - no specs/ folder, no reports/, no companion files. The machine-readable fence and the Current behavior section live INSIDE the record; the Archive is a SECTION of `_index.md`, not a file.');
+  p.push('**The durable system is EXACTLY three surfaces**: this one record per change/capability, the `.workflow/_index.md` breadcrumb index, and the `.workflow/_timeline.md` line. Never create any other durable document - no specs/ folder, no reports/, no companion files.' + (state.openSpecArtifacts ? ' ONE sanctioned exception is active in this run: the faithful OpenSpec artifacts (step d2) - a change under `openspec/changes/` archived at finalize, and delta-applied specs under `openspec/specs/`, owned by the team once written.' : '') + ' The machine-readable fence and the Current behavior section live INSIDE the record; the Archive is a SECTION of `_index.md`, not a file.');
   p.push('');
   p.push('**Record grain: ONE record per unit of work** - the change you would ship or commit as one. When the work has multiple parts or phases, they become SECTIONS of the one record (and sub-items of its checklist), never sibling records. Create a second record only for a genuinely separate unit of work, and give each unit exactly one `_index.md` entry and one `_timeline.md` line.');
   p.push('');
@@ -4047,6 +4085,7 @@ function genDurableRecordProtocol(fmt) {
   p.push('- The ORCHESTRATOR owns the record. The orchestrator is the top-level agent that drives this workflow and spawns its steps - ' + orchestratorIdentity(fmt) + ' - and it exists even when there is no named Planner step (for example a bug-fix workflow of Investigator -> Fixer -> Tester). It creates the record at kickoff, runs any up-front gates (clarify, grounding) before the first step, folds each step\'s findings in as they report back, and finalizes the record at the end. Individual steps amend the sections their own work touches.');
   p.push('- For parallel steps: fan-out agents write findings to the ephemeral memory, NOT to this record, to avoid write races on the shared document; the agent that joins or synthesizes folds the relevant findings into this record.');
   p.push('- Create it at kickoff, before you spawn Step 1, with the H1 title, the `awd:record` fence (status `current` from birth - the record exists because this work is happening), a provisional Current behavior line when the capability already exists (what it does TODAY, refined as the work lands; omit for greenfield until there is behavior to state), the Why and scope, the initial Requirements and Success criteria drawn from the work item (requirement scenarios filled in as the spec is understood; verifying-test names added once tests are written), the full granular Task checklist derived from the plan (one box per discrete verifiable step), the History section born with its single created line (`- YYYY-MM-DD: created (by {slug})`), and the Built-with provenance line (the workflow name and its agent roles are known up front). Mirror the checklist into the memory directory\'s `tasks.md` at the same moment (workflow memory is on whenever this record is kept): the ephemeral live-progress projection - this record stays canonical. Run the Spec quality check before implementation begins.');
+  if (state.openSpecArtifacts) p.push('- **OpenSpec artifacts kickoff (enabled for this run)**: at the same kickoff moment, ALSO create `openspec/changes/{change-slug}/` - `proposal.md` (the why and what), `tasks.md` mirroring the record\'s task checklist as plain checkboxes, and `design.md` where the repository\'s changes carry one - shaped by the repository\'s own `openspec/` conventions (its existing files always outrank). Tick the change\'s tasks.md as tasks complete during the run, and feed design.md as decisions land - an interrupted run must leave an honest in-flight change, not nothing. If an ACTIVE change for this same slug already exists, that is an earlier interrupted attempt of THIS work: resume and update it, never create a duplicate. Your own run\'s change is working state - the grounding rule about coordinating around active changes applies to OTHER work\'s changes, never your own. Finalize applies and archives it (step d2).');
   p.push('- Keep the minute-to-minute step progress (which agent/step is currently running) in the Current state / next-action scaffolding, NOT in the Built-with line or the Task checklist - it is transient and is removed on commit, whereas the Built-with provenance is durable and stays.');
   p.push('- Keep it CURRENT as work progresses. Overwrite the state / next-action section each update (do not just append to it) so that at any moment it is enough for another engineer or agent to resume. Append to the decisions and checklist sections as they grow.');
   p.push('### KEEP CURRENT (the orchestrator runs this after EVERY step, before spawning the next - enforced)');
@@ -4063,10 +4102,11 @@ function genDurableRecordProtocol(fmt) {
   p.push('- (a) Fold in any READ-ONLY steps\' findings. A step with no write access (for example a Reviewer running read-only) cannot amend the record itself, so the orchestrator records that step\'s verdict and ticks its checklist box on its behalf.');
   p.push('- (b) Confirm each Requirement scenario names its verifying test, and re-confirm the Spec quality check passes.');
   p.push('- (c) Fill in the Outcome, mark the checklist done, and capture the final decisions plus the branch/PR links. Complete the `awd:record` fence: `files` lists what the change actually touched, `verify` mirrors the exact commands from the Verify section, and the status is accurate. Rewrite Current behavior one last time so it reads as the present-tense truth of what shipped. Make sure History covers this run: a new record\'s created line already does; when updating a record from a prior run, append the amendment line now. If this run amended ANOTHER record\'s Current behavior, append a one-line History entry there and re-check that record\'s `_index.md` intent line. Write the `Grounds on / touches:` line in Links from the records the run actually read and amended. If the run is emitting an `awd:run` run-report fence, copy the same fence into this record as one more block (inside THIS record - never a separate file) so the run telemetry survives with the flywheel doc.');
-  p.push('- (d) Write or update this record\'s entry in the `.workflow/_index.md` breadcrumb index (see Durable Record Index), AND prepend a one-line entry to the chronological `.workflow/_timeline.md` (see Durable Record Index). Add the Contents index if the record grew long.');
+  p.push('- (d) Write or update this record\'s entry in the `.workflow/_index.md` breadcrumb index (see Durable Record Index), AND prepend a one-line entry to the chronological `.workflow/_timeline.md` (see Durable Record Index). Add the Contents index if the record grew long.')
+  if (state.openSpecArtifacts) p.push('- (d2) **OpenSpec artifacts (enabled for this run - FAITHFUL, team-committable)**: this run also leaves first-class OpenSpec artifacts, indistinguishable from OpenSpec-native work, for teams whose repos commit `openspec/` and not `.workflow/`. Never stamp them as generated and never point them at the record - they stand on their own, hand-edits to them are team truth, and future runs (ours and OpenSpec\'s) ground on them as normal OpenSpec documents. The change under `openspec/changes/{change-slug}/` was created at kickoff and kept current during the run (see the kickoff step); its spec deltas are written the way this repository\'s other changes express them (existing `openspec/` files ALWAYS outrank the shapes described here). NOW, AT FINALIZE, apply the change to `openspec/specs/{capability-slug}/spec.md` as DELTAS: create or modify ONLY the `### Requirement:` sections (with their `#### Scenario:` Given/When/Then blocks) your change touches, preserving every other line of an existing spec verbatim - a finalize merges into team-owned specs, it never rewrites them. Then archive the change exactly the way this repository archives changes (openspec\'s convention moves it under the changes archive with a date prefix; when the `openspec` CLI is available, prefer its own archive and validate commands and treat a validation failure as a completion-gate failure). Decisions with rejected alternatives, verify evidence, the owner-tagged checklist, and history remain in the record; the OpenSpec artifacts carry what OpenSpec carries. Multi-repo: the full lifecycle runs in each repository whose record you wrote.');
   p.push('- (e) Make it the best durable artifact - fill the gaps a cold reader would hit: add any Success criterion, assumption, Risk, follow-up, or navigational aid the work revealed but no single step recorded, and strengthen the Why or a decision\'s rationale if it is thinner than a future maintainer would need. Adding durable context here is as valid as removing transcript noise.');
   p.push('- (f) BEFORE stripping, sweep the sections you are about to remove for stranded durable content - manual verification procedures, decisions, gotchas that an agent parked in Resume / handoff - and MOVE each to its durable home (procedures for unrun checks into Verify, with their cross-references updated), because stripping deletes whatever remains. Then strip the in-progress scaffolding (the "Current state / next action" line and the "Resume / handoff" section) and compress the transcript accretion - distilling rather than deleting anything that tells a future reader why a choice was made or shows the work was independently checked. The committed artifact is the requirements (with verifying tests), the approach and decisions, the completed checklist, the Verify results, and the outcome. In short, the orchestrator compresses Verify and Gotchas from running commentary into the durable facts: collapse a verbose per-agent verdict to a single durable line - that an independent review or verification ran, and what it confirmed or changed - rather than dropping it (the fact the work was adversarially checked is durable signal, not noise); collapse duplicate scan-line restatements to one line each; soften line-number references to durable anchors (the symbol, function, or section name, which does not rot as the file changes); distill any transient implementation scaffolding (paste-ready strings, a pre-implementation test plan, step-by-step working notes) into the durable section it belongs in - the file map into Surface area, the decisions into Approach, the realized tests into Verify - and drop whatever the committed code now carries verbatim, so no paste-ready working scaffolding survives; and keep the final facts plus the Built-with provenance line. Compress the transcript accretion, not the reasoning: the committed record must still read like an authored spec (as clean and complete as an OpenSpec or spec-kit document), so a maintainer reading it cold can see what changed and why; never compress away the Why, the decisions and their rejected alternatives, or the durable gotchas. When a detail sits between noise and context, keep it in distilled form - a future agent re-deriving the why costs far more than a couple of retained lines.');
-  p.push('- (g) Completion gate - finalize is not done until ALL of these are true: no in-progress scaffolding remains (no "Current state / next action", no "Resume / handoff") AND nothing durable was stranded in a stripped section (manual procedures for unrun checks now live in Verify, with cross-references intact); the status line reads finalized or committable, NOT "in progress"; every Task checklist item is ticked or explicitly marked deferred with a reason; the Outcome is filled; each Requirement scenario names its verifying test; no bare line numbers remain (every code reference is a durable anchor - a symbol, function, or section name); no transient or paste-ready scaffolding remains (it has been distilled into the durable sections or dropped where the committed code now carries it); the `awd:record` fence is present with a status consistent with the checklist and record body; the Current behavior section reads as present-tense truth of the shipped behavior; the History section is present and its latest line covers this run (the created line for a new record, an amendment line for an update - including a line in any OTHER record this run amended); the append-only sections were never rewritten, only extended (see Section mutability rules); the Found bugs section is consistent with the step handoffs (every deferred defect a step reported appears there, none invented)' + (hasLedger ? '; the Verification ledger is consistent with the verifying steps\' handoffs (every reported act appears, blocked required items visibly unticked with their reasons)' : '') + '; the fence\'s `verify` commands were ACTUALLY run this session with their real results in the Verify section; no companion documents were created (record + index + timeline are the only durable surfaces); and the `.workflow/_index.md` capability entry is written AND a one-line entry is prepended to the chronological `.workflow/_timeline.md`. This applies to UPDATES of an existing record too: an Update section always gets its own `_timeline.md` line, and the record\'s `_index.md` intent line is REWRITTEN whenever the update changes what a scanner should know - the timeline is the history lens, the index line is current truth, and a stale index line silently hides the newest capability from every future grounding scan. If any is false, finalize is incomplete - finish it. A half-finalized record is a failure: it misleads a future reader into thinking the work is still underway. There is no external validator for this system - the agent IS the linter, and this gate is the validation.');
+  p.push('- (g) Completion gate - finalize is not done until ALL of these are true: no in-progress scaffolding remains (no "Current state / next action", no "Resume / handoff") AND nothing durable was stranded in a stripped section (manual procedures for unrun checks now live in Verify, with cross-references intact); the status line reads finalized or committable, NOT "in progress"; every Task checklist item is ticked or explicitly marked deferred with a reason; the Outcome is filled; each Requirement scenario names its verifying test; no bare line numbers remain (every code reference is a durable anchor - a symbol, function, or section name); no transient or paste-ready scaffolding remains (it has been distilled into the durable sections or dropped where the committed code now carries it); the `awd:record` fence is present with a status consistent with the checklist and record body; the Current behavior section reads as present-tense truth of the shipped behavior; the History section is present and its latest line covers this run (the created line for a new record, an amendment line for an update - including a line in any OTHER record this run amended); the append-only sections were never rewritten, only extended (see Section mutability rules); the Found bugs section is consistent with the step handoffs (every deferred defect a step reported appears there, none invented)' + (hasLedger ? '; the Verification ledger is consistent with the verifying steps\' handoffs (every reported act appears, blocked required items visibly unticked with their reasons)' : '') + '; the fence\'s `verify` commands were ACTUALLY run this session with their real results in the Verify section; no companion documents were created (record + index + timeline are the only durable surfaces)' + (state.openSpecArtifacts ? ' beyond the sanctioned OpenSpec artifacts, whose change is archived and whose spec deltas are applied for this capability' : '') + '; and the `.workflow/_index.md` capability entry is written AND a one-line entry is prepended to the chronological `.workflow/_timeline.md`. This applies to UPDATES of an existing record too: an Update section always gets its own `_timeline.md` line, and the record\'s `_index.md` intent line is REWRITTEN whenever the update changes what a scanner should know - the timeline is the history lens, the index line is current truth, and a stale index line silently hides the newest capability from every future grounding scan. If any is false, finalize is incomplete - finish it. A half-finalized record is a failure: it misleads a future reader into thinking the work is still underway. There is no external validator for this system - the agent IS the linter, and this gate is the validation.');
   p.push('');
   p.push('### Where it lives');
   p.push('- **Single repository**: write it to `' + apath + '` in that repo so it versions with the code (the change to this file lands in the same PR as the implementation).');

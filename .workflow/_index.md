@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## openspec-artifacts
+
+- record: .workflow/openspec-artifacts.md
+- intent: an opt-in under the durable-record toggle for teams that commit `openspec/` and not `.workflow/` - the run leaves FAITHFUL OpenSpec artifacts: a change under `openspec/changes/{change-slug}/` (proposal/tasks/design, created at work start, archived at finalize per the repo's convention, CLI validate as a gate item when available) and `openspec/specs/` updated by DELTA (touched Requirement sections only, existing content verbatim). Unstamped by design - team truth once written; the record stays the run's working spine. Strict subset of durableRecord; doctrine + gate carry the sanctioned-exception carve-outs.
+- files: index.html (state flag, nested toggle + handlers + persistence, genDurableRecordProtocol step d2 + carve-outs, help modal), tests.html (Suite 12j), README.md, TECHNICAL.md
+- status: current | date: 2026-09-03 | note: 1710 -> 1713; redesigned same-day from a stamped spec-only mirror to the faithful lifecycle.
+
 ## touch-up-presets
 
 - record: .workflow/touch-up-presets.md
