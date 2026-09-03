@@ -30,7 +30,7 @@ All data stays in your browser (localStorage). Nothing is sent anywhere. Your re
 
 1. **Paste your requirements** - a Jira URL, user story, task description, or any freeform text. Jira links are detected automatically and resolved via the Atlassian MCP server. Input validation catches bare ticket keys and guides you to paste the full URL
 2. **Refine & plan** (optional) - click **Generate Refine Prompt** to have Claude interview you and sharpen vague requirements, then **Generate Plan Prompt** to generate a codebase-aware implementation blueprint
-3. **Build a workflow** - auto-generate from your input, choose from 14 curated presets, or build one manually from the node palette
+3. **Build a workflow** - auto-generate from your input, choose from the curated presets, or build one manually from the node palette
 4. **Configure each agent** - model, tools, custom prompts (or use built-in templates), max turns
 5. **Copy the prompt** from 5 output formats optimized for different execution environments
 6. **Save & load workflows** by name, export/import as `.json` files for sharing
@@ -161,7 +161,7 @@ CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 claude --add-dir ../repo-b ../rep
 
 ## Built-in Presets
 
-Sixteen ready-made pipelines. Each one is a strong opinion you can override.
+Nineteen ready-made pipelines. Each one is a strong opinion you can override.
 
 - **Feature Build** - Planner > (Skeptic reviews the plan) > Implementer > Reviewer > Decision gate > Tester
 - **Bug Fix** - Investigator > Fixer > Tester > Verification gate
@@ -180,6 +180,11 @@ Sixteen ready-made pipelines. Each one is a strong opinion you can override.
 - **Performance** - Planner > Profiler > Optimizer > Reviewer > Decision gate > Tester
 - **Testing** - Planner > Code Analyzer > Test Suite Writer > Reviewer > Decision gate > Tester
 - **Data Migration** - Planner > Researcher > Migration Engineer > Reviewer > Decision gate > Tester
+
+**Amend an existing deliverable** - a separately-labeled group pinned to the bottom of the preset list (always visible, below the More presets fold). Every other preset starts new work; these two change work that already shipped and keep the durable artifacts telling the truth about it:
+
+- **Touch-Up** - Touch-Up Scoper (grounds in the existing durable record or `openspec/` spec, defines the smallest delta plus the behaviors that must NOT move) > Amender > Delta Reviewer (gates on regressions; lists every artifact statement the change made untrue) > Decision gate > Artifact Steward (amends the record IN PLACE with a History line, refreshes the index and timeline, updates openspec specs - never a new record for a tweak). For post-run adjustments, PR feedback, and small behavior changes to a delivered capability - including one delivered by SDD/OpenSpec tooling.
+- **Record Sync** - Drift Auditor (proves with file:line evidence where records or specs stopped matching the working tree; refute-first, so unproven drift never makes the list) > Artifact Steward > Decision gate. Artifacts only - no code changes by contract; where the CODE broke the truth, the item is flagged for a Touch-Up run instead of being papered over. Both presets self-gate on which artifact surfaces exist and work per-repository on multi-repo workflows. Picking either preset retargets the Requirements box to ask for the change plus a target hint (capability name, record slug, spec or change name, ticket, or files) - the Scoper treats a named target as its primary signal and verifies it against the index.
 
 ## Node Types & Configuration
 

@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## touch-up-presets
+
+- record: .workflow/touch-up-presets.md
+- intent: an "Amend an existing deliverable" preset group - Touch-Up (Scoper grounds in the existing record/openspec spec and defines the smallest delta + a Must Not Move list; Amender; Delta Reviewer gates on regressions and names every artifact statement made untrue; Artifact Steward amends the record IN PLACE with a History line, index/timeline refresh, and openspec updates - never a new record for a tweak) and Record Sync (Drift Auditor proves artifact drift with file:line evidence, refute-first; Steward amends artifacts only - no code changes by gate contract; broken-truth items flagged for a Touch-Up run). Five self-gating craft templates; per-repository on multi-repo workflows; composes with every toggle.
+- files: index.html (PROMPTS x5, presets touchup + record_sync, sidebar group + CSS, help modal), tests.html (Suite 12i), README.md
+- status: current | date: 2026-08-26 | note: 1694 -> 1706.
+
 ## live-run-monitor
 
 - record: .workflow/live-run-monitor.md

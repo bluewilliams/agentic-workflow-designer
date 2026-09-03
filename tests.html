@@ -6735,6 +6735,120 @@ describe('Live Run Monitor emissions', () => {
   });
 });
 
+// ─── Suite 12i: Amend presets (Touch-Up + Record Sync: amend an existing deliverable) ────
+describe('Amend presets: Touch-Up and Record Sync', () => {
+  beforeEach(() => { resetState(); });
+  it('touchup preset: scoper -> amender -> reviewer -> gate -> steward, revise loops to the Amender', () => {
+    win.loadPreset('touchup');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+    const st = win.state.nodes.find(n => n.label === 'Artifact Steward');
+    expect(st.config.agentType).toBe('writer');
+    expect(st.config.prompt).toBe(win.PROMPTS.artifactSteward);
+    expect(st.config.tools.join(',')).toBe(win.WRITER_TOOL_DEFAULTS.technical.join(','));   // pristine set: type/style swaps keep working
+    const d = win.state.nodes.find(n => n.type === 'decision');
+    const a = win.state.nodes.find(n => n.label === 'Amender');
+    const revise = win.state.connections.find(c => c.from === d.id && c.to === a.id);
+    expect(!!revise).toBe(true);                                     // the gate loops back to the Amender
+    const approved = win.state.connections.find(c => c.from === d.id && c.to === st.id);
+    expect(!!approved).toBe(true);                                   // the steward runs only after approval
+  });
+  it('record_sync preset: auditor -> steward -> gate, artifacts-only contract in the gate condition', () => {
+    win.loadPreset('record_sync');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(2);
+    const d = win.state.nodes.find(n => n.type === 'decision');
+    expect(d.config.condition).toContain('no code or test files were modified');
+    const au = win.state.nodes.find(n => n.label === 'Drift Auditor');
+    expect(au.config.prompt).toBe(win.PROMPTS.driftAuditor);
+  });
+  it('amendment doctrine rides the prompts: amend in place, never a new record for a tweak, supersede as escalation', () => {
+    expect(win.PROMPTS.touchupScoper).toContain('AMENDS the existing record in place');
+    expect(win.PROMPTS.touchupScoper).toContain('never mints a new record for a tweak');
+    expect(win.PROMPTS.artifactSteward).toContain('Never create a new record for a tweak');
+    expect(win.PROMPTS.artifactSteward).toContain('History line');
+    expect(win.PROMPTS.artifactSteward).toContain('explicit, justified escalation');
+  });
+  it('self-gating: every artifact reference is conditional on the surface existing (works on greenfield repos)', () => {
+    [win.PROMPTS.touchupScoper, win.PROMPTS.driftAuditor].forEach(p => {
+      expect(p).toContain('If a record index exists');               // conditional, never assumed (canonical phrasing)
+      expect(p).toContain('If neither a record index nor an `openspec/` directory exists');
+      expect(p).toContain('openspec/');
+    });
+    expect(/[Ww]here `?\.workflow/.test(win.PROMPTS.artifactSteward)).toBe(true);
+    expect(win.PROMPTS.artifactSteward).toContain('skip silently what does not');
+  });
+  it('the amend grounding is COMPOSED from groundingLookupSteps verbatim - protocol edits flow in, copies cannot drift', () => {
+    const g = win.groundingLookupSteps();
+    [g.scanIndex, g.supersede, g.openSpecDocs, g.multiRepo, g.greenfield].forEach(step => {
+      expect(win.PROMPTS.touchupScoper.indexOf(step) !== -1).toBe(true);
+    });
+    [g.scanIndex, g.openSpecDocs, g.multiRepo, g.greenfield].forEach(step => {
+      expect(win.PROMPTS.driftAuditor.indexOf(step) !== -1).toBe(true);
+    });
+    // The step-level render defers to a workflow-level scan that already ran.
+    expect(win.PROMPTS.touchupScoper).toContain('start from those results');
+  });
+  it('the scoper locates records hint-first, then by surface (files facets + timeline + git log), never by name-guessing', () => {
+    expect(win.PROMPTS.touchupScoper).toContain('by SURFACE, not by name-guessing');
+    expect(win.PROMPTS.touchupScoper).toContain('is the PRIMARY signal');       // a user-named target wins
+    expect(win.PROMPTS.touchupScoper).toContain('verify it against the index'); // ...but is verified, not trusted blind
+    expect(win.PROMPTS.touchupScoper).toContain('files facets');
+    expect(win.PROMPTS.touchupScoper).toContain('git log');
+    expect(win.PROMPTS.touchupScoper).toContain('when none matches, say so plainly');
+  });
+  it('both amend presets retarget the Requirements placeholder to ask for the target-deliverable hint', () => {
+    const el = win.document.getElementById('storyInput');
+    el.value = '';
+    win.updateStoryPlaceholder('touchup');
+    expect(el.placeholder).toContain('already-delivered work');
+    expect(el.placeholder).toContain('record slug from .workflow/_index.md');
+    expect(el.placeholder).toContain('openspec spec or change name');
+    win.updateStoryPlaceholder('record_sync');
+    expect(el.placeholder).toContain('Scope to reconcile');
+    expect(el.placeholder).toContain('record slugs, spec names, or files to start from');
+    win.updateStoryPlaceholder('feature');   // restore a standard placeholder for later suites
+  });
+  it('openspec amendment knows the anatomy: specs are current truth, delivered changes get archived, none manufactured', () => {
+    expect(win.PROMPTS.artifactSteward).toContain('CURRENT TRUTH');
+    expect(win.PROMPTS.artifactSteward).toContain('openspec/changes/');
+    expect(win.PROMPTS.artifactSteward).toContain('never leave an active change contradicting the spec');
+    expect(win.PROMPTS.artifactSteward).toContain('do not manufacture a proposal after the fact');
+    expect(win.PROMPTS.driftAuditor).toContain('completed-but-still-active change is drift');
+  });
+  it('multi-repo: all four crafts extend to every repository in scope', () => {
+    expect(win.PROMPTS.touchupScoper).toContain('run this grounding scan in EACH of them');   // canonical multiRepo step
+    expect(win.PROMPTS.touchupReviewer).toContain('each touched repo');
+    expect(win.PROMPTS.artifactSteward).toContain('EACH repository the change touched');
+    expect(win.PROMPTS.driftAuditor).toContain('run this grounding scan in EACH of them');
+  });
+  it('lane discipline: the steward never edits code, the auditor flags broken-truth items instead of canonizing them', () => {
+    expect(win.PROMPTS.artifactSteward).toContain('ARTIFACTS ONLY');
+    expect(win.PROMPTS.artifactSteward).toContain('never code, never tests');
+    expect(win.PROMPTS.driftAuditor).toContain('canonize the bug');
+    expect(win.PROMPTS.driftAuditor).toContain('only PROVEN drift makes the list');
+  });
+  it('touch-up craft: minimal delta, Must Not Move regression contract, materiality bars on the reviewer', () => {
+    expect(win.PROMPTS.touchupScoper).toContain('Must Not Move');
+    expect(win.PROMPTS.touchupAmender).toContain('Never weaken an existing assertion');
+    expect(win.PROMPTS.touchupAmender).toContain('the delivered capability, adjusted');
+    expect(win.PROMPTS.touchupReviewer).toContain('only Critical or High findings gate');
+    expect(win.PROMPTS.touchupReviewer).toContain('always at least High');
+  });
+  it('the sidebar carries the labeled amend group with both presets, LAST in the list whether More is open or closed', () => {
+    const label = win.document.querySelector('.preset-group-label');
+    expect(!!label).toBe(true);
+    expect(label.textContent).toBe('Amend an existing deliverable');
+    expect(!!win.document.querySelector('[data-preset="touchup"]')).toBe(true);
+    expect(!!win.document.querySelector('[data-preset="record_sync"]')).toBe(true);
+    const more = win.document.getElementById('presetMore');
+    expect(!!more.querySelector('[data-preset="touchup"]')).toBe(false);   // OUTSIDE the collapsible: always visible
+    const list = win.document.querySelector('.preset-list').innerHTML;
+    // The group sits after the expandable block, so expanding More never splits the
+    // start-work presets around it - the amend group is the list's stable bottom.
+    expect(list.indexOf('preset-group-label') > list.indexOf('id="presetMore"')).toBe(true);
+    expect(list.indexOf('data-preset="record_sync"') > list.indexOf('data-preset="delivery_swarm"')).toBe(true);
+  });
+});
+
 // ─── Suite 12e: Agent craft batch (found-defect protocol, spot-mutation, verifier
 // strengthening, Verification ledger, Found bugs, polish) ─────────────────────
 describe('Agent craft batch', () => {
