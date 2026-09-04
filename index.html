@@ -3771,7 +3771,7 @@ function genMemoryProtocol() {
   p.push('**2. DURING turn - Write progress to disk:**');
   p.push('- Your FIRST write comes BEFORE your first action: on turn one, open `@{your-slug}.md` with an active entry (`## @{your-slug} | {ISO-timestamp} | \u{1F504}active` plus one `d:` line naming your mission). A silent start is invisible to the run monitor and indistinguishable from a failed spawn.');
   p.push('- After each significant action (file created, decision made, blocker hit), append a TOON entry to `@{your-slug}.md`');
-  p.push('- Finished one of your planned tasks? Append `t: {task, named as the checklist names it} done` to `@{your-slug}.md` at that moment - one line per task as it completes, never a batch at the end. The orchestrator confirms these into `tasks.md`; your `t:` lines are the live provisional signal.');
+  p.push('- Finished one of your planned tasks? Append `t: {task} done` to `@{your-slug}.md` at that moment - COPY the checkbox text from tasks.md exactly (the live progress board matches by text; a paraphrase or a "Step N" summary matches nothing), one line per task as it completes, never a batch at the end. The orchestrator confirms these into `tasks.md`; your `t:` lines are the live provisional signal.');
   p.push('- **Anything not written to disk is permanently lost when compaction occurs** - write early, write often');
   p.push('');
   p.push('**3. END of every turn - Breadcrumb:**');
@@ -3845,7 +3845,7 @@ function genAgentMemoryPreamble(agentLabel, slug) {
   p.push('   - **First turn of a fresh run**: no breadcrumb exists yet - that is expected, not a compaction signal; if the memory files hold no prior entries either, you are starting fresh - proceed with your task');
   p.push('2. Read `' + path + 'shared.md` for upstream handoffs addressed to you (`→ @' + slug + ':`)');
   p.push('3. BEFORE your first action, open `' + path + '@' + slug + '.md` with an active entry (`## @' + slug + ' | {ISO-timestamp} | \u{1F504}active` plus one `d:` line naming your mission) - a silent start is invisible to the run monitor and indistinguishable from a failed spawn');
-  p.push('4. As you work: the moment you finish one of your brief\'s planned tasks, append `t: {task, named as your brief names it} done` to `' + path + '@' + slug + '.md` - one line per task at completion, never a batch at the end (these provisional ticks feed the run\'s live progress surface)');
+  p.push('4. As you work: the moment you finish one of your brief\'s planned tasks, append `t: {task} done` to `' + path + '@' + slug + '.md` - COPY the task\'s checkbox text from `' + path + 'tasks.md` exactly (the live progress board matches by text; a paraphrase matches nothing), one line per task at completion, never a batch at the end (these provisional ticks feed the run\'s live progress surface)');
   return p.join('\n');
 }
 
@@ -10573,6 +10573,7 @@ function genAgentTeams() {
   p.push('Use TeamCreate to set up the team, then spawn teammates via Task tool with `team_name`.');
   p.push('Use the shared task list (TaskCreate/TaskUpdate) to assign work and track progress.');
   p.push('Pass context between dependent steps explicitly - teammates do NOT share state.');
+  if (state.memoryEnabled) p.push('Each step below carries that teammate\'s own Memory blocks (READ FIRST / DURING / WRITE LAST). Include them VERBATIM in the brief you spawn the teammate with - teammates never see this lead brief, so those blocks are the ONLY way the memory rules reach them.');
   p.push('');
 
   requirementsBlock(story, '## Requirements').forEach(l => p.push(l));
@@ -10628,6 +10629,8 @@ function genAgentTeams() {
       lines.push(pre + '  1. Check for breadcrumb `<!-- WF_BC: ' + _wf + ' @' + _slug + ' ... -->` - if missing, read `' + getMemoryPath() + 'shared.md` and `@' + _slug + '.md` immediately');
       lines.push(pre + '     (First turn of a fresh run: no breadcrumb exists yet - that is expected, not compaction; if the files hold no prior entries either, start fresh.)');
       lines.push(pre + '  2. Read `' + getMemoryPath() + 'shared.md` for upstream handoffs addressed to `@' + _slug + '`');
+      lines.push(pre + '  3. BEFORE the first action, open `' + getMemoryPath() + '@' + _slug + '.md` with an active entry (`## @' + _slug + ' | {ISO-timestamp} | \u{1F504}active` plus one `d:` line naming the mission) - a silent start is invisible to the run monitor');
+      lines.push(pre + '  4. DURING work: the moment a task completes, append `t: {task} done` to `' + getMemoryPath() + '@' + _slug + '.md` - COPY the checkbox text from `' + getMemoryPath() + 'tasks.md` exactly (the live progress board matches by text; a paraphrase matches nothing), one line per task, never a batch');
     }
 
     // Task description - always comprehensive via getEffectivePrompt fallback
@@ -10753,7 +10756,7 @@ function genAgentTeams() {
   p.push('1. Create the team first with TeamCreate, then spawn teammates via Task tool with `team_name`');
   p.push('2. Use TaskCreate to create a task for each step, then assign with TaskUpdate `owner`');
   p.push('3. Pass relevant context between dependent steps explicitly (teammates do NOT share memory)');
-  p.push('4. When a teammate completes, review their output quality before spawning the next step');
+  p.push('4. When a teammate completes, review their output quality before spawning the next step' + (state.memoryEnabled ? ' - read its @{slug}.md handoff and immediately tick each task its report confirms into tasks.md (individual boxes, never a batch): the live progress board renders that file, and a lead that only ticks at gates shows a frozen board' : ''));
   p.push('5. At decision gates, evaluate the output and either proceed or re-assign with feedback');
   p.push('6. If a teammate gets stuck or produces poor output, provide guidance and re-scope');
   p.push('7. When all steps complete, send shutdown_request to all teammates and report final status');
@@ -12571,8 +12574,9 @@ function parseTaskChecklist(text) {
   return out;
 }
 // Per-agent provisional ticks: `t: {task} done` lines appended the moment a task completes.
-// SYNC CONTRACT: this format is emitted at three sites (genMemoryProtocol section 2,
-// genAgentMemoryPreamble step 4, and tasks.md tick discipline in the orchestrator variants)
+// SYNC CONTRACT: this format is emitted at four sites (genMemoryProtocol section 2,
+// genAgentMemoryPreamble step 4, the Teams per-teammate DURING rule in buildTeammateBlock,
+// and tasks.md tick discipline in the orchestrator variants)
 // - a format change there must land here, or the Monitor silently stops matching ticks.
 function parseProvisionalTicks(text) {
   const out = [];

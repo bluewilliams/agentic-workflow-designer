@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-09-03 - live-run-monitor (update) - teams-run diagnosis: the board was faithful (stale file, not stale view); emissions fixed at the true site (per-teammate Memory blocks gain announce-at-start + the DURING t: rule with source path, relayed VERBATIM by the lead; tick-on-teammate-completion in the lead loop; exact-copy t: text everywhere). 1713 -> 1714 - .workflow/live-run-monitor.md
 2026-09-03 - openspec-artifacts - opt-in FAITHFUL OpenSpec artifacts under the durable toggle (change lifecycle created at work start and archived at finalize, specs updated by delta, unstamped, CLI validate as a gate item); redesigned same-day from a stamped spec-only mirror on director direction. 1710 -> 1713 - .workflow/openspec-artifacts.md
 2026-08-26 - model-label-floating - unnumbered labels for the newest model of each family (Fable/Opus/Sonnet/Haiku float with the base alias; numbered = pinned legacy), naming-rule invariant test. 1707 -> 1708 - .workflow/model-label-floating.md
 2026-08-26 - live-run-monitor (update) - authoritative run-surface reads: the active run's direct .md files are content-read every cycle (a same-size tick with a hidden mtime change froze the board forever); silent recompute, no feed churn. 1706 -> 1707 - .workflow/live-run-monitor.md
