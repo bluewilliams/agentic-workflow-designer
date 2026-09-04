@@ -6304,6 +6304,11 @@ describe('Live Run Monitor core', () => {
     win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
     win.runMonitor.agents = { backend: 'done' };
     expect(win.monitorNodeStatus(n)).toBe('done');
+    win.render();
+    expect(!!win.document.querySelector('[data-id="' + n.id + '"] .monitor-node-live')).toBe(false);   // done: dot only, no outline pulse
+    win.runMonitor.agents = { backend: 'active' };
+    win.render();
+    expect(!!win.document.querySelector('[data-id="' + n.id + '"] .monitor-node-live')).toBe(true);    // active: the whole outline breathes
     resetState();
   });
   it('short tasks are never falsely half-ticked by a longer unrelated tick (length guard)', () => {
@@ -6643,6 +6648,31 @@ describe('Live Run Monitor core', () => {
     expect(win.runMonitor.feed.length).toBe(1);
     expect(win.runMonitor.feed[0].kind).toBe('changed');
     expect(win.runMonitor.feed[0].path).toBe('big/f0.cs');
+    win.runMonitor.timer = null;
+  });
+  it('a NEW run whose first read loses a write race becomes visible on the next poll (auto-follow never sticks on the old run)', async () => {
+    let failFirst = true;
+    function racyFile(name, text, mtime) {
+      return { kind: 'file', name, getFile: async () => ({ lastModified: mtime, size: text.length,
+        text: async () => { if (failFirst) { failFirst = false; throw new Error('NotReadableError'); } return text; } }) };
+    }
+    function okFile(name, text, mtime) {
+      return { kind: 'file', name, getFile: async () => ({ lastModified: mtime, size: text.length, text: async () => text }) };
+    }
+    const oldRun = { kind: 'directory', name: 'old-run', values: async function* () { yield okFile('tasks.md', '- [x] old work', 100); } };
+    let entries = [oldRun];
+    const parent = { kind: 'directory', name: 'mem', values: async function* () { for (const e of entries) yield e; }, queryPermission: async () => 'granted' };
+    win.runMonitor.watches = [{ handle: parent, name: 'mem', status: 'granted' }];
+    win.runMonitor.timer = 1;   // fabricated: keeps monitorStart from spawning a real interval
+    await win.monitorPoll(false);
+    expect(win.runMonitor.runBase).toBe('mem/old-run/');
+    // A NEW run appears; its tasks.md read fails once (written while being read).
+    const newRun = { kind: 'directory', name: 'new-run', values: async function* () { yield racyFile('tasks.md', '- [ ] fresh work item', 900); } };
+    entries = [oldRun, newRun];
+    await win.monitorPoll(false);   // read fails: the entry must NOT keep its fresh stat silently
+    await win.monitorPoll(false);   // re-reported, read succeeds
+    expect(win.runMonitor.texts['mem/new-run/tasks.md']).toBe('- [ ] fresh work item');
+    expect(win.runMonitor.runBase).toBe('mem/new-run/');   // auto-follow lands on the new run
     win.runMonitor.timer = null;
   });
   it('the active run surface is read authoritatively: a same-size same-mtime tick still lands (never a frozen board)', async () => {

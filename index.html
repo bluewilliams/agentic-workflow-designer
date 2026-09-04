@@ -478,7 +478,11 @@ svg.canvas{width:100%;height:100%;display:block}
 .monitor-feed .k-changed{color:#3b82f6}
 .monitor-feed .k-removed{color:#ef4444;opacity:.8}
 .monitor-dot-live{animation:monitorPulse 1.6s ease-in-out infinite}
-@media (prefers-reduced-motion: reduce){.monitor-live .beacon,.monitor-agent .dot.pulse,.monitor-task.just-changed,.monitor-dot-live{animation:none}}
+/* The RUNNING step's whole outline breathes in sync with its dot - readable at canvas
+   scale. Reduced motion gets a static blue outline instead of the animation. */
+.monitor-node-live{stroke:#3b82f6;animation:monitorNodeStroke 1.6s ease-in-out infinite}
+@keyframes monitorNodeStroke{0%,100%{stroke-width:1.5;stroke-opacity:.55}50%{stroke-width:3;stroke-opacity:1}}
+@media (prefers-reduced-motion: reduce){.monitor-live .beacon,.monitor-agent .dot.pulse,.monitor-task.just-changed,.monitor-dot-live{animation:none}.monitor-node-live{animation:none;stroke-width:2;stroke-opacity:1}}
 .monitor-tabs{display:flex;gap:4px;margin:12px 0 2px;border-bottom:1px solid var(--border);padding-bottom:6px}
 .monitor-tab{background:none;border:1px solid var(--border);color:var(--text3);border-radius:6px;
   padding:3px 10px;font-size:11px;cursor:pointer;font-family:inherit}
@@ -4350,7 +4354,12 @@ function renderNodes() {
       if (ms) {
         const mDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         mDot.setAttribute('cx', w - 8); mDot.setAttribute('cy', -4); mDot.setAttribute('r', 5);
-        if (ms === 'active') mDot.setAttribute('class', 'monitor-dot-live');   // a working agent visibly breathes
+        if (ms === 'active') {
+          mDot.setAttribute('class', 'monitor-dot-live');   // a working agent visibly breathes
+          // ...and so does the whole node: the outline pulse makes the RUNNING step
+          // readable at canvas scale, not only at dot scale.
+          shape.classList.add('monitor-node-live');
+        }
         mDot.setAttribute('fill', (typeof MONITOR_DOT !== 'undefined' && MONITOR_DOT[ms]) || '#8b95a7');
         mDot.setAttribute('stroke', 'rgba(0,0,0,.4)'); mDot.setAttribute('stroke-width', '1');
         const mT = document.createElementNS('http://www.w3.org/2000/svg', 'title');
