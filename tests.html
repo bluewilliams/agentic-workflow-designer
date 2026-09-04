@@ -6718,8 +6718,29 @@ describe('Live Run Monitor emissions', () => {
   });
   it('the per-agent provisional t: clause rides the sub-agent preamble and the shared protocol', () => {
     memOn();
-    expect(win.genSubAgents()).toContain('t: {task, named as your brief names it} done');
-    expect(win.genWorkflow()).toContain('t: {task, named as the checklist names it} done');
+    expect(win.genSubAgents()).toContain('t: {task} done');
+    expect(win.genWorkflow()).toContain('t: {task} done');
+    [win.genSubAgents(), win.genWorkflow()].forEach(out => {
+      expect(out).toContain('COPY the');                          // exact checkbox text - the board matches by text
+      expect(out).toContain('matches by text');
+    });
+  });
+  it('the Teams lead operates the board: verbatim-relay of the teammate Memory blocks and tick-on-teammate-completion', () => {
+    memOn();
+    const out = win.genAgentTeams();
+    expect(out).toContain('Include them VERBATIM in the brief you spawn the teammate with');   // the blocks are the relay payload
+    expect(out).toContain('the ONLY way the memory rules reach them');
+    expect(out).toContain('BEFORE the first action, open');              // per-teammate announce-at-start (block step 3)
+    expect(out).toContain('DURING work: the moment a task completes');   // per-teammate t: rule (block step 4)
+    expect(out).toContain('COPY the checkbox text from');
+    expect(out).toContain('immediately tick each task its report confirms into tasks.md');
+    expect(out).toContain('a lead that only ticks at gates shows a frozen board');
+    win.state.memoryEnabled = false;
+    win.state.durableRecord = false;
+    const off = win.genAgentTeams();
+    expect(off).toNotContain('Include them VERBATIM');                   // memory-gated relay
+    expect(off).toNotContain('tick each task its report confirms');     // the item-4 ternary is gated too
+    expect(off).toNotContain('DURING work: the moment a task completes');
   });
   it('agents announce themselves at start: an active entry BEFORE the first action, in preamble and protocol', () => {
     memOn();
