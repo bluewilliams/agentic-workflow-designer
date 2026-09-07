@@ -6311,12 +6311,64 @@ describe('Live Run Monitor core', () => {
     expect(!!win.document.querySelector('[data-id="' + n.id + '"] .monitor-node-live')).toBe(true);    // active: the whole outline breathes
     resetState();
   });
+  it('monitorNodeStatus never resurrects prototype members as statuses (even from duplicate labels)', () => {
+    resetState();
+    const n = win.addNode('agent', 100, 100, 'Constructor', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'c', maxTurns: 5 });
+    win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
+    win.runMonitor.agents = { backend: 'active' };
+    expect(win.monitorNodeStatus(n)).toBe(null);                         // Object.prototype.constructor is not a status
+    const n2 = win.addNode('agent', 300, 100, 'Constructor', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'c', maxTurns: 5 });
+    const map = win.buildAgentSlugMap();
+    expect(map[n.id]).toBe('constructor-1');                             // duplicate disambiguation survives the hostile label
+    expect(map[n2.id]).toBe('constructor-2');
+    resetState();
+  });
   it('short tasks are never falsely half-ticked by a longer unrelated tick (length guard)', () => {
     const merged = win.monitorMergeTasks(
       [{ text: 'plan', done: false, owner: null }, { text: 'update planning doc', done: false, owner: null }],
       ['update planning doc']);
     expect(merged[0].tier).toBe('open');          // "plan" is a substring but too short to count
     expect(merged[1].tier).toBe('provisional');
+  });
+  it('dynamic fan-out aggregation: a node whose slug hyphen-prefixes run agents pulses on any active, completes on all done', () => {
+    resetState();
+    const n = win.addNode('agent', 100, 100, 'Review', { agentType: 'reviewer', model: 'opus-5', tools: ['Read'], prompt: 'r', maxTurns: 5 });
+    win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
+    win.runMonitor.agents = { 'review-farwake': 'done', 'review-omerta': 'active', 'review-volstead': 'pending' };
+    expect(win.monitorNodeStatus(n)).toBe('active');            // any active wins the aggregate
+    win.runMonitor.agents = { 'review-farwake': 'done', 'review-omerta': 'done' };
+    expect(win.monitorNodeStatus(n)).toBe('done');              // all done completes
+    win.runMonitor.agents = { 'review-farwake': 'done', 'review-omerta': 'blocked' };
+    expect(win.monitorNodeStatus(n)).toBe('blocked');           // trouble surfaces over done
+    win.runMonitor.agents = { 'review-farwake': 'active', 'review-omerta': 'failed' };
+    expect(win.monitorNodeStatus(n)).toBe('failed');            // ...and over active: an alarm never hides behind motion
+    win.runMonitor.agents = { 'review-farwake': 'done', 'review-omerta': 'pending' };
+    expect(win.monitorNodeStatus(n)).toBe('pending');           // mixed pool: deterministic, never key-order dependent
+    win.runMonitor.agents = { review: 'done', 'review-farwake': 'active' };
+    expect(win.monitorNodeStatus(n)).toBe('done');              // an exact match always beats the prefix pool
+    win.runMonitor.agents = { 'reviewer-1': 'active' };
+    expect(win.monitorNodeStatus(n)).toBe(null);                // no boundary match ("review-" vs "reviewer-1"): no invention
+    resetState();
+  });
+  it('sibling exclusion: a prefix node never steals a sibling node\'s slug, its duplicates, or a longer owner\'s children', () => {
+    resetState();
+    const plan = win.addNode('agent', 100, 100, 'Plan', { agentType: 'planner', model: 'opus-5', tools: ['Read'], prompt: 'p', maxTurns: 5 });
+    const planReview = win.addNode('agent', 300, 100, 'Plan Review', { agentType: 'reviewer', model: 'opus-5', tools: ['Read'], prompt: 'r', maxTurns: 5 });
+    win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
+    win.runMonitor.agents = { 'plan-review': 'active' };
+    expect(win.monitorNodeStatus(planReview)).toBe('active');   // the exact owner lights up
+    expect(win.monitorNodeStatus(plan)).toBe(null);             // the shorter sibling stays dark - no stolen status
+    // The MORE SPECIFIC owner keeps dynamic children; the shorter sibling never aggregates them.
+    win.runMonitor.agents = { 'plan-review-us': 'active', 'plan-review-eu': 'done' };
+    expect(win.monitorNodeStatus(planReview)).toBe('active');
+    expect(win.monitorNodeStatus(plan)).toBe(null);
+    // Verbatim-cased agent files still match (filenames are not normalized) -
+    // through the pool AND through the exact path.
+    win.runMonitor.agents = { 'Plan-Review-Us': 'active' };
+    expect(win.monitorNodeStatus(planReview)).toBe('active');
+    win.runMonitor.agents = { 'Plan-Review': 'active' };
+    expect(win.monitorNodeStatus(planReview)).toBe('active');   // exact match, off-protocol casing
+    resetState();
   });
   it('a revise-dispatched agent shows active again: a LATER own-file entry beats an older shared done', () => {
     const s = win.monitorAgentStatuses({
@@ -6753,6 +6805,27 @@ describe('Live Run Monitor emissions', () => {
     [win.genSubAgents(), win.genWorkflow()].forEach(out => {
       expect(out).toContain('COPY the');                          // exact checkbox text - the board matches by text
       expect(out).toContain('matches by text');
+    });
+  });
+  it('dynamic fan-out naming: ONE single-sourced rule rides every memory variant, with real collision semantics', () => {
+    memOn();
+    const wf = win.genWorkflow();
+    // Content pins once - the rule is a single const, so presence elsewhere implies the rest.
+    expect(wf).toContain('{step-slug}-{item}');
+    expect(wf).toContain('never EQUAL another step');
+    expect(wf).toContain('MORE SPECIFIC step');                          // nesting under a LONGER sibling is the collision
+    expect(wf).toContain('most specific owner');                         // a shorter sibling prefix is explicitly safe
+    expect(wf).toContain('REWORD or REORDER the item');                  // the remedy that does NOT re-nest
+    expect(wf).toContain('orphan the files from their step');
+    [wf, win.genSubAgents(), win.genAgentTeams()].forEach(out => {
+      expect(out).toContain('Dynamic fan-out naming (binding)');
+    });
+    expect(win.genSubAgents()).toContain('If YOU spawn multiple dynamic sub-agents');   // per-agent spawner duty (preamble step 5)
+    expect(win.genAgentTeams()).toContain('If YOU spawn multiple dynamic sub-agents');  // ...and the teammate Memory blocks carry it
+    win.state.memoryEnabled = false;
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams()].forEach(out => {
+      expect(out).toNotContain('Dynamic fan-out naming');                // memory-gated at every site
+      expect(out).toNotContain('If YOU spawn');                          // the spawner duty is gated too
     });
   });
   it('the Teams lead operates the board: verbatim-relay of the teammate Memory blocks and tick-on-teammate-completion', () => {
