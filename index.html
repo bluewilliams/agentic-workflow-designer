@@ -2669,9 +2669,9 @@ function getArtifactPath() {
 // Sorts by node ID for deterministic suffix assignment across renders
 function buildAgentSlugMap() {
   const agents = state.nodes.filter(n => n.type === 'agent').slice().sort((a, b) => a.id - b.id);
-  const slugCount = {};
+  const slugCount = Object.create(null);
   agents.forEach(n => { const b = slugify(n.label); slugCount[b] = (slugCount[b] || 0) + 1; });
-  const slugIndex = {};
+  const slugIndex = Object.create(null);
   const slugMap = {};
   agents.forEach(n => {
     const base = slugify(n.label);
@@ -3732,6 +3732,10 @@ function memoryWriteAuthNote() {
 // The one machine-parseable schema for orchestrator decision entries in shared.md - single
 // source so the two orchestrator-duty emissions can never drift apart on the format.
 const ORCH_LOG_LINE = '## @orchestrator | {ISO-timestamp} | {decision}';
+// Single source for the fan-out naming rule - emitted verbatim by genMemoryProtocol AND
+// the sub-agents orchestrator block, so the two can never drift apart (the ORCH_LOG_LINE
+// precedent). The collision constraints are load-bearing for one-writer-per-file.
+const FANOUT_NAMING = '**Dynamic fan-out naming (binding)**: when a step spawns MULTIPLE dynamic agents - one per item, pack, shard, or repo - derive each spawned agent\'s slug as `{step-slug}-{item}` (a "Review" step fanning over packs spawns `@review-alpha`, `@review-beta`, ...). The step-slug prefix attributes each memory file to its spawning step: the live monitor aggregates those agents onto that step\'s node, and a reader of the memory directory can group the files by eye. Two hard constraints (one file has one writer): a derived slug must never EQUAL another step\'s slug, and must never fall under a MORE SPECIFIC step\'s slug - a name starting with a LONGER sibling\'s slug plus a hyphen hands your agents to that sibling\'s node. Attribution always goes to the most specific owner, so a step whose own slug begins with a shorter sibling\'s (`plan-review` beside `plan`) safely uses its own template. When a collision looms, REWORD or REORDER the item inside the name (`deploy-env-staging`, never `deploy-staging-anything`). Free-invented names orphan the files from their step.';
 function genMemoryProtocol() {
   const path = getMemoryPath();
   const wfName = getName() || 'workflow';
@@ -3752,6 +3756,8 @@ function genMemoryProtocol() {
   p.push('| `@{slug}.md` | Per-agent state + progress | Read/write (owning agent) |');
   p.push('');
   p.push('Agent slugs are lowercase-hyphenated names (e.g., "Code Reviewer" → `@code-reviewer`).');
+  p.push('');
+  p.push(FANOUT_NAMING);
   p.push('');
   p.push('### Orchestrator duties beyond kickoff');
   p.push('- **Read step reports from disk**: a step\'s `@{slug}.md` complete handoff is the AUTHORITATIVE report - delivery channels can truncate or lose a response; the file never is (in a single-session run YOU wrote it - it is still the copy that survives compaction).');
@@ -3850,6 +3856,7 @@ function genAgentMemoryPreamble(agentLabel, slug) {
   p.push('2. Read `' + path + 'shared.md` for upstream handoffs addressed to you (`→ @' + slug + ':`)');
   p.push('3. BEFORE your first action, open `' + path + '@' + slug + '.md` with an active entry (`## @' + slug + ' | {ISO-timestamp} | \u{1F504}active` plus one `d:` line naming your mission) - a silent start is invisible to the run monitor and indistinguishable from a failed spawn');
   p.push('4. As you work: the moment you finish one of your brief\'s planned tasks, append `t: {task} done` to `' + path + '@' + slug + '.md` - COPY the task\'s checkbox text from `' + path + 'tasks.md` exactly (the live progress board matches by text; a paraphrase matches nothing), one line per task at completion, never a batch at the end (these provisional ticks feed the run\'s live progress surface)');
+  p.push('5. If YOU spawn multiple dynamic sub-agents, name each `{your-slug}-{item}` - never a name that EQUALS another step\'s slug, and never one that falls under a LONGER step\'s slug plus a hyphen (one file, one writer; their memory files then attribute to you).');
   return p.join('\n');
 }
 
@@ -10333,8 +10340,11 @@ function genSubAgents() {
     p.push('- Append handoff to `' + getMemoryPath() + 'shared.md` on completion so downstream agents receive their output');
     p.push('- End every response with breadcrumb: `<!-- WF_BC: ' + (getName() || 'workflow') + ' @{slug} {ISO-timestamp} -->`');
     p.push('- After compaction (breadcrumb missing from context): read shared.md + own @{slug}.md immediately before resuming');
+
     p.push('');
     p.push('**Orchestrator kickoff (you, BEFORE Step 1)**: create the memory directory and seed `' + getMemoryPath() + 'shared.md` with a kickoff entry - the workflow name, a one-line goal, and the date - so the files exist before the first agent reads them. Also seed `' + getMemoryPath() + 'tasks.md`: the run\'s task checklist as markdown checkboxes (`- [ ] {task}`), ' + (state.durableRecord ? 'copied from the durable record\'s Task checklist (the record stays canonical - tasks.md is its ephemeral live projection)' : 'derived from the plan\'s steps') + '. YOU own its ticks: mark each box `- [x]` the moment a step\'s report confirms that task - individually as confirmations arrive, never one batch at the end (the designer\'s Run Monitor renders this file live).');
+    p.push('');
+    p.push(FANOUT_NAMING);
     p.push('');
     p.push('**Reading step reports (you, at every step completion)**: when a step completes or goes idle, read its `' + getMemoryPath() + '@{slug}.md` FIRST - the complete handoff there is the AUTHORITATIVE report. The inline Task result may be a digest, truncated, or lost entirely; the file never is. Do not wait on an inline result the file already answers, and do not re-spawn a step whose file shows completed work - EXCEPT a revise dispatch: a gate-faulted step re-runs regardless; its completed file is the input to the revise, never a reason to skip it.');
     p.push('');
@@ -10640,6 +10650,7 @@ function genAgentTeams() {
       lines.push(pre + '  2. Read `' + getMemoryPath() + 'shared.md` for upstream handoffs addressed to `@' + _slug + '`');
       lines.push(pre + '  3. BEFORE the first action, open `' + getMemoryPath() + '@' + _slug + '.md` with an active entry (`## @' + _slug + ' | {ISO-timestamp} | \u{1F504}active` plus one `d:` line naming the mission) - a silent start is invisible to the run monitor');
       lines.push(pre + '  4. DURING work: the moment a task completes, append `t: {task} done` to `' + getMemoryPath() + '@' + _slug + '.md` - COPY the checkbox text from `' + getMemoryPath() + 'tasks.md` exactly (the live progress board matches by text; a paraphrase matches nothing), one line per task, never a batch');
+      lines.push(pre + '  5. If YOU spawn multiple dynamic sub-agents, name each `' + _slug + '-{item}` - never a name that EQUALS another step\'s slug, and never one under a LONGER step\'s slug plus a hyphen (one file, one writer; their files then attribute to you)');
     }
 
     // Task description - always comprehensive via getEffectivePrompt fallback
@@ -12616,7 +12627,9 @@ function monitorMergeTasks(checklist, provisionalTexts) {
 // overrides a LATER entry in the agent's own file (a revise-dispatched agent goes
 // active again after its earlier done handoff; ISO timestamps compare lexically).
 function monitorAgentStatuses(files, rosterTasks) {
-  const status = {}, lastTs = {}, own = {};
+  // Null-prototype maps: slugs arrive verbatim from run-file content, so 'constructor'
+  // must be an ordinary key, never an inherited Object.prototype member.
+  const status = Object.create(null), lastTs = Object.create(null), own = Object.create(null);
   Object.keys(files || {}).forEach(name => {
     const m = name.match(/^@(.+)\.md$/i);
     if (!m) return;
@@ -13046,10 +13059,48 @@ function monitorSelectFile(path) {
 function monitorNodeStatus(node) {
   if (!runMonitor.watches.length || !Object.keys(runMonitor.agents).length) return null;
   const map = (typeof buildAgentSlugMap === 'function') ? buildAgentSlugMap() : null;
-  const slug = (map && map[node.id]) || slugify(node.label);
-  return runMonitor.agents[slug] || runMonitor.agents[slugify(node.label)] || null;
+  const labelSlug = slugify(node.label);
+  const slug = (map && map[node.id]) || labelSlug;
+  // Own-property reads only: agents maps can be plain literals (test fixtures), so a node
+  // labeled "Constructor" must never resurrect an Object.prototype member as a status.
+  const getOwn = k => Object.prototype.hasOwnProperty.call(runMonitor.agents, k) ? runMonitor.agents[k] : null;
+  let exact = getOwn(slug) || getOwn(labelSlug);
+  if (!exact) {
+    // Mirror the pool's casing rule: an off-protocol verbatim-cased file (@Plan-Review.md)
+    // must match its node exactly, not only its node's children.
+    const hit = Object.keys(runMonitor.agents).find(k => k.toLowerCase() === slug);
+    if (hit) exact = runMonitor.agents[hit];
+  }
+  if (exact) return exact;
+  // Dynamic fan-out fallback: an orchestrator may spawn per-item agents from one canvas
+  // node (a "Review" node running review-farwake, review-omerta, ...). When no exact
+  // match exists, a node whose slug is a HYPHEN-BOUNDARY prefix of run agents aggregates
+  // them, trouble first: failed > blocked > active > done > pending (the priority list
+  // below is the authority). Duplicate-labeled nodes (slug-N disambiguation) do not
+  // aggregate - ownership of a shared pool would be ambiguous between the duplicates.
+  const pre = slug + '-';
+  // Sibling exclusion: a key that IS another canvas node's claimed slug - or lives under a
+  // LONGER claimed prefix - is that node's business. "plan" must never absorb "plan-review",
+  // and "deploy" must not aggregate the children of a "deploy-staging" node (the more
+  // specific owner wins). Comparison is lowercase: agent files may carry verbatim casing.
+  const claimed = map ? Object.keys(map).filter(id => id !== node.id).map(id => map[id]) : [];
+  const pool = Object.keys(runMonitor.agents).filter(k => {
+    const kl = k.toLowerCase();
+    if (kl.indexOf(pre) !== 0) return false;
+    return !claimed.some(c => kl === c || (c.length > slug.length && kl.indexOf(c + '-') === 0));
+  });
+  if (!pool.length) return null;
+  const st = pool.map(k => runMonitor.agents[k]);
+  // Trouble outranks motion: one failed pack member must alarm the node even while
+  // seven siblings still work - the chips carry the per-agent truth beside it.
+  if (st.indexOf('failed') !== -1) return 'failed';
+  if (st.indexOf('blocked') !== -1) return 'blocked';
+  if (st.indexOf('active') !== -1) return 'active';
+  // Deterministic mixed-pool rule: none running, none in trouble, not all finished -
+  // the aggregate is honestly pending (never key-order dependent).
+  return st.every(x => x === 'done') ? 'done' : 'pending';
 }
-const MONITOR_DOT = { active: '#3b82f6', done: '#34d399', blocked: '#ef4444', failed: '#ef4444' };
+const MONITOR_DOT = { active: '#3b82f6', done: '#34d399', blocked: '#ef4444', failed: '#ef4444', pending: '#8b95a7' };
 // Smart default tab: a live watch (run candidates or tasks) opens on Tasks; a records
 // browse (a .workflow folder - files but no runs) opens on Files. An explicit click wins.
 function monitorActiveTab() {
