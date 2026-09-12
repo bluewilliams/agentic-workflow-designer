@@ -9,6 +9,20 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## browser-mcp-selector-verification
+
+- record: .workflow/browser-mcp-selector-verification.md
+- intent: a Browser automation MCP toggle (default OFF) with the house-posture workflow hint plus the un-parked runtime selector verification: a role-gated step hint (appExplorer/frontend/tester/verifier; reviewers stay in the reading lane) has the App Explorer verify mined selectors against the live app and flip runtime-unconfirmed marks to runtime-confirmed on evidence - the manual inspector pass becomes in-run verification. Injected at all six per-step sites beside datadogStepHint (incl. both parallel-siblings loops) + Explain rows with mcp-integrations deep-links; the SDK MCP blocks render from the hint functions.
+- files: index.html (toggle/state/prefs, browserGeneralHint, browserStepHint + BROWSER_STEP_ROLES, five injection sites, Explain rows), tests.html (pins)
+- status: current | date: 2026-09-12 | note: 1728 -> 1733 incl. the review round. Closes the parked item recorded in preset-prompt-craft.md.
+
+## github-mcp-toggle
+
+- record: .workflow/github-mcp-toggle.md
+- intent: a GitHub MCP checkbox (default OFF) above the Atlassian toggle - one gated hint through pushSharedHints (all four formats) + the SDK comment block + an Explain row, with the house MCP posture (context freely, writes only per delivery instructions, graceful absence); the Atlassian label and hint now carry Bitbucket.
+- files: index.html (markup, state/prefs, githubGeneralHint, injection sites, Explain row), tests.html (pins)
+- status: current | date: 2026-09-12 | note: 1725 -> 1728.
+
 ## explain-report-export
 
 - record: .workflow/explain-report-export.md
