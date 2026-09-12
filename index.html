@@ -486,6 +486,11 @@ svg.canvas{width:100%;height:100%;display:block}
 @keyframes monitorNodeStroke{0%,100%{stroke-width:1.5;stroke-opacity:.55}50%{stroke-width:3;stroke-opacity:1}}
 @media (prefers-reduced-motion: reduce){.monitor-live .beacon,.monitor-agent .dot.pulse,.monitor-task.just-changed,.monitor-dot-live{animation:none}.monitor-node-live{animation:none;stroke-width:2;stroke-opacity:1}}
 .monitor-tabs{display:flex;gap:4px;margin:12px 0 2px;border-bottom:1px solid var(--border);padding-bottom:6px}
+#bridgeBanner{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:70;display:flex;flex-direction:column;gap:6px}
+.bridge-row{display:flex;align-items:center;gap:9px;padding:8px 12px;background:var(--surface);border:1px solid var(--accent);
+  border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:12px;color:var(--text)}
+.bridge-row .bridge-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+.bridge-row .bridge-msg{flex:1;min-width:0}
 .monitor-health{margin:8px 0 2px;display:flex;flex-direction:column;gap:4px}
 .monitor-health-row{display:flex;align-items:flex-start;gap:7px;padding:6px 8px;background:rgba(245,158,11,.07);
   border:1px solid rgba(245,158,11,.25);border-radius:6px;font-size:11px;line-height:1.45;color:var(--text2)}
@@ -1119,6 +1124,7 @@ svg.canvas{width:100%;height:100%;display:block}
 → plan context is included in all exported prompts</div>
 
 <h3>Full Flow (Power Users)</h3>
+<p><strong>Session Bridge</strong>: with <strong>Connect Folder</strong> active (Run Reports section), every paste-BACK in these flows becomes one click - your session drops the refined spec, plan, or tuned JSON into <code>~/.awd/outbox/</code>, and the designer offers <strong>Apply</strong> in a banner (plus a tab-title badge), matched strictly to this workflow's name. The clipboard path always keeps working.</p>
 <p>For maximum quality, chain all three steps:</p>
 <div class="flow-diagram">1. Paste rough requirements → <strong>Generate Refine Prompt</strong> → interview → refined spec
 2. Paste refined spec → <strong>Generate Plan Prompt</strong> → codebase analysis → implementation plan
@@ -1264,7 +1270,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <h2 id="hg-more">More</h2>
 
 <h3>Run Reports: Self-Improvement &amp; Connect Repo</h3>
-<p>Generated workflows end with a small <code>awd:run</code> fence summarizing the run (steps, turn caps, gate cycles). Drop a run's final response or durable record onto <strong>Import</strong> (or use <strong>Connect Folder</strong> so <code>~/.awd</code> feeds in automatically) and the designer badges your nodes with that telemetry. The full tuning loop, start to finish:</p>
+<p>Generated workflows end with a small <code>awd:run</code> fence summarizing the run (steps, turn caps, gate cycles). Drop a run's final response or durable record onto <strong>Import</strong> (or use <strong>Connect Folder</strong> so <code>~/.awd</code> feeds in automatically - the same connection powers the <strong>Session Bridge</strong>: refine, plan, and tuning outputs your sessions drop into <code>~/.awd/outbox/</code> appear as one-click Apply offers, matched strictly to the current workflow's name so parallel workflows never cross) and the designer badges your nodes with that telemetry. The full tuning loop, start to finish:</p>
 <ol>
 <li><strong>Run your workflow a few times.</strong> Each run reports back via its <code>awd:run</code> fence; the Workflow Review suggests tuning once three runs have reported.</li>
 <li><strong>Click Tuning Prompt</strong> (Run Reports section). It copies a prompt built from your real stats plus the workflow itself.</li>
@@ -7425,6 +7431,7 @@ function generateRefinePrompt() {
   lines.push('');
   lines.push('**Finally**, make paste-back one step for the user:');
   lines.push('- ' + clipboardCopyInstruction('.claude/specs/' + slug + '.md'));
+  lines.push('- ALSO copy the file to `~/.awd/outbox/refined-' + slug + '.md` (create the directories; skip silently if writing there is not permitted) - the Workflow Designer watches that spot and offers one-click Apply.');
   lines.push('- Then, in your response (NOT in the file), tell them:');
   lines.push('  1. The refined spec is on your clipboard (and saved to the file path above).');
   lines.push('  2. Paste it into the **Requirements** field of the Workflow Designer, replacing the original text.');
@@ -7432,7 +7439,7 @@ function generateRefinePrompt() {
 
   const prompt = lines.join('\n');
   navigator.clipboard.writeText(prompt).then(() => {
-    showToast('Refine prompt copied - paste into Claude Code', 4000);
+    showToast('Refine prompt copied - paste into Claude Code' + (repoConnect.status === 'granted' ? '; the refined spec will offer itself back here when Claude finishes' : ' (tip: Connect Folder in Run Reports and the result applies back with one click)'), 5000);
   }).catch(() => {
     showToast('Could not copy - check clipboard permissions');
   });
@@ -7520,6 +7527,7 @@ function generatePlanPrompt() {
   lines.push('');
   lines.push('**Finally**, make paste-back one step for the user:');
   lines.push('- ' + clipboardCopyInstruction('.claude/plans/' + slug + '.md'));
+  lines.push('- ALSO copy the file to `~/.awd/outbox/plan-' + slug + '.md` (create the directories; skip silently if writing there is not permitted) - the Workflow Designer watches that spot and offers one-click Apply.');
   lines.push('- Then, in your response (NOT in the file), tell them:');
   lines.push('  1. The implementation plan is on your clipboard (and saved to the file path above).');
   lines.push('  2. Paste it into the **Workflow Context** field of the Workflow Designer.');
@@ -7527,7 +7535,7 @@ function generatePlanPrompt() {
 
   const prompt = lines.join('\n');
   navigator.clipboard.writeText(prompt).then(() => {
-    showToast('Plan prompt copied - paste into Claude Code', 4000);
+    showToast('Plan prompt copied - paste into Claude Code' + (repoConnect.status === 'granted' ? '; the plan will offer itself back here when Claude finishes' : ' (tip: Connect Folder in Run Reports and the result applies back with one click)'), 5000);
   }).catch(() => {
     showToast('Could not copy - check clipboard permissions');
   });
@@ -12519,6 +12527,8 @@ function genTuningPrompt() {
   L.push('```json');
   L.push(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, rulesPaths: state.rulesPaths || [], productDocPaths: state.productDocPaths || [], verifyPaths: state.verifyPaths || [], verifyNotes: state.verifyNotes || '', verifyFailRun: state.verifyFailRun, ...serializeWorkflow() }, null, 2));
   L.push('```');
+  L.push('');
+  L.push('If you can write files, ALSO save your improved workflow JSON to `~/.awd/outbox/tuning-' + slugify(name) + '.json` (create the directories; skip silently if not permitted) - the Workflow Designer watches that spot and offers one-click import.');
   return L.join('\n');
 }
 function copyTuningPrompt() {
@@ -12645,6 +12655,152 @@ async function scanRunReportsFromHandle(dirHandle) {
   }
   return out;
 }
+// ── Session Bridge: one-click return path from a Claude session ────────────
+// The refine/plan/tuning prompts ask the session to ALSO drop its output into
+// ~/.awd/outbox/{kind}-{workflow-slug}.{md|json}. When the run-reports folder is
+// connected (the same ~/.awd - one connection powers telemetry AND the bridge) the
+// designer polls that outbox and offers Apply. ISOLATION CONTRACT: only the CURRENT
+// workflow's slug-expected filenames ever surface (recomputed per poll, so a rename
+// tracks) - a neighboring workflow's outputs are never read, never offered. Applied
+// files are remembered by name+mtime in localStorage (read-only posture: the bridge
+// deletes nothing), so a NEWER drop of the same file re-offers and a stale one stays
+// quiet. Clipboard flows are untouched - this is progressive enhancement, and with
+// no connection or no outbox/ the bridge is a silent no-op.
+const BRIDGE_POLL_MS = 5000, BRIDGE_MAX_BYTES = 400000, BRIDGE_APPLIED_KEY = 'awd_bridge_applied';
+const sessionBridge = { timer: null, offers: [] };
+function bridgeExpectedNames() {
+  const slug = slugify(getName() || 'workflow');
+  return {
+    ['refined-' + slug + '.md']: 'refined',
+    ['plan-' + slug + '.md']: 'plan',
+    ['tuning-' + slug + '.json']: 'tuning'
+  };
+}
+function bridgeAppliedMap() {
+  try { return JSON.parse(localStorage.getItem(BRIDGE_APPLIED_KEY) || '{}') || {}; } catch (e) { return {}; }
+}
+function bridgeMarkApplied(name, mtime) {
+  try {
+    const m = bridgeAppliedMap();
+    m[name] = mtime;
+    localStorage.setItem(BRIDGE_APPLIED_KEY, JSON.stringify(m));
+  } catch (e) { /* storage unavailable - the offer may reappear, which is safe */ }
+}
+// Pure over the handle protocol (fake-handle testable): list the outbox's direct files.
+async function bridgeScanOutbox(awdHandle) {
+  let out;
+  try { out = await awdHandle.getDirectoryHandle('outbox'); } catch (e) { return []; }
+  const files = [];
+  try {
+    for await (const entry of out.values()) {
+      if (!entry || entry.kind !== 'file') continue;
+      try {
+        const f = await entry.getFile();
+        files.push({ name: entry.name, mtime: f.lastModified || 0, size: f.size || 0, _file: f });
+      } catch (e) { /* unreadable this cycle */ }
+    }
+  } catch (e) { return []; }
+  return files;
+}
+async function bridgePoll() {
+  if (!repoConnect.handle || repoConnect.status !== 'granted') return;
+  const files = await bridgeScanOutbox(sessionBridge.root || repoConnect.handle);
+  const expected = bridgeExpectedNames();
+  const applied = bridgeAppliedMap();
+  const offers = [];
+  for (const f of files) {
+    const kind = expected[f.name];
+    if (!kind) continue;                       // another workflow's output: invisible by contract
+    if (applied[f.name] && applied[f.name] >= f.mtime) continue;
+    if (f.size > BRIDGE_MAX_BYTES) continue;
+    offers.push({ name: f.name, kind: kind, mtime: f.mtime, _file: f._file });
+  }
+  const sig = offers.map(o => o.name + ':' + o.mtime).join(',');
+  if (sig !== sessionBridge._sig) {
+    sessionBridge._sig = sig;
+    sessionBridge.offers = offers;
+    renderBridgeBanner();
+  }
+}
+function bridgeStart() {
+  if (sessionBridge.timer) clearInterval(sessionBridge.timer);
+  sessionBridge.timer = setInterval(() => { if (!document.hidden) bridgePoll(); }, BRIDGE_POLL_MS);
+  // Returning from the terminal must show waiting offers IMMEDIATELY, not a poll-tick later.
+  if (!sessionBridge._visHook) {
+    sessionBridge._visHook = true;
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && sessionBridge.timer) bridgePoll(); });
+  }
+  bridgePoll();
+}
+const BRIDGE_KIND_LABEL = { refined: 'Refined spec', plan: 'Implementation plan', tuning: 'Tuned workflow JSON' };
+function renderBridgeBanner() {
+  // The tab title carries the offer count - a cue visible from anywhere in the browser
+  // even while the user works elsewhere; the banner itself persists until acted on.
+  if (sessionBridge._baseTitle === undefined) sessionBridge._baseTitle = document.title;
+  document.title = (sessionBridge.offers.length ? '(' + sessionBridge.offers.length + ') ' : '') + sessionBridge._baseTitle;
+  let el = $('bridgeBanner');
+  if (!sessionBridge.offers.length) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'bridgeBanner';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = sessionBridge.offers.map((o, i) =>
+    '<div class="bridge-row"><span class="bridge-dot"></span><span class="bridge-msg">' + escHtml(BRIDGE_KIND_LABEL[o.kind] || o.kind) + ' arrived from your session</span>'
+    + '<button class="btn sm" onclick="bridgeApply(' + i + ')">' + (o.kind === 'tuning' ? 'Import' : 'Apply') + '</button>'
+    + '<button class="btn sm" onclick="bridgeDismiss(' + i + ')" title="Hide this offer (the file stays; a newer drop re-offers)">Dismiss</button></div>'
+  ).join('');
+}
+async function bridgeApply(i) {
+  const o = sessionBridge.offers[i];
+  if (!o) return;
+  let text;
+  try { text = await o._file.text(); } catch (e) { showToast('Could not read the file - it may still be writing; try again'); return; }
+  const done = () => {
+    bridgeMarkApplied(o.name, o.mtime);
+    sessionBridge.offers = sessionBridge.offers.filter(x => x !== o);
+    sessionBridge._sig = null;
+    renderBridgeBanner();
+  };
+  if (o.kind === 'refined') {
+    withConfirm('Replace the Requirements text with the refined spec from your session?', { confirmLabel: 'Replace' }, () => {
+      $('storyInput').value = text.trim();
+      validateStoryInput(true);
+      autoSaveWorkflow();
+      showToast('Refined spec applied to Requirements');
+      done();
+    });
+  } else if (o.kind === 'plan') {
+    withConfirm('Replace the Workflow Context with the implementation plan from your session?', { confirmLabel: 'Replace' }, () => {
+      $('planInput').value = text.trim();
+      autoSaveWorkflow();
+      showToast('Implementation plan applied to Workflow Context');
+      done();
+    });
+  } else if (o.kind === 'tuning') {
+    // A failed import (truncated JSON, wrong shape) must NOT suppress the offer -
+    // the session's next fix would otherwise be invisible until an mtime bump.
+    try {
+      const data = JSON.parse(extractFencedPayload(text));
+      if (data && data.format === 'agentic-workflow-designer' && data.canvas && data.canvas.nodes) {
+        importWorkflowText(text, o.name);
+        done();
+      } else {
+        showToast('The tuned file is not a designer workflow JSON yet - the offer stays until a valid drop arrives');
+      }
+    } catch (e) {
+      showToast('The tuned file did not parse as JSON - the offer stays until a valid drop arrives');
+    }
+  }
+}
+function bridgeDismiss(i) {
+  const o = sessionBridge.offers[i];
+  if (!o) return;
+  bridgeMarkApplied(o.name, o.mtime);
+  sessionBridge.offers = sessionBridge.offers.filter(x => x !== o);
+  sessionBridge._sig = null;
+  renderBridgeBanner();
+}
 async function connectRepoFolder() {
   if (!repoConnectSupported()) return;
   let picked;
@@ -12652,10 +12808,15 @@ async function connectRepoFolder() {
   catch (e) { return; }  // user cancelled the picker
   const dir = await resolveRecordsDir(picked);
   repoConnect.handle = dir; repoConnect.name = dir.name || '.workflow'; repoConnect.status = 'granted';
+  // The bridge scans the folder as PICKED: resolveRecordsDir may descend into .workflow
+  // for records, but sessions drop bridge outputs at the picked root (~/.awd/outbox).
+  sessionBridge.root = picked;
+  try { await awdIdbSet('bridgeRoot', picked); } catch (e) { /* session-only bridge root */ }
   try { await awdIdbSet('repoDir', dir); }
   catch (e) { showToast('Connected for this session only (could not persist the folder handle)'); }
   renderRepoConnect();
   await scanConnectedRepo(true);
+  bridgeStart();
 }
 async function scanConnectedRepo(interactive) {
   if (!repoConnect.handle) return;
@@ -12705,10 +12866,11 @@ async function initRepoConnect() {
     if (h) {
       repoConnect.handle = h;
       repoConnect.name = h.name || '.workflow';
+      try { sessionBridge.root = await awdIdbGet('bridgeRoot'); } catch (e) { /* older persist: fall back below */ }
       const perm = await h.queryPermission({ mode: 'read' });
       repoConnect.status = perm === 'granted' ? 'granted' : 'prompt';
       renderRepoConnect();
-      if (perm === 'granted') await scanConnectedRepo(false);  // quiet auto-scan, toast only on news
+      if (perm === 'granted') { await scanConnectedRepo(false); bridgeStart(); }  // quiet auto-scan, toast only on news
       return;
     }
   } catch (e) { /* idb unavailable or handle gone - behave as never connected */ }
