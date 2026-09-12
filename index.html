@@ -872,10 +872,11 @@ svg.canvas{width:100%;height:100%;display:block}
           <input type="text" id="artifactPathInput" class="memory-path" oninput="onArtifactPathInput()" placeholder=".workflow/untitled.md" style="width:100%;box-sizing:border-box;border:1px solid var(--surface2);background:var(--surface);color:var(--text);font-family:inherit"/>
         </div>
         <div id="openSpecArtifactsField" style="display:block;margin-top:8px">
-          <label class="memory-toggle" title="The run also leaves faithful OpenSpec artifacts: a change under openspec/changes/ (proposal, tasks, design) archived at finalize, and delta-applied specs under openspec/specs/. First-class OpenSpec - committable, archivable, unstamped - for teams whose repos keep openspec/ and not .workflow/.">
+          <label class="memory-toggle" title="Compatibility output, alongside the durable record: the same work also lands in OpenSpec's native format - a change under openspec/changes/ (proposal, tasks, design) archived at finalize, and delta-applied specs under openspec/specs/. First-class artifacts OpenSpec tooling and teams consume as their own.">
             <input type="checkbox" id="openSpecArtifactsToggle" onchange="toggleOpenSpecArtifacts()"/>
             <span>Write OpenSpec artifacts (change + specs)</span>
           </label>
+
         </div>
       </div>
     </div>
