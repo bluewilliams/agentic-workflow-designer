@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## session-bridge
+
+- record: .workflow/session-bridge.md
+- intent: the one-click return path from a Claude session - refine/plan/tuning prompts ALSO drop outputs into ~/.awd/outbox/{kind}-{slug} (silent-skip), and the connected run-reports folder powers a 5s poll that offers Apply (Requirements / Workflow Context / import) via a floating banner. Isolation by slug-exact filename matching recomputed per poll; read-only (nothing deleted, name+mtime applied-tracking in localStorage); clipboard flows untouched - progressive enhancement.
+- files: index.html (bridge block, three emission clauses, CSS, help note), tests.html (Suite 12l)
+- status: current | date: 2026-09-12 | note: 1733 -> 1740 across creation, missability, discoverability, and the review round.
+
 ## browser-mcp-selector-verification
 
 - record: .workflow/browser-mcp-selector-verification.md

@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-09-12 - session-bridge - one-click return path: sessions drop refine/plan/tuning outputs into ~/.awd/outbox, the designer polls and offers Apply; slug-exact isolation, read-only, clipboard flows untouched. 1733 -> 1740 - .workflow/session-bridge.md
 2026-09-12 - browser-mcp-selector-verification - Browser automation MCP toggle + the un-parked runtime selector verification (the App Explorer flips runtime-unconfirmed marks on live evidence; executing UI roles prefer live evidence; reviewers keep the reading lane). 1728 -> 1731 - .workflow/browser-mcp-selector-verification.md
 2026-09-12 - github-mcp-toggle - GitHub MCP checkbox (default OFF, house posture: context freely, writes only per delivery, graceful absence) riding the shared-hints seam; Atlassian label + hint gain Bitbucket. 1725 -> 1728 - .workflow/github-mcp-toggle.md
 2026-09-12 - explain-report-export - the Explain content as a committable audit document (per-node lever rows with reasons and fenced evidence + embedded lossless JSON); README gains the four-principle Design Philosophy. 1723 -> 1725 - .workflow/explain-report-export.md
