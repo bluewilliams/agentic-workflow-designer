@@ -6109,6 +6109,7 @@ describe('Live Run Monitor core', () => {
     win.runMonitor.snapshot = {}; win.runMonitor.texts = {}; win.runMonitor.feed = [];
     win.runMonitor.tasks = []; win.runMonitor.agents = {}; win.runMonitor.selected = null;
     win.runMonitor.runs = []; win.runMonitor.runBase = null; win.runMonitor.runPin = null; win.runMonitor.tab = null; win.runMonitor.fileMode = 'artifacts';
+    win.runMonitor._health = []; win.runMonitor._lastConfirmedN = null; win.runMonitor._lastConfirmedAt = 0;
     const p = win.document.getElementById('monitorPanel'); if (p) { p.style.display = 'none'; p.innerHTML = ''; }
   });
   it('parseToonEntries reads @slug and Step-N headers, statuses normalize, body lines attach', () => {
@@ -6322,6 +6323,97 @@ describe('Live Run Monitor core', () => {
     expect(map[n.id]).toBe('constructor-1');                             // duplicate disambiguation survives the hostile label
     expect(map[n2.id]).toBe('constructor-2');
     resetState();
+  });
+  it('Run Health: paraphrased ticks are flagged per agent; exact-copy ticks stay silent', () => {
+    win.runMonitor.runBase = 'mem/run/';
+    win.runMonitor.tasks = [
+      { text: 'Add the retry classification policy', done: false, owner: null, tier: 'open' },
+      { text: 'Wire the deadline flag', done: false, owner: null, tier: 'open' }];
+    win.runMonitor.texts = { 'mem/run/@builder.md': 't: Step 1 - policy scaffolding complete done\nt: Step 2 - flag plumbing finished done' };
+    win.runMonitor.snapshot = { 'mem/run/@builder.md': { mtime: Date.now(), size: 1 } };
+    let h = win.monitorRunHealth();
+    expect(h.length).toBe(1);
+    expect(h[0].msg).toContain('@builder');
+    expect(h[0].msg).toContain('likely paraphrased');
+    expect(h[0].nudge).toContain('COPYING the checkbox text from tasks.md exactly');
+    win.runMonitor.texts['mem/run/@builder.md'] = 't: Add the retry classification policy done';
+    h = win.monitorRunHealth();
+    expect(h.length).toBe(0);                                            // exact copies: silence means healthy
+  });
+  it('Run Health: stopped ticking and future-stamped entries surface; honest and garbage stamps stay silent', () => {
+    const now = Date.now();
+    win.runMonitor.runBase = 'mem/run/';
+    win.runMonitor.tasks = [{ text: 'Wire the deadline flag handler', done: false, owner: null, tier: 'provisional' }];
+    win.runMonitor.texts = { 'mem/run/@builder.md': '## @builder | ' + new Date(now + 3 * 3600000).toISOString() + ' | \u{1F504}active\nd: working' };
+    win.runMonitor.snapshot = {
+      'mem/run/@builder.md': { mtime: now - 14 * 60000, size: 1 },
+      // A byte-capped agent file lives only in the snapshot - it still drives staleness.
+      'mem/run/@bigwriter.md': { mtime: now, size: 999 },
+      'mem/run/tasks.md': { mtime: now - 15 * 60000, size: 1 }
+    };
+    const h = win.monitorRunHealth();
+    const msgs = h.map(x => x.msg).join(' | ');
+    expect(msgs).toContain('in the FUTURE');                             // fabrication signature: stamp ahead of the write
+    expect(msgs).toContain('stopped ticking');                           // all-provisional counts as unconfirmed drift
+    expect(h.find(x => x.msg.indexOf('stopped ticking') !== -1).nudge).toContain('never in batches');
+    // An honest long entry accretes appends AFTER its header: stamp far in the PAST of
+    // mtime is normal (also the copied-folder shape) - never flagged.
+    win.runMonitor.texts['mem/run/@builder.md'] = '## @builder | ' + new Date(now - 3 * 3600000).toISOString() + ' | \u{1F504}active\nd: working';
+    expect(win.monitorRunHealth().map(x => x.msg).join()).toNotContain('FUTURE');
+    // Garbage in the ts position parses to a VALID 2001 date - the shape gate must reject
+    // it before Date.parse can fabricate an accusation.
+    win.runMonitor.texts['mem/run/@builder.md'] = '## @builder | REVISION 3 (ruling folded in) | \u{1F504}active\nd: working';
+    expect(win.monitorRunHealth().map(x => x.msg).join()).toNotContain('FUTURE');
+    // Fresh state: honest stamp, tasks.md recently ticked - no hints at all.
+    win.runMonitor.tasks = [{ text: 'Wire the deadline flag handler', done: false, owner: null, tier: 'confirmed' }];
+    win.runMonitor.texts['mem/run/@builder.md'] = '## @builder | ' + new Date(now).toISOString() + ' | \u{1F504}active\nd: working';
+    expect(win.monitorRunHealth().length).toBe(0);
+  });
+  it('Run Health computes at recompute time and renders amber rows with Copy nudge; a healthy run renders none', () => {
+    const now = Date.now();
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'mem', status: 'granted' }];
+    win.runMonitor.texts = {
+      'mem/run/tasks.md': '- [ ] Wire the deadline flag handler',
+      'mem/run/@builder.md': 't: unrelated paraphrase number one done\nt: unrelated paraphrase number two done'
+    };
+    win.runMonitor.snapshot = {
+      'mem/run/tasks.md': { mtime: now, size: 1 },
+      'mem/run/@builder.md': { mtime: now, size: 1 }
+    };
+    win.monitorRecompute();                                              // health is derived state: computed here, only read at render
+    win.renderMonitorPanel();
+    let html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('monitor-health-row');
+    expect(html).toContain('onclick="monitorCopyNudge(this.dataset.nudge)"');   // payload rides the button - no index race
+    expect(html).toContain('data-nudge=');
+    expect(html).toContain('Copy nudge');
+    win.runMonitor.texts['mem/run/@builder.md'] = 't: Wire the deadline flag handler done';
+    win.monitorRecompute();
+    win.renderMonitorPanel();
+    html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toNotContain('monitor-health');                         // silence means healthy
+  });
+  it('stale hints never survive a watch removal, and an observed confirm-rise suppresses the stale-lead hint', async () => {
+    const now = Date.now();
+    win.runMonitor.runBase = 'mem/run/';
+    win.runMonitor.tasks = [{ text: 'Wire the deadline flag handler', done: false, owner: null, tier: 'provisional' }];
+    win.runMonitor.texts = { 'mem/run/@builder.md': 'd: working' };
+    win.runMonitor.snapshot = {
+      'mem/run/@builder.md': { mtime: now, size: 1 },
+      'mem/run/tasks.md': { mtime: now - 30 * 60000, size: 1 }
+    };
+    // Frozen-mtime tick: the board OBSERVED a confirm rise (surface reads) though tasks.md
+    // mtime never moved - the detector must not accuse a lead whose ticks are on the board.
+    win.runMonitor._lastConfirmedAt = now - 60000;
+    expect(win.monitorRunHealth().length).toBe(0);
+    win.runMonitor._lastConfirmedAt = 0;
+    expect(win.monitorRunHealth().map(x => x.msg).join()).toContain('stopped ticking');
+    // Removal wipes health with the other derived state - no amber ghosts.
+    win.runMonitor._health = win.monitorRunHealth();
+    win.runMonitor.watches = [{ name: 'mem', handle: {} }];
+    await win.monitorRemoveWatch('mem');
+    expect(win.runMonitor._health.length).toBe(0);
   });
   it('short tasks are never falsely half-ticked by a longer unrelated tick (length guard)', () => {
     const merged = win.monitorMergeTasks(

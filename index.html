@@ -484,6 +484,12 @@ svg.canvas{width:100%;height:100%;display:block}
 @keyframes monitorNodeStroke{0%,100%{stroke-width:1.5;stroke-opacity:.55}50%{stroke-width:3;stroke-opacity:1}}
 @media (prefers-reduced-motion: reduce){.monitor-live .beacon,.monitor-agent .dot.pulse,.monitor-task.just-changed,.monitor-dot-live{animation:none}.monitor-node-live{animation:none;stroke-width:2;stroke-opacity:1}}
 .monitor-tabs{display:flex;gap:4px;margin:12px 0 2px;border-bottom:1px solid var(--border);padding-bottom:6px}
+.monitor-health{margin:8px 0 2px;display:flex;flex-direction:column;gap:4px}
+.monitor-health-row{display:flex;align-items:flex-start;gap:7px;padding:6px 8px;background:rgba(245,158,11,.07);
+  border:1px solid rgba(245,158,11,.25);border-radius:6px;font-size:11px;line-height:1.45;color:var(--text2)}
+.monitor-health-row .mh-icon{color:#f59e0b;flex:none}
+.monitor-health-row .mh-msg{flex:1;min-width:0}
+.monitor-health-row .mh-copy{flex:none;font-size:10px;padding:2px 7px}
 .monitor-tab{background:none;border:1px solid var(--border);color:var(--text3);border-radius:6px;
   padding:3px 10px;font-size:11px;cursor:pointer;font-family:inherit}
 .monitor-tab:hover{color:var(--text)}
@@ -1236,7 +1242,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>Every other preset STARTS work; the <strong>Amend an existing deliverable</strong> group in the Presets section changes work that already shipped - and keeps the durable artifacts telling the truth about it. <strong>Touch-Up</strong> is for follow-up changes to a delivered capability (post-run adjustments, PR feedback, a small behavior tweak): a Scoper grounds in the existing record or <code>openspec/</code> spec and defines the smallest delta plus the behaviors that must NOT move, an Amender applies it, a Delta Reviewer gates on regressions and lists every artifact statement the change made untrue, and an Artifact Steward amends the record IN PLACE (History line, refreshed index and timeline entries) - never minting a new record for a tweak. <strong>Record Sync</strong> touches no code at all: a Drift Auditor proves (with file-and-line evidence) where the records or specs stopped matching the working tree, and the Steward amends the artifacts back to reality - anywhere the CODE is what broke the truth, that gets flagged for a Touch-Up run instead of being papered over. Both presets self-gate on what exists (no <code>.workflow</code> or <code>openspec/</code> means they simply ground in code and tests), work per-repository on multi-repo workflows, and compose with every toggle - memory, records, the Live Run Monitor - like any other preset.</p>
 
 <h3>Live Run Monitor</h3>
-<p>The <strong>Monitor</strong> toolbar button (Chromium only) watches folders while a run executes: pick the <code>workflow-memory</code> folder once - the monitor follows whichever run is active (a Run selector appears when several exist) - and the panel shows the task checklist ticking live (confirmed ticks from <code>tasks.md</code>, half-ticks from agents' provisional <code>t:</code> lines the moment each task completes), per-agent status chips, a change feed, and every file one click from view - while canvas nodes carry live status dots. One watch covers a multi-repo run's live surface (the memory folder is shared); add each repo's <code>.workflow</code> folder to browse its durable records in the same panel, rendered as markdown with a record chip. To watch code changes too, pick the narrowest folder that holds the work (a repo's <code>src</code> beats its root): each tree's scan has a file budget, and an over-budget tree is flagged <strong>capped</strong> and reports only modifications to files it has already seen. Read-only, polling-based, paused while the tab is hidden.</p>
+<p>The <strong>Monitor</strong> toolbar button (Chromium only) watches folders while a run executes: pick the <code>workflow-memory</code> folder once - the monitor follows whichever run is active (a Run selector appears when several exist) - and the panel shows the task checklist ticking live (confirmed ticks from <code>tasks.md</code>, half-ticks from agents' provisional <code>t:</code> lines the moment each task completes), per-agent status chips, a change feed, and every file one click from view - while canvas nodes carry live status dots. One watch covers a multi-repo run's live surface (the memory folder is shared); add each repo's <code>.workflow</code> folder to browse its durable records in the same panel, rendered as markdown with a record chip. To watch code changes too, pick the narrowest folder that holds the work (a repo's <code>src</code> beats its root): each tree's scan has a file budget, and an over-budget tree is flagged <strong>capped</strong> and reports only modifications to files it has already seen. Read-only, polling-based, paused while the tab is hidden. A <strong>Run Health</strong> row appears (amber, above the tab content) only when the RUN drifts from the protocol - agents whose progress ticks match no checklist item, a checklist nobody has ticked while agents keep writing, or entry timestamps that disagree with real file times. Each hint carries a <strong>Copy nudge</strong> button: paste the nudge into the running session to correct the drift mid-run. Silence means healthy.</p>
 <h3>Handoff</h3>
 <p>The <strong>Handoff package</strong> option in the <strong>Export</strong> menu (under <strong>Workflow Management</strong>) downloads a single resume package (<code>.md</code>) so another engineer can pick up in-progress work: how to resume, the durable-record path, the ready-to-run prompt, and the full workflow definition. The live run state travels with your git branch and the durable record, not this file - so enable <strong>Keep a durable record</strong> before running for a truly resumable handoff.</p>
 
@@ -12611,14 +12617,18 @@ function parseProvisionalTicks(text) {
 // side is substantial (MONITOR_MATCH_MIN), so a short task ("plan") is never falsely
 // half-ticked by an unrelated tick that merely contains it ("update planning doc").
 const MONITOR_MATCH_MIN = 12;
+// The ONE tick-matching predicate: the board's half-ticks and the health row's
+// paraphrase detector must agree by construction, never by parallel maintenance.
+function monitorTickMatches(p, n) {
+  return p === n || (Math.min(p.length, n.length) >= MONITOR_MATCH_MIN && (p.indexOf(n) !== -1 || n.indexOf(p) !== -1));
+}
 function monitorNorm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
 function monitorMergeTasks(checklist, provisionalTexts) {
   const prov = (provisionalTexts || []).map(monitorNorm).filter(Boolean);
   return (checklist || []).map(item => {
     if (item.done) return { text: item.text, owner: item.owner, tier: 'confirmed' };
     const n = monitorNorm(item.text);
-    const hit = !!n && prov.some(p => p === n
-      || (Math.min(p.length, n.length) >= MONITOR_MATCH_MIN && (p.indexOf(n) !== -1 || n.indexOf(p) !== -1)));
+    const hit = !!n && prov.some(p => monitorTickMatches(p, n));
     return { text: item.text, owner: item.owner, tier: hit ? 'provisional' : 'open' };
   });
 }
@@ -12794,7 +12804,7 @@ function monitorRecompute() {
   else if (runs.length) base = runs[0].base;
   // ANY run switch clears the flash tracker - auto-follow included, not only manual pins:
   // a re-run of the same workflow repeats task texts, and stale tiers would false-flash.
-  if (base !== runMonitor.runBase) runMonitor._prevTiers = {};
+  if (base !== runMonitor.runBase) { runMonitor._prevTiers = {}; runMonitor._lastConfirmedN = null; runMonitor._lastConfirmedAt = Date.now(); }
   runMonitor.runBase = base;
   const local = {};
   if (base !== null) {
@@ -12807,6 +12817,16 @@ function monitorRecompute() {
   Object.keys(local).forEach(n => { if (/^@.+\.md$/i.test(n)) prov.push.apply(prov, parseProvisionalTicks(local[n])); });
   runMonitor.tasks = monitorMergeTasks(parseTaskChecklist(taskKey ? local[taskKey] : ''), prov);
   runMonitor.agents = monitorAgentStatuses(local, runMonitor.tasks);
+  // Confirmed-count rises are the tick signal the AUTHORITATIVE surface reads observe even
+  // when a same-size tick hides its mtime change - the stale-lead detector anchors on this,
+  // or it would accuse a lead whose ticks the board itself is displaying.
+  const _confN = runMonitor.tasks.filter(t => t.tier === 'confirmed').length;
+  const _prevConfN = (typeof runMonitor._lastConfirmedN === 'number') ? runMonitor._lastConfirmedN : -1;
+  if (_confN > _prevConfN && _prevConfN !== -1) runMonitor._lastConfirmedAt = Date.now();
+  runMonitor._lastConfirmedN = _confN;
+  // Health is derived state like tasks/agents: computed once per poll cycle here, only
+  // READ at render time (tab switches and file clicks must not re-parse every file).
+  runMonitor._health = monitorRunHealth();
 }
 function monitorPinRun(v) {
   runMonitor.runPin = v === '__auto__' ? null : decodeURIComponent(v);
@@ -12955,6 +12975,7 @@ async function monitorRemoveWatch(name) {
   if (!runMonitor.watches.length && runMonitor.timer) { clearInterval(runMonitor.timer); runMonitor.timer = null; }
   runMonitor.feed = []; runMonitor.tasks = []; runMonitor.agents = {};
   runMonitor.runs = []; runMonitor.runBase = null; runMonitor.runPin = null; runMonitor._prevTiers = {};
+  runMonitor._health = []; runMonitor._lastConfirmedN = null; runMonitor._lastConfirmedAt = 0;
   await monitorPersist();
   if (runMonitor.watches.length) await monitorPoll(true);
   renderMonitorPanel();
@@ -12966,6 +12987,7 @@ async function disconnectRunMonitor() {
   runMonitor.snapshot = {}; runMonitor.texts = {}; runMonitor.feed = []; runMonitor.tasks = []; runMonitor.agents = {}; runMonitor.selected = null;
   runMonitor.runs = []; runMonitor.runBase = null; runMonitor.runPin = null;   // a stale pin must not survive Stop All
   runMonitor._prevTiers = {};
+  runMonitor._health = []; runMonitor._lastConfirmedN = null; runMonitor._lastConfirmedAt = 0;
   try { await awdIdbDel('monitorDirs'); } catch (e) {}
   renderMonitorPanel();
   render();
@@ -12983,6 +13005,86 @@ function toggleRunMonitor() {
 // The workflow-memory PARENT (the pick-once target) - one derivation, used by the
 // copy button and the connect screen alike so they can never disagree.
 function monitorMemoryParentPath() { return getMemoryPath().replace(/[^/]+\/$/, ''); }
+// ── Run Health: read-only protocol-drift detectors ─────────────────────────
+// The monitor's board is only as live as the RUN's protocol compliance. These
+// detectors turn the drift patterns proven in real runs (paraphrased ticks, a lead
+// that stops ticking, fabricated timestamps) into visible hints with a copyable
+// nudge - diagnosis the director previously did by hand. READ-ONLY by design:
+// they compute over state the panel already holds and can only ever mis-HINT.
+const MONITOR_HEALTH_STALE_MS = 10 * 60 * 1000, MONITOR_HEALTH_SKEW_MS = 45 * 60 * 1000;
+function monitorRunHealth() {
+  const hints = [];
+  const base = runMonitor.runBase;
+  if (!base || !runMonitor.tasks.length) return hints;
+  const norms = runMonitor.tasks.map(t => monitorNorm(t.text));
+  // Newest agent-file write time comes from the SNAPSHOT (no byte cap), so an agent
+  // file grown past MONITOR_MAX_BYTES still drives the stopped-ticking detector.
+  let newestAgentMtime = 0;
+  Object.keys(runMonitor.snapshot).forEach(path => {
+    if (path.indexOf(base) !== 0) return;
+    const nm = path.slice(base.length);
+    if (/^@.+\.md$/i.test(nm) && nm.indexOf('/') === -1 && runMonitor.snapshot[path].mtime > newestAgentMtime) newestAgentMtime = runMonitor.snapshot[path].mtime;
+  });
+  Object.keys(runMonitor.texts).forEach(path => {
+    if (path.indexOf(base) !== 0) return;
+    const name = path.slice(base.length);
+    if (!/^@.+\.md$/i.test(name) || name.indexOf('/') !== -1) return;
+    const snap = runMonitor.snapshot[path];
+    const mtime = snap ? snap.mtime : 0;
+    // Paraphrased ticks: t: lines the board's matcher cannot count are invisible progress.
+    const prov = parseProvisionalTicks(runMonitor.texts[path]).map(monitorNorm).filter(Boolean);
+    const unmatched = prov.filter(p => !norms.some(n => monitorTickMatches(p, n)));
+    if (unmatched.length >= 2 && unmatched.length > prov.length - unmatched.length) {
+      hints.push({
+        msg: '@' + name.slice(1, -3) + ' reports ' + unmatched.length + ' ticks matching no checklist item (likely paraphrased) - the board cannot count them.',
+        nudge: 'Your t: lines are not matching the checklist. Repost one `t: {task} done` line per completed task in your own memory file, COPYING the checkbox text from tasks.md exactly - the live progress board matches by text.'
+      });
+    }
+    // Future-stamped entries only: an honest long entry accretes appends AFTER its header
+    // (mtime advances past the stamp - normal), and a copied folder rewrites mtimes forward
+    // (stamp older than mtime - also normal). Only a stamp AHEAD of the file's real write
+    // time is unexplainable, and that is the fabrication signature seen in a real run.
+    // The stamp must LOOK like a UTC instant before Date.parse touches it: garbage in the
+    // ts position ("REVISION 3") parses to a valid 2001 date, and a zone-less stamp parses
+    // as viewer-local time - both would fabricate accusations.
+    const entries = parseToonEntries(runMonitor.texts[path]);
+    if (entries.length && mtime) {
+      const raw = String(entries[entries.length - 1].ts || '').trim();
+      if (/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(raw)) {
+        const ts = Date.parse(raw);
+        if (!isNaN(ts) && ts - mtime > MONITOR_HEALTH_SKEW_MS) {
+          hints.push({
+            msg: '@' + name.slice(1, -3) + '\'s newest entry is stamped ' + Math.round((ts - mtime) / 60000) + ' min in the FUTURE of the file\'s write time - status ordering may misread revise cycles.',
+            nudge: 'Use REAL current UTC timestamps (ISO-8601 with Z) in every memory entry header - never estimated, rounded, or invented times. Correct your newest entry\'s timestamp.'
+          });
+        }
+      }
+    }
+  });
+  // A lead that stopped ticking: agents keep writing while tasks.md sits untouched.
+  // UNCONFIRMED (open + provisional) is the gate - a board where agents half-ticked
+  // everything is exactly the un-ticked-checklist drift, not health.
+  const taskPath = Object.keys(runMonitor.snapshot).find(p => p.indexOf(base) === 0 && p.slice(base.length).toLowerCase() === 'tasks.md');
+  const taskSnap = taskPath ? runMonitor.snapshot[taskPath] : null;
+  const unconfirmedN = runMonitor.tasks.filter(t => t.tier !== 'confirmed').length;
+  const tickAnchor = Math.max(taskSnap ? taskSnap.mtime : 0, runMonitor._lastConfirmedAt || 0);
+  if (taskSnap && unconfirmedN && newestAgentMtime && newestAgentMtime - tickAnchor > MONITOR_HEALTH_STALE_MS) {
+    hints.push({
+      msg: 'tasks.md has not been ticked in ' + Math.round((newestAgentMtime - taskSnap.mtime) / 60000) + ' min while agents kept writing - the orchestrator may have stopped ticking.',
+      nudge: 'Tick the completed tasks into tasks.md now - mark each confirmed task\'s box individually - and keep ticking the moment every future step report arrives, never in batches.'
+    });
+  }
+  return hints;
+}
+function monitorCopyNudge(nudge) {
+  if (!nudge) return;
+  try {
+    navigator.clipboard.writeText(nudge)
+      .then(() => showToast('Nudge copied - paste it into the running session'))
+      .catch(() => showToast('Copy failed - select the text manually'));
+  } catch (e) { showToast('Copy failed - select the text manually'); }
+}
+
 function monitorCopyPath() {
   const p = monitorMemoryParentPath();
   try {
@@ -13157,6 +13259,15 @@ function renderMonitorPanel() {
       + '<button class="monitor-tab' + (_tab === 'changes' ? ' active' : '') + '" onclick="monitorSetTab(\'changes\')">Changes' + (runMonitor.feed.length ? ' ' + runMonitor.feed.length : '') + '</button>'
       + '<button class="monitor-tab' + (_tab === 'files' ? ' active' : '') + '" onclick="monitorSetTab(\'files\')">Files' + (_fileN ? ' ' + _fileN : '') + '</button>'
       + '</div>');
+    const _health = runMonitor._health || [];
+    if (_health.length) {
+      H.push('<div class="monitor-health">');
+      _health.forEach(h => {
+        H.push('<div class="monitor-health-row"><span class="mh-icon">\u26A0</span><span class="mh-msg">' + escHtml(h.msg) + '</span>'
+          + '<button class="btn sm mh-copy" data-nudge="' + escHtml(h.nudge) + '" onclick="monitorCopyNudge(this.dataset.nudge)" title="Copy a ready-made correction to paste into the running session">Copy nudge</button></div>');
+      });
+      H.push('</div>');
+    }
     if (_tab === 'tasks' && runMonitor.tasks.length) {
       const provN = runMonitor.tasks.filter(t => t.tier === 'provisional').length;
       H.push('<h3>Tasks (' + _doneN + '/' + runMonitor.tasks.length + ' confirmed' + (provN ? ', ' + provN + ' in progress' : '') + ')</h3>');
