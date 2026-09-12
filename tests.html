@@ -7206,6 +7206,10 @@ describe('OpenSpec artifacts option', () => {
       expect(out).toContain('archive the change exactly the way this repository archives changes');
       expect(out).toContain('as DELTAS');                                 // finalize merges into team-owned specs
       expect(out).toContain('preserving every other line of an existing spec verbatim');
+      expect(out).toContain('BOTH mandatory, spec first');                // apply cannot decouple from archive
+      expect(out).toContain('when NO spec file exists yet (greenfield), CREATE');
+      expect(out).toContain('a MANUAL archive must do BOTH halves');      // the CLI couples them; manual must too
+      expect(out).toContain('drift, not delivery');
       expect(out).toContain('Never stamp them as generated');             // faithful means unstamped
       expect(out).toContain('ALWAYS outrank the shapes described here');  // the repo\'s own conventions win
       expect(out).toContain('treat a validation failure as a completion-gate failure');
