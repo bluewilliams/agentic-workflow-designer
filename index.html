@@ -791,6 +791,7 @@ svg.canvas{width:100%;height:100%;display:block}
           <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportWorkflowFile();closeExportMenu()" title="Download just the workflow definition (.json) to reuse or share. Re-open it with Import.">Workflow JSON</button>
           <button class="btn sm" id="openspecExportBtn" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportOpenSpecSchema();closeExportMenu()" title="Download as an OpenSpec custom schema (.zip of schema.yaml + templates). Unzip at your repo root and run: openspec schema validate &lt;name&gt;. Re-import the schema.yaml here to edit it visually.">OpenSpec schema</button>
           <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportHandoffFile();closeExportMenu()" title="Download a resume package (.md) to hand in-progress work to another engineer: how to resume, the durable record path, the ready-to-run prompt, and the workflow definition. The live state travels with your git branch, not this file.">Handoff Package</button>
+          <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportExplainReport();closeExportMenu()" title="Download the Explain content as a committable audit document (.md): every lever per node with its state, reason, and emitted evidence, plus the workflow definition embedded for lossless re-import. Commit it beside the durable record so a future colleague can diagnose why a run behaved as it did.">Explain Report</button>
         </div>
       </div>
       <div class="export-dd" style="position:relative;display:inline-block">
@@ -1047,7 +1048,10 @@ svg.canvas{width:100%;height:100%;display:block}
   <div class="help-modal" style="max-width:640px">
     <div class="help-header">
       <h2 id="explainTitle">Workflow anatomy</h2>
-      <button class="help-close" onclick="closeExplain()">&times;</button>
+      <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn sm" onclick="exportExplainReport()" title="Save ALL of this - the workflow anatomy plus every node's levers, reasons, and evidence - as a committable audit document (.md) with the workflow embedded for lossless re-import. Commit it beside the durable record so a future colleague can diagnose why a run was configured the way it was.">Export report</button>
+        <button class="help-close" onclick="closeExplain()">&times;</button>
+      </div>
     </div>
     <div class="help-body" id="explainList"></div>
   </div>
@@ -1262,7 +1266,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <h3>Workflow Advisor</h3>
 <p>Click the health indicator to open the review modal. Below any issues, a lightbulb <b>Suggestions</b> group offers non-blocking advice: unreviewed build paths (one-click <b>Attach Skeptic</b>), fan-outs that never synthesize, solo agents shipping code, read-only roles holding write tools, starved turn budgets - and, once run reports are ingested, telemetry-informed tuning (gates that loop, steps that cap out or fail). Suggestions never affect the badge count and never block generation.</p>
 <h3>Explain This Workflow</h3>
-<p>Generated prompts are compositions - templates, tool lines, hints, protocols, gates - each with its own firing condition. <strong>Explain</strong> (next to Copy) opens the anatomy of the selected format at the workflow level; <strong>Explain Step</strong> (beside it) shows the per-step parts for the node selected on the canvas: emitted or skipped, why (which toggle, which role set, which condition), and a snippet of what is emitted. The statuses come from the same helpers the generators use, and agreement tests pin them to the real output. The workflow view opens with the orchestrator's run plan: a numbered kickoff / execution / close-out itinerary derived from your exact configuration, with a summary of steps, parallel groups, gates (worst-case revise spawns), and critical path.</p>
+<p>Generated prompts are compositions - templates, tool lines, hints, protocols, gates - each with its own firing condition. <strong>Explain</strong> (next to Copy) opens the anatomy of the selected format at the workflow level; <strong>Explain Step</strong> (beside it) shows the per-step parts for the node selected on the canvas: emitted or skipped, why (which toggle, which role set, which condition), and a snippet of what is emitted. The statuses come from the same helpers the generators use, and agreement tests pin them to the real output. The workflow view opens with the orchestrator's run plan: a numbered kickoff / execution / close-out itinerary derived from your exact configuration, with a summary of steps, parallel groups, gates (worst-case revise spawns), and critical path. The <strong>Explain Report</strong> option in the Export menu saves this same content as a committable markdown document - every lever with its reason and evidence, plus the workflow JSON embedded for lossless re-import - so a future colleague can audit why a run was configured the way it was without opening the app.</p>
 
 <h3>Prompt Library</h3>
 <p>Click the <strong>Prompts</strong> button in the toolbar for a library of ready-to-use prompts. Use the search box to filter by title or description. Star your favorites and they float to the top. Prompts that need your input (like a file path or bug description) show a popup before copying so the prompt is ready to paste.</p>
@@ -3726,6 +3730,90 @@ function exportHandoffFile() {
   }
 }
 
+// ── Explain report export ──────────────────────────────────────────────────
+// The Explain modal's content as a committable markdown document, so a future
+// colleague can diagnose WHY a run behaved as it did without opening the app:
+// every lever per node (state, reason, emitted evidence), the workflow anatomy,
+// and the full definition embedded for lossless re-import (paste the JSON block
+// via Import > From clipboard to reopen it with interactive Explain). Built on
+// the same pure explainWorkflow/explainNode rows the modal renders - no second
+// analysis path to drift. Tilde fences wrap evidence because emitted text can
+// itself contain backtick fences; long evidence truncates (the generated prompt
+// carries the full text, and the reasons are the audit payload here).
+const EXPLAIN_REPORT_EVIDENCE_CAP = 1200;
+// The wrapper fence must always outsize any tilde run INSIDE the wrapped text (user
+// requirements and prompts are verbatim here) - the fenceFor discipline, tilde edition.
+function exReportTildeFence(text) {
+  let max = 0, run = 0;
+  for (const ch of String(text)) { if (ch === '~') { run++; if (run > max) max = run; } else run = 0; }
+  return '~'.repeat(Math.max(4, max + 1));
+}
+// A run-report fence inside EVIDENCE is an example, never telemetry: one space defangs
+// it for the importer (which scans raw text, tilde wrapping notwithstanding) while
+// markdown still renders it as a fence - so pasting a whole report never fakes a run.
+function exReportSafe(text) {
+  return String(text).replace(/```awd:run/g, '``` awd:run');
+}
+function exReportEvidence(full) {
+  const t = String(full || '').trim();
+  if (!t) return [];
+  const shown = exReportSafe(t.length > EXPLAIN_REPORT_EVIDENCE_CAP
+    ? t.slice(0, EXPLAIN_REPORT_EVIDENCE_CAP) + '\n... (truncated - ' + (t.length - EXPLAIN_REPORT_EVIDENCE_CAP) + ' more characters; open the workflow in the designer for the full row)'
+    : t);
+  const f = exReportTildeFence(shown);
+  return ['', f, shown, f];
+}
+function genExplainReport(format) {
+  format = format || state.exportFormat;
+  const name = getName() || 'Untitled workflow';
+  const p = [];
+  p.push('# Explain Report: ' + name);
+  p.push('');
+  p.push('Generated ' + new Date().toISOString().slice(0, 10) + ' by the Agentic Workflow Designer - the WHY behind every configured lever, for auditing and postmortems. Format: ' + (EXPLAIN_FORMATS[format] || format) + '. ' + state.nodes.length + ' nodes, ' + state.connections.length + ' connections' + ', ~' + Math.round(estimateTokens((({ prompt: genWorkflow, subagent: genSubAgents, teams: genAgentTeams, sdk: genAgentSDK, claude: genClaudePrompt })[format] || genWorkflow)()) / 100) / 10 + 'K prompt tokens.');
+  const story = getStory();
+  if (story && story.trim()) {
+    p.push('');
+    p.push('## Requirements (as configured)');
+    p.push('');
+    const _sf = exReportTildeFence(story);
+    p.push(_sf);
+    p.push(story.trim());
+    p.push(_sf);
+  }
+  const pushRow = r => {
+    p.push('');
+    p.push('- **' + r.part + '** - ' + (r.status === 'emitted' ? 'EMITTED' : 'SKIPPED') + (r.reason ? ' - ' + r.reason : ''));
+    exReportEvidence(r.full).forEach(l => p.push(l));
+  };
+  p.push('');
+  p.push('## Workflow anatomy');
+  explainWorkflow(format).forEach(pushRow);
+  topologicalSort().forEach(node => {
+    p.push('');
+    p.push('## ' + node.label + ' (' + node.type + ')');
+    explainNode(node, format).forEach(pushRow);
+  });
+  p.push('');
+  p.push('## Embedded workflow definition');
+  p.push('');
+  p.push('Lossless: copy the JSON block below and use Import > From clipboard in the designer to reopen this exact workflow, interactive Explain included.');
+  p.push('');
+  p.push('```json');
+  p.push(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow() }, null, 2));
+  p.push('```');
+  return p.join('\n');
+}
+function exportExplainReport() {
+  if (state.nodes.length === 0) { showToast('Add nodes before exporting an Explain report'); return; }
+  const md = genExplainReport();
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (slugify(getName() || 'workflow')) + '-explain.md';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Exported ' + a.download + ' - commit it beside the durable record for auditable runs', 4500);
+}
 // Full memory protocol block for orchestrator-level prompts
 // Memory writes are PROTOCOL-level, not task-level. The suggested-tools line recommends
 // a task toolkit; this shared sentence, injected at every per-agent memory write

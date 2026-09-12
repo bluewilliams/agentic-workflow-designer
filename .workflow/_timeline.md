@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-09-12 - explain-report-export - the Explain content as a committable audit document (per-node lever rows with reasons and fenced evidence + embedded lossless JSON); README gains the four-principle Design Philosophy. 1723 -> 1725 - .workflow/explain-report-export.md
 2026-09-11 - live-run-monitor (update) - Run Health row: read-only protocol-drift detectors (paraphrased ticks, stopped-ticking lead, future-stamped entries) as amber hints with copyable nudges; detector review hardened all three. 1719 -> 1722 - .workflow/live-run-monitor.md
 2026-09-07 - live-run-monitor (update) - dynamic fan-out canvas aggregation (hyphen-boundary pools, sibling-excluded, trouble-first priority, prototype-safe maps) + the binding {step-slug}-{item} naming emission delivered to orchestrators, per-agent preambles, and teammate blocks. 1715 -> 1719 - .workflow/live-run-monitor.md
 2026-09-03 - live-run-monitor (update) - teams-run diagnosis: the board was faithful (stale file, not stale view); emissions fixed at the true site (per-teammate Memory blocks gain announce-at-start + the DURING t: rule with source path, relayed VERBATIM by the lead; tick-on-teammate-completion in the lead loop; exact-copy t: text everywhere). 1713 -> 1714 - .workflow/live-run-monitor.md

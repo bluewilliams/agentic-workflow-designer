@@ -7150,6 +7150,44 @@ describe('OpenSpec artifacts option', () => {
   });
 });
 
+// ─── Suite 12k: Explain report export (the committable audit document) ────
+describe('Explain report export', () => {
+  beforeEach(() => { resetState(); });
+  it('the report carries the anatomy, per-node lever rows with reasons, and the embedded definition', () => {
+    win.state.memoryEnabled = true;
+    win.addNode('agent', 100, 100, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'build it', maxTurns:5 });
+    const md = win.genExplainReport('subagent');
+    expect(md).toContain('# Explain Report:');
+    expect(md).toContain('## Workflow anatomy');
+    expect(md).toContain('## Builder (agent)');
+    expect(md).toContain('EMITTED');
+    expect(md).toContain('SKIPPED');                                     // OFF levers are part of the audit story
+    expect(md).toContain('~~~~');                                        // tilde fences: evidence can contain backtick fences
+    expect(md).toContain('## Embedded workflow definition');
+    expect(md).toContain('Import > From clipboard');
+    expect(md).toContain('"nodes"');                                     // the serialized definition rides along
+    expect(md).toContain('"format": "agentic-workflow-designer"');       // the importer's envelope: the Lossless claim holds
+    expect(md).toNotContain('```awd:run');                               // run-report examples defanged: a report paste never fakes telemetry
+    const btn = win.document.querySelector('#explainOverlay button[onclick="exportExplainReport()"]');
+    expect(!!btn && !!btn.parentElement.querySelector('.help-close')).toBe(true);   // grouped with the close X, not centered by the header flex
+    expect(md).toNotContain('—');
+  });
+  it('long evidence truncates honestly; the story rides fenced; short evidence stays whole', () => {
+    win.state.memoryEnabled = true;
+    win.addNode('agent', 100, 100, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'b', maxTurns:5 });
+    win.document.getElementById('storyInput').value = 'Build the fortune generator';
+    const md = win.genExplainReport('subagent');
+    expect(md).toContain('## Requirements (as configured)');
+    expect(md).toContain('Build the fortune generator');
+    expect(md).toContain('more characters; open the workflow in the designer for the full row');   // honest for synthesized rows too
+    const fenced = win.exReportEvidence('has a\n~~~~\ntilde run inside').join('\n');
+    expect(fenced.split('\n')[1]).toBe('~~~~~');                         // the wrapper always outsizes inner tilde runs
+    expect(win.exReportEvidence('short').join('\n')).toContain('short');
+    expect(win.exReportEvidence('short').join('\n')).toNotContain('truncated');
+    expect(win.exReportEvidence('').length).toBe(0);                     // skipped rows add no fence
+  });
+});
+
 // ─── Suite 12e: Agent craft batch (found-defect protocol, spot-mutation, verifier
 // strengthening, Verification ledger, Found bugs, polish) ─────────────────────
 describe('Agent craft batch', () => {
