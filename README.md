@@ -22,9 +22,15 @@ That is the core loop. Everything below is optional polish - tweaking agents, ad
 
 ## Design Philosophy
 
-Single HTML file. No frameworks, no build step, no server, no dependencies, no drama. Open it in a browser and it works. Deploy it to GitHub Pages and it works. Send it to a colleague and it works.
+Three principles govern every decision in this tool, and a fourth earned its place through use:
 
-All data stays in your browser (localStorage). Nothing is sent anywhere. Your requirements, prompts, and workflows never leave your machine unless you copy them yourself. No telemetry, no analytics, no server to phone home to even if it wanted to.
+**1. Radically simple.** One HTML file. No frameworks, no build step, no server, no dependencies, no account, no drama. Open it in a browser and it works. Deploy it to GitHub Pages and it works. Send it to a colleague and it works. All data stays in your browser (localStorage) - your requirements, prompts, and workflows never leave your machine unless you copy them yourself. No telemetry, no analytics, no server to phone home to even if it wanted to. Every feature must pay for itself against this bar.
+
+**2. The engineer directs.** You stay the director: everything the tool generates is visible, editable, and yours before it runs. The deepest rule here: configuration only ever GRANTS, never restricts - selecting a tool signals intent, and absence never forbids. The tool sharpens your judgment; it never substitutes for it.
+
+**3. Set Claude up to succeed, then get out of the way.** The effort goes into the craft Claude receives - grounded context, durable memory, honest verification contracts, review discipline baked into the prompts - and then the agent is trusted, not micromanaged. When confidence is needed, the tool asks for EVIDENCE (the live monitor, run health, verification steps) instead of adding restrictions. Help Claude; never cage it.
+
+**4. The truth is the product.** The durable record, its index, the live board, and the health row all exist so that what the artifacts SAY always matches what the code DOES - with drift surfaced, never papered over.
 
 ## What It Does
 
@@ -112,6 +118,10 @@ When a larger task needs to pass between engineers, choose **Export ▾ → Hand
 - **The workflow definition** - the serialized workflow, so they can import it back into the designer to edit the pipeline.
 
 If a workflow was seeded only with a work-item URL, the prompt and definition are intentionally thin - the agent fetches the ticket at runtime, and the resolved context the previous engineer worked from lives in the durable record. The bundle says so, so the receiver trusts the durable record for the current spec and state. The handoff bundle pairs naturally with Durable Record; without a durable record there is no captured state to resume from, and the bundle says that too.
+
+### Explain report
+
+**Explain** and **Explain Step** are the map of WHY every lever is set; the **Explain Report** (Export menu, or the Export report button inside the Explain modal itself) turns that map into a committable audit document, `{slug}-explain.md`. It contains the workflow anatomy, then every node's lever rows - EMITTED or SKIPPED, the reason, and the emitted evidence - plus the requirements and the full workflow JSON embedded for lossless re-import (Import > From clipboard). Commit it beside the durable record and a future colleague can diagnose why a run failed or succeeded from the repo alone: the WHY (this report), the WHAT HAPPENED (the record and its run fence), and the exact workflow to reopen interactively.
 
 ## Run Reports (self-improvement loop)
 

@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## explain-report-export
+
+- record: .workflow/explain-report-export.md
+- intent: an Export-menu item saves the Explain content as a committable audit document - every lever per node (EMITTED/SKIPPED, reason, tilde-fenced evidence with honest truncation), the anatomy, the fenced requirements, and the full workflow JSON embedded for lossless re-import - so a future colleague can diagnose why a run was configured the way it was from the repo alone. Pure projection of explainWorkflow/explainNode; no second analysis path.
+- files: index.html (genExplainReport/exReportEvidence/exportExplainReport, Export-menu item + Explain-modal header button, help modal), tests.html (Suite 12k), README.md
+- status: current | date: 2026-09-12 | note: 1723 -> 1725.
+
 ## openspec-artifacts
 
 - record: .workflow/openspec-artifacts.md
