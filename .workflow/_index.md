@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## house-tooltips
+
+- record: .workflow/house-tooltips.md
+- intent: one document-level delegate restyles every title-attribute tooltip to the house aesthetic (title moved to data-tip on hover - native box suppressed - then a styled, positioned, viewport-clamped #appTip after 350ms; aria-label preserved for icon-only elements). Zero per-element changes; hundreds of existing hints inherit it; SVG title children stay native by design.
+- files: index.html (CSS rule + delegate block), tests.html (Suite 12m)
+- status: current | date: 2026-09-12 | note: 1740 -> 1742.
+
 ## session-bridge
 
 - record: .workflow/session-bridge.md

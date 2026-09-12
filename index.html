@@ -486,6 +486,10 @@ svg.canvas{width:100%;height:100%;display:block}
 @keyframes monitorNodeStroke{0%,100%{stroke-width:1.5;stroke-opacity:.55}50%{stroke-width:3;stroke-opacity:1}}
 @media (prefers-reduced-motion: reduce){.monitor-live .beacon,.monitor-agent .dot.pulse,.monitor-task.just-changed,.monitor-dot-live{animation:none}.monitor-node-live{animation:none;stroke-width:2;stroke-opacity:1}}
 .monitor-tabs{display:flex;gap:4px;margin:12px 0 2px;border-bottom:1px solid var(--border);padding-bottom:6px}
+/* House-styled tooltip (replaces the native title box app-wide via one delegate) */
+#appTip{position:fixed;z-index:400;max-width:340px;background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);padding:8px 11px;font-size:11.5px;line-height:1.55;
+  color:var(--text2);pointer-events:none;white-space:pre-line;overflow-wrap:break-word}
 #bridgeBanner{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:70;display:flex;flex-direction:column;gap:6px}
 .bridge-row{display:flex;align-items:center;gap:9px;padding:8px 12px;background:var(--surface);border:1px solid var(--accent);
   border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:12px;color:var(--text)}
@@ -528,7 +532,7 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section" data-collapse-id="requirements">
-    <h3>Workflow Name &amp; Requirements</h3>
+    <h3 title="The heart of a run: name the workflow (it namespaces memory, records, and the Session Bridge) and paste the requirements or a Jira URL. A name, requirements, and a preset is a COMPLETE run - everything below is situational.">Workflow Name &amp; Requirements</h3>
     <input type="text" id="workflowName" class="story-input" style="min-height:auto;padding:8px 10px;font-family:var(--font);font-weight:600;margin-bottom:8px" placeholder="optional - auto-named from your requirements" oninput="updateMemoryPath();updatePrompt();autoSaveWorkflow()"/>
     <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Auto Workflow to auto-build a workflow from keywords." oninput="validateStoryInput(true)"></textarea>
     <div id="storyHint" class="input-hint"></div>
@@ -537,8 +541,8 @@ svg.canvas{width:100%;height:100%;display:block}
       <span style="font-size:12px">Clarify requirements first <span style="color:var(--text3);font-weight:400">(the workflow opens with clarifying questions)</span></span>
     </label>
     <div class="btn-row mt">
-      <button class="btn primary" id="generateBtn" onclick="generateFromStory()">Auto Workflow</button>
-      <button class="btn sm" id="refineBtn" onclick="generateRefinePrompt()">Generate Refine Prompt</button>
+      <button class="btn primary" id="generateBtn" onclick="generateFromStory()" title="Build a bespoke workflow from your requirements text: intent scoring picks the shape (build, research, review, analysis), wraps a Skeptic on the plan, and tells you what it detected. Replaces the canvas.">Auto Workflow</button>
+      <button class="btn sm" id="refineBtn" onclick="generateRefinePrompt()" title="Copy an interview prompt: Claude asks you clarifying questions, then returns a refined spec (a strict superset of your original) that pastes or bridges straight back into Requirements.">Generate Refine Prompt</button>
     </div>
     <div id="urlPresetPicker" style="display:none;margin-top:8px;padding:10px;background:var(--surface2);border:1px solid var(--accent);border-radius:8px">
       <div style="font-size:11px;color:var(--text2);margin-bottom:8px;font-weight:600">Your input looks like a ticket URL. What type of work is it?</div>
@@ -556,18 +560,17 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section" data-collapse-id="workflow-context">
-    <h3>Workflow Context <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
-    <div style="font-size:10px;color:var(--text3);margin:-2px 0 6px;line-height:1.4">Added to every agent's prompt - an implementation plan, file paths, an MCP hint, constraints, anything.</div>
+    <h3 title="Whatever you paste here rides into EVERY agent's prompt: an implementation plan (Generate Plan Prompt fills this via the bridge or clipboard), file paths, constraints, an MCP hint - anything. A starting point for agents, never a cage.">Workflow Context <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
     <textarea class="story-input" id="planInput" placeholder="Paste context for the whole workflow here. Often an implementation plan (file paths, patterns, architecture decisions), but any guidance works.&#10;&#10;Used as a starting point, not a constraint - agents adapt based on what they discover during research." oninput="autoSaveWorkflow()" style="min-height:60px"></textarea>
     <div style="height:1px;background:var(--border);opacity:.5;margin:12px 0 10px"></div>
     <div class="btn-row">
-      <button class="btn sm" id="planBtn" onclick="generatePlanPrompt()">Generate Plan Prompt</button>
+      <button class="btn sm" id="planBtn" onclick="generatePlanPrompt()" title="Copy a prompt that has Claude research your actual codebase and return an implementation blueprint for the Workflow Context field - a starting point for agents, never a constraint.">Generate Plan Prompt</button>
     </div>
     <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5"><strong style="color:var(--text2)">Optional</strong>: click <strong style="color:var(--text2)">Generate Plan Prompt</strong> to create a planning prompt - run it in Claude Code and paste the result into the Workflow Context box above (Claude copies it to your clipboard). Best used after refining your requirements. Or paste a plan from <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">/plan</code> mode directly.</div>
   </div>
 
   <div class="sidebar-section" data-collapse-id="default-model">
-    <h3>Default Model</h3>
+    <h3 title="The model new nodes, presets, and generated workflows start on. Unnumbered names (Opus, Sonnet) float to the newest of their family; numbered ones (Opus 4.8) pin a legacy model. Override per node any time.">Default Model</h3>
     <div class="custom-select" id="defaultModelSelect">
       <div class="custom-select-trigger" id="defaultModelTrigger">Opus</div>
       <div class="custom-select-options" id="defaultModelOptions"></div>
@@ -583,16 +586,15 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section" data-collapse-id="repositories">
-    <h3>Multi-Repo &amp; Context Paths</h3>
+    <h3 title="For work spanning repositories, or repos with binding rules: list every repo the workflow touches (per-repo grounding, records, and briefs) and the paths agents must read and honor.">Multi-Repo &amp; Context Paths</h3>
     <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Leave this empty when you launch inside the only repo you touch. List repos when work spans more than one, or to pin a branch - agents check it out and pull latest first.</div>
     <div id="repoList"></div>
-    <button class="btn sm" onclick="addRepoRow()">+ Add Repository</button>
+    <button class="btn sm" onclick="addRepoRow()" title="Add a repository this workflow touches (path + branch). Multi-repo workflows get per-repo grounding, records, and briefs.">+ Add Repository</button>
     <div style="height:1px;background:var(--border);opacity:.5;margin:14px 0 10px"></div>
-    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">Repo Context Paths</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Extra paths agents read and honor. CLAUDE.md is already covered (auto-loaded in the launch repo; the generated prompt has agents read the other repos' copies). Sticky: they carry across workflows and survive New Workflow.</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px" title="Extra paths agents read and honor, relative to each listed repo. CLAUDE.md needs no entry - it auto-loads in the launch repo and the generated prompt has agents read the other repos' copies. These paths are sticky: they carry across workflows and survive New Workflow.">Repo Context Paths</div>
 
     <div style="margin-bottom:10px">
-      <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px">Rules / constitution paths</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px" title="Binding constraints every agent must follow while building - coding standards, architecture rules, a team constitution. Emitted as must-honor context to every step that touches the repo.">Rules / constitution paths</div>
       <div style="font-size:10px;color:var(--text3);margin-bottom:5px">(binding constraints on how to build)</div>
       <div class="path-input-row">
         <input type="text" id="rulesPathInput" placeholder="e.g. .claude/rules or CONVENTIONS.md" onkeydown="if(event.key==='Enter'){event.preventDefault();addRulesPathFromInput();}"/>
@@ -608,7 +610,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
 
     <div>
-      <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px">Product docs (PRD / ADR)</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px" title="Goals and direction agents should honor - PRDs, architecture decision records, roadmaps. Guidance for judgment calls, softer than rules.">Product docs (PRD / ADR)</div>
       <div style="font-size:10px;color:var(--text3);margin-bottom:5px">(goals/direction to honor)</div>
       <div class="path-input-row">
         <input type="text" id="productDocPathInput" placeholder="e.g. docs/ or ARCHITECTURE.md" onkeydown="if(event.key==='Enter'){event.preventDefault();addProductDocPathFromInput();}"/>
@@ -625,7 +627,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
 
     <div style="margin-top:10px">
-      <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px">Verification instructions (verifier / tester owned)</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px" title="What a change must PROVE before it ships - MUST items are required, SHOULD items are expected. Routed to the owning Verifier (or the final Tester), tracked in a verification ledger, and with the checkbox below armed, unmet MUSTs fail the run honestly instead of shipping around it.">Verification instructions (verifier / tester owned)</div>
       <div style="font-size:10px;color:var(--text3);margin-bottom:5px">(what a change must prove; routed to the owning Verifier, else the final Tester)</div>
       <div class="path-input-row">
         <input type="text" id="verifyPathInput" placeholder="e.g. VERIFY.md or rules/E2E.md" onkeydown="if(event.key==='Enter'){event.preventDefault();addVerifyPathFromInput();}"/>
@@ -637,18 +639,18 @@ svg.canvas{width:100%;height:100%;display:block}
         <button onclick="addVerifyPath('rules/E2E.md')">rules/E2E.md</button>
       </div>
       <button class="path-clear" id="verifyPathClear" onclick="clearVerifyPaths()" style="display:none">Clear All</button>
-      <div style="font-size:10px;color:var(--text3);margin:8px 0 3px">Inline notes (optional): mandates without a file, same MUST/SHOULD language:</div>
+      <div style="font-size:10px;color:var(--text3);margin:8px 0 3px" title="Verification mandates that need no file: write them here in the same MUST/SHOULD language and they join the routed instructions exactly like a file's contents would.">Inline notes (optional):</div>
       <textarea id="verifyNotesInput" class="story-input" style="min-height:44px;padding:6px 8px;font-size:12px" placeholder="e.g. The E2E checkout flow MUST pass (npm run test:e2e). Lighthouse performance SHOULD stay >= 90." oninput="setVerifyNotes(this.value)"></textarea>
       <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text3);margin-top:6px;cursor:pointer">
         <input type="checkbox" id="verifyFailRunToggle" checked disabled onchange="setVerifyFailRun(this.checked)" style="margin:0"/>
-        <span>Unmet required verifications fail the run</span>
+        <span title="Arms the honest-failure posture: when a MUST verification cannot be satisfied (or cannot even be run), the workflow ends AS A FAILURE with the blockers named in its report - instead of shipping around them. Needs at least one verification path or inline note to arm.">Unmet required verifications fail the run</span>
       </label>
       <div id="verifyFailRunHint" style="font-size:10px;color:var(--text3);margin:2px 0 0 20px">Add a verification path or an inline note to enable.</div>
     </div>
   </div>
 
   <div class="sidebar-section" data-collapse-id="add-nodes">
-    <h3>Node &amp; Agent Palette</h3>
+    <h3 title="Drag building blocks onto the canvas: agents (each a role with its own craft template), decision gates, parallel forks, tasks, inputs, and outputs. Presets are these same blocks pre-wired.">Node &amp; Agent Palette</h3>
     <div class="palette-grid">
       <div class="palette-item" onclick="addNode('agent')">
         <span class="palette-dot" style="background:var(--agent)"></span>Agent
@@ -682,7 +684,7 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section" data-collapse-id="presets">
-    <h3>Presets</h3>
+    <h3 title="Ready-made pipelines - each a strong opinion you can override after loading. The group at the bottom amends work that already shipped instead of starting new work.">Presets</h3>
     <div class="preset-list">
       <div class="preset-item" data-preset="feature" onclick="loadPreset('feature')">
         <div class="preset-name">Feature Development</div>
@@ -768,10 +770,9 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section" id="appSourceSection" data-collapse-id="app-under-test">
-    <h3>App &amp; UI Context <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
-    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">App Under Test</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Local path to the app being explored. Agents map its structure, screens, and (for UI test work) selectors.</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Used by App Explorer steps (and the Test Automation preset) - add one to put this path to work.</div>
+    <h3 title="For UI work and test automation: point agents at the app being explored and capture styling preferences - both optional, both consumed only by the steps that need them.">App &amp; UI Context <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
+    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px" title="The local path to an app agents explore: they map its structure, screens, navigation, and (for UI test work) element selectors - with a branch pin if you set one, and the Access selector keeping the repo read-only unless you deliberately grant writes.">App Under Test</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Used by App Explorer steps (and the Test Automation preset).</div>
     <input type="text" id="appSourcePath" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px" placeholder="/path/to/app/repo" oninput="updatePrompt();savePrefsDebounced()"/>
     <input type="text" id="appSourceBranch" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px" placeholder="Branch (optional, e.g. feature/PROJ-123)" oninput="updatePrompt();savePrefsDebounced()"/>
     <select id="appSourceAccess" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px;width:100%" onchange="updatePrompt();savePrefsDebounced()" title="Whether steps may modify this repo. Read-only is the safe default; Writable is a deliberate grant that applies to any step whose task genuinely requires it.">
@@ -780,17 +781,16 @@ svg.canvas{width:100%;height:100%;display:block}
     </select>
     <div style="height:1px;background:var(--border);opacity:.5;margin:14px 0 10px"></div>
     <div id="uiContextSection">
-    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">UI Context</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Styling preferences or migration notes for any platform - web, mobile, or desktop UI. Leave blank and the agent will discover your design system automatically.</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px" title="Styling preferences or migration notes for any platform - web, mobile, or desktop UI (e.g. which styling library to prefer or avoid). Leave it blank and the Design Analyzer discovers your design system from the code instead.">UI Context</div>
     <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Used by Design Analyzer and UI-building steps.</div>
     <textarea id="uiContextNotes" class="story-input" style="min-height:48px;padding:6px 8px;font-size:12px" placeholder="e.g. Use vanilla-extract + clsx, avoid SCSS and MUI v4; or Compose Material3 tokens only; or SwiftUI over UIKit for new screens" oninput="updatePrompt();savePrefsDebounced()"></textarea>
     </div>
   </div>
 
   <div class="sidebar-section" data-collapse-id="workflow-management">
-    <h3>Workflow Management</h3>
+    <h3 title="Save and load workflows by name (browser-local), clone variants, and export or import: Workflow JSON, OpenSpec schema, Handoff package, or the committable Explain report.">Workflow Management</h3>
     <div class="btn-row">
-      <button class="btn sm primary" onclick="saveWorkflow()">Save</button>
+      <button class="btn sm primary" onclick="saveWorkflow()" title="Save this workflow by name in your browser (localStorage) - nothing leaves your machine. Use Export for a shareable file.">Save</button>
       <button class="btn sm" onclick="duplicateWorkflow()" title="Save a copy: renames the current workflow to &quot;(copy)&quot; so your next Save creates a new workflow, leaving the original untouched. Handy for spinning off a variant.">Clone</button>
       <div class="export-dd" style="position:relative;display:inline-flex">
         <button class="btn sm" id="exportMenuBtn" aria-haspopup="true" aria-expanded="false" onclick="toggleExportMenu(event)" title="Download the workflow as a file - Workflow JSON, OpenSpec schema, or a Handoff package.">Export &#9662;</button>
@@ -817,7 +817,7 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section memory-section" data-collapse-id="mcp-integrations">
-    <h3>MCP Integrations</h3>
+    <h3 title="Tell agents which MCP servers are available so they lean on them - hints only: these toggles install and connect nothing, and never restrict. The free-text field covers any server not listed.">MCP Integrations</h3>
   <div class="sidebar-tip" style="margin:8px 0 4px">
     <span class="tip-icon">⚡</span>
     <span><strong>Better outcomes:</strong> agents work best when an Atlassian MCP tool, Datadog MCP, and a language-appropriate LSP server are installed, authenticated, and available.
@@ -827,16 +827,12 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
     <div style="font-size:10px;color:var(--text3);margin:8px 0 6px">These toggles add usage hints to generated prompts so agents lean on the tools - they do not install or connect anything (see setup above).</div>
     <label class="memory-toggle">
-      <input type="checkbox" id="mcpBrowserToggle" onchange="toggleMcpBrowser()"/>
-      <span style="font-size:12px" title="Playwright MCP, Chrome DevTools MCP, or similar. Adds hints so agents verify UI behavior and mined selectors against the live app - connect the server yourself.">Browser automation <span style="color:var(--text3);font-weight:400">(Playwright, etc.)</span></span>
-    </label>
-    <label class="memory-toggle">
-      <input type="checkbox" id="mcpGithubToggle" onchange="toggleMcpGithub()"/>
-      <span style="font-size:12px">GitHub <span style="color:var(--text3);font-weight:400">(repos, PRs, issues, Actions)</span></span>
-    </label>
-    <label class="memory-toggle">
       <input type="checkbox" id="mcpAtlassianToggle" onchange="toggleMcpAtlassian()" checked/>
       <span style="font-size:12px">Atlassian <span style="color:var(--text3);font-weight:400">(Jira, Confluence, Bitbucket)</span></span>
+    </label>
+    <label class="memory-toggle">
+      <input type="checkbox" id="mcpBrowserToggle" onchange="toggleMcpBrowser()"/>
+      <span style="font-size:12px" title="Playwright MCP, Chrome DevTools MCP, or similar. Adds hints so agents verify UI behavior and mined selectors against the live app - connect the server yourself.">Browser automation <span style="color:var(--text3);font-weight:400">(Playwright, etc.)</span></span>
     </label>
     <label class="memory-toggle">
       <input type="checkbox" id="mcpCodeSearchToggle" onchange="toggleMcpCodeSearch()" checked/>
@@ -846,32 +842,33 @@ svg.canvas{width:100%;height:100%;display:block}
       <input type="checkbox" id="mcpDatadogToggle" onchange="toggleMcpDatadog()"/>
       <span style="font-size:12px">Datadog <span style="color:var(--text3);font-weight:400">(metrics, logs, traces)</span></span>
     </label>
+    <label class="memory-toggle">
+      <input type="checkbox" id="mcpGithubToggle" onchange="toggleMcpGithub()"/>
+      <span style="font-size:12px">GitHub <span style="color:var(--text3);font-weight:400">(repos, PRs, issues, Actions)</span></span>
+    </label>
     <div style="margin-top:8px">
       <textarea id="mcpCustomNotes" placeholder="Describe other MCPs available to your agents (e.g. Playwright MCP for browser testing)..." oninput="savePrefsDebounced()" rows="2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;font-family:inherit"></textarea>
     </div>
   </div>
 
   <div class="sidebar-section memory-section" data-collapse-id="memory-durable-record">
-    <h3>Memory &amp; Durable Record</h3>
-    <label class="memory-toggle">
+    <h3 title="The persistence stack: grounding reads prior records before planning, workflow memory keeps a run alive across compaction, and the durable record is the committable spec-and-state artifact. Together they form the flywheel - every run leaves the next one smarter.">Memory &amp; Durable Record</h3>
+    <label class="memory-toggle" title="The read side of the flywheel: before planning, the orchestrator scans .workflow/_index.md and any openspec/ docs, opens ONLY the records matching this change, and folds their decisions and gotchas into the plan. Self-gating - a no-op on repos with neither, so it costs nothing on greenfield work.">
       <input type="checkbox" id="consumeRecordsToggle" onchange="toggleConsumeRecords()" checked/>
       <span>Ground in prior records</span>
     </label>
-    <p class="memory-help">Agents scan committed <code>.workflow</code> records and any OpenSpec docs before planning, and inherit prior decisions and gotchas. No-op on greenfield work.</p>
     <div style="border-top:1px solid var(--border);margin:12px 0"></div>
-    <label class="memory-toggle">
+    <label class="memory-toggle" title="Agents read state before working and write progress after every significant action (shared.md handoffs, one @agent.md each) - so a long run survives context compaction and the Live Run Monitor has something to watch. Ephemeral working files under ~/.claude; nothing is committed. Auto-enables for complex workflows.">
       <input type="checkbox" id="memoryToggle" onchange="toggleMemory()" checked/>
       <span>Enable workflow memory</span>
     </label>
-    <p class="memory-help">Agents save progress to disk so a long run survives context compaction. Ephemeral working state in <code>~/.claude</code>, nothing is committed.</p>
     <div id="memoryPathField" style="display:block">
       <p class="memory-help" style="margin-top:6px">Memory path: <code id="memoryPathDisplay">~/.claude/workflow-memory/untitled/</code></p>
       <div class="durable-block" id="durableRecordField">
-        <label class="memory-toggle">
+        <label class="memory-toggle" title="Adds a committable spec-and-state document (.workflow/{slug}.md plus index and timeline entries): requirements with test-traced scenarios, decisions with their rejected alternatives, real verify evidence, and the task checklist the monitor renders live. A resumable handoff mid-run, an auditable artifact when done. Builds on memory - a strict superset.">
           <input type="checkbox" id="durableRecordToggle" onchange="toggleDurableRecord()" checked/>
           <span>Keep a durable record</span>
         </label>
-        <p class="memory-help">Also writes a committable <strong>spec + state</strong> document: a resumable handoff in progress, an auditable artifact when done.</p>
         <div id="artifactPathField" style="display:block;margin-top:8px">
           <span class="memory-path-label">Artifact Path</span>
           <input type="text" id="artifactPathInput" class="memory-path" oninput="onArtifactPathInput()" placeholder=".workflow/untitled.md" style="width:100%;box-sizing:border-box;border:1px solid var(--surface2);background:var(--surface);color:var(--text);font-family:inherit"/>
@@ -888,8 +885,8 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section memory-section" id="runReportSection" data-collapse-id="run-reports">
-    <h3>Run Reports <span style="color:var(--text3);font-weight:400;font-size:11px">self-improvement</span></h3>
-    <p class="memory-help" id="runReportStatus" style="margin-bottom:6px">No run reports yet - connect ~/.awd once to catch every workflow's reports automatically (or a repo's .workflow folder for just that repo's; paste into Import works everywhere).</p>
+    <h3 title="The self-improvement loop: every generated run ends with a small awd:run telemetry fence. Feed reports back (Connect Folder catches them automatically; pasting into Import always works) and nodes wear real stats - then the Tuning Prompt has Claude propose an improved workflow from the actual telemetry.">Run Reports <span style="color:var(--text3);font-weight:400;font-size:11px">self-improvement</span></h3>
+    <p class="memory-help" id="runReportStatus" style="margin-bottom:6px">No run reports yet - connect ~/.awd once, or paste any report into Import.</p>
     <div class="btn-row">
       <span id="repoConnectWrap" style="display:none;gap:4px;align-items:center"></span>
       <button class="btn sm" id="tuningPromptBtn" onclick="copyTuningPrompt()" title="Copy a tuning prompt built from imported run reports: Claude analyzes the telemetry and returns an improved workflow JSON to import back.">Tuning Prompt</button>
@@ -897,10 +894,10 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section config-panel" id="configPanel" data-collapse-id="node-config">
-    <h3>Node Configuration</h3>
+    <h3 title="The selected node's settings: role, model, tools (suggestions, never restrictions), prompt, turns, and Agent Context. Opens automatically when you select a node on the canvas.">Node Configuration</h3>
     <div id="configFields"></div>
     <div class="btn-row mt">
-      <button class="btn danger sm" onclick="deleteSelected()">Delete Node</button>
+      <button class="btn danger sm" onclick="deleteSelected()" title="Delete the selected node and its connections (Delete key works too)">Delete Node</button>
     </div>
   </div>
 </div>
@@ -1011,7 +1008,7 @@ svg.canvas{width:100%;height:100%;display:block}
       <span class="info" id="tokenEstimate" style="font-size:10px;color:var(--text3)"></span>
       <button class="btn sm" onclick="if(typeof showExplain==='function')showExplain()" title="Per-part anatomy of the currently selected format: what will be emitted, what is skipped, and why">Explain</button>
       <button class="btn sm" onclick="if(typeof explainSelectedStep==='function')explainSelectedStep()" title="Per-step anatomy of the node selected on the canvas: template, tool lines, hints, gates - emitted or skipped, and why">Explain Step</button>
-      <button class="btn sm primary" onclick="copyPrompt()">Copy</button>
+      <button class="btn sm primary" onclick="copyPrompt()" title="Copy the complete generated prompt for the active format tab - ready to paste into Claude Code or Claude.ai">Copy</button>
     </div>
   </div>
   <div class="format-rec" id="formatRec"></div>
@@ -2960,6 +2957,54 @@ function updateArtifactPath() {
 // ═══════════════════════════════════════════════════════════
 // PERSISTENCE (localStorage)
 // ═══════════════════════════════════════════════════════════
+// ── House-styled tooltips ──────────────────────────────────────────────────
+// The app leans on title attributes for hundreds of hints, and the native box
+// clashes with the dark aesthetic. ONE document-level delegate restyles them all:
+// on hover it moves the element's title into data-tip (which suppresses the native
+// tooltip before its ~1s delay can fire - rebuilt DOM gets a fresh title and the
+// same treatment) and shows a positioned house-styled box after a short delay.
+// SVG <title> CHILD elements (the canvas dots) are untouched - different mechanism.
+const APP_TIP_DELAY_MS = 350;
+const appTip = { timer: null, target: null };
+function appTipHide() {
+  clearTimeout(appTip.timer); appTip.timer = null; appTip.target = null;
+  const el = $('appTip'); if (el) el.remove();
+}
+function appTipShow(target, text) {
+  const old = $('appTip'); if (old) old.remove();
+  const el = document.createElement('div');
+  el.id = 'appTip';
+  el.textContent = text;
+  document.body.appendChild(el);
+  const r = target.getBoundingClientRect(), t = el.getBoundingClientRect();
+  let x = Math.round(r.left + r.width / 2 - t.width / 2);
+  x = Math.max(8, Math.min(x, window.innerWidth - t.width - 8));
+  let y = Math.round(r.bottom + 7);
+  if (y + t.height > window.innerHeight - 8) y = Math.max(8, Math.round(r.top - t.height - 7));
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+}
+document.addEventListener('mouseover', (e) => {
+  const t = e.target && e.target.closest ? e.target.closest('[title], [data-tip]') : null;
+  if (!t) return;
+  if (t.hasAttribute && t.hasAttribute('title')) {
+    const v = t.getAttribute('title');
+    if (v) t.setAttribute('data-tip', v);
+    t.removeAttribute('title');
+    if (v && !t.getAttribute('aria-label') && !(t.textContent || '').trim()) t.setAttribute('aria-label', v);
+  }
+  const tip = t.getAttribute ? t.getAttribute('data-tip') : '';
+  if (!tip) return;
+  if (appTip.target === t && $('appTip')) return;   // already showing for this element
+  clearTimeout(appTip.timer);
+  appTip.target = t;
+  appTip.timer = setTimeout(() => { if (appTip.target === t) appTipShow(t, tip); }, APP_TIP_DELAY_MS);
+});
+document.addEventListener('mouseout', (e) => {
+  if (appTip.target && (e.target === appTip.target || (appTip.target.contains && appTip.target.contains(e.target)))) appTipHide();
+});
+document.addEventListener('mousedown', appTipHide);
+document.addEventListener('scroll', appTipHide, true);
 function showToast(msg, duration) {
   const t = $('toast');
   t.textContent = msg;
@@ -6465,7 +6510,7 @@ function openAgentForm(id, node) {
 // Render the tool toggle-chips into the form (shared by openAgentForm and the type-change handler).
 function renderAgentFormTools(tools) {
   const el = $('customAgentTools'); if (!el) return;
-  el.innerHTML = ALL_TOOLS.map(t => '<button type="button" class="tool-tag' + ((tools || []).includes(t) ? ' active' : '') + '" onclick="this.classList.toggle(\'active\')">' + t + '</button>').join('');
+  el.innerHTML = ALL_TOOLS.map(t => '<button type="button" class="tool-tag' + ((tools || []).includes(t) ? ' active' : '') + '" title="Suggests this tool to the agent - suggestions only: selecting signals intent, and leaving one out never forbids it" onclick="this.classList.toggle(\'active\')">' + t + '</button>').join('');
 }
 // Form Agent Type change: mirror the node panel - fill a blank prompt from the role template, and for
 // 'writer' swap the tools to that style's defaults. Operates on the LIVE form state so typed edits stick.
@@ -9121,7 +9166,7 @@ function showValidation() {
     html += groupHead('SUGGESTIONS (advisory - never block anything)');
     html += suggestions.map(sg => {
       const btn = (sg.action === 'attachSkeptic' && sg.nodeId)
-        ? '<button class="btn sm" style="margin-left:auto;flex:0 0 auto" onclick="advisorAttachSkeptic(\'' + sg.nodeId + '\')">Attach Skeptic</button>'
+        ? '<button class="btn sm" style="margin-left:auto;flex:0 0 auto" title="One click adds the full review loop on this step: a Skeptic reviewer, a decision gate, and the revise edge back" onclick="advisorAttachSkeptic(\'' + sg.nodeId + '\')">Attach Skeptic</button>'
         : '';
       return '<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06)">'
         + '<span style="color:#60a5fa;flex:0 0 auto">\u{1F4A1}</span>'
@@ -12747,7 +12792,7 @@ function renderBridgeBanner() {
   }
   el.innerHTML = sessionBridge.offers.map((o, i) =>
     '<div class="bridge-row"><span class="bridge-dot"></span><span class="bridge-msg">' + escHtml(BRIDGE_KIND_LABEL[o.kind] || o.kind) + ' arrived from your session</span>'
-    + '<button class="btn sm" onclick="bridgeApply(' + i + ')">' + (o.kind === 'tuning' ? 'Import' : 'Apply') + '</button>'
+    + '<button class="btn sm" onclick="bridgeApply(' + i + ')" title="' + (o.kind === 'tuning' ? 'Import the tuned workflow (validated; replaces the canvas behind the usual import flow)' : 'Apply this output to its field (replaces the current content, behind a confirm)') + '">' + (o.kind === 'tuning' ? 'Import' : 'Apply') + '</button>'
     + '<button class="btn sm" onclick="bridgeDismiss(' + i + ')" title="Hide this offer (the file stays; a newer drop re-offers)">Dismiss</button></div>'
   ).join('');
 }
@@ -13571,12 +13616,12 @@ function renderMonitorPanel() {
       H.push('<div style="display:flex;align-items:center;gap:6px;padding:2px 0"><code style="overflow-wrap:anywhere;flex:1">' + escHtml(w.name) + '/</code>'
         + (w.fileN ? '<span style="color:var(--text3);font-size:10px" title="Files this tree contributed to the last scan (after ignore rules)">' + w.fileN + ' files</span>' : '')
         + (w.capped ? '<span style="color:#f59e0b;font-size:10px" title="This folder holds more files than the scan budget - the view is a partial sample, so only modifications are reported (new and removed files are not tracked). Watch a more specific folder for full fidelity.">capped</span>' : '')
-        + (w.status === 'prompt' ? '<button class="btn sm" onclick="monitorPoll(true)">Re-grant</button>' : '')
+        + (w.status === 'prompt' ? '<button class="btn sm" onclick="monitorPoll(true)" title="The browser needs permission again for this folder (grants can lapse between sessions) - one click re-asks">Re-grant</button>' : '')
         + '<button class="btn sm" data-watch-name="' + escHtml(w.name) + '" onclick="monitorRemoveWatch(this.dataset.watchName)" title="Stop watching this folder (re-add it anytime with + Add Folder)">Unwatch</button></div>');
     });
-    H.push('<div style="margin-top:4px"><button class="btn sm" onclick="monitorPoll(true)">Rescan</button> '
-      + (runMonitor.watches.length < MONITOR_MAX_WATCHES ? '<button class="btn sm" onclick="connectRunMonitor()">+ Add Folder</button> ' : '')
-      + '<button class="btn sm" onclick="disconnectRunMonitor()">Stop All</button></div>');
+    H.push('<div style="margin-top:4px"><button class="btn sm" onclick="monitorPoll(true)" title="Scan every watched folder right now (the poll keeps running either way)">Rescan</button> '
+      + (runMonitor.watches.length < MONITOR_MAX_WATCHES ? '<button class="btn sm" onclick="connectRunMonitor()" title="Watch another folder (up to 4): a repo\'s .workflow for records, or a source folder for its change feed">+ Add Folder</button> ' : '')
+      + '<button class="btn sm" onclick="disconnectRunMonitor()" title="Stop watching every folder and forget the saved handles - reconnect any time with Watch Folder">Stop All</button></div>');
     if (runMonitor.runs.length > 1) {
       H.push('<h3>Run</h3><select class="story-input" style="min-height:auto;padding:4px 6px;font-size:11px;width:100%" onchange="monitorPinRun(this.value)">');
       H.push('<option value="__auto__"' + (runMonitor.runPin === null ? ' selected' : '') + '>Auto - follow the newest activity</option>');
