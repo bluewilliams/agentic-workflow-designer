@@ -403,8 +403,10 @@ svg.canvas{width:100%;height:100%;display:block}
 .format-rec strong{color:var(--accent);font-weight:600;cursor:pointer}
 .format-rec strong:hover{text-decoration:underline}
 /* Memory toggle */
-.memory-section .memory-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;
+.memory-section .memory-toggle{display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:12px;
   color:var(--text2)}
+.memory-section .memory-toggle>span{flex:1;min-width:0}
+.memory-section .memory-toggle input[type="checkbox"]{margin-top:1px}
 .memory-section .memory-toggle input[type="checkbox"]{accent-color:var(--accent);width:14px;height:14px;
   cursor:pointer;flex-shrink:0}
 .memory-section .memory-path{margin-top:8px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);
@@ -820,12 +822,20 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
     <div style="font-size:10px;color:var(--text3);margin:8px 0 6px">These toggles add usage hints to generated prompts so agents lean on the tools - they do not install or connect anything (see setup above).</div>
     <label class="memory-toggle">
+      <input type="checkbox" id="mcpBrowserToggle" onchange="toggleMcpBrowser()"/>
+      <span style="font-size:12px" title="Playwright MCP, Chrome DevTools MCP, or similar. Adds hints so agents verify UI behavior and mined selectors against the live app - connect the server yourself.">Browser automation <span style="color:var(--text3);font-weight:400">(Playwright, etc.)</span></span>
+    </label>
+    <label class="memory-toggle">
+      <input type="checkbox" id="mcpGithubToggle" onchange="toggleMcpGithub()"/>
+      <span style="font-size:12px">GitHub <span style="color:var(--text3);font-weight:400">(repos, PRs, issues, Actions)</span></span>
+    </label>
+    <label class="memory-toggle">
       <input type="checkbox" id="mcpAtlassianToggle" onchange="toggleMcpAtlassian()" checked/>
-      <span style="font-size:12px">Atlassian <span style="color:var(--text3);font-weight:400">(Jira &amp; Confluence)</span></span>
+      <span style="font-size:12px">Atlassian <span style="color:var(--text3);font-weight:400">(Jira, Confluence, Bitbucket)</span></span>
     </label>
     <label class="memory-toggle">
       <input type="checkbox" id="mcpCodeSearchToggle" onchange="toggleMcpCodeSearch()" checked/>
-      <span style="font-size:12px">Code search (MCP) <span style="color:var(--text3);font-weight:400">(Sourcebot, Sourcegraph, Kilo Code, etc.)</span></span>
+      <span style="font-size:12px" title="Sourcebot, Sourcegraph, Kilo Code, or any cross-repo code-search MCP - none is required; agents use whichever is connected.">Code search <span style="color:var(--text3);font-weight:400">(Sourcebot, etc.)</span></span>
     </label>
     <label class="memory-toggle">
       <input type="checkbox" id="mcpDatadogToggle" onchange="toggleMcpDatadog()"/>
@@ -1645,7 +1655,31 @@ function atlassianTicketFetchHint(urls) {
 // General: TOGGLE-driven, relevance-gated, anti-redundant.
 function atlassianGeneralHint() {
   if (!state.mcpAtlassian) return null;
-  return '> **Atlassian (general) - use it whenever it helps.** This workflow expects an Atlassian MCP server; if one is connected, use it freely to pull related context that would genuinely help your task: other Jira tickets, Confluence docs (architecture, ADRs, runbooks), linked or duplicate issues. The only thing to avoid is redundancy - do not re-fetch what is already in your brief, and do not repeat a lookup another step already did. Whenever a related lookup would inform your work, do it; use your judgment. If no Atlassian tools are actually available, note the gap and proceed - do not block on Atlassian lookups.';
+  return '> **Atlassian (general) - use it whenever it helps.** This workflow expects an Atlassian MCP server; if one is connected, use it freely to pull related context that would genuinely help your task: other Jira tickets, Confluence docs (architecture, ADRs, runbooks), linked or duplicate issues, and Bitbucket repos, pull requests, and pipelines where the team hosts code there. The only thing to avoid is redundancy - do not re-fetch what is already in your brief, and do not repeat a lookup another step already did. Whenever a related lookup would inform your work, do it; use your judgment. If no Atlassian tools are actually available, note the gap and proceed - do not block on Atlassian lookups.';
+}
+// Browser-automation MCP: the workflow-level hint plus a role-gated step hint. The step
+// hint is the un-parked runtime selector-verification design: every UI-automation template
+// already marks statically-derived selectors runtime-unconfirmed and hands "Selectors to
+// Verify" columns to a MANUAL inspector pass - with a browser MCP connected, that
+// verification happens IN-RUN and the marks flip on evidence. Lane discipline holds:
+// verification-by-execution goes to the executing roles (explorer, builder, tester,
+// verifier), never to the reading reviewer lane.
+const BROWSER_STEP_ROLES = new Set(['appExplorer', 'frontend', 'tester', 'verifier']);
+function browserGeneralHint() {
+  if (!state.mcpBrowser) return null;
+  return '> **Browser automation (MCP) - use it whenever seeing the live app helps.** This workflow expects a browser-automation MCP server (Playwright MCP, Chrome DevTools MCP, or similar); if one is connected, use it freely where live evidence beats static reading: verifying UI behavior and rendered states, reproducing reported issues, confirming selectors against the real DOM, and capturing screenshots as evidence. Keep it read-mostly - navigate, inspect, and assert; perform destructive or state-changing actions in the app only where a step\'s own task calls for them. If no browser tools are actually available, note the gap and proceed - do not block on browser checks.';
+}
+function browserStepHint(node) {
+  if (!state.mcpBrowser) return '';
+  if (!node || !node.config || !BROWSER_STEP_ROLES.has(node.config.agentType)) return '';
+  if (node.config.agentType === 'appExplorer') {
+    return 'If a browser-automation MCP server is connected (Playwright MCP, Chrome DevTools MCP, or similar), VERIFY your mined selectors against the live app before handing them off: navigate to each mapped screen, locate every selector, and confirm it resolves uniquely to the intended visible element. Flip each verified mark from runtime-unconfirmed to **runtime-confirmed** in your selector map; leave anything you could not verify marked, with the reason. This turns the map\'s TODO column into evidence and saves the manual inspector pass downstream. Stay read-only in the app: navigate and inspect, never mutate data. If the app cannot be launched or no browser tools are available, keep the static marks and say so.';
+  }
+  return 'If a browser-automation MCP server is connected (Playwright MCP, Chrome DevTools MCP, or similar), prefer LIVE evidence over assumption for UI claims: verify rendered states and behavior in the running app, confirm any runtime-unconfirmed selector you depend on against the real DOM before baking it in, and capture a screenshot where visual evidence would strengthen your report. Keep it read-mostly - state-changing app actions only where your task itself calls for them. If no browser tools are available, note the gap and proceed.';
+}
+function githubGeneralHint() {
+  if (!state.mcpGithub) return null;
+  return '> **GitHub (MCP) - use it whenever it helps.** This workflow expects a GitHub MCP server; if one is connected, use it freely to pull related context that would genuinely help your task: pull requests and their review threads, issues and linked discussions, other repositories in the org, Actions runs and their failure logs. It also carries write operations (creating PRs, commenting) - use those only where this workflow\'s delivery instructions call for them, never on your own initiative. Avoid redundancy - do not re-fetch what is already in your brief or repeat a lookup another step already did. If no GitHub tools are actually available, note the gap and proceed - do not block on GitHub lookups.';
 }
 function codeSearchHint() {
   if (!state.mcpCodeSearch) return null;
@@ -2292,6 +2326,8 @@ let state = {
   effort: '',  // '' = inherit the runner's default; see EFFORT_LEVELS
   repositories: [],
   activePreset: null,
+  mcpBrowser: false,
+  mcpGithub: false,
   mcpAtlassian: true,
   mcpCodeSearch: true,
   mcpDatadog: false,
@@ -2859,6 +2895,16 @@ function toggleMcpAtlassian() {
   updatePrompt();
   savePrefs();
 }
+function toggleMcpGithub() {
+  state.mcpGithub = $('mcpGithubToggle').checked;
+  updatePrompt();
+  savePrefs();
+}
+function toggleMcpBrowser() {
+  state.mcpBrowser = $('mcpBrowserToggle').checked;
+  updatePrompt();
+  savePrefs();
+}
 function toggleMcpCodeSearch() {
   state.mcpCodeSearch = $('mcpCodeSearchToggle').checked;
   updatePrompt();
@@ -2933,6 +2979,8 @@ function savePrefs() {
       exportFormat: state.exportFormat,
       repositories: state.repositories,
       mcpAtlassian: state.mcpAtlassian,
+      mcpGithub: state.mcpGithub,
+      mcpBrowser: state.mcpBrowser,
       mcpCodeSearch: state.mcpCodeSearch,
       mcpDatadog: state.mcpDatadog,
       consumeRecords: state.consumeRecords,
@@ -2983,6 +3031,16 @@ function restorePrefs() {
     if (p.uiContextNotes && $('uiContextNotes')) $('uiContextNotes').value = p.uiContextNotes;
     if (p.exportFormat) setExportFormat(p.exportFormat);
     if (Array.isArray(p.repositories)) { state.repositories = p.repositories; renderRepoRows(); }
+    if (p.mcpGithub !== undefined) {
+      state.mcpGithub = !!p.mcpGithub;
+      const gcb = $('mcpGithubToggle');
+      if (gcb) gcb.checked = state.mcpGithub;
+    }
+    if (p.mcpBrowser !== undefined) {
+      state.mcpBrowser = !!p.mcpBrowser;
+      const bcb = $('mcpBrowserToggle');
+      if (bcb) bcb.checked = state.mcpBrowser;
+    }
     if (p.mcpAtlassian !== undefined) {
       state.mcpAtlassian = !!p.mcpAtlassian;
       const cb = $('mcpAtlassianToggle');
@@ -9153,10 +9211,13 @@ const EXPLAIN_SECTION_LINKS = {
   'Durable-record handoff (DONE:/STATUS:)': 'memory-durable-record',
   'Grounding in prior records': 'memory-durable-record',
   'Atlassian (general)': 'mcp-integrations',
+  'GitHub (MCP)': 'mcp-integrations',
+  'Browser automation (MCP)': 'mcp-integrations',
   'Code search (workflow-level)': 'mcp-integrations',
   'Datadog grounding': 'mcp-integrations',
   'Custom MCP tools': 'mcp-integrations',
   'Datadog step hint': 'mcp-integrations',
+  'Browser step hint': 'mcp-integrations',
   'Code-search step hint': 'mcp-integrations',
   'Verification-instructions step hint': 'repositories'
 };
@@ -9282,6 +9343,10 @@ function explainAgentNode(node, format) {
     }
   }
 
+  const br = browserStepHint(node);
+  rows.push(exRow('Browser step hint', !!br,
+    br ? (node.config.agentType === 'appExplorer' ? 'Browser toggle on - this explorer VERIFIES its mined selectors live and flips runtime-unconfirmed marks on evidence' : 'Browser toggle on and this is an executing UI role - live evidence over assumption')
+       : (!state.mcpBrowser ? 'Browser automation toggle off' : 'not an executing UI role (explorer, frontend, tester, verifier) - reviewers keep the reading lane'), br));
   const dd = datadogStepHint(node);
   rows.push(exRow('Datadog step hint', !!dd,
     dd ? 'Datadog toggle on and this is a plan-shaping role'
@@ -9619,6 +9684,10 @@ function explainWorkflow(format) {
   rows.push(exRow('Atlassian ticket fetch', !!atlT, atlT ? 'ticket URL(s) found in the requirements/nodes - toggle-independent, orchestrator fetches once' : 'no Atlassian URLs found in the workflow - paste a ticket URL into Requirements to include one', atlT));
   const atlG = atlassianGeneralHint();
   rows.push(exRow('Atlassian (general)', !!atlG, atlG ? 'Atlassian toggle on' : 'Atlassian toggle off', atlG));
+  const ghG = githubGeneralHint();
+  rows.push(exRow('GitHub (MCP)', !!ghG, ghG ? 'GitHub toggle on' : 'GitHub toggle off', ghG));
+  const brG = browserGeneralHint();
+  rows.push(exRow('Browser automation (MCP)', !!brG, brG ? 'Browser automation toggle on' : 'Browser automation toggle off', brG));
   const csH = codeSearchHint();
   rows.push(exRow('Code search (workflow-level)', !!csH, csH ? 'Code search toggle on' : 'Code search toggle off', csH));
   rows.push(exRow('Conventions', true, 'always emitted - comment discipline + test-convention discovery', conventionsHint()));
@@ -10192,6 +10261,10 @@ function pushSharedHints(p, format, includeEffort) {
   if (atlT) { p.push(atlT); p.push(''); }
   const atlG = atlassianGeneralHint();
   if (atlG) { p.push(atlG); p.push(''); }
+  const ghG = githubGeneralHint();
+  if (ghG) { p.push(ghG); p.push(''); }
+  const brG = browserGeneralHint();
+  if (brG) { p.push(brG); p.push(''); }
   const sb = codeSearchHint();
   if (sb) { p.push(sb); p.push(''); }
   const co = conventionsHint(); p.push(co); p.push('');
@@ -10271,6 +10344,7 @@ function genWorkflow() {
           if (s.config.tools.length > 0) p.push('  - ' + toolAccessText(s.config.tools));
           const _scS = toolScopeNote(s.config.tools); if (_scS) p.push('  - ' + _scS);
           const _ddS = datadogStepHint(s); if (_ddS) p.push('  ' + _ddS);
+          const _brS = browserStepHint(s); if (_brS) p.push('  ' + _brS);
           const _csS = codeSearchStepHint(s); if (_csS) p.push('  ' + _csS);
           const _veS = verifyInstructionsStepHint(s); if (_veS) p.push('  ' + _veS);
           const _fdS = foundDefectNote(s); if (_fdS) p.push('  ' + _fdS);
@@ -10296,6 +10370,7 @@ function genWorkflow() {
         if (node.config.tools.length > 0) p.push('- ' + toolAccessText(node.config.tools));
         const _scN = toolScopeNote(node.config.tools); if (_scN) p.push('- ' + _scN);
         const _ddN = datadogStepHint(node); if (_ddN) p.push('- ' + _ddN);
+        const _brN = browserStepHint(node); if (_brN) p.push('- ' + _brN);
         const _csN = codeSearchStepHint(node); if (_csN) p.push('- ' + _csN);
         const _veN = verifyInstructionsStepHint(node); if (_veN) p.push('- ' + _veN);
         const _fdN = foundDefectNote(node); if (_fdN) p.push('- ' + _fdN);
@@ -10493,6 +10568,7 @@ function genSubAgents() {
     promptLines.push('## Your Task');
     promptLines.push(getEffectivePrompt(node));
     const _ddSa = datadogStepHint(node); if (_ddSa) { promptLines.push(''); promptLines.push(_ddSa); }
+    const _brSa = browserStepHint(node); if (_brSa) { promptLines.push(''); promptLines.push(_brSa); }
     const _csSa = codeSearchStepHint(node); if (_csSa) { promptLines.push(''); promptLines.push(_csSa); }
     const _veSa = verifyInstructionsStepHint(node); if (_veSa) { promptLines.push(''); promptLines.push(_veSa); }
     const _fdSa = foundDefectNote(node); if (_fdSa) { promptLines.push(''); promptLines.push(_fdSa); }
@@ -10753,6 +10829,7 @@ function genAgentTeams() {
     lines.push('');
     effectivePrompt.split('\n').forEach(line => lines.push(`${pre}  ${line}`));
     const _ddAt = datadogStepHint(node); if (_ddAt) lines.push(`${pre}  ${_ddAt}`);
+    const _brAt = browserStepHint(node); if (_brAt) lines.push(`${pre}  ${_brAt}`);
     const _csAt = codeSearchStepHint(node); if (_csAt) lines.push(`${pre}  ${_csAt}`);
     const _veAt = verifyInstructionsStepHint(node); if (_veAt) lines.push(`${pre}  ${_veAt}`);
     const _fdAt = foundDefectNote(node); if (_fdAt) lines.push(`${pre}  ${_fdAt}`);
@@ -10947,22 +11024,31 @@ function genAgentSDK() {
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
+  const _sdkHintLines = hint => hint.split('\n').forEach(line =>
+    wrapComment(line.replace(/^>\s?/, '').replace(/\*\*/g, '').replace(/`/g, ''), 79).forEach(l => p.push(l)));
+  if (state.mcpBrowser) {
+    p.push('# ── Browser automation (MCP) - available whenever seeing the app helps ───────');
+    _sdkHintLines(browserGeneralHint());
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
+  if (state.mcpGithub) {
+    p.push('# ── GitHub (MCP) - available whenever it helps ───────────────────────────────');
+    _sdkHintLines(githubGeneralHint());
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
   if (state.mcpAtlassian) {
     p.push('# ── Atlassian (general) - available whenever it helps ────────────────────────');
-    p.push('# An Atlassian MCP server is available - use it freely to pull related context');
-    p.push('# that would genuinely help your task: other Jira tickets, Confluence docs');
-    p.push('# (architecture, ADRs, runbooks), linked or duplicate issues. The only thing to');
-    p.push('# avoid is redundancy - do not re-fetch what is already in your brief, and do not');
-    p.push('# repeat a lookup another step already did. When a related lookup would inform');
-    p.push('# your work, do it; use your judgment.');
+    // Rendered from the hint function like its siblings - the hand-inlined copy drifted
+    // (it silently missed the Bitbucket expansion) and can never drift again.
+    _sdkHintLines(atlassianGeneralHint());
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
   // Clarify-first + Datadog grounding: same shared hint sources as the prose formats,
   // rendered as wrapped # comments like the records block (blockquote markers, bold,
   // and backticks stripped - no markdown in Python comments).
-  const _sdkHintLines = hint => hint.split('\n').forEach(line =>
-    wrapComment(line.replace(/^>\s?/, '').replace(/\*\*/g, '').replace(/`/g, ''), 79).forEach(l => p.push(l)));
   if (state.clarifyFirst) {
     p.push('# ── Clarify ambiguous requirements before planning ───────────────────────────');
     _sdkHintLines(clarifyFirstHint());
@@ -11341,6 +11427,7 @@ function genClaudePrompt() {
           p.push('');
           p.push(getEffectivePrompt(s));
           const _ddCpS = datadogStepHint(s); if (_ddCpS) p.push(_ddCpS);
+          const _brCpS = browserStepHint(s); if (_brCpS) p.push(_brCpS);
           const _csCpS = codeSearchStepHint(s); if (_csCpS) p.push(_csCpS);
           const _veCpS = verifyInstructionsStepHint(s); if (_veCpS) p.push(_veCpS);
           const _fdCpS = foundDefectNote(s); if (_fdCpS) p.push(_fdCpS);
@@ -11371,6 +11458,7 @@ function genClaudePrompt() {
         p.push('');
         p.push(getEffectivePrompt(node));
         const _ddCpN = datadogStepHint(node); if (_ddCpN) p.push(_ddCpN);
+        const _brCpN = browserStepHint(node); if (_brCpN) p.push(_brCpN);
         const _csCpN = codeSearchStepHint(node); if (_csCpN) p.push(_csCpN);
         const _veCpN = verifyInstructionsStepHint(node); if (_veCpN) p.push(_veCpN);
         const _fdCpN = foundDefectNote(node); if (_fdCpN) p.push(_fdCpN);

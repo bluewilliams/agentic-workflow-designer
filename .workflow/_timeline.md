@@ -2,6 +2,8 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-09-12 - browser-mcp-selector-verification - Browser automation MCP toggle + the un-parked runtime selector verification (the App Explorer flips runtime-unconfirmed marks on live evidence; executing UI roles prefer live evidence; reviewers keep the reading lane). 1728 -> 1731 - .workflow/browser-mcp-selector-verification.md
+2026-09-12 - github-mcp-toggle - GitHub MCP checkbox (default OFF, house posture: context freely, writes only per delivery, graceful absence) riding the shared-hints seam; Atlassian label + hint gain Bitbucket. 1725 -> 1728 - .workflow/github-mcp-toggle.md
 2026-09-12 - explain-report-export - the Explain content as a committable audit document (per-node lever rows with reasons and fenced evidence + embedded lossless JSON); README gains the four-principle Design Philosophy. 1723 -> 1725 - .workflow/explain-report-export.md
 2026-09-11 - live-run-monitor (update) - Run Health row: read-only protocol-drift detectors (paraphrased ticks, stopped-ticking lead, future-stamped entries) as amber hints with copyable nudges; detector review hardened all three. 1719 -> 1722 - .workflow/live-run-monitor.md
 2026-09-07 - live-run-monitor (update) - dynamic fan-out canvas aggregation (hyphen-boundary pools, sibling-excluded, trouble-first priority, prototype-safe maps) + the binding {step-slug}-{item} naming emission delivered to orchestrators, per-agent preambles, and teammate blocks. 1715 -> 1719 - .workflow/live-run-monitor.md
