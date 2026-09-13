@@ -688,7 +688,7 @@ svg.canvas{width:100%;height:100%;display:block}
     <div class="preset-list">
       <div class="preset-item" data-preset="feature" onclick="loadPreset('feature')">
         <div class="preset-name">Feature Development</div>
-        <div class="preset-desc">Plan &rarr; Implement &rarr; Review &rarr; Test</div>
+        <div class="preset-desc">Plan (Skeptic) &rarr; Implement &rarr; Review &rarr; Test</div>
       </div>
       <div class="preset-item" data-preset="bugfix" onclick="loadPreset('bugfix')">
         <div class="preset-name">Bug Fix</div>
@@ -712,6 +712,10 @@ svg.canvas{width:100%;height:100%;display:block}
       </div>
       <div class="preset-toggle" id="presetToggle" onclick="toggleMorePresets()">More presets&hellip;</div>
       <div class="preset-more" id="presetMore">
+        <div class="preset-item" data-preset="feature_fast" onclick="loadPreset('feature_fast')" title="Feature Development minus the plan-skeptic loop: the speed and cost variant for small, low-risk features where a flawed plan is cheap to correct. The reviewer gate and tester keep the quality floor. Pick Feature Development when the plan itself carries the risk.">
+          <div class="preset-name">Feature (fast)</div>
+          <div class="preset-desc">Plan &rarr; Implement &rarr; Review &rarr; Test</div>
+        </div>
         <div class="preset-item" data-preset="devops" onclick="loadPreset('devops')">
           <div class="preset-name">DevOps / Infrastructure</div>
           <div class="preset-desc">Plan &rarr; Implement &rarr; Review &rarr; Test</div>
@@ -8352,6 +8356,21 @@ function loadPreset(preset, _confirmed) {
       addConnection(r.id, d.id); addConnection(d.id, c.id, 'Revise');
       addConnection(d.id, t.id, 'Approved'); addConnection(t.id, o.id);
     },
+    feature_fast: () => {
+      // Feature Development minus the plan-skeptic loop: the speed/cost variant for
+      // small, low-risk features. The reviewer gate and tester keep the quality floor.
+      const i = addNode('input', 80, 250, 'Requirements');
+      const p = addNode('agent', 340, 250, 'Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.planner, maxTurns:5 });
+      const c = addNode('agent', 620, 250, 'Implementer', { agentType:'coder', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.implementer, maxTurns:15 });
+      const r = addNode('agent', 900, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, maxTurns:5 });
+      const d = addNode('decision', 1180, 242, 'Review Passed?', { condition:'Code review passed with no critical issues', yesLabel:'Approved', noLabel:'Revise' });
+      const t = addNode('agent', 1460, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
+      const o = addNode('output', 1740, 250, 'Feature Complete', { deliverable:'Tested feature', format:'code' });
+      addConnection(i.id, p.id); addConnection(p.id, c.id);
+      addConnection(c.id, r.id); addConnection(r.id, d.id);
+      addConnection(d.id, c.id, 'Revise'); addConnection(d.id, t.id, 'Approved');
+      addConnection(t.id, o.id);
+    },
     bugfix: () => {
       const i = addNode('input', 80, 250, 'Bug Report');
       const inv = addNode('agent', 340, 250, 'Investigator', { agentType:'debugger', model:state.defaultModel, tools:['Read','Grep','Glob','Bash','LSP'], prompt:PROMPTS.investigator, maxTurns:15 });
@@ -8725,6 +8744,7 @@ const STORY_PLACEHOLDERS = {
   record_sync: 'Scope to reconcile (a capability, an area, or everything):\n\nKnown or suspected drift (what looks stale, if anything):\n\nHints (record slugs, spec names, or files to start from):\n\nOut of scope:',
   delivery_swarm: 'Feature or work item to deliver:\n\nWhat done looks like (acceptance criteria):\n\nAffected areas (backend / frontend / both):\n\nConstraints or non-negotiables:\n\nOut of scope:'
 };
+STORY_PLACEHOLDERS.feature_fast = STORY_PLACEHOLDERS.feature; // the fast variant shares the feature template
 
 function updateStoryPlaceholder(preset) {
   const el = $('storyInput');

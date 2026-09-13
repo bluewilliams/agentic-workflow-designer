@@ -3667,6 +3667,18 @@ describe('Preset Loading', () => {
       win.loadPreset('bugfix');
       expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(3);
     });
+    it('feature_fast preset: 4 agents, NO skeptic loop, reviewer gate loops back to the Implementer, memory auto-enables', () => {
+      win.loadPreset('feature_fast');
+      const agents = win.state.nodes.filter(n => n.type === 'agent');
+      expect(agents.length).toBe(4);
+      expect(agents.some(n => n.config.agentType === 'adversary')).toBe(false);
+      expect(win.state.nodes.some(n => n.config && n.config.reviewLoopFor)).toBe(false);
+      const d = win.state.nodes.find(n => n.type === 'decision');
+      const impl = win.state.nodes.find(n => n.label === 'Implementer');
+      const back = win.state.connections.find(c => c.from === d.id && c.to === impl.id);
+      expect(back.label).toBe('Revise');
+      expect(win.state.memoryEnabled).toBe(true);
+    });
     it('should load fullstack preset with 5 agents', () => {
       win.loadPreset('fullstack');
       expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
