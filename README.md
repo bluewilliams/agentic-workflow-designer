@@ -171,9 +171,10 @@ CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 claude --add-dir ../repo-b ../rep
 
 ## Built-in Presets
 
-Nineteen ready-made pipelines. Each one is a strong opinion you can override.
+Ready-made pipelines, each a strong opinion you can override.
 
 - **Feature Build** - Planner > (Skeptic reviews the plan) > Implementer > Reviewer > Decision gate > Tester
+- **Feature (fast)** - Planner > Implementer > Reviewer > Decision gate > Tester. Feature Build minus the plan-skeptic loop: the speed and cost variant for small, low-risk features. Pick Feature Build when a flawed plan would be expensive.
 - **Bug Fix** - Investigator > Fixer > Tester > Verification gate
 - **Full Stack** - Architect > parallel Backend + Frontend > Review > E2E Test
 - **Code Review** - Analyzer > Reviewer > Improver > Validator

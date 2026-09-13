@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## feature-fast-preset
+
+- record: .workflow/feature-fast-preset.md
+- intent: a Feature (fast) tile (first in the More presets fold) - Feature Development minus the plan-skeptic loop for small, low-risk features; every remaining node byte-identical to the parent, reviewer gate + tester keep the quality floor, tooltip names the trade. Parent desc gains "(Skeptic)" so the shapes read differently.
+- files: index.html (tile + parent desc + builder + placeholder alias), tests.html (structure pin), README.md
+- status: current | date: 2026-09-12 | note: 1742 -> 1743.
+
 ## house-tooltips
 
 - record: .workflow/house-tooltips.md
