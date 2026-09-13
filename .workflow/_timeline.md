@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-09-13 - touch-up-presets (update) - amend presets catch up to the d2 two-halves doctrine: steward archives spec-first and creates missing specs (archive-only recovery); auditor names archive-without-apply drift. Suite steady at 1743 - .workflow/touch-up-presets.md
 2026-09-12 - feature-fast-preset - Feature (fast) tile: the parent preset minus the plan-skeptic loop for small, low-risk features (clone-minus-skeptic, quality floor kept); parent desc shows the Skeptic. 1742 -> 1743 - .workflow/feature-fast-preset.md
 2026-09-12 - house-tooltips - one global delegate restyles every title tooltip to the house aesthetic (native box suppressed, styled positioned box, aria-label preserved); zero per-element changes. 1740 -> 1742 - .workflow/house-tooltips.md
 2026-09-12 - session-bridge - one-click return path: sessions drop refine/plan/tuning outputs into ~/.awd/outbox, the designer polls and offers Apply; slug-exact isolation, read-only, clipboard flows untouched. 1733 -> 1740 - .workflow/session-bridge.md

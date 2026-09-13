@@ -7166,6 +7166,13 @@ describe('Amend presets: Touch-Up and Record Sync', () => {
     expect(win.PROMPTS.artifactSteward).toContain('never leave an active change contradicting the spec');
     expect(win.PROMPTS.artifactSteward).toContain('do not manufacture a proposal after the fact');
     expect(win.PROMPTS.driftAuditor).toContain('completed-but-still-active change is drift');
+    // d2 two-halves doctrine reaches the amend presets: archive is spec-first and
+    // never decouples, and a missing spec (archive-only history included) gets created
+    expect(win.PROMPTS.artifactSteward).toContain('TWO halves, spec first');
+    expect(win.PROMPTS.artifactSteward).toContain('never archive without applying');
+    expect(win.PROMPTS.artifactSteward).toContain('CREATE `openspec/specs/{capability}/spec.md`');
+    expect(win.PROMPTS.driftAuditor).toContain('INVERSE failure');
+    expect(win.PROMPTS.driftAuditor).toContain('truth trapped in the archive');
   });
   it('multi-repo: all four crafts extend to every repository in scope', () => {
     expect(win.PROMPTS.touchupScoper).toContain('run this grounding scan in EACH of them');   // canonical multiRepo step
