@@ -504,7 +504,7 @@ The code tail (review → decision → tester → output) is skipped for read-on
 | **DevOps** | Input → Planner → DevOps Engineer → Reviewer → Decision → Tester → Infrastructure Ready (code) |
 | **Performance** | Input → Planner → Profiler → Optimizer → Reviewer → Decision → Tester → Optimized (report) |
 | **Testing** | Input → Planner → Code Analyzer → Test Suite Writer → Reviewer → Decision → Tester → Test Suite (code) |
-| **Data Migration** | Input → Planner → Researcher → Migration Engineer → Reviewer → Decision → Tester → Migration Complete (code) |
+| **Data Migration** | Input → Researcher → Planner [Skeptic loop] → Migration Engineer → Reviewer → Decision → Tester → Migration Complete (code) |
 
 ---
 

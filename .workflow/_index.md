@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## data-migration-safety
+
+- record: .workflow/data-migration-safety.md
+- intent: the Data Migration preset's measured-safety + measured-success upgrade - topology recon (FK graph, constraint inventory, read-only probes, repository-first), a plan-time risk register where every destructive or windowed operation carries bracket/guard/fallback/proof (constraint windows stay legitimate craft, never banned), the engineer's safety boundary (mutate only created-or-designated-disposable databases; found config counts as real), a register-fidelity reviewer (unregistered destruction is the finding), and a verification ladder (ephemeral up/down/up -> seeded edge cases + reconciliation suite + timing -> static checks -> copy-ready runbook, rung reported). Shape upgraded: recon-first with a Skeptic gate on the register.
+- files: index.html (four new crafts + deepened migrationEngineer + the recon-first skeptic-gated builder + both gate conditions + placeholder + tile tooltip and desc + Auto Workflow data-shape recon), tests.html (Data Migration crafts suite), README.md, TECHNICAL.md
+- status: current | date: 2026-09-13 | note: 1731 -> 1733.
+
 ## platform-provisioning-preset
 
 - record: .workflow/platform-provisioning-preset.md
