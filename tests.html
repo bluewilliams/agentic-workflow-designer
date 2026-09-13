@@ -3798,9 +3798,9 @@ describe('Preset Loading', () => {
       win.loadPreset('testing');
       expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
     });
-    it('should load data_migration preset with 5 agents', () => {
+    it('should load data_migration preset with 6 agents (skeptic on the plan included)', () => {
       win.loadPreset('data_migration');
-      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
+      expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(6);
     });
     it('Requirements Analyst treats the Cartographer as a parallel sibling, not an upstream input', () => {
       const p = win.PROMPTS.requirementsAnalyst;
@@ -7120,7 +7120,74 @@ describe('Live Run Monitor emissions', () => {
   });
 });
 
-// ─── Suite 12i: Amend presets (Touch-Up + Record Sync: amend an existing deliverable) ────
+// ─── Preset craft suites (Platform Provisioning + Data Migration bespoke crafts) ────
+describe('Data Migration crafts', () => {
+  it('data_migration preset wires the five migration crafts and both gates', () => {
+    resetState();
+    win.loadPreset('data_migration');
+    expect(win.state.nodes.find(n => n.label === 'Planner').config.prompt).toBe(win.PROMPTS.migrationPlanner);
+    expect(win.state.nodes.find(n => n.label === 'Researcher').config.prompt).toBe(win.PROMPTS.migrationResearcher);
+    expect(win.state.nodes.find(n => n.label === 'Migration Engineer').config.prompt).toBe(win.PROMPTS.migrationEngineer);
+    expect(win.state.nodes.find(n => n.label === 'Tester').config.prompt).toBe(win.PROMPTS.migrationVerifier);
+    expect(win.state.nodes.find(n => n.label === 'Reviewer').config.prompt).toBe(win.PROMPTS.migrationReviewer);
+    expect(win.state.nodes.find(n => n.label === 'Researcher').config.tools.includes('Bash')).toBe(true);
+    // Recon feeds the plan: the input routes to the Researcher, whose output routes to the Planner
+    const iNode = win.state.nodes.find(n => n.type === 'input');
+    const resNode = win.state.nodes.find(n => n.label === 'Researcher');
+    const pNode = win.state.nodes.find(n => n.label === 'Planner');
+    expect(!!win.state.connections.find(c => c.from === iNode.id && c.to === resNode.id)).toBe(true);
+    expect(!!win.state.connections.find(c => c.from === resNode.id && c.to === pNode.id)).toBe(true);
+    // The Skeptic doubts the risk register before anything touches a schema
+    const sk = win.state.nodes.find(n => n.config && n.config.agentType === 'adversary');
+    expect(sk.config.reviewLoopFor).toBe(pNode.id);
+    const sd = win.state.nodes.find(n => n.label === 'Plan sound?');
+    expect(sd.config.reviewLoopDecisionFor).toBe(pNode.id);   // the loop machinery's other half
+    expect(sd.config.condition).toContain('risk register covers every destructive or windowed operation');
+    // The register-fidelity reviewer greps the diff, so Bash is a deliberate grant (review-preset precedent)
+    expect(win.state.nodes.find(n => n.label === 'Reviewer').config.tools.includes('Bash')).toBe(true);
+    expect(!!win.state.connections.find(c => c.from === sd.id && c.to === pNode.id && c.label === 'Needs revision')).toBe(true);
+    const gate = win.state.nodes.find(n => n.label === 'Review OK?');
+    expect(gate.config.condition).toContain('bracketed with its guard and re-validation');
+    resetState();
+  });
+  it('migration crafts: disposability rule, measured (never banned) constraint windows, the verification ladder, orphans surfaced not deleted', () => {
+    // The safety boundary is doctrine, not tool bans: mutate only created-or-designated
+    // databases, and found connection strings count as real data
+    expect(win.PROMPTS.migrationEngineer).toContain('Safety boundary');
+    expect(win.PROMPTS.migrationEngineer).toContain('points at real data until proven otherwise');
+    expect(win.PROMPTS.migrationVerifier).toContain('disposability rule');
+    expect(win.PROMPTS.migrationVerifier).toContain('points at real data until proven otherwise');
+    // Measured, not restrictive: dropping keys/constraints stays legitimate - bracketed
+    expect(win.PROMPTS.migrationEngineer).toContain('legitimate craft when the work needs it');
+    expect(win.PROMPTS.migrationEngineer).toContain('BRACKETED');
+    expect(win.PROMPTS.migrationEngineer).toContain('never silently delete');
+    expect(win.PROMPTS.migrationEngineer).toContain('dropping a constraint to make an error disappear');
+    expect(win.PROMPTS.migrationPlanner).toContain('Risk register');
+    expect(win.PROMPTS.migrationPlanner).toContain('legitimate craft when the work needs it');
+    expect(win.PROMPTS.migrationPlanner).toContain('never guess on other people\'s data');
+    // The ladder: ephemeral first, static middle, honest manual floor
+    expect(win.PROMPTS.migrationVerifier).toContain('create one yourself');
+    expect(win.PROMPTS.migrationVerifier).toContain('up runs clean AGAIN');
+    expect(win.PROMPTS.migrationVerifier).toContain('MANUAL, never silently passed');
+    expect(win.PROMPTS.migrationVerifier).toContain('honest unrun check beats a plausible fabricated pass');
+    // The reviewer's checklist IS the register, swept in both directions
+    expect(win.PROMPTS.migrationReviewer).toContain('the register is your checklist');
+    expect(win.PROMPTS.migrationReviewer).toContain('Unregistered Operations');
+    expect(win.PROMPTS.migrationReviewer).toContain('silent DELETE of violating rows is always a finding');
+    expect(win.PROMPTS.migrationReviewer).toContain('stubbed down migration always gate');
+    // Recon is read-only and repository-first
+    expect(win.PROMPTS.migrationResearcher).toContain('the repository first');
+    expect(win.PROMPTS.migrationResearcher).toContain('You never write to any database in this step');
+    expect(win.PROMPTS.migrationResearcher).toContain('its existence is not permission');
+    // Success levers, not just guardrails: delivery is measured, timed, and fast paths used
+    expect(win.PROMPTS.migrationPlanner).toContain('reconciliation suite');
+    expect(win.PROMPTS.migrationPlanner).toContain('success is measured, never assumed');
+    expect(win.PROMPTS.migrationVerifier).toContain('proves DELIVERY, not just error-free runs');
+    expect(win.PROMPTS.migrationVerifier).toContain('production-window estimate');
+    expect(win.PROMPTS.migrationEngineer).toContain('the fastest safe path');
+  });
+});
+
 describe('Platform Provisioning crafts', () => {
   it('platform provisioning crafts: precedent-first survey, name-cascade planning, credential hygiene, evidence-table verification', () => {
     expect(win.PROMPTS.estateSurveyor).toContain('matching what already ships');
@@ -7145,6 +7212,7 @@ describe('Platform Provisioning crafts', () => {
   });
 });
 
+// ─── Suite 12i: Amend presets (Touch-Up + Record Sync: amend an existing deliverable) ────
 describe('Amend presets: Touch-Up and Record Sync', () => {
   beforeEach(() => { resetState(); });
   it('touchup preset: scoper -> amender -> reviewer -> gate -> steward, revise loops to the Amender', () => {
