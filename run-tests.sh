@@ -40,7 +40,7 @@ PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("",0)); print(s.get
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 python3 -m http.server "$PORT" --directory "$SCRIPT_DIR" --bind 127.0.0.1 >/dev/null 2>&1 &
 SERVER_PID=$!
-cleanup() { kill $SERVER_PID 2>/dev/null || true; wait $SERVER_PID 2>/dev/null || true; rm -f "${TMPFILE:-}"; }
+cleanup() { kill $SERVER_PID 2>/dev/null || true; wait $SERVER_PID 2>/dev/null || true; rm -f "${TMPFILE:-}" "${ERRFILE:-}"; }
 trap 'cleanup' EXIT
 
 # Wait for server to be ready
@@ -54,7 +54,9 @@ done
 # budget before the suite reports, dumping a DOM with no cli-output element. The
 # budget is generous and the whole run is retried before declaring a setup error.
 TMPFILE=$(mktemp)
+ERRFILE=$(mktemp)
 ATTEMPTS=3
+PARSED=false
 
 for attempt in $(seq 1 $ATTEMPTS); do
   "$CHROME" \
@@ -66,7 +68,7 @@ for attempt in $(seq 1 $ATTEMPTS); do
     --virtual-time-budget=60000 \
     --dump-dom \
     "http://127.0.0.1:$PORT/tests.html" \
-    > "$TMPFILE" 2>/dev/null || true
+    > "$TMPFILE" 2>"$ERRFILE" || true
 
   # --- Parse results from the hidden cli-output element ---
   CLI_JSON=$(python3 -c "
@@ -78,11 +80,14 @@ if not m:
     sys.exit(0)
 print(m.group(1))
 ")
-  echo "$CLI_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if 'error' not in d else 1)" 2>/dev/null && break
+  if echo "$CLI_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if 'error' not in d else 1)" 2>/dev/null; then
+    PARSED=true
+    break
+  fi
   [[ $attempt -lt $ATTEMPTS ]] && echo "Attempt $attempt produced no test results; retrying..." >&2
 done
 
-if echo "$CLI_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if 'error' not in d else 1)" 2>/dev/null; then
+if $PARSED; then
   PASS=$(echo "$CLI_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['pass'])")
   FAIL=$(echo "$CLI_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['fail'])")
   TOTAL=$(echo "$CLI_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['total'])")
@@ -108,6 +113,13 @@ for f in d.get('failures', []):
   fi
 else
   echo "Error: Could not parse test results from headless Chrome output ($ATTEMPTS attempts)." >&2
-  echo "This may mean the tests timed out or index.html failed to load." >&2
+  DOMSIZE=$(wc -c < "$TMPFILE" | tr -d ' ')
+  if [[ "$DOMSIZE" -lt 1000 ]]; then
+    echo "Diagnosis: Chrome produced no meaningful DOM ($DOMSIZE bytes) - a crash or launch failure, not a test timeout." >&2
+  else
+    echo "Diagnosis: the DOM rendered ($DOMSIZE bytes) but carries no test results - the suite did not finish within the virtual-time budget, or a load-time JS error stopped it." >&2
+  fi
+  echo "--- Chrome stderr (last attempt, tail) ---" >&2
+  tail -5 "$ERRFILE" >&2 || true
   exit 2
 fi

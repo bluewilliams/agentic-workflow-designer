@@ -9,12 +9,19 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## platform-provisioning-preset
+
+- record: .workflow/platform-provisioning-preset.md
+- intent: greenfield delivery plumbing stood up estate-first - Estate Surveyor mines precedents/templates/pinned versions/naming grammar, the Planner decides name cascades, contract literals (written once), the environment matrix, and the lead-time register behind a Skeptic gate, the Provisioner generates-over-clones (MCP remote creation, copy-ready manual handoffs for permission-blocked steps, credential hygiene), a Convention Reviewer checks fidelity, and a mainline Deploy Verifier proves per-deliverable per-environment evidence (VERIFIED/MANUAL/FAILED). Host-generic by pinned contract.
+- files: index.html (five crafts + builder + tile + placeholder + widened verdict heuristic), tests.html (structure + craft pins in their own suite, both audit sweeps now derived from the sidebar tiles), README.md
+- status: current | date: 2026-09-13 | note: 1743 -> 1745.
+
 ## feature-fast-preset
 
 - record: .workflow/feature-fast-preset.md
 - intent: a Feature (fast) tile (first in the More presets fold) - Feature Development minus the plan-skeptic loop for small, low-risk features; every remaining node byte-identical to the parent, reviewer gate + tester keep the quality floor, tooltip names the trade. Parent desc gains "(Skeptic)" so the shapes read differently.
-- files: index.html (tile + parent desc + builder + placeholder alias), tests.html (structure pin), README.md
-- status: current | date: 2026-09-12 | note: 1742 -> 1743.
+- files: index.html (tile + parent desc + builder + placeholder alias), tests.html (structure pin + drift-immunity deep-compare + membership in both derived audit sweeps), README.md
+- status: current | date: 2026-09-13 | note: 1742 -> 1743 at creation; drift-immunity and sweep coverage added in the review rounds.
 
 ## house-tooltips
 

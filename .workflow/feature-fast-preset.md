@@ -27,3 +27,4 @@ The plan-skeptic loop is Feature Development's expensive half (up to 3 plan revi
 ## History
 
 - 2026-09-12: created (tile, builder, placeholder alias, parent desc, README). 1742 -> 1743 (by direct session)
+- 2026-09-13: review round - the byte-identical claim is now ENFORCED (a drift-immunity test snapshots the feature preset's seven shared node configs by label and deep-compares them on feature_fast), and the preset joined BOTH hardcoded audit sweeps: the advisor calibration list and the validation-warnings list (which also gained delivery_swarm, analysis_forecast, and incident_rca - pre-existing omissions proven clean when added). 1745 -> 1751 across the round (by direct session)
