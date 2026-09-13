@@ -1284,7 +1284,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <li><strong>Run the improved workflow.</strong> The next reports confirm or refute each prediction.</li>
 </ol>
 <p>The record a run keeps is where its report comes back from - and the loop is honest because the predictions are checkable.</p>
-<p><strong>Connect Folder</strong> (in the Run Reports section, Chromium only) removes even the paste. Recommended: connect <code>~/.awd</code> once - every run appends its fence to <code>~/.awd/run-reports.md</code>, so one grant catches every workflow against every repo, always on. (Pick the <code>~/.awd</code> folder itself - Chrome refuses to grant the home directory because it contains system files. Create it first if it does not exist (<code>mkdir -p ~/.awd</code>), then in the picker press <code>Cmd+Shift+G</code> and type <code>~/.awd</code>, or <code>Cmd+Shift+.</code> to reveal hidden folders. The dialog remembers your last pick afterwards.) Connecting a single repo's <code>.workflow</code> folder works too (reports also live in its durable records) when you only care about that repo. Rescans never double-count (content-hash dedupe); disconnect anytime. Stats live in your browser only.</p>
+<p><strong>Connect Folder</strong> (in the Run Reports section, Chromium only) removes even the paste. Recommended: connect <code>~/.awd</code> once - every run appends its fence to <code>~/.awd/run-reports.md</code>, so one grant catches every workflow against every repo, always on. (Pick the <code>~/.awd</code> folder itself - Chrome refuses to grant the home directory because it contains system files. Create it first if it does not exist (<code>mkdir -p ~/.awd</code>), then in the picker press <code>Cmd+Shift+G</code> and type <code>~/.awd</code>, or <code>Cmd+Shift+.</code> to reveal hidden folders (macOS keys - Linux pickers use <code>Ctrl+H</code>; on Windows type the path into the dialog's folder-name box). The dialog remembers your last pick afterwards and reopens inside it - and dragging the folder from your file manager onto the Run Reports section, or onto the monitor panel for watches, skips the picker entirely.) Connecting a single repo's <code>.workflow</code> folder works too (reports also live in its durable records) when you only care about that repo. Rescans never double-count (content-hash dedupe); disconnect anytime. Stats live in your browser only.</p>
 <h3>Workflow Advisor</h3>
 <p>Click the health indicator to open the review modal. Below any issues, a lightbulb <b>Suggestions</b> group offers non-blocking advice: unreviewed build paths (one-click <b>Attach Skeptic</b>), fan-outs that never synthesize, solo agents shipping code, read-only roles holding write tools, starved turn budgets - and, once run reports are ingested, telemetry-informed tuning (gates that loop, steps that cap out or fail). Suggestions never affect the badge count and never block generation.</p>
 <h3>Explain This Workflow</h3>
@@ -12710,6 +12710,72 @@ function ingestRunFences(fences, opts) {
 // END RUN REPORT LOOP
 // ═══════════════════════════════════════════════════════════
 
+// ── Folder-pick ergonomics (shared primitives) ─────────────────────────────
+// The connect targets are hidden dot-folders (~/.awd, ~/.claude/workflow-memory)
+// and Chrome refuses to grant the home directory, so the picker cannot be aimed
+// by descent. Two reliefs: (1) every successful pick's handle is RETAINED as a
+// picker anchor (separate from the live connection, so a disconnect does not
+// lose it) and passed as startIn - a re-pick opens inside the hidden folder;
+// (2) a folder dragged from the OS file manager is accepted directly by the
+// feature blocks below. These primitives are neutral ground: the idb calls are
+// typeof-guarded so removing the repo-connect block only costs the anchors.
+async function pickDirWithMemory(id) {
+  const key = 'lastPick:' + id;
+  const opts = { mode: 'read', id: id };
+  // The anchor read races a short timeout so a slow IndexedDB open can never eat
+  // the transient user activation the picker needs - a missing anchor only costs
+  // the reopen spot, never the pick itself.
+  try {
+    if (typeof awdIdbGet === 'function') {
+      const prev = await Promise.race([awdIdbGet(key).catch(() => null), new Promise(r => setTimeout(r, 250))]);
+      if (prev) opts.startIn = prev;
+    }
+  } catch (e) { /* no anchor */ }
+  let picked = null;
+  try { picked = await window.showDirectoryPicker(opts); }
+  catch (e) {
+    if (e && e.name === 'AbortError') return null;       // user cancelled - do not reopen
+    try { picked = await window.showDirectoryPicker({ mode: 'read', id: id }); }  // stale anchor: retry plain
+    catch (e2) {
+      // The retry can lose the user activation the first call consumed - say so
+      // instead of leaving the button looking dead in exactly the recovery case
+      if (!e2 || e2.name !== 'AbortError') showToast('Could not open the folder picker - press the button again');
+      return null;
+    }
+  }
+  try { if (typeof awdIdbSet === 'function') await awdIdbSet(key, picked); } catch (e) { /* anchor is best-effort */ }
+  return picked;
+}
+function dropSupportsHandles(dt) {
+  if (!dt || !dt.items || !dt.items.length) return false;
+  if (typeof DataTransferItem === 'undefined' || !DataTransferItem.prototype.getAsFileSystemHandle) return false;
+  for (const item of dt.items) { if (item.kind === 'file') return true; }   // text/link drags stay native
+  return false;
+}
+async function dropDirectoryHandles(e) {
+  // getAsFileSystemHandle must be called before any await: collect the promises first
+  const gets = [];
+  for (const item of e.dataTransfer.items) {
+    if (item.kind === 'file') gets.push(item.getAsFileSystemHandle());
+  }
+  const out = { dirs: [], denied: 0 };
+  for (const g of gets) {
+    try { const h = await g; if (h && h.kind === 'directory') out.dirs.push(h); }
+    catch (err) { out.denied++; }   // blocklisted or otherwise inaccessible locations
+  }
+  return out;
+}
+function wireFolderDrop(el, handler) {
+  // The containers are STATIC (renders replace their innerHTML only), so their own
+  // listeners survive every render - and drag events elsewhere cost nothing.
+  if (!el) return;
+  el.dataset.dropWired = '1';
+  el.addEventListener('dragover', (e) => {
+    if (dropSupportsHandles(e.dataTransfer)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
+  });
+  el.addEventListener('drop', (e) => { handler(e).catch(() => showToast('Could not read the dropped folder')); });
+}
+
 // ═══════════════════════════════════════════════════════════
 // REPO FOLDER CONNECT (removable) - zero-friction run-report ingestion.
 // Chromium's File System Access API: connect the repo (or its .workflow folder)
@@ -12924,13 +12990,39 @@ function bridgeDismiss(i) {
   sessionBridge._sig = null;
   renderBridgeBanner();
 }
+// A dropped folder connects like a picked one - with a confirm when it would
+// REPLACE a live connection (a drop can be accidental, and replacing re-points
+// the session bridge too).
+async function repoHandleDrop(e) {
+  if (!repoConnectSupported() || !dropSupportsHandles(e.dataTransfer)) return;
+  e.preventDefault();
+  const got = await dropDirectoryHandles(e);
+  if (!got.dirs.length) {
+    showToast(got.denied ? 'The browser blocks access to that location - drop a normal folder' : 'Drop a folder (not files) to connect it');
+    return;
+  }
+  const first = got.dirs[0];
+  const finish = () => connectRepoHandle(first).then(() => {
+    if (got.dirs.length > 1) showToast('Connected the first folder - Run Reports holds one connection');
+  }).catch(() => showToast('Could not connect the dropped folder'));
+  if (repoConnect.status === 'granted' && repoConnect.handle) {
+    withConfirm('Replace the connected folder (' + (repoConnect.name || 'current') + ') with "' + (first.name || 'dropped folder') + '"? The session bridge follows the new folder.', { confirmLabel: 'Replace' }, () => { finish(); });
+    return;
+  }
+  await finish();
+}
+wireFolderDrop(document.getElementById('runReportSection'), repoHandleDrop);
 async function connectRepoFolder() {
   if (!repoConnectSupported()) return;
-  let picked;
-  try { picked = await window.showDirectoryPicker({ mode: 'read', id: 'awd-run-reports' }); }
-  catch (e) { return; }  // user cancelled the picker
+  const picked = await pickDirWithMemory('awd-run-reports');
+  if (!picked) return;
+  await connectRepoHandle(picked);
+}
+// The shared connect body: the picker path and the drop path both land here.
+async function connectRepoHandle(picked) {
   const dir = await resolveRecordsDir(picked);
   repoConnect.handle = dir; repoConnect.name = dir.name || '.workflow'; repoConnect.status = 'granted';
+  try { await awdIdbSet('lastPick:awd-run-reports', picked); } catch (e) { /* anchor is best-effort */ }
   // The bridge scans the folder as PICKED: resolveRecordsDir may descend into .workflow
   // for records, but sessions drop bridge outputs at the picked root (~/.awd/outbox).
   sessionBridge.root = picked;
@@ -12965,6 +13057,12 @@ async function scanConnectedRepo(interactive) {
 async function disconnectRepoFolder() {
   repoConnect.handle = null; repoConnect.name = ''; repoConnect.status = 'none';
   try { await awdIdbDel('repoDir'); } catch (e) {}
+  // The bridge root rode this connection - clear it too, or a later reconnect
+  // could silently serve offers from a folder the user thinks is gone
+  sessionBridge.root = null; sessionBridge.offers = []; sessionBridge._sig = null;
+  if (sessionBridge.timer) { clearInterval(sessionBridge.timer); sessionBridge.timer = null; }
+  renderBridgeBanner();
+  try { await awdIdbDel('bridgeRoot'); } catch (e) {}
   renderRepoConnect();
   showToast('Repo folder disconnected');
 }
@@ -12974,7 +13072,7 @@ function renderRepoConnect() {
   if (!repoConnectSupported()) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'inline-flex';
   if (!repoConnect.handle) {
-    wrap.innerHTML = '<button class="btn sm" onclick="connectRepoFolder()" title="Recommended: connect ~/.awd once to auto-import every workflow\'s run reports on every visit (runs append their telemetry there). Or connect a repo\'s .workflow folder for just that repo. Tip: pick the ~/.awd folder ITSELF - Chrome refuses to grant your home directory (system files). Create it first if needed (mkdir -p ~/.awd), then in the dialog press Cmd+Shift+G and type ~/.awd (or Cmd+Shift+. to show hidden folders); the dialog remembers your last pick. Chromium only; Import paste/drop works everywhere.">Connect Folder</button>';
+    wrap.innerHTML = '<button class="btn sm" onclick="connectRepoFolder()" title="Recommended: connect ~/.awd once to auto-import every workflow\'s run reports on every visit (runs append their telemetry there). Or connect a repo\'s .workflow folder for just that repo. Tip: pick the ~/.awd folder ITSELF - Chrome refuses to grant your home directory (system files). Create it first if needed (mkdir -p ~/.awd), then in the dialog press Cmd+Shift+G and type ~/.awd (or Cmd+Shift+. to show hidden folders); the dialog remembers your last pick and reopens INSIDE it next time. Dragging the folder from your file manager onto this section also works (macOS Finder: Cmd+Shift+. in your home folder reveals it to drag; on Windows type the path into Explorer\'s address bar). Chromium only; Import paste/drop works everywhere.">Connect Folder</button>';
   } else if (repoConnect.status === 'prompt') {
     wrap.innerHTML = '<button class="btn sm" onclick="scanConnectedRepo(true)" title="Permission is needed again for ' + escHtml(repoConnect.name) + ' - one click re-grants and rescans.">Reconnect ' + escHtml(repoConnect.name) + '</button>';
   } else {
@@ -13419,14 +13517,32 @@ async function monitorPersist() {
 }
 async function connectRunMonitor() {
   if (!monitorSupported() || runMonitor.watches.length >= MONITOR_MAX_WATCHES) return;
-  let picked;
-  try { picked = await window.showDirectoryPicker({ mode: 'read', id: 'awd-run-monitor' }); }
-  catch (e) { return; }  // user cancelled
+  const picked = await pickDirWithMemory('awd-run-monitor');
+  if (!picked) return;
+  await monitorAddHandle(picked);
+}
+// The shared add body: the picker path and the drop path both land here.
+async function monitorAddHandle(picked) {
   runMonitor.watches.push({ handle: picked, name: monitorWatchName(picked.name), status: 'granted' });
+  try { await awdIdbSet('lastPick:awd-run-monitor', picked); } catch (e) { /* anchor is best-effort */ }
   await monitorPersist();
   monitorStart();
   await monitorPoll(true);
 }
+async function monitorHandleDrop(e) {
+  if (!monitorSupported() || !dropSupportsHandles(e.dataTransfer)) return;
+  e.preventDefault();
+  const got = await dropDirectoryHandles(e);
+  if (!got.dirs.length) {
+    showToast(got.denied ? 'The browser blocks access to that location - drop a normal folder' : 'Drop a folder (not files) to watch it');
+    return;
+  }
+  for (const h of got.dirs) {
+    if (runMonitor.watches.length >= MONITOR_MAX_WATCHES) { showToast('Watching the maximum of ' + MONITOR_MAX_WATCHES + ' folders'); break; }
+    await monitorAddHandle(h);
+  }
+}
+wireFolderDrop(document.getElementById('monitorPanel'), monitorHandleDrop);
 // Removal is by NAME, resolved at call time: an index captured at render time can splice
 // the wrong watch when two clicks race the async persist + rescan between re-renders.
 async function monitorRemoveWatch(name) {
@@ -13682,7 +13798,7 @@ function renderMonitorPanel() {
   if (!runMonitor.watches.length) {
     H.push('<div class="monitor-head"><h3>Live Run Monitor</h3><span style="flex:1"></span><button class="btn sm" onclick="toggleRunMonitor()" title="Close the monitor panel (watching continues in the background)">&#215;</button></div>');
     H.push('<div style="line-height:1.5">Watch a run\'s memory folder live (tasks ticking, agent status, the shared log) or browse a repo\'s <code>.workflow</code> records. A multi-repo run needs only ONE watch for the live surface (the memory folder is shared); add each repo\'s <code>.workflow</code> to browse its records too.</div>');
-    H.push('<div style="margin-top:8px"><button class="btn sm" onclick="connectRunMonitor()">Watch Folder</button> <button class="btn sm" onclick="monitorCopyPath()" title="Copy this workflow\'s memory path to paste into the folder picker">Copy Path</button></div>');
+    H.push('<div style="margin-top:8px"><button class="btn sm" onclick="connectRunMonitor()" title="Pick the folder to watch. The picker reopens at your last pick; hidden folders (like ~/.claude) appear with Cmd+Shift+. in the macOS picker (Ctrl+H on Linux; on Windows type the path into the dialog\'s folder box), and dragging the folder from your file manager onto this panel also works.">Watch Folder</button> <button class="btn sm" onclick="monitorCopyPath()" title="Copy this workflow\'s memory path to paste into the folder picker">Copy Path</button></div>');
     H.push('<div style="margin-top:8px;color:var(--text3);font-size:11px">Pick-once path (all runs live inside it):<br><code style="overflow-wrap:anywhere">' + escHtml(monitorMemoryParentPath()) + '</code></div>');
     H.push('<div style="margin-top:8px;color:var(--text3);font-size:11px;line-height:1.5"><strong style="color:var(--text2)">Pick once</strong>: choose the <code>workflow-memory</code> folder itself - every run lives inside it, the monitor follows whichever run is active (newest activity wins), and a Run selector appears when several exist. <strong style="color:var(--text2)">Hidden-folder tip</strong>: memory lives under <code>~/.claude</code>, which pickers hide by default. Copy the path above, click Watch Folder, then press <code>Cmd+Shift+G</code> in the picker and paste it (or <code>Cmd+Shift+.</code> to show hidden folders). Chrome refuses the home folder itself - pick <code>workflow-memory</code> directly. The picker remembers your last spot.</div>');
   } else {
@@ -13698,7 +13814,7 @@ function renderMonitorPanel() {
         + '<button class="btn sm" data-watch-name="' + escHtml(w.name) + '" onclick="monitorRemoveWatch(this.dataset.watchName)" title="Stop watching this folder (re-add it anytime with + Add Folder)">Unwatch</button></div>');
     });
     H.push('<div style="margin-top:4px"><button class="btn sm" onclick="monitorPoll(true)" title="Scan every watched folder right now (the poll keeps running either way)">Rescan</button> '
-      + (runMonitor.watches.length < MONITOR_MAX_WATCHES ? '<button class="btn sm" onclick="connectRunMonitor()" title="Watch another folder (up to 4): a repo\'s .workflow for records, or a source folder for its change feed">+ Add Folder</button> ' : '')
+      + (runMonitor.watches.length < MONITOR_MAX_WATCHES ? '<button class="btn sm" onclick="connectRunMonitor()" title="Watch another folder (up to 4): a repo\'s .workflow for records, or a source folder for its change feed. The picker reopens at your last pick; dragging a folder from your file manager onto this panel also works.">+ Add Folder</button> ' : '')
       + '<button class="btn sm" onclick="disconnectRunMonitor()" title="Stop watching every folder and forget the saved handles - reconnect any time with Watch Folder">Stop All</button></div>');
     if (runMonitor.runs.length > 1) {
       H.push('<h3>Run</h3><select class="story-input" style="min-height:auto;padding:4px 6px;font-size:11px;width:100%" onchange="monitorPinRun(this.value)">');

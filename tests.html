@@ -7121,6 +7121,120 @@ describe('Live Run Monitor emissions', () => {
 });
 
 // ─── Preset craft suites (Platform Provisioning + Data Migration bespoke crafts) ────
+// ─── Folder pick ergonomics (picker anchors + folder drops) ────
+describe('Folder pick ergonomics', () => {
+  // Real IndexedDB awaits stall under the runner's virtual-time budget, so the idb
+  // functions are stubbed with an in-memory map; every stub restores in afterEach so
+  // a mid-test rejection can never leak state into later suites.
+  let idbMap, origPicker, origGet, origSet, origDel, origAdd, origConn, origWC, origWatches, origRepo;
+  beforeEach(() => {
+    origPicker = win.showDirectoryPicker; origGet = win.awdIdbGet; origSet = win.awdIdbSet; origDel = win.awdIdbDel;
+    origAdd = win.monitorAddHandle; origConn = win.connectRepoHandle; origWC = win.withConfirm;
+    origWatches = win.runMonitor.watches;
+    origRepo = { h: win.repoConnect.handle, n: win.repoConnect.name, s: win.repoConnect.status };
+    idbMap = {};
+    win.awdIdbGet = async (k) => idbMap[k];
+    win.awdIdbSet = async (k, v) => { idbMap[k] = v; };
+    win.awdIdbDel = async (k) => { delete idbMap[k]; };
+  });
+  afterEach(() => {
+    win.showDirectoryPicker = origPicker; win.awdIdbGet = origGet; win.awdIdbSet = origSet; win.awdIdbDel = origDel;
+    win.monitorAddHandle = origAdd; win.connectRepoHandle = origConn; win.withConfirm = origWC;
+    win.runMonitor.watches = origWatches;
+    win.repoConnect.handle = origRepo.h; win.repoConnect.name = origRepo.n; win.repoConnect.status = origRepo.s;
+  });
+  const dirItem = (n) => ({ kind: 'file', getAsFileSystemHandle: async () => ({ kind: 'directory', name: n }) });
+  it('a retained anchor flows into startIn, and the new pick becomes the next anchor', async () => {
+    idbMap['lastPick:test-pick'] = { kind: 'directory', name: 'old-anchor' };
+    let seen = null;
+    win.showDirectoryPicker = async (opts) => { seen = opts; return { kind: 'directory', name: 'fresh' }; };
+    const got = await win.pickDirWithMemory('test-pick');
+    expect(got.name).toBe('fresh');
+    expect(seen.id).toBe('test-pick');
+    expect(seen.startIn && seen.startIn.name).toBe('old-anchor');
+    expect(idbMap['lastPick:test-pick'].name).toBe('fresh');
+  });
+  it('cancel returns null without reopening the picker or touching the anchor', async () => {
+    idbMap['lastPick:test-pick'] = { kind: 'directory', name: 'kept' };
+    let calls = 0;
+    win.showDirectoryPicker = async () => { calls++; const e = new win.Error('cancel'); e.name = 'AbortError'; throw e; };
+    const got = await win.pickDirWithMemory('test-pick');
+    expect(got).toBe(null);
+    expect(calls).toBe(1);
+    expect(idbMap['lastPick:test-pick'].name).toBe('kept');
+  });
+  it('a stale anchor falls back to a plain picker call (second attempt, no startIn)', async () => {
+    idbMap['lastPick:test-pick'] = { kind: 'directory', name: 'stale' };
+    const attempts = [];
+    win.showDirectoryPicker = async (opts) => {
+      attempts.push(opts);
+      if (attempts.length === 1) { const e = new win.Error('bad startIn'); e.name = 'TypeError'; throw e; }
+      return { kind: 'directory', name: 'recovered' };
+    };
+    const got = await win.pickDirWithMemory('test-pick');
+    expect(got.name).toBe('recovered');
+    expect(attempts.length).toBe(2);
+    expect(attempts[1].startIn === undefined).toBe(true);
+  });
+  it('both drop zones are wired on their STATIC containers (renders replace innerHTML only)', () => {
+    expect(win.document.getElementById('monitorPanel').dataset.dropWired).toBe('1');
+    expect(win.document.getElementById('runReportSection').dataset.dropWired).toBe('1');
+  });
+  it('text-only drags stay native (support gate); a folder drop preventDefaults exactly once', async () => {
+    expect(win.dropSupportsHandles({ items: [{ kind: 'string' }] })).toBe(false);
+    expect(win.dropSupportsHandles({ items: [{ kind: 'string' }, dirItem('x')] })).toBe(true);
+    let pd = 0;
+    win.monitorAddHandle = async () => {};
+    win.runMonitor.watches = [];
+    await win.monitorHandleDrop({ preventDefault: () => pd++, dataTransfer: { items: [dirItem('d')] } });
+    expect(pd).toBe(1);
+  });
+  it('a monitor drop routes directories to monitorAddHandle, ignores non-directories, and counts blocked locations honestly', async () => {
+    const added = [];
+    win.monitorAddHandle = async (h) => { added.push(h.name); };
+    win.runMonitor.watches = [];
+    await win.monitorHandleDrop({ preventDefault: () => {}, dataTransfer: { items: [
+      dirItem('dropped-dir'),
+      { kind: 'file', getAsFileSystemHandle: async () => ({ kind: 'file', name: 'plain-file' }) },
+      { kind: 'string' }
+    ] } });
+    expect(added.length).toBe(1);
+    expect(added[0]).toBe('dropped-dir');
+    const denied = await win.dropDirectoryHandles({ dataTransfer: { items: [
+      { kind: 'file', getAsFileSystemHandle: async () => { const e = new win.Error('blocked'); throw e; } }
+    ] } });
+    expect(denied.dirs.length).toBe(0);
+    expect(denied.denied).toBe(1);
+  });
+  it('the watch cap: adds below it (positive control), blocks at it', async () => {
+    let addCalls = 0;
+    win.monitorAddHandle = async () => { addCalls++; win.runMonitor.watches = win.runMonitor.watches.concat([{ name: 'w' + addCalls }]); };
+    win.runMonitor.watches = [{ name: 'a' }, { name: 'b' }, { name: 'c' }];   // one below MONITOR_MAX_WATCHES
+    await win.monitorHandleDrop({ preventDefault: () => {}, dataTransfer: { items: [dirItem('x'), dirItem('y')] } });
+    expect(addCalls).toBe(1);                                     // x added, y hit the cap
+    expect(win.runMonitor.watches.length).toBe(win.MONITOR_MAX_WATCHES);
+    await win.monitorHandleDrop({ preventDefault: () => {}, dataTransfer: { items: [dirItem('z')] } });
+    expect(addCalls).toBe(1);                                     // full: no add at all
+  });
+  it('a repo drop takes the single slot when unconnected; replacing a LIVE connection routes through the Replace confirm', async () => {
+    const connected = [];
+    win.connectRepoHandle = async (h) => { connected.push(h.name); };
+    win.repoConnect.handle = null; win.repoConnect.name = ''; win.repoConnect.status = 'none';
+    await win.repoHandleDrop({ preventDefault: () => {}, dataTransfer: { items: [dirItem('first'), dirItem('second')] } });
+    expect(connected.length).toBe(1);
+    expect(connected[0]).toBe('first');
+    const confirms = [];
+    win.withConfirm = (msg, opts, cb) => { confirms.push(msg); cb(); };
+    win.repoConnect.handle = { name: 'awd' }; win.repoConnect.name = 'awd'; win.repoConnect.status = 'granted';
+    await win.repoHandleDrop({ preventDefault: () => {}, dataTransfer: { items: [dirItem('replacement')] } });
+    await new Promise(r => setTimeout(r, 0));    // the confirmed finish() resolves next tick
+    expect(confirms.length).toBe(1);
+    expect(confirms[0]).toContain('Replace the connected folder');
+    expect(connected.length).toBe(2);
+    expect(connected[1]).toBe('replacement');
+  });
+});
+
 describe('Data Migration crafts', () => {
   it('data_migration preset wires the five migration crafts and both gates', () => {
     resetState();
@@ -13625,7 +13739,7 @@ describe('Themed confirm modal (replaces native confirm)', () => {
     // Seventh site added 2026-07-03: loadSavedWorkflow replace guard.
     const src = win.document.documentElement.outerHTML;
     expect((src.match(/!confirm\(/g) || []).length).toBe(2);
-    expect((src.match(/withConfirm\('/g) || []).length).toBe(9);
+    expect((src.match(/withConfirm\('/g) || []).length).toBe(10);
   });
 });
 
@@ -14475,7 +14589,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
