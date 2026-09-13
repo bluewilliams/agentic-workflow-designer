@@ -50,21 +50,26 @@ for i in $(seq 1 20); do
 done
 
 # --- Run headless Chrome and capture console output ---
+# Retried: on a slow machine (CI VMs especially) Chrome can exhaust the virtual-time
+# budget before the suite reports, dumping a DOM with no cli-output element. The
+# budget is generous and the whole run is retried before declaring a setup error.
 TMPFILE=$(mktemp)
+ATTEMPTS=3
 
-"$CHROME" \
-  --headless=new \
-  --disable-gpu \
-  --no-sandbox \
-  --disable-extensions \
-  --disable-background-networking \
-  --virtual-time-budget=30000 \
-  --dump-dom \
-  "http://127.0.0.1:$PORT/tests.html" \
-  > "$TMPFILE" 2>/dev/null
+for attempt in $(seq 1 $ATTEMPTS); do
+  "$CHROME" \
+    --headless=new \
+    --disable-gpu \
+    --no-sandbox \
+    --disable-extensions \
+    --disable-background-networking \
+    --virtual-time-budget=60000 \
+    --dump-dom \
+    "http://127.0.0.1:$PORT/tests.html" \
+    > "$TMPFILE" 2>/dev/null || true
 
-# --- Parse results from the hidden cli-output element ---
-CLI_JSON=$(python3 -c "
+  # --- Parse results from the hidden cli-output element ---
+  CLI_JSON=$(python3 -c "
 import sys, json, re
 html = open('$TMPFILE').read()
 m = re.search(r'<pre id=\"cli-output\"[^>]*>(.*?)</pre>', html, re.DOTALL)
@@ -73,6 +78,9 @@ if not m:
     sys.exit(0)
 print(m.group(1))
 ")
+  echo "$CLI_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if 'error' not in d else 1)" 2>/dev/null && break
+  [[ $attempt -lt $ATTEMPTS ]] && echo "Attempt $attempt produced no test results; retrying..." >&2
+done
 
 if echo "$CLI_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if 'error' not in d else 1)" 2>/dev/null; then
   PASS=$(echo "$CLI_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['pass'])")
@@ -99,7 +107,7 @@ for f in d.get('failures', []):
     exit 1
   fi
 else
-  echo "Error: Could not parse test results from headless Chrome output." >&2
+  echo "Error: Could not parse test results from headless Chrome output ($ATTEMPTS attempts)." >&2
   echo "This may mean the tests timed out or index.html failed to load." >&2
   exit 2
 fi
