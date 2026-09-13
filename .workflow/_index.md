@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## folder-pick-ergonomics
+
+- record: .workflow/folder-pick-ergonomics.md
+- intent: hidden-folder connections without gymnastics - every successful pick's handle is retained as a picker anchor (surviving disconnects) and passed as startIn so re-picks open INSIDE ~/.awd or ~/.claude; the monitor panel and Run Reports section accept a dragged folder (Finder Go to Folder reaches hidden paths); point-of-action hints teach the first pick. Consolidating ~/.awd + ~/.claude/workflow-memory parked as its own future round.
+- files: index.html (neutral-ground pick/drop primitives + wireFolderDrop on both static containers + flow splits + confirm-on-replace + disconnect bridge hygiene + tooltips + help), tests.html (Folder pick ergonomics suite + exposure + withConfirm pin), README.md
+- status: current | date: 2026-09-13 | note: 1733 -> 1738.
+
 ## data-migration-safety
 
 - record: .workflow/data-migration-safety.md
