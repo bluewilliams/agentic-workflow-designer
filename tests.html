@@ -3679,6 +3679,45 @@ describe('Preset Loading', () => {
       expect(back.label).toBe('Revise');
       expect(win.state.memoryEnabled).toBe(true);
     });
+    it('platform_provisioning preset: 6 agents, skeptic on the plan, conventions gate, deploy-verifier loop back to the Provisioner', () => {
+      win.loadPreset('platform_provisioning');
+      const agents = win.state.nodes.filter(n => n.type === 'agent');
+      expect(agents.length).toBe(6);
+      const planner = win.state.nodes.find(n => n.label === 'Provisioning Planner');
+      const sk = agents.find(n => n.config.agentType === 'adversary');
+      expect(sk.config.reviewLoopFor).toBe(planner.id);
+      const prov = win.state.nodes.find(n => n.label === 'Provisioner');
+      const v = win.state.nodes.find(n => n.label === 'Deploy Verifier');
+      expect(v.config.agentType).toBe('verifier');
+      expect(v.config.prompt).toBe(win.PROMPTS.deployVerifier);
+      const vd = win.state.nodes.find(n => n.label === 'Provision proven?');
+      const vback = win.state.connections.find(c => c.from === vd.id && c.to === prov.id);
+      expect(vback.label).toBe('Not verified');
+      const rd = win.state.nodes.find(n => n.label === 'Conventions hold?');
+      const rback = win.state.connections.find(c => c.from === rd.id && c.to === prov.id);
+      expect(rback.label).toBe('Revise');
+      expect(win.state.memoryEnabled).toBe(true);
+      win.updateStoryPlaceholder('platform_provisioning');
+      expect(win.document.getElementById('storyInput').placeholder).toContain('Precedents to mirror');
+      win.updateStoryPlaceholder('feature');   // restore for later suites
+    });
+    it('feature_fast drift-immunity: every shared node config is byte-identical to the feature preset (the tooltip claim, enforced)', () => {
+      win.loadPreset('feature');
+      const snap = {};
+      win.state.nodes.forEach(n => { snap[n.type + ':' + n.label] = JSON.stringify(n.config); });
+      resetState();
+      win.loadPreset('feature_fast');
+      let compared = 0;
+      win.state.nodes.forEach(n => {
+        const key = n.type + ':' + n.label;
+        // Two-directional: a fast-only node the parent does not have is itself drift
+        expect(key + (snap[key] !== undefined ? '' : ' [NOT IN feature]')).toBe(key);
+        expect(key + '=' + JSON.stringify(n.config)).toBe(key + '=' + snap[key]);
+        compared++;
+      });
+      expect(compared).toBe(win.state.nodes.length);
+      expect(compared).toBe(7);   // input, Planner, Implementer, Reviewer, gate, Tester, output
+    });
     it('should load fullstack preset with 5 agents', () => {
       win.loadPreset('fullstack');
       expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(5);
@@ -7082,6 +7121,30 @@ describe('Live Run Monitor emissions', () => {
 });
 
 // ─── Suite 12i: Amend presets (Touch-Up + Record Sync: amend an existing deliverable) ────
+describe('Platform Provisioning crafts', () => {
+  it('platform provisioning crafts: precedent-first survey, name-cascade planning, credential hygiene, evidence-table verification', () => {
+    expect(win.PROMPTS.estateSurveyor).toContain('matching what already ships');
+    expect(win.PROMPTS.estateSurveyor).toContain('Generating beats cloning beats inventing');
+    expect(win.PROMPTS.estateSurveyor).toContain('never invent a convention');
+    expect(win.PROMPTS.provisioningPlanner).toContain('Name cascade');
+    expect(win.PROMPTS.provisioningPlanner).toContain('ONCE in the plan');
+    expect(win.PROMPTS.provisioningPlanner).toContain('Lead-time register');
+    expect(win.PROMPTS.provisioningPlanner).toContain('copy-ready instruction block');
+    expect(win.PROMPTS.provisioner).toContain('Never commit a credential');
+    expect(win.PROMPTS.provisioner).toContain('generate over clone over invent');
+    expect(win.PROMPTS.provisioner).toContain('do not block and do not improvise');
+    expect(win.PROMPTS.provisioningReviewer).toContain('always Critical');
+    expect(win.PROMPTS.provisioningReviewer).toContain('Check the whole matrix, not a sample');
+    expect(win.PROMPTS.deployVerifier).toContain('evidence table');
+    expect(win.PROMPTS.deployVerifier).toContain('MANUAL, never silently passed');
+    expect(win.PROMPTS.deployVerifier).toContain('test the negative, not just the positive');
+    // Host-generic by contract: the crafts speak of roles ("version-control host"),
+    // and vendor specifics arrive only via the MCP toggles and Custom MCP notes
+    expect(win.PROMPTS.estateSurveyor).toContain('version-control host');
+    expect(win.PROMPTS.provisioningPlanner).toContain('version-control host');
+  });
+});
+
 describe('Amend presets: Touch-Up and Record Sync', () => {
   beforeEach(() => { resetState(); });
   it('touchup preset: scoper -> amender -> reviewer -> gate -> steward, revise loops to the Amender', () => {
@@ -7170,7 +7233,8 @@ describe('Amend presets: Touch-Up and Record Sync', () => {
     // never decouples, and a missing spec (archive-only history included) gets created
     expect(win.PROMPTS.artifactSteward).toContain('TWO halves, spec first');
     expect(win.PROMPTS.artifactSteward).toContain('never archive without applying');
-    expect(win.PROMPTS.artifactSteward).toContain('CREATE `openspec/specs/{capability}/spec.md`');
+    expect(win.PROMPTS.artifactSteward).toContain('CREATE `openspec/specs/{capability-slug}/spec.md`');
+    expect(win.PROMPTS.artifactSteward).toContain('## Purpose');   // same greenfield shape as the d2 emission
     expect(win.PROMPTS.driftAuditor).toContain('INVERSE failure');
     expect(win.PROMPTS.driftAuditor).toContain('truth trapped in the archive');
   });
@@ -10273,14 +10337,18 @@ describe('Coverage Gaps', () => {
   });
 
   describe('presets should have no validation warnings', () => {
-    const presetNames = ['feature', 'bugfix', 'fullstack', 'review', 'parallel_research', 'swarm',
-      'test_automation', 'ui_component', 'refactoring', 'documentation', 'devops', 'performance', 'testing', 'data_migration', 'touchup', 'record_sync'];
-    presetNames.forEach(preset => {
-      it('should have zero warnings for ' + preset, () => {
+    // Derived from the sidebar tiles so every future preset joins automatically -
+    // the hand-maintained list rotted twice (three presets were silently missing).
+    // The string-compare pattern names the failing preset in the assertion output.
+    it('every sidebar preset tile loads a real workflow with zero validation warnings', () => {
+      const keys = [...win.document.querySelectorAll('.preset-item[data-preset]')].map(el => el.dataset.preset);
+      expect(keys.length > 0).toBe(true);
+      keys.forEach(preset => {
         resetState();
         win.loadPreset(preset);
+        expect(preset + ':' + (win.state.nodes.length > 0 ? 'loaded' : 'EMPTY (tile without builder?)')).toBe(preset + ':loaded');
         const warnings = win.validateWorkflow();
-        expect(warnings.length).toBe(0);
+        expect(preset + ':warnings:' + warnings.length).toBe(preset + ':warnings:0');
       });
     });
   });
@@ -12179,13 +12247,17 @@ describe('Workflow advisor (non-blocking suggestions)', () => {
     win.addConnection(r.id, d.id);
     expect(win.adviseWorkflow().map(x => x.msg).join(' | ')).toNotContain('routes nowhere');
   });
-  it('every preset yields zero suggestions (calibration pin - all 19 audited, none nags; test_automation carries its one deliberate setup pointer)', () => {
+  it('every preset yields zero suggestions (calibration pin - every preset audited, none nags; test_automation carries its one deliberate setup pointer)', () => {
     cleanRunReports();
-    ['feature','bugfix','fullstack','ui_component','refactoring','documentation','devops','performance','data_migration','testing','review','parallel_research','swarm','delivery_swarm','analysis_forecast','incident_rca','touchup','record_sync'].forEach(p2 => {
+    // Derived from the sidebar tiles so every future preset is audited automatically
+    const allKeys = [...win.document.querySelectorAll('.preset-item[data-preset]')].map(el => el.dataset.preset);
+    expect(allKeys.length > 0).toBe(true);
+    allKeys.filter(k => k !== 'test_automation').forEach(p2 => {
       resetState();
       win.loadPreset(p2);
+      expect(p2 + ':' + (win.state.nodes.length > 0 ? 'loaded' : 'EMPTY (tile without builder?)')).toBe(p2 + ':loaded');
       const sugs = win.adviseWorkflow();
-      expect(sugs.length + 0).toBe(0);
+      expect(p2 + ':sugs:' + sugs.length).toBe(p2 + ':sugs:0');
     });
     // test_automation is the deliberate exception: its App Explorer needs an App Source
     // path, and rule (h) points a fresh user at exactly that - one suggestion, gone the
