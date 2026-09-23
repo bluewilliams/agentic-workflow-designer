@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-09-22 - run-telemetry-otlp - opt-in run telemetry: the orchestrator posts bounded progress events as standard OTLP log records (env-var fallback, headers honored, identity chain, cross-platform), the designer sends nothing. 1741 -> 1748 - .workflow/run-telemetry-otlp.md
 2026-09-13 - folder-pick-ergonomics (update) - review round: text-drag gate, confirm-on-replace + bridge hygiene, activation-safe anchors, honest denial toasts, static-container listeners (false rationale corrected), removability restored, platform copy fixed, README. 1738 -> 1741 - .workflow/folder-pick-ergonomics.md
 2026-09-13 - folder-pick-ergonomics - picker anchors (startIn from a disconnect-surviving retained handle), folder drag-and-drop onto the monitor panel and Run Reports section, and point-of-action hidden-folder hints; ~/.awd + workflow-memory consolidation parked as its own round. 1733 -> 1738 - .workflow/folder-pick-ergonomics.md
 2026-09-13 - data-migration-safety (update) - best-possible round: recon-first order (the crafts always assumed it), a Skeptic gate on the risk register, and the register-fidelity migrationReviewer replacing the generic reviewer. Suite steady at 1733 - .workflow/data-migration-safety.md

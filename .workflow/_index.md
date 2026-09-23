@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## run-telemetry-otlp
+
+- record: .workflow/run-telemetry-otlp.md
+- intent: opt-in Run telemetry - the generated prompt asks the orchestrator (single writer) to post a bounded set of progress events as standard OTLP/HTTP JSON log records, fire-and-forget; endpoint from the field or the standard OTEL_EXPORTER_OTLP_LOGS_ENDPOINT env var, headers from OTEL_EXPORTER_OTLP_HEADERS, service default agentic-workflow-designer, identity Claude account email then git email, session.id from CLAUDE_CODE_SESSION_ID. Vendor-neutral; the designer sends nothing.
+- files: index.html (state, prefs, Run Reports markup, runTelemetryHint + helpers, pushSharedHints + SDK + Explain injections, help), tests.html (Run telemetry suite, resetState, exposure), README.md
+- status: current | date: 2026-09-22 | note: 1741 -> 1750 across creation and the review round.
+
 ## folder-pick-ergonomics
 
 - record: .workflow/folder-pick-ergonomics.md

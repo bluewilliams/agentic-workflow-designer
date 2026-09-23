@@ -536,9 +536,9 @@ svg.canvas{width:100%;height:100%;display:block}
     <input type="text" id="workflowName" class="story-input" style="min-height:auto;padding:8px 10px;font-family:var(--font);font-weight:600;margin-bottom:8px" placeholder="optional - auto-named from your requirements" oninput="updateMemoryPath();updatePrompt();autoSaveWorkflow()"/>
     <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Auto Workflow to auto-build a workflow from keywords." oninput="validateStoryInput(true)"></textarea>
     <div id="storyHint" class="input-hint"></div>
-    <label class="memory-toggle" style="margin-top:6px">
+    <label class="memory-toggle" style="margin-top:6px" title="The generated workflow opens with one focused round of clarifying questions before any step runs, and folds the answers into the plan and the durable record. Built into the prompt itself - distinct from Generate Refine Prompt, which is a separate interview you run first. Non-interactive runs record the open questions as assumptions and proceed.">
       <input type="checkbox" id="clarifyFirstToggle" onchange="toggleClarifyFirst()"/>
-      <span style="font-size:12px">Clarify requirements first <span style="color:var(--text3);font-weight:400">(the workflow opens with clarifying questions)</span></span>
+      <span style="font-size:12px">Clarify requirements first</span>
     </label>
     <div class="btn-row mt">
       <button class="btn primary" id="generateBtn" onclick="generateFromStory()" title="Build a bespoke workflow from your requirements text: intent scoring picks the shape (build, research, review, analysis), wraps a Skeptic on the plan, and tells you what it detected. Replaces the canvas.">Auto Workflow</button>
@@ -898,6 +898,19 @@ svg.canvas{width:100%;height:100%;display:block}
     <div class="btn-row">
       <span id="repoConnectWrap" style="display:none;gap:4px;align-items:center"></span>
       <button class="btn sm" id="tuningPromptBtn" onclick="copyTuningPrompt()" title="Copy a tuning prompt built from imported run reports: Claude analyzes the telemetry and returns an improved workflow JSON to import back.">Tuning Prompt</button>
+    </div>
+    <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:8px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px" title="The generated prompt asks the orchestrator to post progress events (run start, step start and done, task confirmations, gate verdicts, verifier results, finalize) as standard OpenTelemetry log records to an OTLP/HTTP collector - fire-and-forget, never blocking the work. Works with any OTLP-compatible collector (an OpenTelemetry Collector, a relay, or an observability platform). The designer itself sends nothing.">Run Telemetry <span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0">(optional)</span></div>
+      <label class="memory-toggle" title="When on, the orchestrator posts one OpenTelemetry log record per progress event. Off means the prompt says nothing about telemetry.">
+        <input type="checkbox" id="telemetryToggle" onchange="toggleTelemetry()"/>
+        <span style="font-size:12px">Send progress events <span style="color:var(--text3);font-weight:400">(OTLP logs)</span></span>
+      </label>
+    </div>
+    <div id="telemetryFields" style="display:none">
+      <input type="text" id="telemetryEndpoint" placeholder="OTLP logs URL (blank: environment)" title="The collector's logs URL (for example https://collector.example.com/v1/logs). Leave blank to use the OTEL_EXPORTER_OTLP_LOGS_ENDPOINT environment variable already configured on the machine that runs the workflow - the standard OpenTelemetry setting. Credentials never go here: a collector that needs headers reads OTEL_EXPORTER_OTLP_HEADERS from the environment." oninput="setTelemetryField('telemetryEndpoint', this.value)" class="story-input" style="min-height:auto;padding:6px 8px;font-family:inherit;font-size:12px;margin-top:4px"/>
+      <input type="text" id="telemetryService" placeholder="service name (optional)" title="The service.name resource attribute on every record. Default: agentic-workflow-designer." oninput="setTelemetryField('telemetryService', this.value)" class="story-input" style="min-height:auto;padding:6px 8px;font-family:inherit;font-size:12px;margin-top:4px"/>
+      <input type="text" id="telemetryUser" placeholder="user email or handle (optional)" title="Who ran it. Leave blank and the orchestrator resolves it at run start: the Claude Code account email (the same user.email facet Claude Code's own telemetry carries, so events join it), else git config user.email." oninput="setTelemetryField('telemetryUser', this.value)" class="story-input" style="min-height:auto;padding:6px 8px;font-family:inherit;font-size:12px;margin-top:4px"/>
+      <input type="text" id="telemetryTags" placeholder="tags: env:dev, team:platform" title="Extra attributes on every record, as key:value pairs separated by commas. Keep values short and bounded - they are for filtering, never for prose." oninput="setTelemetryField('telemetryTags', this.value)" class="story-input" style="min-height:auto;padding:6px 8px;font-family:inherit;font-size:12px;margin-top:4px"/>
     </div>
   </div>
 
@@ -1285,6 +1298,7 @@ svg.canvas{width:100%;height:100%;display:block}
 </ol>
 <p>The record a run keeps is where its report comes back from - and the loop is honest because the predictions are checkable.</p>
 <p><strong>Connect Folder</strong> (in the Run Reports section, Chromium only) removes even the paste. Recommended: connect <code>~/.awd</code> once - every run appends its fence to <code>~/.awd/run-reports.md</code>, so one grant catches every workflow against every repo, always on. (Pick the <code>~/.awd</code> folder itself - Chrome refuses to grant the home directory because it contains system files. Create it first if it does not exist (<code>mkdir -p ~/.awd</code>), then in the picker press <code>Cmd+Shift+G</code> and type <code>~/.awd</code>, or <code>Cmd+Shift+.</code> to reveal hidden folders (macOS keys - Linux pickers use <code>Ctrl+H</code>; on Windows type the path into the dialog's folder-name box). The dialog remembers your last pick afterwards and reopens inside it - and dragging the folder from your file manager onto the Run Reports section, or onto the monitor panel for watches, skips the picker entirely.) Connecting a single repo's <code>.workflow</code> folder works too (reports also live in its durable records) when you only care about that repo. Rescans never double-count (content-hash dedupe); disconnect anytime. Stats live in your browser only.</p>
+<p><strong>Run telemetry (OTLP logs)</strong> (Run Reports section): turn it on and the generated prompt asks the orchestrator to post progress events - run start, each step's start and completion, task confirmations, gate verdicts, verifier results, finalize - as standard OpenTelemetry log records to an OTLP/HTTP collector. Any OTLP-compatible collector works (an OpenTelemetry Collector, a relay, or an observability platform such as Datadog or Grafana). Leave the URL blank to use the <code>OTEL_EXPORTER_OTLP_LOGS_ENDPOINT</code> already configured on the machine that runs the workflow; credentials, if a collector needs them, come from <code>OTEL_EXPORTER_OTLP_HEADERS</code> and never from the designer. Service name defaults to <code>agentic-workflow-designer</code>; the user defaults to the signed-in Claude Code account email when a status command reports it (so events join Claude Code's own telemetry; credential files are never opened), then the git email. The designer itself sends nothing - the run reports on itself, fire-and-forget, and a failed post never touches the work.</p>
 <h3>Workflow Advisor</h3>
 <p>Click the health indicator to open the review modal. Below any issues, a lightbulb <b>Suggestions</b> group offers non-blocking advice: unreviewed build paths (one-click <b>Attach Skeptic</b>), fan-outs that never synthesize, solo agents shipping code, read-only roles holding write tools, starved turn budgets - and, once run reports are ingested, telemetry-informed tuning (gates that loop, steps that cap out or fail). Suggestions never affect the badge count and never block generation.</p>
 <h3>Explain This Workflow</h3>
@@ -1668,6 +1682,75 @@ function atlassianTicketFetchHint(urls) {
 function atlassianGeneralHint() {
   if (!state.mcpAtlassian) return null;
   return '> **Atlassian (general) - use it whenever it helps.** This workflow expects an Atlassian MCP server; if one is connected, use it freely to pull related context that would genuinely help your task: other Jira tickets, Confluence docs (architecture, ADRs, runbooks), linked or duplicate issues, and Bitbucket repos, pull requests, and pipelines where the team hosts code there. The only thing to avoid is redundancy - do not re-fetch what is already in your brief, and do not repeat a lookup another step already did. Whenever a related lookup would inform your work, do it; use your judgment. If no Atlassian tools are actually available, note the gap and proceed - do not block on Atlassian lookups.';
+}
+// ── Run telemetry (OTLP logs) ──────────────────────────────────────────────
+// Opt-in: the generated prompt asks the ORCHESTRATOR to post progress events as
+// OpenTelemetry log records (standard OTLP/HTTP JSON) so a team can follow runs in
+// whatever platform their collector feeds. Vendor-neutral by construction: the
+// payload is the OTel standard and the environment variables are the OTel standard
+// (OTEL_EXPORTER_OTLP_LOGS_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS). The designer
+// never makes a network call - the run reports on itself, as the awd:run fence
+// does. Single writer, bounded event set, fire-and-forget, never blocks the work.
+const TELEMETRY_DEFAULT_SERVICE = 'agentic-workflow-designer';
+// The bounded event set, single-sourced: the prose lists exactly these, in this order
+const TELEMETRY_EVENTS = ['run.start', 'step.start', 'step.done', 'task.confirmed', 'gate.verdict', 'verify.result', 'run.finalize', 'run.failed'];
+const TELEMETRY_EVENT_NOTES = {
+  'run.start': 'once before the first step',
+  'step.start': 'per step',
+  'step.done': 'per step (status: done, blocked, or failed)',
+  'task.confirmed': 'whenever tasks.md gains confirmed ticks (detail: the confirmed count)',
+  'gate.verdict': 'at every decision gate (status: pass or revise; cycle: the revision number)',
+  'verify.result': 'at every verifier or tester verdict',
+  'run.finalize': 'once at the end (detail: the awd:run summary - steps, cap hits, gate cycles)',
+  'run.failed': 'if the run cannot complete'
+};
+// Keys the record already carries - a user tag may not shadow them
+const TELEMETRY_RESERVED_KEYS = ['event', 'workflow', 'step', 'status', 'cycle', 'user.email', 'session.id', 'service.name'];
+// Field values are embedded in markdown (inside backtick spans) and in JSON that the
+// SDK banner later strips of backticks and asterisks - so neither may survive input
+function telemetryClean(v) {
+  return String(v || '').replace(/[`*]/g, '').trim();
+}
+function telemetryEndpointValue() { return telemetryClean(state.telemetryEndpoint); }
+function telemetryServiceName() { return telemetryClean(state.telemetryService) || TELEMETRY_DEFAULT_SERVICE; }
+function telemetryUserValue() { return telemetryClean(state.telemetryUser); }
+// "env:dev, team:platform" -> [['env','dev'],['team','platform']]: malformed entries,
+// reserved keys, and duplicate keys (first wins) are dropped - OTLP attribute keys are unique
+function telemetryTagPairs() {
+  const seen = {};
+  return telemetryClean(state.telemetryTags).split(',').map(t => t.trim()).filter(Boolean).map(t => {
+    const i = t.indexOf(':');
+    if (i <= 0) return null;
+    const k = t.slice(0, i).trim(), v = t.slice(i + 1).trim();
+    if (!k || !v || TELEMETRY_RESERVED_KEYS.indexOf(k) !== -1 || seen[k]) return null;
+    seen[k] = true;
+    return [k, v];
+  }).filter(Boolean);
+}
+function telemetryAttr(key, value) {
+  return '{"key":' + JSON.stringify(String(key)) + ',"value":{"stringValue":' + JSON.stringify(String(value)) + '}}';
+}
+function runTelemetryHint() {
+  if (!state.telemetryEnabled) return null;
+  const endpoint = telemetryEndpointValue();
+  const user = telemetryUserValue();
+  const slug = slugify(getName() || 'workflow');
+  const tagAttrs = telemetryTagPairs().map(([k, v]) => ',' + telemetryAttr(k, v)).join('');
+  const record = '{"resourceLogs":[{"resource":{"attributes":[' + telemetryAttr('service.name', telemetryServiceName())
+    + ']},"scopeLogs":[{"scope":{"name":"agentic-workflow-designer"},"logRecords":[{"timeUnixNano":"<unix time in nanoseconds>","severityNumber":"<9 INFO, 13 WARN, or 17 ERROR - a number, not a string>","severityText":"<INFO, WARN, or ERROR>","body":{"stringValue":"<event>: <one-line detail>"},"attributes":['
+    + telemetryAttr('event', '<event>') + ',' + telemetryAttr('workflow', slug) + ',' + telemetryAttr('step', '<step slug, or ->') + ',' + telemetryAttr('status', '<status, or ->')
+    + ',' + telemetryAttr('cycle', '<revision number, or ->') + ',' + telemetryAttr('user.email', '<user>') + ',' + telemetryAttr('session.id', '<session id, or ->') + tagAttrs + ']}]}]}]}';
+  const where = endpoint
+    ? 'Endpoint: `' + endpoint + '`.'
+    : 'Endpoint: the URL in the `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` environment variable (the standard OpenTelemetry setting); if it is unset, skip telemetry entirely and say so once.';
+  const who = user
+    ? 'Identity: `<user>` is `' + user + '`.'
+    : 'Identity: resolve `<user>` ONCE at run start - the signed-in Claude Code account email when a status command or the environment plainly reports it (never open a credentials or token file to find it), else `git config user.email`, else `-`.';
+  const events = TELEMETRY_EVENTS.map(ev => '`' + ev + '` ' + TELEMETRY_EVENT_NOTES[ev]).join('; ');
+  return '> **Run telemetry (OTLP logs) - the orchestrator posts progress events, fire-and-forget.** ' + where + ' The orchestrator (in a team, the lead) is the ONLY writer - steps never post. Send one record per event with curl (or the platform equivalent) using `--max-time 5`, at most one retry, and never let telemetry change the work: a failed post is ignored, never reported as a workflow failure, and never blocks a step. If `OTEL_EXPORTER_OTLP_HEADERS` is set in the environment, send each `key=value` pair as an HTTP header after percent-decoding the value, as the OpenTelemetry specification defines - a collector that needs credentials gets them from there, never from this prompt.\n>\n'
+    + '> **Events** (this exact, bounded set): ' + events + '. Severity: INFO (9) normally, WARN (13) for revise verdicts and blocked steps, ERROR (17) for run.failed.\n>\n'
+    + '> **Record shape** (standard OTLP/HTTP JSON, `Content-Type: application/json`, one POST per event): `' + record + '`\n>\n'
+    + '> ' + who + ' `<session id>` is `$CLAUDE_CODE_SESSION_ID` when the environment provides it, so events join the session\'s own telemetry. Attribute values are short identifiers only: never requirements text, prompt bodies, file contents, or secrets. Platforms: curl ships with macOS, Linux, and Windows 10+ (curl.exe; PowerShell\'s Invoke-RestMethod also works); read environment variables the way your shell does (`$VAR` in bash or zsh, `$env:VAR` in PowerShell); for the timestamp, unix seconds times 1000000000 is fine (macOS date has no nanoseconds).';
 }
 // Browser-automation MCP: the workflow-level hint plus a role-gated step hint. The step
 // hint is the un-parked runtime selector-verification design: every UI-automation template
@@ -2358,6 +2441,11 @@ let state = {
   repositories: [],
   activePreset: null,
   mcpBrowser: false,
+  telemetryEnabled: false,
+  telemetryEndpoint: '',
+  telemetryService: '',
+  telemetryTags: '',
+  telemetryUser: '',
   mcpGithub: false,
   mcpAtlassian: true,
   mcpCodeSearch: true,
@@ -2936,6 +3024,21 @@ function toggleMcpBrowser() {
   updatePrompt();
   savePrefs();
 }
+function toggleTelemetry() {
+  state.telemetryEnabled = $('telemetryToggle').checked;
+  renderTelemetryFields();
+  updatePrompt();
+  savePrefs();
+}
+function renderTelemetryFields() {
+  const f = $('telemetryFields');
+  if (f) f.style.display = state.telemetryEnabled ? '' : 'none';
+}
+function setTelemetryField(key, value) {
+  state[key] = telemetryClean(value);
+  updatePrompt();
+  savePrefsDebounced();
+}
 function toggleMcpCodeSearch() {
   state.mcpCodeSearch = $('mcpCodeSearchToggle').checked;
   updatePrompt();
@@ -3060,6 +3163,11 @@ function savePrefs() {
       mcpAtlassian: state.mcpAtlassian,
       mcpGithub: state.mcpGithub,
       mcpBrowser: state.mcpBrowser,
+      telemetryEnabled: state.telemetryEnabled,
+      telemetryEndpoint: state.telemetryEndpoint,
+      telemetryService: state.telemetryService,
+      telemetryTags: state.telemetryTags,
+      telemetryUser: state.telemetryUser,
       mcpCodeSearch: state.mcpCodeSearch,
       mcpDatadog: state.mcpDatadog,
       consumeRecords: state.consumeRecords,
@@ -3120,6 +3228,15 @@ function restorePrefs() {
       const bcb = $('mcpBrowserToggle');
       if (bcb) bcb.checked = state.mcpBrowser;
     }
+    if (p.telemetryEnabled !== undefined) {
+      state.telemetryEnabled = !!p.telemetryEnabled;
+      const tcb = $('telemetryToggle');
+      if (tcb) tcb.checked = state.telemetryEnabled;
+    }
+    ['telemetryEndpoint', 'telemetryService', 'telemetryTags', 'telemetryUser'].forEach(k => {
+      if (typeof p[k] === 'string') { state[k] = telemetryClean(p[k]); const el = $(k); if (el) el.value = state[k]; }
+    });
+    renderTelemetryFields();
     if (p.mcpAtlassian !== undefined) {
       state.mcpAtlassian = !!p.mcpAtlassian;
       const cb = $('mcpAtlassianToggle');
@@ -9820,6 +9937,8 @@ function explainWorkflow(format) {
   rows.push(exRow('GitHub (MCP)', !!ghG, ghG ? 'GitHub toggle on' : 'GitHub toggle off', ghG));
   const brG = browserGeneralHint();
   rows.push(exRow('Browser automation (MCP)', !!brG, brG ? 'Browser automation toggle on' : 'Browser automation toggle off', brG));
+  const tlH = runTelemetryHint();
+  rows.push(exRow('Run telemetry (OTLP logs)', !!tlH, tlH ? ('Run telemetry toggle on - ' + (telemetryEndpointValue() ? 'explicit endpoint' : 'endpoint from OTEL_EXPORTER_OTLP_LOGS_ENDPOINT') + ', service ' + telemetryServiceName()) : 'Run telemetry toggle off', tlH));
   const csH = codeSearchHint();
   rows.push(exRow('Code search (workflow-level)', !!csH, csH ? 'Code search toggle on' : 'Code search toggle off', csH));
   rows.push(exRow('Conventions', true, 'always emitted - comment discipline + test-convention discovery', conventionsHint()));
@@ -10397,6 +10516,8 @@ function pushSharedHints(p, format, includeEffort) {
   if (ghG) { p.push(ghG); p.push(''); }
   const brG = browserGeneralHint();
   if (brG) { p.push(brG); p.push(''); }
+  const tlH = runTelemetryHint();
+  if (tlH) { p.push(tlH); p.push(''); }
   const sb = codeSearchHint();
   if (sb) { p.push(sb); p.push(''); }
   const co = conventionsHint(); p.push(co); p.push('');
@@ -11161,6 +11282,12 @@ function genAgentSDK() {
   if (state.mcpBrowser) {
     p.push('# ── Browser automation (MCP) - available whenever seeing the app helps ───────');
     _sdkHintLines(browserGeneralHint());
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
+  if (state.telemetryEnabled) {
+    p.push('# ── Run telemetry (OTLP logs) - the orchestrator posts progress events ───────');
+    _sdkHintLines(runTelemetryHint());
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
@@ -13986,7 +14113,10 @@ function copyPrompt() {
   // Scan all user inputs for secrets
   const allInput = [
     $('storyInput') ? $('storyInput').value : '',
-    $('planInput') ? $('planInput').value : ''
+    $('planInput') ? $('planInput').value : '',
+    // the telemetry fields ride into every format when the toggle is on - a URL
+    // carrying a key in its query string must trip the same warning
+    state.telemetryEnabled ? [state.telemetryEndpoint, state.telemetryService, state.telemetryUser, state.telemetryTags].join('\n') : ''
   ].concat(state.nodes.map(n => (n.config.prompt || '') + (n.config.notes || '')));
   const secrets = scanForSecrets(allInput.join('\n'));
   // Deliberate native confirm(): same clipboard-gesture reasoning as copyTuningPrompt.

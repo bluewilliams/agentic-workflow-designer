@@ -247,6 +247,7 @@ function resetState() {
   win.state.mcpDatadog = false;    // app default is OFF (opt-in)
   win.state.mcpGithub = false;     // app default is OFF (opt-in)
   win.state.mcpBrowser = false;    // app default is OFF (opt-in)
+  win.state.telemetryEnabled = false; win.state.telemetryEndpoint = ''; win.state.telemetryService = ''; win.state.telemetryTags = ''; win.state.telemetryUser = '';
   win.state.rulesPaths = [];       // repo context paths default empty (or undefined in tests)
   win.state.productDocPaths = [];
   win.state.verifyPaths = [];      // verification instructions default empty
@@ -7121,6 +7122,127 @@ describe('Live Run Monitor emissions', () => {
 });
 
 // ─── Preset craft suites (Platform Provisioning + Data Migration bespoke crafts) ────
+// ─── Run telemetry (OTLP logs): opt-in orchestrator-side progress events ────
+describe('Run telemetry (OTLP logs)', () => {
+  const FORMATS = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt', 'genAgentSDK'];
+  beforeEach(() => { resetState(); win.loadPreset('bugfix'); });
+  afterEach(() => { resetState(); try { localStorage.removeItem('awd_prefs'); } catch (e) {} });
+  it('OFF by default: no format mentions OTLP, and the Explain row is skipped', () => {
+    FORMATS.forEach(fn => expect(win[fn]()).toNotContain('OTLP'));
+    const row = win.explainWorkflow('workflow').find(r => r.part === 'Run telemetry (OTLP logs)');
+    expect(row.status).toBe('skipped');
+  });
+  it('ON with an explicit endpoint: every format carries the endpoint, the default service, the bounded event set, and the discipline', () => {
+    win.state.telemetryEnabled = true;
+    win.state.telemetryEndpoint = 'https://collector.example.com/v1/logs';
+    FORMATS.forEach(fn => {
+      const out = win[fn]();
+      expect(out).toContain('https://collector.example.com/v1/logs');
+      expect(out).toContain('service.name');
+      expect(out).toContain(win.TELEMETRY_DEFAULT_SERVICE);
+      win.TELEMETRY_EVENTS.forEach(ev => expect(out).toContain(ev));
+      expect(out).toContain('OTEL_EXPORTER_OTLP_HEADERS');
+      expect(out).toContain('curl.exe');           // Windows named alongside macOS and Linux
+    });
+    // Prose formats keep whole phrases; the SDK comment wrapper may split them across lines
+    ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt'].forEach(fn => {
+      const out = win[fn]();
+      expect(out).toContain('ONLY writer - steps never post');
+      expect(out).toContain('never let telemetry change the work');
+      expect(out).toContain('never requirements text, prompt bodies, file contents, or secrets');
+      expect(out).toContain('$env:VAR` in PowerShell');
+      expect(out).toContain('macOS date has no nanoseconds');
+    });
+    const row = win.explainWorkflow('workflow').find(r => r.part === 'Run telemetry (OTLP logs)');
+    expect(row.status).toBe('emitted');
+    expect(row.reason).toContain('explicit endpoint');
+  });
+  it('ON with a blank endpoint: the standard OTEL env var is the fallback, and an unset one skips telemetry', () => {
+    win.state.telemetryEnabled = true;
+    const out = win.genWorkflow();
+    expect(out).toContain('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT');
+    expect(out).toContain('skip telemetry entirely and say so once');
+    expect(win.explainWorkflow('workflow').find(r => r.part === 'Run telemetry (OTLP logs)').reason).toContain('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT');
+  });
+  it('identity: an explicit user is pinned; blank resolves Claude account email, then git email, at run start', () => {
+    win.state.telemetryEnabled = true;
+    expect(win.genWorkflow()).toContain('the signed-in Claude Code account email when a status command or the environment plainly reports it (never open a credentials or token file to find it), else `git config user.email`');
+    win.state.telemetryUser = 'dev@example.com';
+    expect(win.genWorkflow()).toContain('`<user>` is `dev@example.com`');
+    expect(win.genWorkflow()).toContain('user.email');
+    expect(win.genWorkflow()).toContain('CLAUDE_CODE_SESSION_ID');
+  });
+  it('service override and tags: tags become attributes, malformed tags drop, and JSON escaping holds', () => {
+    win.state.telemetryEnabled = true;
+    win.state.telemetryService = 'my "svc"';
+    win.state.telemetryTags = 'env:dev, team:platform, malformed, :nokey, novalue:';
+    expect(win.telemetryServiceName()).toBe('my "svc"');
+    expect(JSON.stringify(win.telemetryTagPairs())).toBe('[["env","dev"],["team","platform"]]');
+    // Reserved and duplicate keys drop (OTLP attribute keys are unique; a tag may not shadow the record's own)
+    win.state.telemetryTags = 'status:prod, env:a, env:b, session.id:x, service.name:y, team:t';
+    expect(JSON.stringify(win.telemetryTagPairs())).toBe('[["env","a"],["team","t"]]');
+    win.state.telemetryTags = 'env:dev, team:platform, malformed, :nokey, novalue:';
+    const out = win.genWorkflow();
+    expect(out).toContain('{"key":"env","value":{"stringValue":"dev"}}');
+    expect(out).toContain('{"key":"team","value":{"stringValue":"platform"}}');
+    expect(out).toContain('"stringValue":"my \\"svc\\""');   // JSON-escaped quotes inside the record
+    expect(out).toNotContain('malformed');
+  });
+  it('the record is valid OTLP JSON once the placeholders are filled', () => {
+    win.state.telemetryEnabled = true;
+    win.state.telemetryTags = 'env:dev';
+    const out = win.genWorkflow();
+    const m = /one POST per event\): `(\{"resourceLogs".*?\})`/.exec(out);
+    expect(!!m).toBe(true);
+    const parsed = JSON.parse(m[1]);
+    const rec = parsed.resourceLogs[0].scopeLogs[0].logRecords[0];
+    expect(parsed.resourceLogs[0].resource.attributes[0].key).toBe('service.name');
+    expect(rec.attributes.map(a => a.key).join(',')).toBe('event,workflow,step,status,cycle,user.email,session.id,env');
+    expect(rec.severityNumber).toContain('9 INFO, 13 WARN, or 17 ERROR');   // a placeholder with the mapping, never a hard-coded INFO
+    expect(rec.severityText).toBe('<INFO, WARN, or ERROR>');
+  });
+  it('markdown safety: backticks and asterisks never survive a field (they would break the code spans and the SDK banner)', () => {
+    win.state.telemetryEnabled = true;
+    win.setTelemetryField('telemetryEndpoint', 'https://c.example/v1/logs`x');
+    win.setTelemetryField('telemetryService', 'my**svc');
+    win.setTelemetryField('telemetryUser', '`me`');
+    win.setTelemetryField('telemetryTags', 'env:a`b');
+    expect(win.state.telemetryEndpoint).toBe('https://c.example/v1/logsx');
+    expect(win.telemetryServiceName()).toBe('mysvc');
+    expect(win.state.telemetryUser).toBe('me');
+    expect(JSON.stringify(win.telemetryTagPairs())).toBe('[["env","ab"]]');
+    win.state.telemetryEndpoint = '  ';                       // an untrimmed value from older prefs
+    expect(win.explainWorkflow('workflow').find(r => r.part === 'Run telemetry (OTLP logs)').reason).toContain('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT');
+    expect(win.genWorkflow()).toContain('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT');
+  });
+  it('the events sentence is composed from TELEMETRY_EVENTS, the identity chain never opens credential files, headers percent-decode, and the secret scan covers the fields', () => {
+    win.state.telemetryEnabled = true;
+    const out = win.genWorkflow();
+    expect(out).toContain('`run.start` once before the first step; `step.start` per step;');
+    expect(out).toContain('never open a credentials or token file');
+    expect(out).toContain('after percent-decoding the value');
+    win.state.telemetryEndpoint = 'https://collector.example.com/v1/logs?api_key=sk-abcdefghijklmnopqrstuvwxyz1234';
+    expect(win.scanForSecrets([win.state.telemetryEndpoint].join('\n')).length > 0).toBe(true);
+    win.state.telemetryEndpoint = '';
+  });
+  it('prefs round-trip: the five telemetry fields persist and restore, and the fields panel follows the toggle', () => {
+    win.state.telemetryEnabled = true; win.state.telemetryEndpoint = 'https://c.example/v1/logs'; win.state.telemetryService = 'svc'; win.state.telemetryTags = 'env:x'; win.state.telemetryUser = 'me@example.com';
+    win.savePrefs();
+    win.state.telemetryEnabled = false; win.state.telemetryEndpoint = ''; win.state.telemetryService = ''; win.state.telemetryTags = ''; win.state.telemetryUser = '';
+    win.restorePrefs();
+    expect(win.state.telemetryEnabled).toBe(true);
+    expect(win.state.telemetryEndpoint).toBe('https://c.example/v1/logs');
+    expect(win.state.telemetryService).toBe('svc');
+    expect(win.state.telemetryTags).toBe('env:x');
+    expect(win.state.telemetryUser).toBe('me@example.com');
+    expect(win.document.getElementById('telemetryFields').style.display).toBe('');
+    win.document.getElementById('telemetryToggle').checked = false;
+    win.toggleTelemetry();
+    expect(win.state.telemetryEnabled).toBe(false);
+    expect(win.document.getElementById('telemetryFields').style.display).toBe('none');
+  });
+});
+
 // ─── Folder pick ergonomics (picker anchors + folder drops) ────
 describe('Folder pick ergonomics', () => {
   // Real IndexedDB awaits stall under the runner's virtual-time budget, so the idb
@@ -14589,7 +14711,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.TELEMETRY_DEFAULT_SERVICE = TELEMETRY_DEFAULT_SERVICE; window.TELEMETRY_EVENTS = TELEMETRY_EVENTS; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
