@@ -452,6 +452,10 @@ svg.canvas{width:100%;height:100%;display:block}
 .monitor-task.provisional .tick{border-color:#3b82f6;color:#3b82f6}
 .monitor-task.confirmed{color:var(--text3)}
 .monitor-task .owner{color:var(--text3);font-size:10px;white-space:nowrap}
+.monitor-task code{font-size:11px;background:rgba(0,0,0,.28);padding:0 4px;border-radius:3px;color:var(--text)}
+.monitor-idle{margin-top:10px;padding:10px 12px;border:1px dashed var(--border);border-radius:8px;color:var(--text3);font-size:11.5px;line-height:1.5}
+.monitor-idle .mi-title{font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;font-size:10.5px;margin-bottom:4px}
+.monitor-idle .btn{margin-top:8px}
 .monitor-agent{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;margin:0 4px 4px 0;
   border:1px solid var(--border);border-radius:10px;font-size:11px;cursor:pointer}
 .monitor-agent:hover{border-color:var(--accent);color:var(--accent)}
@@ -469,6 +473,8 @@ svg.canvas{width:100%;height:100%;display:block}
 .monitor-head h3{margin:0}
 .monitor-live{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:#34d399;letter-spacing:.5px}
 .monitor-live .beacon{width:7px;height:7px;border-radius:50%;background:#34d399;animation:monitorPulse 1.6s ease-in-out infinite}
+.monitor-live.idle{color:var(--text3)}
+.monitor-live.idle .beacon{background:var(--text3);animation:none}
 @keyframes monitorPulse{0%,100%{opacity:1}50%{opacity:.25}}
 .monitor-progress{height:6px;border-radius:3px;background:var(--surface2);overflow:hidden;display:flex;margin:8px 0 4px}
 .monitor-progress .seg-confirmed{background:#34d399;transition:width .6s ease}
@@ -13491,13 +13497,11 @@ function monitorRecompute() {
   else if (runs.length) base = runs[0].base;
   // ANY run switch clears the flash tracker - auto-follow included, not only manual pins:
   // a re-run of the same workflow repeats task texts, and stale tiers would false-flash.
-  if (base !== runMonitor.runBase) { runMonitor._prevTiers = {}; runMonitor._lastConfirmedN = null; runMonitor._lastConfirmedAt = Date.now(); }
+  if (base !== runMonitor.runBase) { runMonitor._prevTiers = {}; runMonitor._lastConfirmedN = null; runMonitor._lastConfirmedAt = Date.now(); runMonitor._showIdle = false; runMonitor._lastSurfaceAt = 0; }
   runMonitor.runBase = base;
   const local = {};
   if (base !== null) {
-    Object.keys(runMonitor.texts).forEach(p => {
-      if (p.indexOf(base) === 0 && p.slice(base.length).indexOf('/') === -1) local[p.slice(base.length)] = runMonitor.texts[p];
-    });
+    monitorRunSurfacePaths(base, Object.keys(runMonitor.texts)).forEach(p => { local[p.slice(base.length)] = runMonitor.texts[p]; });
   }
   const taskKey = Object.keys(local).find(n => n.toLowerCase() === 'tasks.md');
   const prov = [];
@@ -13514,6 +13518,8 @@ function monitorRecompute() {
   // Health is derived state like tasks/agents: computed once per poll cycle here, only
   // READ at render time (tab switches and file clicks must not re-parse every file).
   runMonitor._health = monitorRunHealth();
+  runMonitor._idle = monitorIdleState();
+  if (!runMonitor._idle) runMonitor._showIdle = false;
 }
 function monitorPinRun(v) {
   runMonitor.runPin = v === '__auto__' ? null : decodeURIComponent(v);
@@ -13600,23 +13606,28 @@ async function monitorPoll(interactive) {
     await Promise.all(surface.map(async f => {
       try {
         const t = await f._file.text();
-        if (runMonitor.texts[f.path] !== t) { runMonitor.texts[f.path] = t; surfaceChanged = true; }
+        if (runMonitor.texts[f.path] !== t) { runMonitor.texts[f.path] = t; surfaceChanged = true; runMonitor._lastSurfaceAt = Date.now(); }
       } catch (e) { /* unreadable this cycle - keep the last good copy */ }
     }));
   }
+  const beforeAgents = JSON.stringify(runMonitor.agents);
+  const foldedBefore = !!(runMonitor._idle && !runMonitor._showIdle);
   if (d.changed.length || surfaceChanged) {
     const now = new Date();
     feedworthy.forEach(c => runMonitor.feed.unshift({ t: now.toTimeString().slice(0, 8), path: c.path, kind: c.kind }));
     runMonitor.feed = runMonitor.feed.slice(0, MONITOR_FEED_MAX);
-    const beforeAgents = JSON.stringify(runMonitor.agents);
     monitorRecompute();
     renderMonitorPanel();
-    if (JSON.stringify(runMonitor.agents) !== beforeAgents) render();   // dots changed - repaint canvas
-  } else if (interactive || runMonitor.watches.map(w => w.status + (w.capped ? '!' : '')).join(',') !== statusBefore) {
-    // A watch's status changed (a permission lapsed or came back) with no file changes:
-    // the panel must still re-render, or a stale LIVE beacon keeps pulsing over a dead poll.
-    renderMonitorPanel();
+  } else {
+    // A quiet cycle: the idle clock still advances (a run goes idle during exactly the
+    // cycles that change nothing), and a watch's status can change with no file changes
+    // (a permission lapsed or came back) - either way the panel must re-render, or a
+    // stale LIVE beacon keeps pulsing over a dead run.
+    const flipped = monitorIdleTick();
+    if (flipped || interactive || runMonitor.watches.map(w => w.status + (w.capped ? '!' : '')).join(',') !== statusBefore) renderMonitorPanel();
   }
+  const foldedAfter = !!(runMonitor._idle && !runMonitor._showIdle);
+  if (JSON.stringify(runMonitor.agents) !== beforeAgents || foldedAfter !== foldedBefore) render();   // dots changed or folded/unfolded - repaint canvas
 }
 function monitorStart() {
   if (runMonitor.timer) clearInterval(runMonitor.timer);
@@ -13680,7 +13691,7 @@ async function monitorRemoveWatch(name) {
   if (!runMonitor.watches.length && runMonitor.timer) { clearInterval(runMonitor.timer); runMonitor.timer = null; }
   runMonitor.feed = []; runMonitor.tasks = []; runMonitor.agents = {};
   runMonitor.runs = []; runMonitor.runBase = null; runMonitor.runPin = null; runMonitor._prevTiers = {};
-  runMonitor._health = []; runMonitor._lastConfirmedN = null; runMonitor._lastConfirmedAt = 0;
+  runMonitor._health = []; runMonitor._lastConfirmedN = null; runMonitor._lastConfirmedAt = 0; runMonitor._idle = null; runMonitor._showIdle = false; runMonitor._lastSurfaceAt = 0;
   await monitorPersist();
   if (runMonitor.watches.length) await monitorPoll(true);
   renderMonitorPanel();
@@ -13692,7 +13703,7 @@ async function disconnectRunMonitor() {
   runMonitor.snapshot = {}; runMonitor.texts = {}; runMonitor.feed = []; runMonitor.tasks = []; runMonitor.agents = {}; runMonitor.selected = null;
   runMonitor.runs = []; runMonitor.runBase = null; runMonitor.runPin = null;   // a stale pin must not survive Stop All
   runMonitor._prevTiers = {};
-  runMonitor._health = []; runMonitor._lastConfirmedN = null; runMonitor._lastConfirmedAt = 0;
+  runMonitor._health = []; runMonitor._lastConfirmedN = null; runMonitor._lastConfirmedAt = 0; runMonitor._idle = null; runMonitor._showIdle = false; runMonitor._lastSurfaceAt = 0;
   try { await awdIdbDel('monitorDirs'); } catch (e) {}
   renderMonitorPanel();
   render();
@@ -13717,6 +13728,49 @@ function monitorMemoryParentPath() { return getMemoryPath().replace(/[^/]+\/$/, 
 // nudge - diagnosis the director previously did by hand. READ-ONLY by design:
 // they compute over state the panel already holds and can only ever mis-HINT.
 const MONITOR_HEALTH_STALE_MS = 10 * 60 * 1000, MONITOR_HEALTH_SKEW_MS = 45 * 60 * 1000;
+// A followed run with no write to ANY of its surfaces for this long is idle: the board
+// folds to a dated card instead of pulsing LIVE over a dead run. Three times the
+// stopped-ticking warning, so a long implementation step never trips it.
+const MONITOR_IDLE_MS = 30 * 60 * 1000;
+// Idle: the followed run has not written any surface for MONITOR_IDLE_MS. Nothing is
+// hidden for good - Show anyway expands the last known state - and a tick on any surface
+// or a newer run lifts it on the next poll. Computed only while live-polling, so a
+// stopped monitor (or a fixture with synthetic mtimes) never folds.
+// The run surface: the files DIRECTLY inside the followed run's directory. One helper so
+// the task view, the health row, and the idle clock agree on what the surface is.
+function monitorRunSurfacePaths(base, keys) {
+  return keys.filter(p => p.indexOf(base) === 0 && p.slice(base.length).indexOf('/') === -1);
+}
+function monitorIdleState() {
+  const base = runMonitor.runBase;
+  if (!base || !runMonitor.timer) return null;
+  let newest = 0;
+  monitorRunSurfacePaths(base, Object.keys(runMonitor.snapshot)).forEach(p => {
+    const mt = runMonitor.snapshot[p] && runMonitor.snapshot[p].mtime;
+    if (typeof mt === 'number' && mt > newest) newest = mt;
+  });
+  // A same-size tick can hide an mtime change (coarse stamps, cached handles), so the
+  // authoritative surface read's last CONTENT change anchors the clock as well.
+  if ((runMonitor._lastSurfaceAt || 0) > newest) newest = runMonitor._lastSurfaceAt;
+  if (!newest || Date.now() - newest < MONITOR_IDLE_MS) return null;
+  return { since: newest };
+}
+// A quiet poll cycle still moves the clock: idle is a wall-clock fact, so it is evaluated
+// every cycle, not only when a file changed. Returns true when the fold flipped.
+function monitorIdleTick() {
+  const before = !!runMonitor._idle;
+  runMonitor._idle = monitorIdleState();
+  if (!runMonitor._idle) runMonitor._showIdle = false;
+  return !!runMonitor._idle !== before;
+}
+function monitorIdleAgo(ms) {
+  const m = Math.max(1, Math.round(ms / 60000));
+  if (m < 60) return m + ' min';
+  const h = Math.round(m / 60);
+  if (h < 48) return h + ' hour' + (h === 1 ? '' : 's');
+  return Math.round(h / 24) + ' days';
+}
+function monitorShowIdle() { runMonitor._showIdle = true; renderMonitorPanel(); render(); }
 function monitorRunHealth() {
   const hints = [];
   const base = runMonitor.runBase;
@@ -13725,10 +13779,9 @@ function monitorRunHealth() {
   // Newest agent-file write time comes from the SNAPSHOT (no byte cap), so an agent
   // file grown past MONITOR_MAX_BYTES still drives the stopped-ticking detector.
   let newestAgentMtime = 0;
-  Object.keys(runMonitor.snapshot).forEach(path => {
-    if (path.indexOf(base) !== 0) return;
+  monitorRunSurfacePaths(base, Object.keys(runMonitor.snapshot)).forEach(path => {
     const nm = path.slice(base.length);
-    if (/^@.+\.md$/i.test(nm) && nm.indexOf('/') === -1 && runMonitor.snapshot[path].mtime > newestAgentMtime) newestAgentMtime = runMonitor.snapshot[path].mtime;
+    if (/^@.+\.md$/i.test(nm) && runMonitor.snapshot[path].mtime > newestAgentMtime) newestAgentMtime = runMonitor.snapshot[path].mtime;
   });
   Object.keys(runMonitor.texts).forEach(path => {
     if (path.indexOf(base) !== 0) return;
@@ -13865,6 +13918,7 @@ function monitorSelectFile(path) {
 // bare slugify would match neither). Guarded call site.
 function monitorNodeStatus(node) {
   if (!runMonitor.watches.length || !Object.keys(runMonitor.agents).length) return null;
+  if (runMonitor._idle && !runMonitor._showIdle) return null;   // a folded idle run shows no live dots
   const map = (typeof buildAgentSlugMap === 'function') ? buildAgentSlugMap() : null;
   const labelSlug = slugify(node.label);
   const slug = (map && map[node.id]) || labelSlug;
@@ -13931,7 +13985,9 @@ function renderMonitorPanel() {
   } else {
     const _live = !!runMonitor.timer && runMonitor.watches.some(w => w.status === 'granted');
     H.push('<div class="monitor-head"><h3>Watching (' + runMonitor.watches.length + ')</h3><span style="flex:1"></span>'
-      + (_live ? '<span class="monitor-live"><span class="beacon"></span>LIVE</span>' : '')
+      + (_live ? (runMonitor._idle
+          ? '<span class="monitor-live idle" title="No write to this run for ' + escHtml(monitorIdleAgo(Date.now() - runMonitor._idle.since)) + (runMonitor._showIdle ? ' - expanded on request; lifts when a run writes again' : ' - the board stays folded until a run writes again') + '"><span class="beacon"></span>IDLE</span>'
+          : '<span class="monitor-live"><span class="beacon"></span>LIVE</span>') : '')
       + '<button class="btn sm" onclick="toggleRunMonitor()" title="Close the monitor panel (watching continues in the background)">&#215;</button></div>');
     runMonitor.watches.forEach(function (w, i) {
       H.push('<div style="display:flex;align-items:center;gap:6px;padding:2px 0"><code style="overflow-wrap:anywhere;flex:1">' + escHtml(w.name) + '/</code>'
@@ -13956,6 +14012,19 @@ function renderMonitorPanel() {
       const _rbSegs = runMonitor.runBase.replace(/\/$/, '').split('/');
       H.push('<div style="margin-top:6px;color:var(--text3);font-size:11px" title="' + escHtml(runMonitor.runBase) + '">Run: <code style="overflow-wrap:anywhere">' + escHtml(_rbSegs[_rbSegs.length - 1] || 'watched folder root') + '</code></div>');
     }
+    if (runMonitor._idle && !runMonitor._showIdle) {
+      const _since = new Date(runMonitor._idle.since);
+      const _openN = runMonitor.tasks.filter(t => t.tier !== 'confirmed').length;
+      const _ago = monitorIdleAgo(Date.now() - runMonitor._idle.since);
+      // An unfinished run that went silent may have stopped - or may have stopped WRITING.
+      // The card offers the same remedy the health row does: a paste-ready protocol nudge.
+      const _nudge = _openN ? 'Memory protocol check: no memory file has been written for ' + _ago + ' while ' + _openN + ' task' + (_openN === 1 ? '' : 's') + ' in tasks.md ' + (_openN === 1 ? 'is' : 'are') + ' still unconfirmed. If work is continuing, resume the protocol now: announce the active step in your memory file and tick each completed task in tasks.md as it completes. If the run has finished, finalize: confirm every completed task in tasks.md and close out the record.' : '';
+      H.push('<div class="monitor-idle"><div class="mi-title">Run idle</div><div class="mi-msg">No activity since ' + escHtml(_since.toLocaleString()) + ' (' + escHtml(_ago) + ' ago). Waiting for a new run in ' + escHtml(runMonitor.watches.map(w => w.name + '/').join(', ')) + '.'
+        + (_openN ? ' ' + _openN + ' task' + (_openN === 1 ? ' was' : 's were') + ' still in progress when writing stopped - the run may have ended, or may have stopped writing memory.' : '') + '</div>'
+        + '<button class="btn sm" onclick="monitorShowIdle()" title="Expand the last known state of this run - tasks, agents, and files as they were when it went quiet">Show anyway</button>'
+        + (_openN ? ' <button class="btn sm mh-copy" data-nudge="' + escHtml(_nudge) + '" onclick="monitorCopyNudge(this.dataset.nudge)" title="Copy a ready-made protocol reminder to paste into the session, in case the run is alive but stopped writing memory">Copy nudge</button>' : '')
+        + '</div>');
+    } else {
     const _tab = monitorActiveTab();
     const _fileN = monitorVisiblePaths().length;
     const _doneN = runMonitor.tasks.filter(t => t.tier === 'confirmed').length;
@@ -13986,7 +14055,7 @@ function renderMonitorPanel() {
         nextT[t.text] = t.tier;
         const flash = prevT[t.text] !== undefined && prevT[t.text] !== t.tier ? ' just-changed' : '';
         const mark = t.tier === 'confirmed' ? '\u2713' : t.tier === 'provisional' ? '\u2248' : '';
-        H.push('<div class="monitor-task ' + t.tier + flash + '"><span class="tick">' + mark + '</span><span>' + escHtml(t.text)
+        H.push('<div class="monitor-task ' + t.tier + flash + '"><span class="tick">' + mark + '</span><span>' + inlineFmt(t.text)
           + (t.owner ? ' <span class="owner">@' + escHtml(t.owner) + '</span>' : '') + '</span></div>');
       });
       runMonitor._prevTiers = nextT;
@@ -14057,6 +14126,7 @@ function renderMonitorPanel() {
       || (_tab === 'files' && !paths.length);
     if (_tabEmpty) {
       H.push('<div style="margin-top:10px;color:var(--text3)">Nothing here yet - content appears as the run writes it.</div>');
+    }
     }
   }
   const keepScroll = p.scrollTop;   // a live poll must not yank the user's scroll position
