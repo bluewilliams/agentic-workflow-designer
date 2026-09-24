@@ -7122,6 +7122,32 @@ describe('Live Run Monitor emissions', () => {
 });
 
 // ─── Preset craft suites (Platform Provisioning + Data Migration bespoke crafts) ────
+// ─── Preset load never scroll-jacks the sidebar ────
+describe('Preset load leaves the sidebar where the user is', () => {
+  it('loading a preset selects no node and never scrolls to Node Configuration; a real selection still does', () => {
+    resetState();
+    const panel = win.document.getElementById('configPanel');
+    let scrolls = 0;
+    const orig = panel.scrollIntoView;
+    panel.scrollIntoView = () => { scrolls++; };
+    try {
+      win.loadPreset('feature');
+      expect(win.state.selectedId).toBe(null);
+      expect(scrolls).toBe(0);
+      win.loadPreset('bugfix');                       // switching presets stays put too
+      expect(win.state.selectedId).toBe(null);
+      expect(scrolls).toBe(0);
+      const agent = win.state.nodes.find(n => n.type === 'agent');
+      win.selectNode(agent.id);                       // positive control: a genuine selection reveals the panel
+      expect(win.state.selectedId).toBe(agent.id);
+      expect(scrolls).toBe(1);
+    } finally {
+      panel.scrollIntoView = orig;
+      resetState();
+    }
+  });
+});
+
 // ─── Live Run Monitor: idle fold + inline task markup ────
 describe('Monitor idle state and task markup', () => {
   const KEYS = ['open', 'watches', 'tasks', 'agents', 'texts', 'snapshot', 'selected', 'runBase', 'runPin', 'runs', '_idle', '_showIdle', '_health', '_prevTiers', 'timer', 'feed', '_lastConfirmedN', '_lastConfirmedAt', '_lastSurfaceAt'];

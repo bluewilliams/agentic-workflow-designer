@@ -5061,7 +5061,7 @@ function selectNode(id, skipRender) {
   state.selectedId = id;
   if (!skipRender) render();
   updateConfig();
-  if (changed && id !== null) {
+  if (changed && id !== null && !_bulkBuild) {
     // Auto-expand the Node Configuration section before revealing it, so a user who
     // collapsed it still sees the fields on a genuine selection change (reveal-path guard).
     expandSection('node-config');
@@ -8468,6 +8468,10 @@ function toggleMorePresets() {
   btn.textContent = open ? 'Fewer presets' : 'More presets\u2026';
 }
 
+// A preset build adds nodes one by one, and addNode selects each one - without this
+// flag every add would reveal and scroll to Node Configuration, yanking the sidebar
+// away from the preset list the user is still choosing from.
+let _bulkBuild = false;
 function loadPreset(preset, _confirmed) {
   // Auto-expand the "more" section if the selected preset lives there
   const moreSection = $('presetMore');
@@ -8889,7 +8893,11 @@ function loadPreset(preset, _confirmed) {
     }
   };
   if (presets[preset]) {
-    presets[preset]();
+    _bulkBuild = true;
+    try { presets[preset](); } finally { _bulkBuild = false; }
+    // A loaded preset starts unselected: the canvas shows the shape, the sidebar stays put
+    state.selectedId = null;
+    updateConfig();
     state.activePreset = preset;
     autoLayout();
     updateStoryPlaceholder(preset);

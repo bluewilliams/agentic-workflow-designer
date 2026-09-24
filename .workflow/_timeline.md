@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-09-23 - node-config-ux (update) - preset loads no longer scroll the sidebar to Node Configuration (bulk-build flag around the builder; load ends unselected); a real selection still reveals. 1755 -> 1756 - .workflow/node-config-ux.md
 2026-09-23 - live-run-monitor (update) - idle fold: a run silent 30 min shows IDLE and a dated card with Show anyway (never LIVE over a dead run; nothing hidden for good), canvas dots quiet while folded; task labels render code spans and bold after escaping; review round made idle a per-cycle wall-clock check with content-anchored timing. 1750 -> 1755 - .workflow/live-run-monitor.md
 2026-09-22 - run-telemetry-otlp - opt-in run telemetry: the orchestrator posts bounded progress events as standard OTLP log records (env-var fallback, headers honored, identity chain, cross-platform), the designer sends nothing. 1741 -> 1748 - .workflow/run-telemetry-otlp.md
 2026-09-13 - folder-pick-ergonomics (update) - review round: text-drag gate, confirm-on-replace + bridge hygiene, activation-safe anchors, honest denial toasts, static-container listeners (false rationale corrected), removability restored, platform copy fixed, README. 1738 -> 1741 - .workflow/folder-pick-ergonomics.md
