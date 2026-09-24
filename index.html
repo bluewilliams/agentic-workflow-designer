@@ -269,7 +269,9 @@ svg.canvas{width:100%;height:100%;display:block}
 /* Nodes */
 .node-group{cursor:grab;transition:filter .15s}
 .node-group:hover{filter:brightness(1.1)}
-.node-group.selected .node-shape{stroke:var(--accent);stroke-width:2.5;
+.node-instance{cursor:grab}
+.node-instance:hover{filter:brightness(1.1)}
+.node-group.selected .node-shape,.node-instance.selected .node-shape{stroke:var(--accent);stroke-width:2.5;
   filter:drop-shadow(0 0 8px rgba(59,130,246,.4))}
 .node-group.dragging{cursor:grabbing;opacity:.9}
 .node-shape{stroke:none;transition:stroke .15s,stroke-width .15s}
@@ -284,6 +286,7 @@ svg.canvas{width:100%;height:100%;display:block}
 .port:hover{fill:var(--accent);stroke:var(--accent);r:7}
 /* Connections */
 .connection{fill:none;stroke:var(--text3);stroke-width:2;transition:stroke .15s}
+.connection-instance{fill:none;stroke:var(--text3);stroke-width:2;pointer-events:none}
 .connection:hover{stroke:var(--accent);cursor:pointer}
 .connection.selected{stroke:var(--accent);stroke-width:2.5}
 .connection.back-edge{stroke-dasharray:6 3;opacity:.5}
@@ -729,6 +732,10 @@ svg.canvas{width:100%;height:100%;display:block}
         <div class="preset-item" data-preset="platform_provisioning" onclick="loadPreset('platform_provisioning')" title="Greenfield delivery plumbing: new repos, IaC, pipelines, registries, and access wiring - surveyed against the estate's shipped conventions first, planned around name cascades and cross-repo contract literals, then proven per environment with an evidence table. Connected MCPs create what they can; steps needing human permissions become copy-ready manual handoffs.">
           <div class="preset-name">Platform Provisioning</div>
           <div class="preset-desc">Survey Estate &rarr; Plan (Skeptic) &rarr; Provision &rarr; Review &rarr; Verify Deploys</div>
+        </div>
+        <div class="preset-item" data-preset="cross_repo" onclick="loadPreset('cross_repo')" title="A change that spans repositories: the contract (the API shape, event, or shared literal) is written once and doubted by a Skeptic, then an Implement-and-Test lane runs once per repository listed under Multi-Repo (instances pooled on the monitor), and an Integration Verifier proves the seam consumer-against-producer before review. Add your repositories in Multi-Repo & Context Paths.">
+          <div class="preset-name">Cross-Repo Change</div>
+          <div class="preset-desc">Contract (Skeptic) &rarr; [per repo: Implement &rarr; Test] &rarr; Verify Seam &rarr; Review</div>
         </div>
         <div class="preset-item" data-preset="performance" onclick="loadPreset('performance')">
           <div class="preset-name">Performance Optimization</div>
@@ -2343,6 +2350,17 @@ const PROMPTS = {
 
   deployVerifier: 'Prove the provisioned platform actually works - per deliverable, per environment, with evidence. Provisioning done is not files in repositories; it is pipelines that run, deployments that answer, gates that gate, and packages that install.\n\n**For EACH deliverable in EACH planned environment, verify what the plan\'s Done Means names.** The standard checks:\n1. **Build**: the pipeline runs green (trigger or run it where your tools allow; otherwise verify the latest run\'s result).\n2. **Deploy**: the deployable is reachable and healthy - its health surface answers, a shell loads at its route.\n3. **Access gating**: a gated route actually denies without the grant - test the negative, not just the positive.\n4. **Package**: a published package resolves and installs clean from the registry.\n5. **Infrastructure**: the declared infrastructure applied without drift against its configuration.\n\n**Honesty rules**: what your tools cannot reach is MANUAL, never silently passed - state the exact check a human should run (the command, the URL, the expected result). What fails is FAILED - report it plainly with the evidence; a failed verification looping back is this workflow doing its job. Never mark VERIFIED without naming the evidence.\n\nProduce the **evidence table**: one row per deliverable per environment, each cell VERIFIED (with its evidence), MANUAL (with its exact human check), or FAILED (with what happened). Done means no FAILED cells and every MANUAL cell carries its check.\n\n## Handoff Summary\nEnd your response with:\n- **Evidence Table**: deliverable x environment, every cell VERIFIED / MANUAL / FAILED with its evidence or check\n- **Failed**: each failure with evidence, for the fix loop\n- **Manual Checks**: the outstanding human verifications, copy-ready\n- **Verdict**: whether Done Means is met',
 
+  // --- Cross-repo change ---
+  contractArchitect: 'Define the seam before anyone builds across it. A change that spans repositories fails at the boundary, not inside any one repository: two green repos that disagree about a shape, a name, or a literal. Your job is to make that disagreement impossible.\n\n1. **Map the seam**: from the requirements and the Repositories list, name the producer and every consumer of what changes - the API shape, the event, the shared literal, the version. Grep every repository for the current form of each item; a consumer you did not find is the one that breaks in production.\n2. **Write the contract ONCE**: exact names, shapes, types, error semantics, and every shared literal, in one block that downstream steps copy verbatim. List every consumer beside each item. A mismatch fails silently, so nobody retypes the contract - they copy it. Where workflow memory is on, write that block under a `## Contract` heading in the shared memory file as well, so every lane copies from ONE place rather than from its own context.\n3. **Compatibility plan**: apply expand-contract ACROSS repositories - the producer ships the new shape additively while still honoring the old one, consumers switch over, and the old shape is retired last, in a later change. Name the window in which both shapes are live, and what breaks if a lane deploys out of order.\n4. **Per-repository tasks**: for each repository, the concrete changes it owns, referencing contract items by name. A repository with nothing to change is stated as such - silence is not a plan.\n5. **Verification design**: how the seam will be PROVEN end to end after every lane finishes - consumer against producer, not each half alone - and the fixtures the lanes derive from the contract so their tests agree by construction.\n6. Surface ambiguities as questions; never guess at a contract that two teams will build against.\n\n## Handoff Summary\nEnd your response with:\n- **Contract**: the single verbatim block - every item with its consumers\n- **Compatibility Plan**: the expand-contract sequence across repositories and the live window\n- **Per-Repo Tasks**: one list per repository\n- **Seam Verification**: how the end-to-end proof will run\n- **Open Questions**: anything the contract cannot settle alone',
+
+  repoImplementer: 'You are one lane of a per-repository fan-out: implement THIS repository\'s share of the change, and only that.\n\n1. Identify your repository from your instance name and the Repositories list; read its own rules (`CLAUDE.md`, `.claude/rules/`) and its records before changing anything - they govern this lane, not the launch repository\'s rules. Where workflow memory is on, take the contract from the `## Contract` block in the shared memory file.\n2. Copy the contract from the Contract Architect verbatim: names, shapes, literals, versions. Never adapt, abbreviate, or retype a contract item - if the contract cannot be applied as written here, stop and surface the conflict; do not improvise a local variant.\n3. Do this repository\'s per-repo tasks, following its conventions (the newest deliberate patterns win) and its compatibility-plan role (a producer keeps the old shape live; a consumer switches when told). Lanes run at the same time, so never wait on another lane: when this repository depends on a shape another lane is still building (a package, an endpoint, an event), code against the contract\'s declared shape and stub the other side locally from the contract - the Integration Verifier proves the real seam once every lane is done.\n4. Never edit another repository. A change the contract needs elsewhere is a report line for the orchestrator, not an edit.\n5. Run this repository\'s focused tests, then its suite when runnable; leave it green.\n6. Signal each completed task the moment it completes - where workflow memory is on, that is a provisional t: line in your OWN memory file (`{step-slug}-{repo-slug}`); the orchestrator owns the shared checklist.\n\n## Handoff Summary\nEnd your response with:\n- **Repository**: which one this lane owns\n- **Changes**: each file with what changed\n- **Contract Conformance**: each contract item and where it lands in this repository\n- **Tests**: what ran and the result\n- **Cross-Repo Notes**: anything another lane or the verifier must know',
+
+  repoTester: 'Test THIS repository\'s share of a cross-repository change - one lane of a per-repository fan-out.\n\n1. Identify your repository from your instance name; use its own test conventions (framework, layout, the newest tests as the pattern).\n2. **Contract conformance is the point.** Derive fixtures from the Contract Architect\'s block - a producer test proves it emits exactly the contracted shape and literals; a consumer test proves it accepts exactly that shape from a fixture. Never mock the seam into agreement: a fixture that drifts from the contract is a false green.\n3. Cover this repository\'s compatibility-plan role: a producer still honors the old shape during the window; a consumer handles both where the plan says so.\n4. Run the focused tests, then the repository suite when runnable. Never weaken an existing assertion to pass.\n5. Prove the load-bearing tests discriminate: break the contract in one place, confirm the test goes red, revert.\n\n**When a check needs another repository running, say so - never fake it.** Cross-repository behavior is the Integration Verifier\'s job; name what you could not prove here.\n\n## Handoff Summary\nEnd your response with:\n- **Repository**: which one this lane owns\n- **Contract Tests**: each contract item and the test that proves it here\n- **Suite**: results\n- **Not Provable Here**: what needs the other repositories running',
+
+  integrationVerifier: 'Prove the seam end to end, after every per-repository lane has finished. The failure this step exists to catch is two green repositories that do not agree.\n\n1. Bring the repositories together the way they run in reality where your tools allow (run the producer, drive the consumer against it, or replay the producer\'s real output through the consumer). Where that is impossible here, verify consumer against producer through the contract fixtures both lanes derived - and say plainly which rung you reached.\n2. For EVERY contract item, prove agreement across the seam: the producer emits it, each consumer accepts it, and the shared literals match character for character (grep them at every consumer). A partial contract is not a proven contract.\n3. Prove the compatibility window: with the producer on the new shape and a consumer still on the old one (and the reverse, per the plan), nothing breaks.\n4. Produce the **evidence table**: contract item x repository, each cell VERIFIED (with its evidence), MANUAL (with the exact human check), or FAILED (with what happened and which lane owns the fix). MANUAL is never silently passed.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PROVEN or NOT VERIFIED\n- **Evidence Table**: contract item x repository\n- **Failed**: each disagreement, with the lane that owns the fix\n- **Manual Checks**: outstanding human verifications, copy-ready',
+
+  crossRepoReviewer: 'Review a change that spans repositories: fidelity to the contract first, each repository\'s conventions second.\n\n**A. Contract fidelity.** Hold every lane\'s diff against the Contract Architect\'s block: every contract item lands where the per-repo tasks said, spelled exactly as contracted; grep every shared literal at every consumer and confirm they match character for character; confirm the compatibility-plan roles (producer keeps the old shape live, consumers switch as planned). Any local variant of a contract item is a finding - the seam is only as strong as its weakest copy.\n\n**B. Per-repository craft.** Review each lane against ITS repository\'s conventions and rules, not the launch repository\'s: newest deliberate patterns, test conventions, no edits outside the lane\'s repository, and no cross-repository logic smuggled into one side.\n\nMateriality bars: the default verdict is PASS - only Critical or High findings gate. A contract deviation and an out-of-repository edit always gate.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or NEEDS REVISION\n- **Contract Check**: each item verified across repositories, with any deviation\n- **Per-Repo Findings**: severity, repository, file:line, and the concrete fix\n- **Noted, Not Gating**: observations that do not block',
+
   // --- Data migration safety ---
   migrationResearcher: 'Map the data topology before anyone writes a migration - the reconnaissance that tells the planner what the constraints will reject and the engineer what order operations must run in.\n\n**Sources, in preference order**: the repository first (schema files, existing migrations, model definitions, seed and fixture data - they encode the topology and the conventions without touching any database); then, ONLY where the requirements designate a database as safe to use, read-only queries against it. A connection string found in configuration points at real data until proven otherwise - its existence is not permission. You never write to any database in this step.\n\n1. **Foreign-key dependency graph**: which tables reference which - the order-of-operations map for any change touching keys, and the first thing a re-parenting or bulk-load plan needs.\n2. **Constraint and index inventory** on the affected tables: primary and foreign keys, unique, check, and not-null constraints, triggers, indexes - what protects the data today, so the plan knows exactly what any temporary window would suspend.\n3. **Edge-case reconnaissance**: write the read-only probes that count the nulls, orphans, and duplicates the new shape would reject or transform - run them where a designated database exists, and otherwise hand them off with expected shapes so the verification step or a human can.\n4. **Consumers**: findReferences on the models and queries touching these tables - the blast radius that decides deploy-order coupling.\n5. **Conventions**: the migration framework, file naming, and how existing migrations handled similar changes (batching, locks, constraint windows) - precedent beats invention.\n6. **Volumes** where discoverable (row counts, table sizes) - lock duration and batch sizing depend on them; say when a number is an estimate.\n\n## Handoff Summary\nEnd your response with:\n- **Dependency Graph**: the FK relationships among affected tables\n- **Constraint Inventory**: what protects each affected table today\n- **Edge-Case Probes**: each read-only probe, with results where run and expected shapes where not\n- **Consumers**: the code that reads and writes these tables\n- **Conventions**: framework, precedents, and patterns to match\n- **Volumes**: sizes and estimates, marked as such\n- **Gaps**: what could not be discovered, as open questions',
 
@@ -3299,14 +3317,26 @@ function removeRepoRow(btn) {
   btn.closest('.repo-row').remove();
   onRepoChange();
 }
+// What a per-repo fork projects onto the canvas (instance rows, their slugs, the count
+// caption, the lane step's repo sublabel) - everything derives from the listed paths
+function perRepoProjectionSig() {
+  return getRepositories().length + '|' + perRepoRepoSlugs().join('|');
+}
 function onRepoChange() {
   const rows = $('repoList').querySelectorAll('.repo-row');
+  // A per-repository fork projects the list onto the canvas, so the canvas follows every
+  // add / remove / path edit that changes the projection. Branch edits and slug-neutral
+  // path edits (a trailing slash) fall through to the cheap path; workflows without a
+  // per-repo fork never build the signature at all.
+  const projects = state.nodes.some(isPerRepoFork);
+  const before = projects ? perRepoProjectionSig() : '';
   state.repositories = [];
   rows.forEach(r => {
     const inputs = r.querySelectorAll('input');
     state.repositories.push({ path: inputs[0].value.trim(), branch: inputs[1].value.trim() });
   });
   savePrefsDebounced();
+  if (projects && perRepoProjectionSig() !== before) { render(); return; }   // render() covers updatePrompt + validation + autosave
   updatePrompt();
   autoSaveWorkflow();
 }
@@ -4549,6 +4579,7 @@ function updateTransform() {
 function render() {
   renderNodes();
   renderConnections();
+  renderPerRepoInstances(nodesLayer());   // after connections: its instance curves join the connections layer
   updatePrompt();
   $('emptyState').style.display = state.nodes.length === 0 ? 'flex' : 'none';
   // App Under Test and UI Context are always-present sections (like Repositories): a
@@ -4569,6 +4600,8 @@ function render() {
 
 function renderNodes() {
   const layer = nodesLayer();
+  const _prLaneMap = perRepoLaneMap();   // once per render, not once per node
+  const _prSlugs = Object.keys(_prLaneMap).length ? perRepoRepoSlugs() : [];
   layer.innerHTML = '';
   state.nodes.forEach(node => {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -4641,6 +4674,7 @@ function renderNodes() {
       // itself - both knobs (coder-family fix posture, reviewer flag-back posture).
       const _dpApplies = DEFECT_KNOB_ROLES.has(node.config.agentType) || node.config.agentType === 'reviewer';
       if (_dpApplies && nodeDefectPosture(node) !== 'balanced') subText += ' \u00B7 ' + nodeDefectPosture(node) + ' defects';
+      if (_prLaneMap[node.id] && _prSlugs.length) subText += ' \u00B7 ' + _prSlugs[0];   // lane step: its first repository; instances carry the rest
       sub.textContent = subText;
       g.appendChild(sub);
     }
@@ -4765,6 +4799,108 @@ function renderNodes() {
   });
 }
 
+
+// ── Per-repository instances (canvas) ──────────────────────────────────────────
+// A per-repo lane draws one SOLID node per listed repository below each lane step -
+// the same look as any parallel sibling - derived from the Repositories list at render
+// time. They are projections of the lane step, not state: a click selects the step
+// they belong to, nothing serializes, and the stack follows the list as it changes.
+// Each instance wears its own live status dot ({step-slug}-{repo-slug} on the monitor).
+const PER_REPO_INSTANCE_CAP = 5, PER_REPO_INSTANCE_GAP = 12;
+function perRepoInstanceRows() {
+  return Math.min(Math.max(getRepositories().length - 1, 0), PER_REPO_INSTANCE_CAP);
+}
+function monitorInstanceStatus(baseSlug, repoSlug) {
+  if (typeof runMonitor === 'undefined' || !runMonitor.watches.length) return null;
+  if (runMonitor._idle && !runMonitor._showIdle) return null;
+  const k = (baseSlug + '-' + repoSlug).toLowerCase();
+  return Object.prototype.hasOwnProperty.call(runMonitor.agents, k) ? runMonitor.agents[k] : null;
+}
+function renderPerRepoInstances(layer) {
+  // Idempotent: a drag redraws instances between full renders
+  layer.querySelectorAll('.node-instance, .node-instance-more').forEach(el => el.remove());
+  connsLayer().querySelectorAll('.connection-instance').forEach(el => el.remove());
+  const slugs = perRepoRepoSlugs();
+  if (slugs.length < 2) return;
+  const rows = perRepoInstanceRows();
+  const laneMap = perRepoLaneMap();
+  state.nodes.filter(n => n.type === 'agent' && laneMap[n.id]).forEach(node => {
+    const defaults = NODE_DEFAULTS[node.type];
+    const w = node.w, h = node.h;
+    const base = perRepoStepSlug(node);
+    const at = AGENT_TYPES.find(a => a.id === node.config.agentType);
+    const typeName = at ? at.name : 'General';
+    for (let k = 1; k <= rows; k++) {
+      const rs = slugs[k];
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'node-instance' + (state.selectedId === node.id ? ' selected' : ''));
+      g.setAttribute('data-id', node.id);
+      g.setAttribute('transform', `translate(${node.x},${node.y + k * (h + PER_REPO_INSTANCE_GAP)})`);
+      const shape = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      shape.setAttribute('width', w); shape.setAttribute('height', h); shape.setAttribute('rx', 8);
+      shape.setAttribute('fill', defaults.color + '22'); shape.setAttribute('stroke', defaults.color); shape.setAttribute('stroke-width', '1.5');
+      shape.setAttribute('class', 'node-shape');
+      g.appendChild(shape);
+      const icon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      icon.setAttribute('x', 16); icon.setAttribute('y', h / 2); icon.setAttribute('class', 'node-badge'); icon.textContent = defaults.icon;
+      g.appendChild(icon);
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('x', w / 2 + 8); label.setAttribute('y', h / 2 - 7); label.setAttribute('class', 'node-label'); label.textContent = truncate(node.label, 18);
+      g.appendChild(label);
+      const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      sub.setAttribute('x', w / 2 + 8); sub.setAttribute('y', h / 2 + 10); sub.setAttribute('class', 'node-sublabel');
+      sub.textContent = typeName + ' · ' + getModelFamily(node.config.model) + ' · ' + rs;
+      g.appendChild(sub);
+      const ms = monitorInstanceStatus(base, rs);
+      if (ms) {
+        const mDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        mDot.setAttribute('cx', w - 8); mDot.setAttribute('cy', -4); mDot.setAttribute('r', 5);
+        if (ms === 'active') { mDot.setAttribute('class', 'monitor-dot-live'); shape.classList.add('monitor-node-live'); }
+        mDot.setAttribute('fill', (typeof MONITOR_DOT !== 'undefined' && MONITOR_DOT[ms]) || '#8b95a7');
+        mDot.setAttribute('stroke', 'rgba(0,0,0,.4)'); mDot.setAttribute('stroke-width', '1');
+        g.appendChild(mDot);
+      }
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      t.textContent = node.label + ' for ' + rs + ' (instance ' + base + '-' + rs + ')';
+      g.appendChild(t);
+      layer.insertBefore(g, layer.firstChild);   // beneath every real node - a real node is never covered
+    }
+  });
+  // The curves a real sibling would get: fork -> instance, instance -> instance along the
+  // lane, last instance -> join, one set per row (behind the nodes, never interactive)
+  const cl = connsLayer();
+  const at = (n, k) => ({ id: n.id, x: n.x, y: n.y + k * (n.h + PER_REPO_INSTANCE_GAP), w: n.w, h: n.h, type: n.type });
+  state.nodes.filter(isPerRepoFork).forEach(fork => {
+    const walk = perRepoLaneWalk(fork.id);
+    const laneIds = new Set(walk.nodes.filter(n => n.type === 'agent').map(n => n.id));   // only agents have instances
+    state.connections.filter(c => !isReviseBackEdge(c)).forEach(c => {
+      const from = state.nodes.find(n => n.id === c.from), to = state.nodes.find(n => n.id === c.to);
+      if (!from || !to) return;
+      const fromLane = laneIds.has(from.id), toLane = laneIds.has(to.id);
+      const kind = (from.id === fork.id && toLane) ? 'in' : (fromLane && toLane) ? 'lane' : (fromLane && to.id === walk.joinId) ? 'out' : null;
+      if (!kind) return;
+      for (let k = 1; k <= rows; k++) {
+        const a = kind === 'in' ? from : at(from, k);
+        const b = kind === 'out' ? to : at(to, k);
+        const pts = getConnectionPoints(a, b);
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', bezierPath(pts.x1, pts.y1, pts.x2, pts.y2, false, false));
+        path.setAttribute('class', 'connection-instance');
+        path.setAttribute('marker-end', 'url(#arrowhead)');
+        cl.appendChild(path);
+      }
+    });
+  });
+  if (slugs.length - 1 > rows) {
+    state.nodes.filter(n => n.type === 'agent' && laneMap[n.id]).forEach(node => {
+      const more = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      more.setAttribute('x', node.x + node.w / 2); more.setAttribute('y', node.y + (rows + 1) * (node.h + PER_REPO_INSTANCE_GAP) + 4);
+      more.setAttribute('class', 'node-sublabel node-instance-more'); more.setAttribute('text-anchor', 'middle');
+      more.textContent = '+' + (slugs.length - 1 - rows) + ' more repositories';
+      layer.appendChild(more);
+    });
+  }
+}
 function renderParallelLanes() {
   // Find parallel fork nodes and draw lane indicators behind their children
   const forks = state.nodes.filter(n => n.type === 'parallel');
@@ -4773,17 +4909,26 @@ function renderParallelLanes() {
     const children = state.connections.filter(c => c.from === fork.id).map(c =>
       state.nodes.find(n => n.id === c.to)
     ).filter(Boolean);
-    if (children.length < 2) return;
+    const perRepo = isPerRepoFork(fork);
+    // A per-repo fork draws its box around the whole lane (fork to join), even with one branch
+    const members = perRepo ? perRepoLaneNodes(fork.id) : children;
+    if (!perRepo && children.length < 2) return;
+    if (!members.length) return;
 
     // Find bounds of parallel children
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    children.forEach(c => {
+    members.forEach(c => {
       minX = Math.min(minX, c.x);
       minY = Math.min(minY, c.y);
       maxX = Math.max(maxX, c.x + c.w);
       maxY = Math.max(maxY, c.y + c.h);
     });
 
+    if (perRepo) {
+      // The solid per-repository instances stack below each lane step - the box holds them
+      const rows = perRepoInstanceRows();
+      members.filter(c => c.type === 'agent').forEach(c => { maxY = Math.max(maxY, c.y + c.h + rows * (c.h + PER_REPO_INSTANCE_GAP)); });
+    }
     const pad = 20;
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     rect.setAttribute('x', minX - pad);
@@ -4798,7 +4943,9 @@ function renderParallelLanes() {
     label.setAttribute('x', minX - pad + 8);
     label.setAttribute('y', minY - pad - 2);
     label.setAttribute('class', 'parallel-lane-label');
-    label.textContent = isSequentialFormat()
+    label.textContent = perRepo
+      ? `\u2261 ${isSequentialFormat() ? 'sequential' : 'parallel'} (per repository \u00b7 ${perRepoCountLabel()})`
+      : isSequentialFormat()
       ? `\u2261 sequential (${fork.config.strategy || 'all'})`
       : `\u2261 parallel (${fork.config.strategy || 'all'})`;
     layer.appendChild(label);
@@ -5435,7 +5582,7 @@ function updateConfig() {
     }
   } else if (node.type === 'parallel') {
     H[H.length] = configSelect('Strategy', 'strategy', node.config.strategy,
-      [{ value:'all', label:'Wait for All' },{ value:'any', label:'First Complete' },{ value:'race', label:'Race' }]);
+      [{ value:'all', label:'Wait for All' },{ value:'any', label:'First Complete' },{ value:'race', label:'Race' },{ value:'per-repo', label:'Per Repository (one lane per repo)' }]);
     H[H.length] = configTextarea('Description', 'description', node.config.description, 'Parallel execution context...');
     // Research fork: mode + anti-anchoring option slot + evaluation bias.
     if (node.config.researchMode) {
@@ -5726,7 +5873,10 @@ const wrap = $('canvasWrap');
 wrap.addEventListener('mousedown', e => {
   hideContextMenu();
   const pt = svgPoint(e);
-  const target = e.target.closest('.node-group');
+  // A per-repo instance IS its lane step for every interaction (select, context menu,
+  // connect, delete): it carries the step's data-id. Real nodes are checked first, so a
+  // real node is never shadowed by an instance.
+  const target = e.target.closest('.node-group') || e.target.closest('.node-instance');
   const port = e.target.closest('.port');
   const conn = e.target.closest('.connection');
 
@@ -5815,9 +5965,10 @@ wrap.addEventListener('mousemove', e => {
     state.dragging.x = state.dragNodeStart.x + dx;
     state.dragging.y = state.dragNodeStart.y + dy;
     // Only update this node's transform + connections - no full re-render (prevents flicker)
-    const el = nodesLayer().querySelector(`[data-id="${state.dragging.id}"]`);
+    const el = nodesLayer().querySelector(`.node-group[data-id="${state.dragging.id}"]`);   // the real node, never an instance sharing its data-id
     if (el) el.setAttribute('transform', `translate(${state.dragging.x},${state.dragging.y})`);
     renderConnections();
+    renderPerRepoInstances(nodesLayer());   // instance curves live in the connections layer just redrawn; instances follow a lane step
     return;
   }
 
@@ -8844,6 +8995,33 @@ function loadPreset(preset, _confirmed) {
       addConnection(v.id, vd.id);
       addConnection(vd.id, o.id, 'Proven'); addConnection(vd.id, pr.id, 'Not verified');
     },
+    cross_repo: () => {
+      // A change that spans repositories: the seam (contract) is defined and doubted
+      // FIRST, then a per-repository lane (Implement -> Test) fans out at run time - one
+      // instance per repository under Repositories, named {step}-{repo} so the monitor
+      // pools them - and the seam is proven end to end before review. The canvas stays
+      // static; the fork's caption shows the current repo count as a display hint.
+      const i = addNode('input', 80, 250, 'Cross-Repo Change');
+      const ca = addNode('agent', 340, 250, 'Contract Architect', { agentType:'architect', model:state.defaultModel, tools:['Read','Grep','Glob','Bash','LSP'], prompt:PROMPTS.contractArchitect, maxTurns:10 });
+      const sk = addNode('agent', 480, 430, 'Skeptic review: Contract Architect', { agentType:'adversary', adversaryRole:'architect', reviewLoopFor:ca.id, reviewLoopKind:'adversary', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], maxTurns:8 });
+      const sd = addNode('decision', 620, 430, 'Contract sound?', { condition:'The contract names every producer and consumer, states every shape and shared literal once with its consumers, and the compatibility plan keeps both shapes live through the window', yesLabel:'Passed', noLabel:'Needs revision', maxRevisions:3, reviewLoopDecisionFor:ca.id });
+      const fork = addNode('parallel', 620, 276, 'Per-Repo Lanes', { strategy:'per-repo', description:'One lane per repository listed under Repositories - Implement then Test, lanes in parallel' });
+      const impl = addNode('agent', 900, 250, 'Repo Implementer', { agentType:'coder', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.repoImplementer, maxTurns:15 });
+      const test = addNode('agent', 1180, 250, 'Repo Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.repoTester, maxTurns:10 });
+      const join = addNode('parallel', 1460, 276, 'Collect', { strategy:'all' });
+      const iv = addNode('agent', 1740, 250, 'Integration Verifier', { agentType:'verifier', model:state.defaultModel, tools:['Read','Grep','Glob','Bash','LSP','WebFetch'], prompt:PROMPTS.integrationVerifier, maxTurns:12 });
+      const vd = addNode('decision', 2020, 242, 'Seam proven?', { condition:'Every contract item is proven across the seam - producer emits it, each consumer accepts it, shared literals match - and the compatibility window holds, with an exact human check named for anything tooling could not reach', yesLabel:'Proven', noLabel:'Not verified', maxRevisions:3 });
+      const r = addNode('agent', 2300, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Bash','Grep','Glob','LSP'], prompt:PROMPTS.crossRepoReviewer, maxTurns:6 });
+      const rd = addNode('decision', 2580, 242, 'Review OK?', { condition:'Review passed: every contract item lands as contracted in every repository, no lane edited outside its repository, and each lane follows its own repository conventions', yesLabel:'Pass', noLabel:'Revise', maxRevisions:3 });
+      const o = addNode('output', 2860, 250, 'Change Delivered', { deliverable:'Coordinated change across repositories with the seam proven end to end', format:'code' });
+      addConnection(i.id, ca.id);
+      addConnection(ca.id, sk.id); addConnection(sk.id, sd.id);
+      addConnection(sd.id, fork.id, 'Passed'); addConnection(sd.id, ca.id, 'Needs revision');
+      addConnection(fork.id, impl.id); addConnection(impl.id, test.id); addConnection(test.id, join.id);
+      addConnection(join.id, iv.id); addConnection(iv.id, vd.id);
+      addConnection(vd.id, r.id, 'Proven'); addConnection(vd.id, impl.id, 'Not verified');
+      addConnection(r.id, rd.id); addConnection(rd.id, o.id, 'Pass'); addConnection(rd.id, impl.id, 'Revise');
+    },
     performance: () => {
       const i = addNode('input', 80, 250, 'Performance Concern');
       const p = addNode('agent', 340, 250, 'Planner', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.planner, maxTurns:5 });
@@ -8920,6 +9098,7 @@ const STORY_PLACEHOLDERS = {
   ui_component: 'Component/screen description:\n\nDesign reference (Figma, screenshot, or description):\n\nBehavior requirements:\n- \n\nAccessibility requirements:\n\nExisting design system context (e.g. styling lib, tokens):',
   refactoring: 'What to refactor:\n\nWhy (pain points / tech debt):\n\nDesired outcome:\n\nConstraints (do not break):\n- \n\nRelevant files:',
   documentation: 'What to document:\n\nTarget audience:\n\nScope (API docs, user guide, README, etc.):\n\nExisting docs to reference:\n\nKey topics to cover:\n- ',
+  cross_repo: 'What changes, and the seam it crosses (API shape, event, shared literal):\n\nRepositories involved (add each under Multi-Repo & Context Paths):\n\nProducer and consumers:\n\nContract constraints (versioning, compatibility window, deploy order):\n\nAcceptance criteria:\n- [ ] \n\nOut of scope:',
   devops: 'Infrastructure/pipeline change:\n\nCurrent state:\n\nDesired state:\n\nEnvironment (staging, prod, etc.):\n\nConstraints or rollback plan:',
   platform_provisioning: 'What to stand up (each new repo, service, package, or pipeline):\n\nTarget platforms (version-control host, cloud, CI, registry - and which MCPs are connected for them):\n\nEnvironments (list them all):\n\nPrecedents to mirror (sibling repos, org templates, generators):\n\nNaming decisions already made (or: decide in plan):\n\nAccess and routing requirements (gated routes, permission codes):\n\nOut of scope:',
   performance: 'Performance issue or optimization goal:\n\nCurrent metrics (if known):\n\nTarget metrics:\n\nRelevant files/endpoints:\n\nReproduction steps:',
@@ -9097,6 +9276,24 @@ function validateWorkflow() {
     const outConns = state.connections.filter(c => c.from === n.id);
     if (outConns.length < 2) warnings.push({ type: 'warn', msg: 'Decision "' + n.label + '" needs both a pass and fail connection' });
   });
+  // Per-repo lanes: an instance name {step-slug}-{repo-slug} must never equal, or nest
+  // under, another step's slug - the monitor attributes to the most specific owner, and a
+  // memory file has one writer (the fan-out naming rule's own constraint)
+  const _prMap = perRepoLaneMap();
+  if (Object.keys(_prMap).length) {
+    const _slugMap = (typeof buildAgentSlugMap === 'function') ? buildAgentSlugMap() : {};
+    const _repoSlugs = perRepoRepoSlugs();
+    const _dupRepo = _repoSlugs.filter((x, i) => _repoSlugs.indexOf(x) !== i);
+    if (_dupRepo.length) warnings.push({ type: 'warn', msg: 'Two listed repositories resolve to the same slug (' + _dupRepo[0] + ') - per-repository instances would share one name and one memory file; give them distinguishable paths.' });
+    state.nodes.filter(n => n.type === 'agent' && _prMap[n.id]).forEach(n => {
+      const base = _slugMap[n.id] || slugify(n.label);
+      state.nodes.filter(o => o.type === 'agent' && o.id !== n.id).forEach(o => {
+        const os = _slugMap[o.id] || slugify(o.label);
+        const clash = _repoSlugs.some(rs => os === base + '-' + rs || os.indexOf(base + '-' + rs + '-') === 0);
+        if (clash) warnings.push({ type: 'warn', msg: '"' + n.label + '" runs once per repository as "' + base + '-{repo}", which collides with the step "' + o.label + '" (' + os + ') - rename one, or instance files land on the wrong step.' });
+      });
+    });
+  }
   // Parallel forks where branches don't reconverge
   state.nodes.filter(n => n.type === 'parallel').forEach(n => {
     const outConns = state.connections.filter(c => c.from === n.id);
@@ -9607,6 +9804,8 @@ function explainAgentNode(node, format) {
   }
 
   const br = browserStepHint(node);
+  const pr = perRepoStepHint(node);
+  rows.push(exRow('Per-repo lane', !!pr, pr ? 'inside a per-repository parallel lane - one instance per repository, each scoped to its own repo' : 'not inside a per-repository lane', pr));
   rows.push(exRow('Browser step hint', !!br,
     br ? (node.config.agentType === 'appExplorer' ? 'Browser toggle on - this explorer VERIFIES its mined selectors live and flips runtime-unconfirmed marks on evidence' : 'Browser toggle on and this is an executing UI role - live evidence over assumption')
        : (!state.mcpBrowser ? 'Browser automation toggle off' : 'not an executing UI role (explorer, frontend, tester, verifier) - reviewers keep the reading lane'), br));
@@ -9745,11 +9944,14 @@ function explainParallelNode(node, format) {
   const rows = [];
   const strat = node.config.strategy || 'all';
   const targets = getDownstream(node.id);
-  const stratProbe = format === 'prompt' ? (targets.length ? 'Run [' + targets.join(', ') + '] in parallel' : '')
+  const stratProbe = strat === 'per-repo'
+    ? (format === 'prompt' ? 'one lane per repository' : format === 'subagent' ? 'Per-repository lanes' : (format === 'teams' || format === 'claude') ? 'Per-repository lanes.' : '')
+    : format === 'prompt' ? (targets.length ? 'Run [' + targets.join(', ') + '] in parallel' : '')
     : format === 'subagent' ? (strat === 'any' ? 'Join (First Complete)' : strat === 'race' ? 'Join (Race)' : 'single message')
     : format === 'teams' ? (strat === 'any' ? 'Proceed when the first teammate finishes.' : strat === 'race' ? 'Race.' : 'Wait for ALL parallel teammates') : '';
   rows.push(exRow('Join strategy', true,
-    strat === 'any' ? 'first complete wins - the run proceeds with the first branch to return'
+    strat === 'per-repo' ? 'one lane per repository - the lane runs once per repo listed under Repositories, lanes in parallel, instances named {step-slug}-{repo-slug}, every lane awaited'
+      : strat === 'any' ? 'first complete wins - the run proceeds with the first branch to return'
       : strat === 'race' ? 'race - the first useful result wins and the rest stop'
       : 'wait for all branches, then collect and review every output', stratProbe));
   rows.push(exRow('Sibling emission', true,
@@ -10487,7 +10689,124 @@ function inputSourceHint() {
   return '';
 }
 
+// ── Per-repository lanes ────────────────────────────────────────────────────
+// A Parallel node with strategy 'per-repo' fans its lane out at RUN time: the orchestrator
+// runs the lane (every non-parallel node between this fork and its join) once per
+// repository listed under Repositories, lanes in parallel, instances named
+// {step-slug}-{repo-slug} so the monitor pools them under their step. The canvas stays
+// static - the repo count on the caption is a display hint read at render time only.
+function isPerRepoFork(node) { return !!(node && node.type === 'parallel' && node.config && node.config.strategy === 'per-repo'); }
+function repoSlugOf(path) {
+  const segs = String(path || '').replace(/[\\/]+$/, '').split(/[\\/]/);
+  return slugify(segs[segs.length - 1] || 'repo') || 'repo';
+}
+function perRepoLaneWalk(forkId) {
+  // Depth-aware: a nested fork inside the lane (2+ outgoing) opens a level and its
+  // branches stay in the lane; a parallel node with one outgoing is a join - at depth 0
+  // it is THIS lane's join and the lane ends there, deeper it closes the nested level.
+  const nodes = [], seen = new Set([forkId]);
+  let joinId = null;
+  const outs = id => state.connections.filter(c => c.from === id && !isReviseBackEdge(c));
+  const q = outs(forkId).map(c => ({ id: c.to, depth: 0 }));
+  while (q.length) {
+    const cur = q.shift();
+    if (seen.has(cur.id)) continue;
+    seen.add(cur.id);
+    const n = state.nodes.find(x => x.id === cur.id);
+    if (!n || n.type === 'output') continue;
+    let depth = cur.depth;
+    if (n.type === 'parallel') {
+      if (outs(cur.id).length >= 2) depth = cur.depth + 1;
+      else if (cur.depth === 0) { if (joinId === null) joinId = n.id; continue; }
+      else {
+        depth = cur.depth - 1;
+        // A nested level closing at a node with NO further parallel node downstream is
+        // the lane's own join too (nested branches feeding the outer join directly)
+        if (depth === 0 && !perRepoHasDownstreamParallel(cur.id)) { if (joinId === null) joinId = n.id; continue; }
+      }
+    } else nodes.push(n);
+    outs(cur.id).forEach(c => q.push({ id: c.to, depth: depth }));
+  }
+  return { nodes: nodes, joinId: joinId };
+}
+function perRepoHasDownstreamParallel(fromId) {
+  const seen = new Set([fromId]);
+  const q = state.connections.filter(c => c.from === fromId && !isReviseBackEdge(c)).map(c => c.to);
+  while (q.length) {
+    const id = q.shift();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const n = state.nodes.find(x => x.id === id);
+    if (!n) continue;
+    if (n.type === 'parallel') return true;
+    state.connections.filter(c => c.from === id && !isReviseBackEdge(c)).forEach(c => q.push(c.to));
+  }
+  return false;
+}
+function perRepoLaneNodes(forkId) { return perRepoLaneWalk(forkId).nodes; }
+function perRepoLaneJoinId(forkId) { return perRepoLaneWalk(forkId).joinId; }
+// One lane map per graph shape (memoized on a structural signature): every emission
+// site and the renderer ask "which per-repo lane holds this node" for every agent.
+// Fast path: a graph with no per-repo fork (the common case) costs one scan, no strings.
+let _perRepoMemo = { sig: null, map: null };
+function perRepoLaneMap() {
+  if (!state.nodes.some(isPerRepoFork)) return {};
+  // Revise back-edges depend on each decision's No label, so it is part of the shape
+  const sig = state.nodes.map(n => n.id + ':' + n.type + ':' + ((n.config && n.config.strategy) || '') + ':' + (n.type === 'decision' ? ((n.config && n.config.noLabel) || '') : '')).join('|')
+    + '#' + state.connections.map(c => c.from + '>' + c.to + '>' + (c.label || '')).join('|');
+  if (_perRepoMemo.sig === sig) return _perRepoMemo.map;
+  const map = {};
+  state.nodes.filter(isPerRepoFork).forEach(f => perRepoLaneNodes(f.id).forEach(n => { if (!map[n.id]) map[n.id] = f.id; }));
+  _perRepoMemo = { sig: sig, map: map };
+  return map;
+}
+function perRepoForkOf(nodeId) { return perRepoLaneMap()[nodeId] || null; }
+function perRepoCountLabel() {
+  const n = getRepositories().length;
+  return n ? n + ' repo' + (n === 1 ? '' : 's') : 'working repo';
+}
+function perRepoRepoSlugs() {
+  // Folder name first; repositories that still collide take more of their path, one
+  // segment at a time, until the slugs are unique (or the paths run out)
+  const segsOf = p => String(p || '').replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean);
+  const all = getRepositories().map(r => segsOf(r.path));
+  const depth = all.map(() => 1);
+  const slugAt = (i) => (slugify(all[i].slice(-depth[i]).join('-')) || 'repo');
+  for (let round = 0; round < 8; round++) {
+    const slugs = all.map((_, i) => slugAt(i));
+    const dup = slugs.filter((x, i) => slugs.indexOf(x) !== i);
+    if (!dup.length) return slugs;
+    let grew = false;
+    slugs.forEach((x, i) => { if (dup.indexOf(x) !== -1 && depth[i] < all[i].length) { depth[i]++; grew = true; } });
+    if (!grew) return slugs;
+  }
+  return all.map((_, i) => slugAt(i));
+}
+// The step's memory slug as the monitor will pool it (duplicate labels get -1/-2 suffixes)
+function perRepoStepSlug(node) {
+  const map = (typeof buildAgentSlugMap === 'function') ? buildAgentSlugMap() : null;
+  return (map && map[node.id]) || slugify(node.label);
+}
+function perRepoLaneNote(forkId, sequential) {
+  const steps = perRepoLaneNodes(forkId).filter(n => n.type === 'agent').map(n => '`' + n.label + '`').join(' then ') || 'the lane steps';
+  const slugs = perRepoRepoSlugs();
+  const head = sequential
+    ? 'Run this lane ONCE PER REPOSITORY listed under Repositories, one repository at a time in the listed order: for each repository, run each lane step in order (' + steps + '), scoped to that repository only'
+    : 'Run this lane ONCE PER REPOSITORY listed under Repositories, all lanes in parallel: for each repository, spawn one instance of each lane step in order (' + steps + '), scoped to that repository only';
+  const naming = state.memoryEnabled
+    ? ' Name each instance `{step-slug}-{repo-slug}` (the repository folder name, slugified; when two folders share a name, the parent folder is prefixed) per the dynamic fan-out naming rule, so the run monitor pools the instances under their step.'
+    : ' Name each instance `{step-slug}-{repo-slug}` (the repository folder name, slugified; when two folders share a name, the parent folder is prefixed) so every report stays attributable to its repository.';
+  const listed = slugs.length ? ' Repository slugs, in order: ' + slugs.map(x => '`' + x + '`').join(', ') + '.' : '';
+  return head + ' - it reads, edits, and tests that repository alone, grounded in that repository\'s own rules and records.' + naming + listed
+    + (sequential ? ' Finish every repository before continuing.' : ' Wait for every lane to finish before continuing.')
+    + ' With one repository listed, run one lane on that repository; with none listed, run one lane on the working repository.';
+}
+function perRepoStepHint(node) {
+  if (!node || !perRepoForkOf(node.id)) return '';
+  return 'Per-repository lane: this step runs once per repository listed under Repositories (instances named `' + perRepoStepSlug(node) + '-{repo-slug}`), each scoped to its own repository - read, edit, and test that repository only, following its own rules and records. The cross-repository contract comes from the contract step and is copied verbatim, never adapted locally.';
+}
 function strategyJoinPhrase(strategy) {
+  if (strategy === 'per-repo') return 'run the lane once per repository, lanes in parallel, and wait for every lane';
   if (strategy === 'any') return 'proceed as soon as the first branch finishes; do not wait for the rest';
   if (strategy === 'race') return 'take the first useful result and stop waiting on the others';
   return 'wait for all branches to finish before continuing';
@@ -10612,6 +10931,7 @@ function genWorkflow() {
           const _scS = toolScopeNote(s.config.tools); if (_scS) p.push('  - ' + _scS);
           const _ddS = datadogStepHint(s); if (_ddS) p.push('  ' + _ddS);
           const _brS = browserStepHint(s); if (_brS) p.push('  ' + _brS);
+          const _prS = perRepoStepHint(s); if (_prS) p.push('  ' + _prS);
           const _csS = codeSearchStepHint(s); if (_csS) p.push('  ' + _csS);
           const _veS = verifyInstructionsStepHint(s); if (_veS) p.push('  ' + _veS);
           const _fdS = foundDefectNote(s); if (_fdS) p.push('  ' + _fdS);
@@ -10638,6 +10958,7 @@ function genWorkflow() {
         const _scN = toolScopeNote(node.config.tools); if (_scN) p.push('- ' + _scN);
         const _ddN = datadogStepHint(node); if (_ddN) p.push('- ' + _ddN);
         const _brN = browserStepHint(node); if (_brN) p.push('- ' + _brN);
+        const _prN = perRepoStepHint(node); if (_prN) p.push('- ' + _prN);
         const _csN = codeSearchStepHint(node); if (_csN) p.push('- ' + _csN);
         const _veN = verifyInstructionsStepHint(node); if (_veN) p.push('- ' + _veN);
         const _fdN = foundDefectNote(node); if (_fdN) p.push('- ' + _fdN);
@@ -10689,7 +11010,8 @@ function genWorkflow() {
       const strat = par.config.strategy;
       const stratLabel = strat || 'wait for all';
       const stratNote = (strat === 'any' || strat === 'race') ? ` - ${strategyJoinPhrase(strat)}` : '';
-      p.push(`- **${par.label}**: Run [${targets.join(', ')}] in parallel (${stratLabel}${stratNote})`);
+      if (strat === 'per-repo') p.push(`- **${par.label}**: one lane per repository - [${targets.join(', ')}] starts each lane. ${perRepoLaneNote(par.id, true)}`);
+      else p.push(`- **${par.label}**: Run [${targets.join(', ')}] in parallel (${stratLabel}${stratNote})`);
     }); p.push('');
   }
 
@@ -10836,6 +11158,7 @@ function genSubAgents() {
     promptLines.push(getEffectivePrompt(node));
     const _ddSa = datadogStepHint(node); if (_ddSa) { promptLines.push(''); promptLines.push(_ddSa); }
     const _brSa = browserStepHint(node); if (_brSa) { promptLines.push(''); promptLines.push(_brSa); }
+    const _prSa = perRepoStepHint(node); if (_prSa) { promptLines.push(''); promptLines.push(_prSa); }
     const _csSa = codeSearchStepHint(node); if (_csSa) { promptLines.push(''); promptLines.push(_csSa); }
     const _veSa = verifyInstructionsStepHint(node); if (_veSa) { promptLines.push(''); promptLines.push(_veSa); }
     const _fdSa = foundDefectNote(node); if (_fdSa) { promptLines.push(''); promptLines.push(_fdSa); }
@@ -10913,7 +11236,8 @@ function genSubAgents() {
       p.push('');
       p.push('Send all of the following Task calls in a **single message** so they run concurrently:');
       const _saStrat = forkStrategyOf(nodeToForkId[node.id]);
-      if (_saStrat === 'any') { p.push(''); p.push('**Join (First Complete)**: proceed with the first sub-agent to return; do not wait for the others.'); }
+      if (_saStrat === 'per-repo') { p.push(''); p.push('**Per-repository lanes**: ' + perRepoLaneNote(nodeToForkId[node.id])); }
+      else if (_saStrat === 'any') { p.push(''); p.push('**Join (First Complete)**: proceed with the first sub-agent to return; do not wait for the others.'); }
       else if (_saStrat === 'race') { p.push(''); p.push('**Join (Race)**: take the first useful result and stop waiting on the rest.'); }
       p.push('');
       siblings.forEach(s => {
@@ -11097,6 +11421,7 @@ function genAgentTeams() {
     effectivePrompt.split('\n').forEach(line => lines.push(`${pre}  ${line}`));
     const _ddAt = datadogStepHint(node); if (_ddAt) lines.push(`${pre}  ${_ddAt}`);
     const _brAt = browserStepHint(node); if (_brAt) lines.push(`${pre}  ${_brAt}`);
+    const _prAt = perRepoStepHint(node); if (_prAt) lines.push(`${pre}  ${_prAt}`);
     const _csAt = codeSearchStepHint(node); if (_csAt) lines.push(`${pre}  ${_csAt}`);
     const _veAt = verifyInstructionsStepHint(node); if (_veAt) lines.push(`${pre}  ${_veAt}`);
     const _fdAt = foundDefectNote(node); if (_fdAt) lines.push(`${pre}  ${_fdAt}`);
@@ -11156,7 +11481,8 @@ function genAgentTeams() {
         p.push('');
       });
       const _atStrat = forkStrategyOf(nodeToForkId[node.id]);
-      if (_atStrat === 'any') p.push('**Proceed when the first teammate finishes.** Continue with the first parallel teammate to complete; do not wait for the others.');
+      if (_atStrat === 'per-repo') p.push('**Per-repository lanes.** ' + perRepoLaneNote(nodeToForkId[node.id]));
+      else if (_atStrat === 'any') p.push('**Proceed when the first teammate finishes.** Continue with the first parallel teammate to complete; do not wait for the others.');
       else if (_atStrat === 'race') p.push('**Race.** Take the first useful result from the parallel teammates and stop waiting on the rest.');
       else p.push('**Wait for ALL parallel teammates to complete before proceeding.** Collect and review all outputs.');
       p.push('');
@@ -11566,6 +11892,23 @@ function genAgentSDK() {
 
     if (isParallel) {
       const siblings = agents.filter(a => nodeToForkId[a.id] === nodeToForkId[node.id]);
+      if (forkStrategyOf(nodeToForkId[node.id]) === 'per-repo') {
+        // Per-repository lanes: one coroutine per repository runs the lane's steps in
+        // order; the lanes run concurrently and every lane is awaited.
+        const laneAgents = perRepoLaneNodes(nodeToForkId[node.id]).filter(n => n.type === 'agent');
+        p.push('    # Per-repository lanes: the lane runs once per repository, lanes concurrently');
+        p.push(`    _repos = [${getRepositories().map(r => JSON.stringify(r.path)).join(', ')}] or ['.']`);
+        p.push('    async def _lane(repo):');
+        p.push(`        _ctx = f"{${lastResultVar}}\\n\\nRepository: {repo} - work in this repository only"`);
+        laneAgents.forEach(a => { const vn = a.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase(); p.push(`        _ctx = await ${vn}.run(context=_ctx)`); });
+        p.push('        return _ctx');
+        p.push('    results = await asyncio.gather(*[_lane(_r) for _r in _repos])');
+        lastResultVar = 'results';
+        laneAgents.forEach(a => emittedPar.add(a.id));
+        i++;
+        p.push('');
+        continue;
+      }
       p.push('    # Parallel execution');
       const taskNames = siblings.map(s => {
         const vn = s.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
@@ -11690,7 +12033,8 @@ function genClaudePrompt() {
         p.push(`### Step ${stepNum}: Parallel Work`);
         p.push('');
         const _cpStrat = forkStrategyOf(nodeToForkId[node.id]);
-        if (_cpStrat === 'any') p.push('Address these perspectives together; proceed with the first to reach a usable result rather than waiting for all.');
+        if (_cpStrat === 'per-repo') p.push('Per-repository lanes. ' + perRepoLaneNote(nodeToForkId[node.id], true));
+        else if (_cpStrat === 'any') p.push('Address these perspectives together; proceed with the first to reach a usable result rather than waiting for all.');
         else if (_cpStrat === 'race') p.push('Address these perspectives together; take the first useful result and stop pursuing the rest.');
         else p.push('Address all of the following perspectives together:');
         p.push('');
@@ -11701,6 +12045,7 @@ function genClaudePrompt() {
           p.push(getEffectivePrompt(s));
           const _ddCpS = datadogStepHint(s); if (_ddCpS) p.push(_ddCpS);
           const _brCpS = browserStepHint(s); if (_brCpS) p.push(_brCpS);
+          const _prCpS = perRepoStepHint(s); if (_prCpS) p.push(_prCpS);
           const _csCpS = codeSearchStepHint(s); if (_csCpS) p.push(_csCpS);
           const _veCpS = verifyInstructionsStepHint(s); if (_veCpS) p.push(_veCpS);
           const _fdCpS = foundDefectNote(s); if (_fdCpS) p.push(_fdCpS);
@@ -11732,6 +12077,7 @@ function genClaudePrompt() {
         p.push(getEffectivePrompt(node));
         const _ddCpN = datadogStepHint(node); if (_ddCpN) p.push(_ddCpN);
         const _brCpN = browserStepHint(node); if (_brCpN) p.push(_brCpN);
+        const _prCpN = perRepoStepHint(node); if (_prCpN) p.push(_prCpN);
         const _csCpN = codeSearchStepHint(node); if (_csCpN) p.push(_csCpN);
         const _veCpN = verifyInstructionsStepHint(node); if (_veCpN) p.push(_veCpN);
         const _fdCpN = foundDefectNote(node); if (_fdCpN) p.push(_fdCpN);
@@ -11855,6 +12201,7 @@ function openSpecParallelJoinNote(node) {
   // If this node is a branch of a parallel fork whose join is NOT wait-for-all, describe the join
   // in words. OpenSpec's requires-DAG can only express wait-for-all (every dep must exist), so the
   // any/race intent would otherwise be silently lost. Reuses core strategyJoinPhrase for parity.
+  if (perRepoForkOf(node.id)) return 'Runs as a per-repository lane: one instance per repository listed under Repositories, each scoped to its own repository; every lane finishes before the run continues.';
   const forks = state.connections.filter(c => c.to === node.id)
     .map(c => state.nodes.find(n => n.id === c.from))
     .filter(n => n && n.type === 'parallel');

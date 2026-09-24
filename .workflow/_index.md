@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## cross-repo-change
+
+- record: .workflow/cross-repo-change.md
+- intent: the Parallel node gains a Per Repository strategy - its lane (fork to join) runs once per repository under Repositories at run time, instances {step-slug}-{repo-slug} pooled by the monitor, canvas static with the repo count as a caption hint - and the Cross-Repo Change preset builds on it: contract written once and doubted, per-repo Implement -> Test lane, Integration Verifier proving the seam consumer-against-producer, contract-fidelity review.
+- files: index.html (strategy option, lane helpers, seven emission sites, canvas lane box + caption, Explain rows, five crafts, builder, tile, placeholder), tests.html (Per-repository lanes suite), README.md
+- status: current | date: 2026-09-23 | note: created; four review rounds, solid per-repo instances with curves, effectiveness pass. 1756 -> 1773.
+
 ## run-telemetry-otlp
 
 - record: .workflow/run-telemetry-otlp.md

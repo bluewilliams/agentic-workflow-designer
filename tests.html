@@ -7122,6 +7122,340 @@ describe('Live Run Monitor emissions', () => {
 });
 
 // ─── Preset craft suites (Platform Provisioning + Data Migration bespoke crafts) ────
+// ─── Per-repository lanes (Parallel strategy 'per-repo') + Cross-Repo Change preset ────
+describe('Per-repository lanes', () => {
+  let savedRepos;
+  beforeEach(() => { resetState(); savedRepos = win.state.repositories; win.state.repositories = [{ path: '/work/alpha-svc', branch: '' }, { path: '/work/beta-web/', branch: 'main' }]; });
+  afterEach(() => { win.state.repositories = savedRepos; resetState(); win.renderRepoRows(); });   // rows mirror the reset state, never a stale list
+  function laneWorkflow(strategy) {
+    const inp = win.addNode('input', 0, 0, 'Spec');
+    const fork = win.addNode('parallel', 200, 0, 'Lanes', { strategy, description: '' });
+    const a = win.addNode('agent', 400, 0, 'Repo Builder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'build', maxTurns:5 });
+    const b = win.addNode('agent', 600, 0, 'Repo Checker', { agentType:'tester', model:'opus-5', tools:['Read'], prompt:'check', maxTurns:5 });
+    const join = win.addNode('parallel', 800, 0, 'Collect', { strategy: 'all' });
+    const out = win.addNode('output', 1000, 0, 'Done', { format:'code' });
+    win.addConnection(inp.id, fork.id); win.addConnection(fork.id, a.id); win.addConnection(a.id, b.id); win.addConnection(b.id, join.id); win.addConnection(join.id, out.id);
+    return { fork, a, b, join };
+  }
+  it('the lane is the chain from fork to join; repo slugs derive from the folder name', () => {
+    const w = laneWorkflow('per-repo');
+    expect(win.perRepoLaneNodes(w.fork.id).map(n => n.label).join(',')).toBe('Repo Builder,Repo Checker');
+    expect(win.perRepoForkOf(w.b.id)).toBe(w.fork.id);
+    expect(win.perRepoForkOf(w.join.id)).toBe(null);
+    expect(win.repoSlugOf('/work/beta-web/')).toBe('beta-web');
+    expect(win.repoSlugOf('C:\\\\src\\\\My Repo')).toBe('my-repo');
+    expect(win.perRepoCountLabel()).toBe('2 repos');
+    win.state.repositories = [];
+    expect(win.perRepoCountLabel()).toBe('working repo');
+  });
+  it('per-repo rides every format: the lane note at the fork and the per-step hint on each lane step; the SDK emits a real lane coroutine', () => {
+    laneWorkflow('per-repo');
+    ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt'].forEach(fn => {
+      const out = win[fn]();
+      expect(out).toContain('ONCE PER REPOSITORY');
+      expect(out).toContain('{step-slug}-{repo-slug}');
+      expect(out).toContain('`Repo Builder` then `Repo Checker`');
+      expect(out).toContain('repo-builder-{repo-slug}');
+      expect(out).toContain('repo-checker-{repo-slug}');
+    });
+    const sdk = win.genAgentSDK();
+    expect(sdk).toContain('async def _lane(repo):');                       // a real lane coroutine, not a comment
+    expect(sdk).toContain('_ctx = await repo_builder.run(context=_ctx)');
+    expect(sdk).toContain('_ctx = await repo_checker.run(context=_ctx)');
+    expect(sdk).toContain('asyncio.gather(*[_lane(_r) for _r in _repos])');
+    expect(sdk).toContain('"/work/alpha-svc", "/work/beta-web/"');
+    expect(sdk).toNotContain('repo_builder_task');                         // lane steps never emit as plain steps
+  });
+  it('the lane note names the repository slugs, and its naming sentence is memory-gated (no fan-out rule or monitor talk when memory is off)', () => {
+    laneWorkflow('per-repo');
+    win.state.memoryEnabled = true;
+    let out = win.genSubAgents();
+    expect(out).toContain('Repository slugs, in order: `alpha-svc`, `beta-web`.');
+    expect(out).toContain('per the dynamic fan-out naming rule');
+    win.state.memoryEnabled = false;
+    out = win.genSubAgents();
+    expect(out).toContain('{step-slug}-{repo-slug}');
+    expect(out).toNotContain('fan-out naming rule');
+    expect(out).toNotContain('run monitor');
+    // sequential formats say one-at-a-time, concurrent formats say lanes in parallel
+    expect(win.genWorkflow()).toContain('one repository at a time in the listed order');
+    expect(win.genClaudePrompt()).toContain('one repository at a time in the listed order');
+    expect(win.genAgentTeams()).toContain('all lanes in parallel');
+  });
+  it('the lane walk is depth-aware: a nested fork stays inside the lane, and the lane ends at its own join', () => {
+    const inp = win.addNode('input', 0, 0, 'Spec');
+    const fork = win.addNode('parallel', 0, 0, 'Lanes', { strategy: 'per-repo' });
+    const a = win.addNode('agent', 0, 0, 'A', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'a', maxTurns:5 });
+    const f2 = win.addNode('parallel', 0, 0, 'Inner', { strategy: 'all' });
+    const b = win.addNode('agent', 0, 0, 'B', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'b', maxTurns:5 });
+    const c = win.addNode('agent', 0, 0, 'C', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'c', maxTurns:5 });
+    const j2 = win.addNode('parallel', 0, 0, 'Inner join', { strategy: 'all' });
+    const d = win.addNode('agent', 0, 0, 'D', { agentType:'tester', model:'opus-5', tools:['Read'], prompt:'d', maxTurns:5 });
+    const join = win.addNode('parallel', 0, 0, 'Collect', { strategy: 'all' });
+    const e = win.addNode('agent', 0, 0, 'E', { agentType:'reviewer', model:'opus-5', tools:['Read'], prompt:'e', maxTurns:5 });
+    const out = win.addNode('output', 0, 0, 'Done', { format:'code' });
+    [[inp, fork], [fork, a], [a, f2], [f2, b], [f2, c], [b, j2], [c, j2], [j2, d], [d, join], [join, e], [e, out]].forEach(([x, y]) => win.addConnection(x.id, y.id));
+    expect(win.perRepoLaneNodes(fork.id).map(n => n.label).sort().join(',')).toBe('A,B,C,D');
+    expect(win.perRepoForkOf(e.id)).toBe(null);
+    expect(win.perRepoForkOf(d.id)).toBe(fork.id);
+    // the memo follows structural change: retarget the strategy and the map updates
+    fork.config.strategy = 'all';
+    expect(win.perRepoForkOf(d.id)).toBe(null);
+  });
+  it('an instance name that would collide with a sibling step draws a validation warning; the cross_repo preset draws none', () => {
+    const inp = win.addNode('input', 0, 0, 'Spec');
+    const fork = win.addNode('parallel', 0, 0, 'Lanes', { strategy: 'per-repo' });
+    const build = win.addNode('agent', 0, 0, 'Build', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'b', maxTurns:5 });
+    const join = win.addNode('parallel', 0, 0, 'Collect', { strategy: 'all' });
+    const other = win.addNode('agent', 0, 0, 'Build Alpha Svc', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'o', maxTurns:5 });
+    const out = win.addNode('output', 0, 0, 'Done', { format:'code' });
+    [[inp, fork], [fork, build], [build, join], [join, other], [other, out]].forEach(([x, y]) => win.addConnection(x.id, y.id));
+    const msgs = win.validateWorkflow().map(w => w.msg).join(' | ');
+    expect(msgs).toContain('runs once per repository as "build-{repo}"');
+    expect(msgs).toContain('Build Alpha Svc');
+    // A longer sibling slug that no instance name equals or nests under is NOT a collision
+    other.label = 'Build Report';
+    expect(win.validateWorkflow().map(w => w.msg).join(' | ')).toNotContain('runs once per repository');
+  });
+  it('two repositories with the same folder name get distinct slugs (parent folder prefixed); one listed repository is used, not the working directory', () => {
+    win.state.repositories = [{ path: '/clients/acme/service', branch: '' }, { path: '/clients/globex/service', branch: '' }];
+    expect(win.perRepoRepoSlugs().join(',')).toBe('acme-service,globex-service');
+    win.state.repositories = [{ path: '/work/beta-web', branch: '' }];
+    laneWorkflow('per-repo');
+    const out = win.genSubAgents();
+    expect(out).toContain('With one repository listed, run one lane on that repository');
+    expect(out).toNotContain('run a single lane on the working repository');
+  });
+  it('the lane map notices a decision No-label edit (a revise edge turning into a normal edge changes the lane)', () => {
+    const inp = win.addNode('input', 0, 0, 'Spec');
+    const fork = win.addNode('parallel', 0, 0, 'Lanes', { strategy: 'per-repo' });
+    const a = win.addNode('agent', 0, 0, 'A', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'a', maxTurns:5 });
+    const gate = win.addNode('decision', 0, 0, 'Ok?', { condition:'ok', yesLabel:'Pass', noLabel:'Revise' });
+    const join = win.addNode('parallel', 0, 0, 'Collect', { strategy: 'all' });
+    const rev = win.addNode('agent', 0, 0, 'Reviewer', { agentType:'reviewer', model:'opus-5', tools:['Read'], prompt:'r', maxTurns:5 });
+    const out = win.addNode('output', 0, 0, 'Done', { format:'code' });
+    win.addConnection(inp.id, fork.id); win.addConnection(fork.id, a.id); win.addConnection(a.id, gate.id);
+    win.addConnection(gate.id, join.id, 'Pass'); win.addConnection(gate.id, rev.id, 'Revise'); win.addConnection(join.id, out.id); win.addConnection(rev.id, out.id);
+    expect(win.perRepoForkOf(rev.id)).toBe(null);          // 'Revise' is a revise edge: the Reviewer is outside the lane
+    gate.config.noLabel = 'Retry';                           // the edge labeled 'Revise' is no longer a revise edge
+    expect(win.perRepoForkOf(rev.id)).toBe(fork.id);
+  });
+  it('instance curves connect only the fork, lane agents, and the lane join; instances sit beneath real nodes; the pass is idempotent', () => {
+    win.state.repositories = [{ path: '/work/alpha-svc', branch: '' }, { path: '/work/beta-web', branch: '' }, { path: '/work/gamma-api', branch: '' }];
+    const inp = win.addNode('input', 0, 0, 'Spec');
+    const fork = win.addNode('parallel', 200, 0, 'Lanes', { strategy: 'per-repo' });
+    const a = win.addNode('agent', 400, 0, 'A', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'a', maxTurns:5 });
+    const gate = win.addNode('decision', 600, 0, 'Ok?', { condition:'ok', yesLabel:'Pass', noLabel:'Revise' });
+    const b = win.addNode('agent', 800, 0, 'B', { agentType:'tester', model:'opus-5', tools:['Read'], prompt:'b', maxTurns:5 });
+    const join = win.addNode('parallel', 1000, 0, 'Collect', { strategy: 'all' });
+    const out = win.addNode('output', 1200, 0, 'Done', { format:'code' });
+    win.addConnection(inp.id, fork.id); win.addConnection(fork.id, a.id); win.addConnection(a.id, gate.id); win.addConnection(gate.id, b.id, 'Pass'); win.addConnection(gate.id, a.id, 'Revise'); win.addConnection(b.id, join.id); win.addConnection(join.id, out.id);
+    win.render();
+    expect(win.document.querySelectorAll('.node-instance').length).toBe(4);        // A and B, two extra rows
+    expect(win.document.querySelectorAll('.connection-instance').length).toBe(4);  // fork->A and B->join per row; the gate has no instance, so no curves touch it
+    const kids = [...win.document.querySelector('.node-instance').parentNode.children];
+    expect(kids.findIndex(k => k.classList.contains('node-instance')) < kids.findIndex(k => k.classList.contains('node-group'))).toBe(true);
+    win.render();
+    expect(win.document.querySelectorAll('.node-instance').length).toBe(4);        // no accumulation across renders
+  });
+  it('a lane-step drag moves the REAL node and redraws instances and curves each move; dragging any node keeps the curves', () => {
+    win.state.repositories = [{ path: '/work/alpha-svc', branch: '' }, { path: '/work/beta-web', branch: '' }];
+    const w = laneWorkflow('per-repo');
+    win.render();
+    const wrap = win.document.getElementById('canvasWrap');
+    win.state.dragging = w.a; win.state.dragMouseStart = { x: 0, y: 0 }; win.state.dragNodeStart = { x: w.a.x, y: w.a.y };
+    wrap.dispatchEvent(new win.MouseEvent('mousemove', { bubbles: true, clientX: 50 * win.state.zoom, clientY: 0 }));
+    const real = win.document.querySelector('.node-group[data-id="' + w.a.id + '"]');
+    expect(real.getAttribute('transform')).toContain('translate(' + (w.a.x) + ',');       // the real node moved (x + 50)
+    expect(w.a.x).toBe(450);
+    expect(win.document.querySelectorAll('.node-instance').length).toBe(2);           // one row, two lane steps - no accumulation
+    expect(win.document.querySelectorAll('.connection-instance').length).toBe(3);
+    win.state.dragging = w.join; win.state.dragNodeStart = { x: w.join.x, y: w.join.y };
+    wrap.dispatchEvent(new win.MouseEvent('mousemove', { bubbles: true, clientX: 10 * win.state.zoom, clientY: 0 }));
+    expect(win.document.querySelectorAll('.connection-instance').length).toBe(3);      // dragging the join keeps the instance curves
+    win.state.dragging = null;
+  });
+  it('a shared join (nested branches feeding the outer join directly) still ends the lane; deep duplicate paths still get unique slugs, and identical ones warn', () => {
+    const inp = win.addNode('input', 0, 0, 'Spec');
+    const fork = win.addNode('parallel', 0, 0, 'Lanes', { strategy: 'per-repo' });
+    const a = win.addNode('agent', 0, 0, 'A', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'a', maxTurns:5 });
+    const inner = win.addNode('parallel', 0, 0, 'Inner', { strategy: 'all' });
+    const b = win.addNode('agent', 0, 0, 'B', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'b', maxTurns:5 });
+    const c = win.addNode('agent', 0, 0, 'C', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'c', maxTurns:5 });
+    const join = win.addNode('parallel', 0, 0, 'Collect', { strategy: 'all' });
+    const e = win.addNode('agent', 0, 0, 'E', { agentType:'reviewer', model:'opus-5', tools:['Read'], prompt:'e', maxTurns:5 });
+    const out = win.addNode('output', 0, 0, 'Done', { format:'code' });
+    [[inp, fork], [fork, a], [a, inner], [inner, b], [inner, c], [b, join], [c, join], [join, e], [e, out]].forEach(([x, y]) => win.addConnection(x.id, y.id));
+    expect(win.perRepoLaneNodes(fork.id).map(n => n.label).sort().join(',')).toBe('A,B,C');
+    expect(win.perRepoLaneJoinId(fork.id)).toBe(join.id);
+    expect(win.perRepoForkOf(e.id)).toBe(null);
+    win.state.repositories = [{ path: '/clients/acme/svc/service', branch: '' }, { path: '/clients/globex/svc/service', branch: '' }];
+    expect(win.perRepoRepoSlugs().join(',')).toBe('acme-svc-service,globex-svc-service');
+    win.state.repositories = [{ path: '/work/same', branch: '' }, { path: '/work/same', branch: '' }];
+    expect(win.validateWorkflow().map(x => x.msg).join(' | ')).toContain('resolve to the same slug');
+  });
+  it('OpenSpec and Explain see the whole lane, not only the first step', () => {
+    const w = laneWorkflow('per-repo');
+    expect(win.openSpecParallelJoinNote(w.b)).toContain('per-repository lane');   // the second lane step, fed by the first
+    const forkRows = win.explainNode(w.fork, 'teams');
+    expect(forkRows.find(r => r.part === 'Join strategy').snippet).toContain('Per-repository lanes');
+  });
+  it('the canvas draws one SOLID instance per extra repository below each lane step; a click selects the lane step; the first repo rides the real node', () => {
+    win.state.repositories = [{ path: '/work/alpha-svc', branch: '' }, { path: '/work/beta-web', branch: '' }, { path: '/work/gamma-api', branch: '' }];
+    const w = laneWorkflow('per-repo');
+    win.render();
+    const inst = [...win.document.querySelectorAll('.node-instance')];
+    expect(inst.length).toBe(4);                                          // 2 lane steps x 2 extra repos
+    expect(win.document.querySelectorAll('.connection-instance').length).toBe(6);   // fork->a, a->b, b->join, per extra row
+    const instA = inst.filter(i => i.dataset.id === w.a.id), instB = inst.filter(i => i.dataset.id === w.b.id);
+    expect(instA.length).toBe(2);
+    expect(instB.length).toBe(2);
+    const subsA = instA.map(i => i.querySelector('.node-sublabel').textContent).join(' ');
+    expect(subsA).toContain('beta-web');
+    expect(subsA).toContain('gamma-api');
+    expect(instA[0].querySelector('.node-shape').getAttribute('fill')).toBe(win.document.querySelector('.node-group[data-id="' + w.a.id + '"] .node-shape').getAttribute('fill'));   // same solid look as the real node
+    const realSub = win.document.querySelector('.node-group[data-id="' + w.a.id + '"] .node-sublabel').textContent;
+    expect(realSub).toContain('alpha-svc');
+    instB[0].dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    expect(win.state.selectedId).toBe(w.b.id);
+    win.state.repositories = [{ path: '/work/alpha-svc', branch: '' }];
+    win.render();
+    expect(win.document.querySelectorAll('.node-instance').length).toBe(0);
+  });
+  it('the canvas follows the repository list: add, remove, and a path edit redraw instances and the caption through onRepoChange; branch edits, slug-neutral edits, and no-fork workflows skip the render', () => {
+    const savedSave = win.savePrefsDebounced, savedRender = win.render;
+    let renders = 0;
+    win.savePrefsDebounced = () => {};                                   // keep the test out of awd_prefs
+    win.render = function() { renders++; return savedRender.apply(this, arguments); };   // plain-script declaration: calls resolve through the global
+    const caption = () => win.document.querySelector('.parallel-lane-label').textContent;
+    try {
+      win.renderRepoRows();                                              // sidebar rows from the two seeded repositories
+      const w = laneWorkflow('per-repo');
+      savedRender();
+      expect(win.document.querySelectorAll('.node-instance').length).toBe(2);       // one extra repo x two lane steps
+      expect(caption()).toContain('2 repos');
+      renders = 0;                                                                  // building the workflow rendered per node; count from here
+      win.addRepoRow('/work/gamma-api', '');
+      expect(renders).toBe(1);                                                      // the add rendered
+      expect(win.state.repositories.length).toBe(3);
+      expect(win.document.querySelectorAll('.node-instance').length).toBe(4);
+      expect(win.document.querySelectorAll('.connection-instance').length).toBe(6);
+      expect(caption()).toContain('3 repos');
+      const rows = win.document.querySelectorAll('#repoList .repo-row');
+      const inputs = rows[2].querySelectorAll('input');
+      inputs[1].value = 'feature/PROJ-123';
+      inputs[1].dispatchEvent(new win.Event('input', { bubbles: true }));
+      expect(renders).toBe(1);                                                      // a branch edit changes nothing on the canvas: no render
+      expect(win.state.repositories[2].branch).toBe('feature/PROJ-123');            // but the state still followed
+      inputs[0].value = '/work/gamma-api/';
+      inputs[0].dispatchEvent(new win.Event('input', { bubbles: true }));
+      expect(renders).toBe(1);                                                      // a slug-neutral path edit (trailing slash): no render
+      inputs[0].value = '/work/delta-cli';
+      inputs[0].dispatchEvent(new win.Event('input', { bubbles: true }));
+      expect(renders).toBe(2);                                                      // a slug-changing path edit renders
+      const subs = [...win.document.querySelectorAll('.node-instance .node-sublabel')].map(e => e.textContent).join(' ');
+      expect(subs).toContain('delta-cli');                                          // and renames the instance
+      expect(subs).toNotContain('gamma-api');
+      win.removeRepoRow(rows[2].querySelector('.repo-remove'));
+      expect(renders).toBe(3);                                                      // the remove rendered
+      expect(win.document.querySelectorAll('.node-instance').length).toBe(2);
+      expect(caption()).toContain('2 repos');
+      win.removeRepoRow(win.document.querySelector('#repoList .repo-row .repo-remove'));
+      expect(renders).toBe(4);
+      expect(win.document.querySelectorAll('.node-instance').length).toBe(0);       // one repository left: no instances
+      expect(win.document.querySelectorAll('.connection-instance').length).toBe(0);
+      expect(caption()).toContain('1 repo');
+      const realSub = win.document.querySelector('.node-group[data-id="' + w.a.id + '"] .node-sublabel').textContent;
+      expect(realSub).toContain('beta-web');                                        // the lone remaining repo rides the real node
+      // no per-repo fork: onRepoChange never renders (the fast path), while the prompt still follows
+      resetState();
+      win.renderRepoRows();
+      laneWorkflow('all');
+      savedRender();
+      renders = 0;
+      win.addRepoRow('/work/gamma-api', '');
+      expect(renders).toBe(0);
+      expect(win.state.repositories.length).toBe(1);
+      expect(win.document.querySelectorAll('.node-instance').length).toBe(0);
+    } finally { win.savePrefsDebounced = savedSave; win.render = savedRender; }
+  });
+  it('the other strategies are untouched: no lane phrasing leaks for all, any, or race', () => {
+    ['all', 'any', 'race'].forEach(strat => {
+      resetState();
+      laneWorkflow(strat);
+      const all = [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genAgentSDK(), win.genClaudePrompt()].join('\n');
+      expect(all).toNotContain('ONCE PER REPOSITORY');
+      expect(all).toNotContain('Per-repository lane');
+    });
+  });
+  it('the canvas draws a lane box around a single-branch per-repo fork with the repo count; a single-branch "all" fork draws none', () => {
+    laneWorkflow('per-repo');
+    win.render();
+    const lanes = win.document.querySelectorAll('.parallel-lane');
+    expect(lanes.length).toBe(1);
+    const label = win.document.querySelector('.parallel-lane-label');
+    expect(label.textContent).toContain('per repository');
+    expect(label.textContent).toContain('2 repos');
+    resetState();
+    win.state.repositories = [{ path: '/work/alpha-svc', branch: '' }];
+    laneWorkflow('all');
+    win.render();
+    expect(win.document.querySelectorAll('.parallel-lane').length).toBe(0);
+  });
+  it('Explain names the lane on the fork and on each lane step', () => {
+    const w = laneWorkflow('per-repo');
+    const forkRows = win.explainNode(w.fork, 'workflow');
+    expect(forkRows.find(r => r.part === 'Join strategy').reason).toContain('one lane per repository');
+    const stepRows = win.explainNode(w.a, 'workflow');
+    expect(stepRows.find(r => r.part === 'Per-repo lane').status).toBe('emitted');
+  });
+  it('cross_repo preset: contract skeptic, a per-repo Implement -> Test lane, a mainline Integration Verifier, both gates looping to the lane', () => {
+    resetState();
+    win.loadPreset('cross_repo');
+    const agents = win.state.nodes.filter(n => n.type === 'agent');
+    expect(agents.length).toBe(6);
+    const ca = win.state.nodes.find(n => n.label === 'Contract Architect');
+    const sk = agents.find(n => n.config.agentType === 'adversary');
+    expect(sk.config.reviewLoopFor).toBe(ca.id);
+    expect(sk.config.adversaryRole).toBe('architect');
+    const fork = win.state.nodes.find(n => n.label === 'Per-Repo Lanes');
+    expect(fork.config.strategy).toBe('per-repo');
+    expect(win.perRepoLaneNodes(fork.id).map(n => n.label).join(',')).toBe('Repo Implementer,Repo Tester');
+    const iv = win.state.nodes.find(n => n.label === 'Integration Verifier');
+    expect(iv.config.agentType).toBe('verifier');
+    expect(iv.config.prompt).toBe(win.PROMPTS.integrationVerifier);
+    const impl = win.state.nodes.find(n => n.label === 'Repo Implementer');
+    const vd = win.state.nodes.find(n => n.label === 'Seam proven?');
+    const rd = win.state.nodes.find(n => n.label === 'Review OK?');
+    expect(win.state.connections.find(c => c.from === vd.id && c.to === impl.id).label).toBe('Not verified');
+    expect(win.state.connections.find(c => c.from === rd.id && c.to === impl.id).label).toBe('Revise');
+    expect(win.state.nodes.find(n => n.label === 'Reviewer').config.prompt).toBe(win.PROMPTS.crossRepoReviewer);
+    win.updateStoryPlaceholder('cross_repo');
+    expect(win.document.getElementById('storyInput').placeholder).toContain('the seam it crosses');
+    win.updateStoryPlaceholder('feature');
+  });
+  it('cross-repo crafts: contract written once with consumers, expand-contract across repos, lanes copy verbatim and never edit another repo, seam proven consumer-against-producer, literals grepped at every consumer', () => {
+    expect(win.PROMPTS.contractArchitect).toContain('Write the contract ONCE');
+    expect(win.PROMPTS.contractArchitect).toContain('expand-contract ACROSS repositories');
+    expect(win.PROMPTS.contractArchitect).toContain('consumer against producer');
+    expect(win.PROMPTS.repoImplementer).toContain('Copy the contract from the Contract Architect verbatim');
+    expect(win.PROMPTS.repoImplementer).toContain('Never edit another repository');
+    expect(win.PROMPTS.repoImplementer).toContain('{step-slug}-{repo-slug}');
+    // Lanes never block on each other, and the contract has one home when memory is on
+    expect(win.PROMPTS.repoImplementer).toContain('never wait on another lane');
+    expect(win.PROMPTS.repoImplementer).toContain('stub the other side locally from the contract');
+    expect(win.PROMPTS.contractArchitect).toContain('`## Contract` heading in the shared memory file');
+    expect(win.PROMPTS.repoImplementer).toContain('`## Contract` block in the shared memory file');
+    expect(win.PROMPTS.repoTester).toContain('Never mock the seam into agreement');
+    expect(win.PROMPTS.repoTester).toContain('never fake it');
+    expect(win.PROMPTS.integrationVerifier).toContain('two green repositories that do not agree');
+    expect(win.PROMPTS.integrationVerifier).toContain('MANUAL is never silently passed');
+    expect(win.PROMPTS.integrationVerifier).toContain('character for character');
+    expect(win.PROMPTS.crossRepoReviewer).toContain('grep every shared literal at every consumer');
+    expect(win.PROMPTS.crossRepoReviewer).toContain('always gate');
+  });
+});
+
 // ─── Preset load never scroll-jacks the sidebar ────
 describe('Preset load leaves the sidebar where the user is', () => {
   it('loading a preset selects no node and never scrolls to Node Configuration; a real selection still does', () => {
