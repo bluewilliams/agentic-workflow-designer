@@ -857,7 +857,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </label>
     <label class="memory-toggle">
       <input type="checkbox" id="mcpCodeSearchToggle" onchange="toggleMcpCodeSearch()" checked/>
-      <span style="font-size:12px" title="Sourcebot, Sourcegraph, Kilo Code, or any cross-repo code-search MCP - none is required; agents use whichever is connected.">Code search <span style="color:var(--text3);font-weight:400">(Sourcebot, etc.)</span></span>
+      <span style="font-size:12px" title="Sourcegraph, Kilo Code, Sourcebot, or any cross-repo code-search MCP - none is required; agents use whichever is connected.">Code search <span style="color:var(--text3);font-weight:400">(Sourcegraph, etc.)</span></span>
     </label>
     <label class="memory-toggle">
       <input type="checkbox" id="mcpDatadogToggle" onchange="toggleMcpDatadog()"/>
@@ -1333,7 +1333,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <ul>
   <li><strong>Atlassian MCP</strong>: built into Claude Code. Lets agents fetch Jira tickets and Confluence pages at runtime. Toggle on/off in the sidebar.</li>
   <li><strong>Claude in Chrome</strong>: the Claude browser extension. Lets agents drive a real Chrome tab - open a PR and read its diff, navigate your running app, and confirm a UI actually renders and behaves as specified. Powers the Verifier's browser checks and the PR-review and UI prompts in the library.</li>
-  <li><strong>Code search MCP</strong>: any cross-repo code-search server (for example <a href="https://sourcebot.dev" target="_blank" style="color:var(--accent);pointer-events:auto">Sourcebot</a>, Sourcegraph, or Kilo Code). Typically exposes tools to discover repos, browse trees, search code, and read files across all your repositories. None is required; toggle the hint on/off in the sidebar.</li>
+  <li><strong>Code search MCP</strong>: any cross-repo code-search server (for example <a href="https://sourcegraph.com/docs/api/mcp" target="_blank" style="color:var(--accent);pointer-events:auto">Sourcegraph</a>, Kilo Code, or Sourcebot). Typically exposes tools to discover repos, browse trees, search code, and read files across all your repositories. None is required; toggle the hint on/off in the sidebar.</li>
   <li><strong>Datadog MCP</strong>: install with <code>curl -sSL https://coterm.datadoghq.com/mcp-cli/install.sh | bash</code>, then <code>datadog_mcp_cli login</code>, then <code>claude mcp add -s user datadog</code>. Enables the Observability prompts in the Prompt Library. Bug Fix workflows also use it automatically to check production logs and error context during investigation. Toggle it on in the sidebar to add a production-telemetry grounding hint to exported workflows.</li>
   <li><strong>LSP</strong>: install a language server for your stack (e.g. <code>typescript-language-server</code>, <code>pyright</code>, <code>gopls</code>). Gives agents go-to-definition and find-references for deeper code analysis.</li>
 </ul>

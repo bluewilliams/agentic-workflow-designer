@@ -278,7 +278,7 @@ Two optional steps that dramatically improve output quality for complex tasks:
 
 **Generate Refine Prompt** generates a discovery interview. Paste it into Claude Code and it asks you about edge cases, UX decisions, tradeoffs, and constraints using the `AskUserQuestion` tool, then writes a refined spec to `.claude/specs/{workflow-name}.md`. Paste the result back into Requirements.
 
-**Generate Plan Prompt** generates a codebase analysis prompt. Claude explores your code (via a code-search MCP if available, for example Sourcebot, Sourcegraph, or Kilo Code, with a Glob/Grep/LSP fallback otherwise), identifies relevant files and patterns, and produces an implementation blueprint in `.claude/plans/{workflow-name}.md`. Paste the result into the Workflow Context field so agents know HOW to build, not just WHAT to build.
+**Generate Plan Prompt** generates a codebase analysis prompt. Claude explores your code (via a code-search MCP if available, for example Sourcegraph or Kilo Code, with a Glob/Grep/LSP fallback otherwise), identifies relevant files and patterns, and produces an implementation blueprint in `.claude/plans/{workflow-name}.md`. Paste the result into the Workflow Context field so agents know HOW to build, not just WHAT to build.
 
 Both prompts tell Claude exactly what to do next, closing the loop back to the Workflow Designer.
 
@@ -324,10 +324,10 @@ The Workflow Designer works standalone out of the box, but these optional integr
 | MCP Server | What it enables | Install |
 |------------|----------------|---------|
 | **Atlassian** | Agents fetch Jira ticket and Confluence page details at runtime instead of needing content pasted in | Built into Claude Code. Enable in Settings or via `claude mcp add` |
-| **Code search (MCP)** | Cross-repo code search with any compatible MCP server (for example Sourcebot, Sourcegraph, or Kilo Code; none required). Agents discover repos, browse trees, search code, and read files to explore your codebase, falling back to Glob/Grep/LSP when no such MCP is connected | Any code-search MCP works. Sourcebot ([sourcebot.dev](https://sourcebot.dev)) is self-hosted with a free tier; add via `claude mcp add -s user --transport http sourcebot http://localhost:4242/api/mcp` |
+| **Code search (MCP)** | Cross-repo code search with any compatible MCP server (for example Sourcegraph or Kilo Code; none required). Agents discover repos, browse trees, search code, and read files to explore your codebase, falling back to Glob/Grep/LSP when no such MCP is connected | Any code-search MCP works. Sourcegraph serves one from your instance at `/.api/mcp`: `claude mcp add -s user --transport http sourcegraph https://sourcegraph.example.com/.api/mcp`, then run `/mcp` in Claude Code for the browser sign-in (or pass `--header "Authorization: token $SOURCEGRAPH_ACCESS_TOKEN"` instead) |
 | **Datadog** | Observability prompts query logs, metrics, traces, and monitors directly. Bug Fix workflows automatically check production error context during investigation when available | Install CLI: `curl -sSL https://coterm.datadoghq.com/mcp-cli/install.sh \| bash` then `datadog_mcp_cli login` then `claude mcp add -s user datadog -- ~/.local/bin/datadog_mcp_cli --endpoint-path "/api/unstable/mcp-server/mcp?toolsets=core,alerting,apm"` |
 
-Toggle Atlassian and Code search (MCP) on/off in the sidebar. When enabled, prompt hints are injected into all exports so agents prefer these tools. The Prompt Library includes dedicated categories for cross-repo analysis (which works with any code-search MCP such as Sourcebot) and Datadog (observability) prompts, with Chrome browser fallback when MCPs aren't installed.
+Toggle Atlassian and Code search (MCP) on/off in the sidebar. When enabled, prompt hints are injected into all exports so agents prefer these tools. The Prompt Library includes dedicated categories for cross-repo analysis (which works with any code-search MCP such as Sourcegraph) and Datadog (observability) prompts, with Chrome browser fallback when MCPs aren't installed.
 
 ### LSP (Language Server Protocol)
 

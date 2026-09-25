@@ -5296,8 +5296,8 @@ describe('MCP Integrations', () => {
       expect(!!cb).toBe(true);
       const span = cb.parentElement.querySelector('span');
       expect(span.textContent).toContain('Code search');   // '(MCP)' folded away when the group intro already says MCP
-      expect(span.textContent).toContain('Sourcebot, etc.');   // one-line label; the full roll call lives in the tooltip
-      expect(span.title).toContain('Sourcebot, Sourcegraph, Kilo Code');
+      expect(span.textContent).toContain('Sourcegraph, etc.');   // one-line label; the full roll call lives in the tooltip
+      expect(span.title).toContain('Sourcegraph, Kilo Code, Sourcebot');   // Sourcegraph leads; Sourcebot stays a first-class example
     });
   });
 });
