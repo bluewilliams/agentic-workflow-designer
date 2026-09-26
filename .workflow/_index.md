@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## new-project-preset
+
+- record: .workflow/new-project-preset.md
+- intent: a New Project preset for a net-new project of any shape (CLI, library, service, web, mobile, pipeline): Project Scout (shape + first slice, precedent or ecosystem default, generator/versions/toolchain verified against current docs) -> Foundation Architect (boring by default, less code, ONE way per concern, generate then prune, per-shape slice, conventions file, not-in-v1, options that lost) -> Skeptic -> Scaffolder (generate, prune, one-command toolchain, pins, .env.example, literal README, empty project proven green) -> Slice Builder (the code the project is judged by) -> Foundation Reviewer (inheriting engineer) -> Fresh-Copy Verifier (a fresh copy of what version control will carry, README word for word, evidence table). Vendor-neutral by pin.
+- files: index.html (six crafts, builder, tile, placeholder), tests.html (structure pin, New Project crafts suite), README.md
+- status: current | date: 2026-09-26 | note: created; two review rounds (fresh copy not clone, tracked not committed, gates pinned, shared TASK_SIGNAL). 1774 -> 1783.
+
 ## cross-repo-change
 
 - record: .workflow/cross-repo-change.md
