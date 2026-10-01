@@ -409,6 +409,9 @@ svg.canvas{width:100%;height:100%;display:block}
 .memory-section .memory-toggle{display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:12px;
   color:var(--text2)}
 .memory-section .memory-toggle>span{flex:1;min-width:0}
+/* The two run-gate toggles under Requirements: one per line, never wrapped side by side */
+.run-gate-toggle{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px}
+.run-gate-toggle input[type="checkbox"]{accent-color:var(--accent);width:14px;height:14px;margin:0}
 .memory-section .memory-toggle input[type="checkbox"]{margin-top:1px}
 .memory-section .memory-toggle input[type="checkbox"]{accent-color:var(--accent);width:14px;height:14px;
   cursor:pointer;flex-shrink:0}
@@ -545,9 +548,13 @@ svg.canvas{width:100%;height:100%;display:block}
     <input type="text" id="workflowName" class="story-input" style="min-height:auto;padding:8px 10px;font-family:var(--font);font-weight:600;margin-bottom:8px" placeholder="optional - auto-named from your requirements" oninput="updateMemoryPath();updatePrompt();autoSaveWorkflow()"/>
     <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Auto Workflow to auto-build a workflow from keywords." oninput="validateStoryInput(true)"></textarea>
     <div id="storyHint" class="input-hint"></div>
-    <label class="memory-toggle" style="margin-top:6px" title="The generated workflow opens with one focused round of clarifying questions before any step runs, and folds the answers into the plan and the durable record. Built into the prompt itself - distinct from Generate Refine Prompt, which is a separate interview you run first. Non-interactive runs record the open questions as assumptions and proceed.">
+    <label class="run-gate-toggle" style="margin-top:8px" title="The generated workflow opens with one focused round of clarifying questions before any step runs, and folds the answers into the plan and the durable record. Built into the prompt itself - distinct from Generate Refine Prompt, which is a separate interview you run first. Non-interactive runs record the open questions as assumptions and proceed.">
       <input type="checkbox" id="clarifyFirstToggle" onchange="toggleClarifyFirst()"/>
       <span style="font-size:12px">Clarify requirements first</span>
+    </label>
+    <label class="run-gate-toggle" style="margin-top:4px" title="The run pauses once, right before the first step that changes files or produces the deliverable, and presents the plan as it stands (approach, files, risks, out of scope, options that lost) for you to approve, modify, or reject with direction. Modifications are authoritative and recorded; a rejection sends the plan back to the step that owns it (three rounds at most, then the run stops rather than build what you refused). Once approved it never re-asks; non-interactive runs proceed and log the risk instead of blocking. Off by default - the checkpoint is for runs where the director must sign off on the approach.">
+      <input type="checkbox" id="approvePlanToggle" onchange="toggleApprovePlan()"/>
+      <span style="font-size:12px">Approve plan before build</span>
     </label>
     <div class="btn-row mt">
       <button class="btn primary" id="generateBtn" onclick="generateFromStory()" title="Build a bespoke workflow from your requirements text: intent scoring picks the shape (build, research, review, analysis), wraps a Skeptic on the plan, and tells you what it detected. Replaces the canvas.">Auto Workflow</button>
@@ -1168,6 +1175,9 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h3>Clarify Requirements First</h3>
 <p>The <strong>Clarify requirements first</strong> toggle (off by default) adds an in-flow clarification gate to the planning step - distinct from the <strong>Generate Refine Prompt</strong> step (see <strong>Which prep step should I use?</strong> above for how they differ). When on, the planning step probes the requirements for material ambiguity, asks you a focused set of questions in one round, then folds the answers into the plan and the durable record. It degrades gracefully when run non-interactively (CI or an SDK pipeline): it records the open questions as assumptions and risks and proceeds rather than blocking.</p>
+
+<h3>Approve Plan Before Build</h3>
+<p>The <strong>Approve plan before build</strong> toggle (off by default) adds a director checkpoint to the run itself. The orchestrator pauses once, right before the first step that changes files or produces the deliverable (the Implementer in a feature run, the Fixer in a bug fix, the Writer in a documentation run), after every step before it has finished, including a Skeptic gate on the plan when the shape has one. It presents a brief, not the whole plan: the approach, the files or artifacts that will change, the risks, what is out of scope, and the options that lost. Then it asks one question and waits: approve as is, state modifications, or reject with direction. Modifications (bounded changes that keep the approach) are authoritative: applied to the plan and the task list, recorded in the durable record when one is kept, never relitigated with a Skeptic. A rejection with direction goes back to the step that owns the plan, which revises it; the Skeptic gate re-runs when the shape has one, and the brief comes back for approval, at most three rounds. A plan rejected three times is not built: the run stops and records why. Once approved, the checkpoint does not fire again: a revise loop returning to that step does not re-ask. A research or analysis run that ends in a Writer pauses before the Writer, so you approve the synthesis with the research in hand; a shape with no file-changing or deliverable-producing step at all (a pure review) pauses before its first step so you approve the approach. A non-interactive run (CI, a schedule, an SDK pipeline without an approval hook) never blocks: it records that the plan proceeded without approval as a risk and continues. The Agent SDK export carries a real <code>_awd_approve_plan(brief)</code> hook returning <code>(text, kind)</code> that you can replace with your own UI. With memory on, the wait and the answer are logged to <code>shared.md</code>, so the live monitor shows the run waiting on you rather than idle.</p>
 
 <h2 id="hg-build">Build the Workflow</h2>
 
@@ -2030,6 +2040,142 @@ function clarifyFirstHint() {
   return r.join('\n');
 }
 
+// Director approval gate (Approve plan before build): the run pauses ONCE, right before
+// the checkpoint step, and presents the plan as it stands for the director to approve or
+// modify. The checkpoint is resolved statically from the canvas so the prompt names it:
+// the first step (topological order) whose role changes files or produces the deliverable;
+// a shape with no such step (research, review) checkpoints before its first step, so the
+// director approves the approach. Everything that ran before the checkpoint IS the plan -
+// a planner and a skeptic when the shape has them, an investigator, or nothing (then the
+// orchestrator writes a short plan itself). Off by default.
+// Roles that change files or produce the deliverable. A General agent counts: it may do
+// anything, and pausing before it is the safe direction (the resolver never consults tool
+// selections - selections are suggestions, never contracts). The others are deliberate:
+// planner, architect, researcher, debugger, analyst, appExplorer, designAnalyzer, reviewer,
+// adversary, and verifier read, judge, or advise - a shape made only of those pauses before
+// its first step so the director approves the approach.
+const APPROVAL_BUILD_ROLES = new Set(['coder', 'frontend', 'backend', 'writer', 'tester', 'general']);
+// Roles that OWN a plan: a rejection goes back to the last of these before the pause. A
+// read or judge step between the planner and the builder (a Researcher, a Code Reviewer)
+// never becomes the owner.
+const APPROVAL_PLAN_OWNER_ROLES = new Set(['planner', 'architect', 'debugger']);
+// Memoized on the structural signature (ids, types, roles, edges): the hint and the per-step
+// marker ask for the checkpoint once per agent per generation, and updatePrompt runs on
+// every keystroke - one topological sort per canvas shape, not one per call.
+let _approvalMemo = { sig: null, ids: null };
+// The steps that run alongside a node: its siblings under the same parallel fork (direct
+// children). Each carries the marker too, so an orchestrator that dispatches branch steps
+// from their own blocks cannot start one before the director answers.
+function approvalForkOf(nodeId) {
+  // The generators assign a node to the LAST parallel parent in topological order
+  // (nodeToForkId is overwritten in `parallels` order); resolve the same way.
+  const parents = state.connections.filter(c => c.to === nodeId).map(c => state.nodes.find(n => n.id === c.from)).filter(n => n && n.type === 'parallel');
+  if (!parents.length) return null;
+  if (parents.length === 1) return parents[0];
+  const order = topologicalSort().map(n => n.id);
+  return parents.reduce((best, n) => order.indexOf(n.id) > order.indexOf(best.id) ? n : best);
+}
+function approvalSiblingIds(nodeId) {
+  const fork = approvalForkOf(nodeId);
+  if (!fork) return [nodeId];
+  const kids = state.connections.filter(c => c.from === fork.id).map(c => c.to).filter(id => state.nodes.some(n => n.id === id && n.type === 'agent'));
+  return kids.indexOf(nodeId) === -1 ? [nodeId] : kids;
+}
+function approvalCheckpoint() {
+  const sig = graphShapeSig(true);
+  if (_approvalMemo.sig !== sig) {
+    // The SAME agent list every generator emits (topological order, unreachable nodes included
+    // and first): a stray builder the run would execute is a step the director approves before.
+    const agents = topologicalSort().filter(n => n && n.type === 'agent' && n.config);
+    let ids = null;
+    if (agents.length) {
+      const roleOf = n => AGENT_TYPES.some(a => a.id === n.config.agentType) ? n.config.agentType : 'general';   // unknown or missing role = General, as the rest of the app treats it
+      let idx = agents.findIndex(n => APPROVAL_BUILD_ROLES.has(roleOf(n)));
+      const builds = idx !== -1;   // any reachable step builds: the gate's wording, even when the pause moves earlier
+      if (idx === -1) idx = 0;
+      // Inside a per-repository lane the pause moves to the lane's FIRST step: one approval
+      // covers every repository, and every format (the SDK fans the lane out as one unit)
+      // pauses at the same place.
+      const laneMap = perRepoLaneMap();   // once per resolve, not once per agent
+      const fork = laneMap[agents[idx].id] || null;
+      if (fork) { const first = agents.findIndex(n => laneMap[n.id] === fork); if (first !== -1 && first < idx) idx = first; }
+      const group = approvalSiblingIds(agents[idx].id);
+      // Prior = every step that completes BEFORE the pause: never a sibling that runs alongside
+      // the checkpoint (those wait with it, and carry the marker).
+      const prior = agents.slice(0, idx).filter(n => group.indexOf(n.id) === -1).map(n => n.id);
+      // The plan owner is the last prior step that is not a review-loop node (a Skeptic or a
+      // Verifier attached to a step reviews the plan, it does not own it); the loop node that
+      // reviewed the owner (reviewLoopFor) re-runs after a rejection.
+      const priorNodes = prior.map(id => agents.find(a => a.id === id));
+      let owner = null, ownerAt = -1;
+      for (let k = priorNodes.length - 1; k >= 0; k--) { if (APPROVAL_PLAN_OWNER_ROLES.has(priorNodes[k].config.agentType)) { owner = priorNodes[k]; ownerAt = k; break; } }
+      if (!owner) for (let k = priorNodes.length - 1; k >= 0; k--) { if (!approvalIsReviewNode(priorNodes[k])) { owner = priorNodes[k]; ownerAt = k; break; } }
+      // The review node that re-runs after a rejection: the loop node attached to the owner,
+      // else the first hand-wired Skeptic or Verifier that followed the owner.
+      const reviewer = owner ? (priorNodes.find(n => n.config.reviewLoopFor === owner.id) || priorNodes.slice(ownerAt + 1).find(n => n.config.reviewLoopFor === undefined && isReviewRole(n.config.agentType)) || null) : null;   // a loop attached to another step never reviews the plan; a Code Reviewer reviews code, not the plan
+      // A plan produced by an `all` parallel group is owned by the whole group: every format
+      // re-dispatches all of it, never one member.
+      const ownerGroup = owner ? approvalSiblingIds(owner.id) : [];
+      const ownerForkNode = owner ? approvalForkOf(owner.id) : null;
+      const groupOwned = !!(ownerForkNode && ownerForkNode.config && ownerForkNode.config.strategy === 'all' && ownerGroup.length > 1);
+      ids = { node: agents[idx].id, prior: prior, group: group, builds: builds, owner: owner ? owner.id : null, reviewer: reviewer ? reviewer.id : null, ownerGroup: groupOwned ? ownerGroup : [] };
+    }
+    _approvalMemo = { sig: sig, ids: ids };
+  }
+  // Memo holds ids only: undo, redo, and a re-import replace node objects under the same
+  // ids, so the checkpoint always resolves to the LIVE nodes (labels included).
+  const ids = _approvalMemo.ids;
+  if (!ids) return null;
+  const index = {}; state.nodes.forEach(n => { index[n.id] = n; });
+  const byId = id => index[id];
+  const node = byId(ids.node);
+  if (!node) return null;   // cannot happen on a memo hit (the signature carries every id); defensive, never recursive
+  // Every field is a LIVE node (or list of nodes); callers never juggle ids and objects
+  return { node: node, prior: ids.prior.map(byId).filter(Boolean), group: ids.group.map(byId).filter(Boolean), builds: ids.builds, owner: ids.owner ? byId(ids.owner) || null : null, reviewer: ids.reviewer ? byId(ids.reviewer) || null : null, ownerGroup: ids.ownerGroup.map(byId).filter(Boolean) };
+}
+// Review nodes review a plan, they never own it: an attached review loop (reviewLoopFor) or a
+// hand-wired Skeptic / Verifier from the palette - the same role classification the review
+// machinery uses, so a dragged-in Skeptic is never mistaken for the Planner.
+function isReviewRole(agentType) { return agentType === 'adversary' || agentType === 'verifier'; }
+function approvalIsReviewNode(n) { return !!(n && n.config && (n.config.reviewLoopFor !== undefined || isReviewRole(n.config.agentType) || n.config.agentType === 'reviewer')); }
+function approvePlanHint(cpGiven) {
+  if (!state.approvePlan) return null;
+  const cp = cpGiven || approvalCheckpoint();
+  if (!cp) return null;
+  const label = '**' + cp.node.label + '**';
+  const builds = cp.builds;
+  const cpRole = AGENT_TYPES.some(a => a.id === cp.node.config.agentType) ? cp.node.config.agentType : 'general';
+  const r = [];
+  r.push('> **Director approval before the build.** The orchestrator (the top-level agent driving this workflow and spawning its steps) runs this checkpoint ONCE, before ' + label + ' starts' + (builds ? (APPROVAL_BUILD_ROLES.has(cpRole) ? ' - the first step that changes files or produces the deliverable' : ' - the first step of the per-repository lane that will build, so one approval covers every repository') : ' - this workflow builds nothing, so the director approves the approach before its first step') + (cp.prior.length ? ', and only after every step before it has completed, including any Skeptic gate on the plan.' : '. No step runs before it, so write the plan yourself first: a short approach for the whole run.'));
+  r.push('> - Present a BRIEF, not the whole plan: the approach in a few lines; the files, modules, or artifacts that will change; the risks and how each is handled; what is deliberately out of scope; and, where a step weighed options, the ones that lost and why. Readable in a minute.');
+  r.push('> - Then ask ONE question and wait: approve as is, state modifications, or reject with direction. Do not start ' + label + ' (or any step that runs alongside it) until the director has approved.');
+  r.push('> - **Modifications** (bounded changes that keep the approach) are authoritative: apply them to the plan and the task list' + (state.durableRecord ? ', record each one in the durable record as a decision (director modification -> resulting change)' : '') + ', and proceed. Do not relitigate them with a Skeptic and do not re-open the parts that were approved.');
+  const groupOwned = cp.ownerGroup.length > 1;
+  const who = groupOwned ? 'steps that produced the plan together (' + cp.ownerGroup.map(n => n.label).join(', ') + ' - re-dispatch all of them)'
+    : cp.owner ? 'step that owns the plan (' + cp.owner.label + ')'
+    : cp.prior.length ? 'step that owns the plan (none of the steps before the checkpoint owns a plan, so you revise it yourself)'
+    : 'step that owns the plan (you, since no step ran before the checkpoint)';
+  const revises = groupOwned ? 'they revise' : 'that step revises';
+  const reviewClause = cp.reviewer ? 'the ' + getAgentTypeName(cp.reviewer.config.agentType) + ' gate (' + cp.reviewer.label + ') re-runs scoped to what changed, ' : '';
+  const recordClause = state.durableRecord ? ' in the record' : '';
+  r.push('> - **Rejection with direction** (the approach itself changes) goes back to the ' + who + ' as authoritative input: ' + revises + ' the plan, ' + reviewClause + 'and you present the new brief for approval again. At most three approval rounds; a plan rejected three times is NOT built - stop the run and record the unresolved rejection' + recordClause + '. Nobody builds what the director refused.');
+  r.push('> - Fires once per approval: a revise loop that later returns to ' + label + ' does not ask again - the approved plan plus the reviewer\'s findings are the mandate. A later approval happens only if the director asks for one.');
+  r.push('> - If you are running non-interactively (no director available to answer - for example in CI, a scheduled run, or an SDK pipeline without an approval hook), do NOT block: record that the plan proceeded without director approval as an explicit risk in the plan' + (state.durableRecord ? ' and the record' : '') + ', and proceed.');
+  if (state.memoryEnabled) r.push('> - Log the wait and the answer in `shared.md` (the memory kickoff creates it - run the kickoff first if it has not run yet): append `' + ORCH_LOG_LINE.replace('{decision}', 'awaiting director approval of the plan') + '` before you ask, and `' + ORCH_LOG_LINE.replace('{decision}', 'plan approved by director (modifications: none | the list)') + '` when the answer arrives - the live monitor shows both.');
+  if (state.telemetryEnabled) r.push('> - Post a `gate.verdict` event with step `director-approval` and status `pass` (approved as is) or `revise` (modifications applied) when the answer arrives.');
+  return r.join('\n');
+}
+// Per-step marker at the checkpoint step only - the gate above says when; this says WHERE,
+// on the step itself, so the orchestrator cannot start it early. Generation-only.
+function approvePlanStepHint(node, cpGiven) {
+  if (!state.approvePlan || !node) return '';
+  const cp = cpGiven || approvalCheckpoint();   // generators resolve once and pass it down
+  if (!cp) return '';
+  if (!cp.group.some(g => g.id === node.id)) return '';
+  const alongside = cp.node.id !== node.id;
+  return '**Director approval checkpoint**: do not start this step' + (alongside ? ' (it runs alongside ' + cp.node.label + ')' : '') + ' until the orchestrator confirms the director has approved the plan - the orchestrator runs that approval (the Director approval gate in its own brief) and dispatches this step only after it passes. It fires once, on first arrival; a revise loop returning here does not ask again.';
+}
+
 function datadogGroundingHint() {
   if (!state.mcpDatadog) return null;
   const r = [];
@@ -2494,6 +2640,7 @@ let state = {
   consumeRecords: true,
   openSpecArtifacts: false,
   clarifyFirst: false,
+  approvePlan: false,
   mcpCustom: '',
   rulesPaths: [],
   productDocPaths: [],
@@ -3100,6 +3247,11 @@ function toggleClarifyFirst() {
   updatePrompt();
   savePrefs();
 }
+function toggleApprovePlan() {
+  state.approvePlan = $('approvePlanToggle').checked;
+  updatePrompt();
+  savePrefs();
+}
 
 function setMemoryEnabled(enabled) {
   state.memoryEnabled = enabled;
@@ -3213,6 +3365,7 @@ function savePrefs() {
       mcpDatadog: state.mcpDatadog,
       consumeRecords: state.consumeRecords,
       clarifyFirst: state.clarifyFirst,
+      approvePlan: state.approvePlan,
       mcpCustom: $('mcpCustomNotes') ? $('mcpCustomNotes').value : '',
       rulesPaths: state.rulesPaths,
       productDocPaths: state.productDocPaths,
@@ -3302,6 +3455,11 @@ function restorePrefs() {
       state.clarifyFirst = !!p.clarifyFirst;
       const cb = $('clarifyFirstToggle');
       if (cb) cb.checked = state.clarifyFirst;
+    }
+    if (p.approvePlan !== undefined) {
+      state.approvePlan = !!p.approvePlan;
+      const cb = $('approvePlanToggle');
+      if (cb) cb.checked = state.approvePlan;
     }
     if (p.mcpCustom !== undefined) {
       state.mcpCustom = p.mcpCustom;
@@ -5175,7 +5333,7 @@ function addNode(type, x, y, label, config) {
   // Skeptic/Verifier nodes are created without an explicit prompt (resolved lazily). Bake the
   // resolved role template into config.prompt so the Agent Prompt field shows it like every
   // other generated agent - editable in place, or left as-is and extended via Agent Context.
-  if (type === 'agent' && (node.config.agentType === 'adversary' || node.config.agentType === 'verifier') && !(node.config.prompt && node.config.prompt.trim())) {
+  if (type === 'agent' && isReviewRole(node.config.agentType) && !(node.config.prompt && node.config.prompt.trim())) {
     node.config.prompt = getEffectivePrompt(node);
   }
   state.nodes.push(node);
@@ -5402,7 +5560,7 @@ function hasReviewLoop(targetId) { return !!getReviewLoop(targetId); }
 // Verifier) cannot itself be reviewed.
 function canAttachReviewLoop(node) {
   return !!node && (node.type === 'agent' || node.type === 'task') &&
-    !(node.config && (node.config.agentType === 'adversary' || node.config.agentType === 'verifier'));
+    !(node.config && isReviewRole(node.config.agentType));
 }
 // Attaches a review loop of `kind` to targetId in one undoable action:
 // target -> reviewer -> decision, decision --yes--> original downstream(s),
@@ -5591,7 +5749,7 @@ function updateConfig() {
       const backEdge = state.connections.find(c => c.from === node.id && c.label === noLabel);
       const currentTarget = backEdge ? backEdge.to : node.config.reviewLoopDecisionFor;
       const candidates = state.nodes
-        .filter(n => (n.type === 'agent' || n.type === 'task') && !(n.config && (n.config.agentType === 'adversary' || n.config.agentType === 'verifier')))
+        .filter(n => (n.type === 'agent' || n.type === 'task') && !(n.config && isReviewRole(n.config.agentType)))
         .map(n => ({ value: n.id, label: escHtml(n.label || '') }));
       if (candidates.length) {
         H[H.length] = configSelect(`On "${escHtml(noLabel)}", route back to`, 'reviewLoopBackTo', currentTarget, candidates);
@@ -9199,12 +9357,14 @@ function clearCanvas(skipConfirm) {
   state.mcpDatadog = false;
   state.consumeRecords = true;
   state.clarifyFirst = false;
+  state.approvePlan = false;
   state.mcpCustom = '';
   const _matl = $('mcpAtlassianToggle'); if (_matl) _matl.checked = true;
   const _msb = $('mcpCodeSearchToggle'); if (_msb) _msb.checked = true;
   const _mdd = $('mcpDatadogToggle'); if (_mdd) _mdd.checked = false;
   const _crt = $('consumeRecordsToggle'); if (_crt) _crt.checked = true;
   const _clt = $('clarifyFirstToggle'); if (_clt) _clt.checked = false;
+  const _apt = $('approvePlanToggle'); if (_apt) _apt.checked = false;
   const _mcn = $('mcpCustomNotes'); if (_mcn) _mcn.value = '';
   // state.rulesPaths, state.productDocPaths, and state.verifyPaths are intentionally NOT reset
   // here: they are sticky repo-level context that carries across workflows in the same repo. Only
@@ -9697,6 +9857,7 @@ function explainProbe(text) {
 const EXPLAIN_SECTION_LINKS = {
   'Requirements': 'requirements',
   'Clarify-first gate': 'requirements',
+  'Plan approval gate': 'requirements',
   'Atlassian ticket fetch': 'requirements',
   'Workflow Context (plan)': 'workflow-context',
   'App Under Test': 'app-under-test',
@@ -9847,6 +10008,8 @@ function explainAgentNode(node, format) {
   }
 
   const br = browserStepHint(node);
+  const apS = approvePlanStepHint(node);
+  rows.push(exRow('Director approval checkpoint', !!apS, apS ? 'Approve-plan toggle on - this step (or a step beside it) is where the run pauses for the director' : (state.approvePlan ? 'Approve-plan toggle on - the pause lands on another step' : 'Approve-plan toggle off'), apS));
   const pr = perRepoStepHint(node);
   rows.push(exRow('Per-repo lane', !!pr, pr ? 'inside a per-repository parallel lane - one instance per repository, each scoped to its own repo' : 'not inside a per-repository lane', pr));
   rows.push(exRow('Browser step hint', !!br,
@@ -10222,6 +10385,9 @@ function explainWorkflow(format) {
   rows.push(exRow('Grounding in prior records', !!cr, cr ? 'Ground-in-prior-records toggle on - three-tier lookup, Current behavior first; also scans any openspec/ docs found (bounded: names first, grep to narrow, few files opened)' : 'Ground-in-prior-records toggle off', cr));
   const cl = clarifyFirstHint();
   rows.push(exRow('Clarify-first gate', !!cl, cl ? 'Clarify-requirements-first toggle on - the workflow opens with one round of clarifying questions before any work begins; answers fold into the plan' : 'Clarify-first toggle off', cl));
+  const _apCp = state.approvePlan ? approvalCheckpoint() : null;
+  const ap = approvePlanHint(_apCp);
+  rows.push(exRow('Plan approval gate', !!ap, ap ? 'Approve-plan-before-build toggle on - the run pauses once before ' + (_apCp ? _apCp.node.label : 'the first step') + ' for the director to approve or modify the plan' : (state.approvePlan ? 'Approve-plan toggle on, but the canvas has no agent step to pause before' : 'Approve-plan toggle off - the run proceeds from plan to build without a director checkpoint'), ap));
   const ddG = datadogGroundingHint();
   rows.push(exRow('Datadog grounding', !!ddG, ddG ? 'Datadog toggle on - bounded plan-shaping telemetry read' : 'Datadog toggle off', ddG));
   const cm = customMcpHint();
@@ -10792,11 +10958,18 @@ function perRepoLaneJoinId(forkId) { return perRepoLaneWalk(forkId).joinId; }
 // site and the renderer ask "which per-repo lane holds this node" for every agent.
 // Fast path: a graph with no per-repo fork (the common case) costs one scan, no strings.
 let _perRepoMemo = { sig: null, map: null };
+// ONE definition of "graph shape" for every memo that caches a topological fact: ids, types,
+// roles, strategies, decision No labels (revise back-edges depend on them), and every edge
+// with its label. Labels of nodes are NOT shape: memos store ids and re-resolve live nodes.
+function graphShapeSig(withRoles) {
+  // withRoles: roles and review-loop attachments are shape for the approval checkpoint
+  // (owner and reviewer depend on them) but not for lane membership.
+  return state.nodes.map(n => n.id + ':' + n.type + ':' + ((n.config && n.config.strategy) || '') + (withRoles ? ':' + ((n.config && n.config.agentType) || '') + ':' + ((n.config && n.config.reviewLoopFor) || '') : '') + ':' + (n.type === 'decision' ? ((n.config && n.config.noLabel) || '') : '')).join('|')
+    + '#' + state.connections.map(c => c.from + '>' + c.to + '>' + (c.label || '')).join('|');
+}
 function perRepoLaneMap() {
   if (!state.nodes.some(isPerRepoFork)) return {};
-  // Revise back-edges depend on each decision's No label, so it is part of the shape
-  const sig = state.nodes.map(n => n.id + ':' + n.type + ':' + ((n.config && n.config.strategy) || '') + ':' + (n.type === 'decision' ? ((n.config && n.config.noLabel) || '') : '')).join('|')
-    + '#' + state.connections.map(c => c.from + '>' + c.to + '>' + (c.label || '')).join('|');
+  const sig = graphShapeSig();
   if (_perRepoMemo.sig === sig) return _perRepoMemo.map;
   const map = {};
   state.nodes.filter(isPerRepoFork).forEach(f => perRepoLaneNodes(f.id).forEach(n => { if (!map[n.id]) map[n.id] = f.id; }));
@@ -10911,6 +11084,8 @@ function pushSharedHints(p, format, includeEffort) {
   if (cr) { p.push(cr); p.push(''); }
   const cl = clarifyFirstHint();
   if (cl) { p.push(cl); p.push(''); }
+  const ap = approvePlanHint();
+  if (ap) { p.push(ap); p.push(''); }
   const dd = datadogGroundingHint();
   if (dd) { p.push(dd); p.push(''); }
   const cm = customMcpHint();
@@ -10919,6 +11094,7 @@ function pushSharedHints(p, format, includeEffort) {
 function genWorkflow() {
   const story = getStory(), name = getName();
   const ordered = topologicalSort();
+  const _apCp = state.approvePlan ? approvalCheckpoint() : null;   // once per generation, passed to every per-step site
   const agents = ordered.filter(n => n.type === 'agent');
   const decisions = ordered.filter(n => n.type === 'decision');
   const parallels = ordered.filter(n => n.type === 'parallel');
@@ -10975,6 +11151,7 @@ function genWorkflow() {
           const _ddS = datadogStepHint(s); if (_ddS) p.push('  ' + _ddS);
           const _brS = browserStepHint(s); if (_brS) p.push('  ' + _brS);
           const _prS = perRepoStepHint(s); if (_prS) p.push('  ' + _prS);
+          const _apS = approvePlanStepHint(s, _apCp); if (_apS) p.push('  ' + _apS);
           const _csS = codeSearchStepHint(s); if (_csS) p.push('  ' + _csS);
           const _veS = verifyInstructionsStepHint(s); if (_veS) p.push('  ' + _veS);
           const _fdS = foundDefectNote(s); if (_fdS) p.push('  ' + _fdS);
@@ -11002,6 +11179,7 @@ function genWorkflow() {
         const _ddN = datadogStepHint(node); if (_ddN) p.push('- ' + _ddN);
         const _brN = browserStepHint(node); if (_brN) p.push('- ' + _brN);
         const _prN = perRepoStepHint(node); if (_prN) p.push('- ' + _prN);
+        const _apN = approvePlanStepHint(node, _apCp); if (_apN) p.push('- ' + _apN);
         const _csN = codeSearchStepHint(node); if (_csN) p.push('- ' + _csN);
         const _veN = verifyInstructionsStepHint(node); if (_veN) p.push('- ' + _veN);
         const _fdN = foundDefectNote(node); if (_fdN) p.push('- ' + _fdN);
@@ -11099,6 +11277,7 @@ function genWorkflow() {
 function genSubAgents() {
   const story = getStory(), name = getName();
   const ordered = topologicalSort();
+  const _apCp = state.approvePlan ? approvalCheckpoint() : null;   // once per generation, passed to every per-step site
   const agents = ordered.filter(n => n.type === 'agent');
   const parallels = ordered.filter(n => n.type === 'parallel');
   const slugMap = buildAgentSlugMap();
@@ -11202,6 +11381,7 @@ function genSubAgents() {
     const _ddSa = datadogStepHint(node); if (_ddSa) { promptLines.push(''); promptLines.push(_ddSa); }
     const _brSa = browserStepHint(node); if (_brSa) { promptLines.push(''); promptLines.push(_brSa); }
     const _prSa = perRepoStepHint(node); if (_prSa) { promptLines.push(''); promptLines.push(_prSa); }
+    const _apSa = approvePlanStepHint(node, _apCp); if (_apSa) { promptLines.push(''); promptLines.push(_apSa); }
     const _csSa = codeSearchStepHint(node); if (_csSa) { promptLines.push(''); promptLines.push(_csSa); }
     const _veSa = verifyInstructionsStepHint(node); if (_veSa) { promptLines.push(''); promptLines.push(_veSa); }
     const _fdSa = foundDefectNote(node); if (_fdSa) { promptLines.push(''); promptLines.push(_fdSa); }
@@ -11376,6 +11556,7 @@ function genSubAgents() {
 function genAgentTeams() {
   const story = getStory(), name = getName();
   const ordered = topologicalSort();
+  const _apCp = state.approvePlan ? approvalCheckpoint() : null;   // once per generation, passed to every per-step site
   const agents = ordered.filter(n => n.type === 'agent');
   const parallels = ordered.filter(n => n.type === 'parallel');
   const decisions = ordered.filter(n => n.type === 'decision');
@@ -11465,6 +11646,7 @@ function genAgentTeams() {
     const _ddAt = datadogStepHint(node); if (_ddAt) lines.push(`${pre}  ${_ddAt}`);
     const _brAt = browserStepHint(node); if (_brAt) lines.push(`${pre}  ${_brAt}`);
     const _prAt = perRepoStepHint(node); if (_prAt) lines.push(`${pre}  ${_prAt}`);
+    const _apAt = approvePlanStepHint(node, _apCp); if (_apAt) lines.push(`${pre}  ${_apAt}`);
     const _csAt = codeSearchStepHint(node); if (_csAt) lines.push(`${pre}  ${_csAt}`);
     const _veAt = verifyInstructionsStepHint(node); if (_veAt) lines.push(`${pre}  ${_veAt}`);
     const _fdAt = foundDefectNote(node); if (_fdAt) lines.push(`${pre}  ${_fdAt}`);
@@ -11614,6 +11796,8 @@ function genAgentTeams() {
 function genAgentSDK() {
   const story = getStory(), name = getName();
   const ordered = topologicalSort();
+  const _sdkCp = state.approvePlan ? approvalCheckpoint() : null;   // once per export: banner, helper, and hook share it
+  const _sdkVar = n => n.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();   // ONE label-to-identifier rule for the whole export
   const agents = ordered.filter(n => n.type === 'agent');
   const parallels = ordered.filter(n => n.type === 'parallel');
   const slugMap = buildAgentSlugMap();
@@ -11694,6 +11878,21 @@ function genAgentSDK() {
   if (state.clarifyFirst) {
     p.push('# ── Clarify ambiguous requirements before planning ───────────────────────────');
     _sdkHintLines(clarifyFirstHint());
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
+  const _sdkAp = approvePlanHint(_sdkCp);
+  if (_sdkAp) {
+    p.push('# ── Director approval before the build ──────────────────────────────────────');
+    _sdkHintLines(_sdkAp);
+    p.push('#');
+    p.push('# In THIS script the pause is the _awd_approve_plan hook below. It reads the console and');
+    p.push('# writes nothing else: the shared.md log lines and the telemetry event above are the');
+    p.push('# prose orchestrator\'s duty - add them to your hook if the live monitor should see the');
+    p.push('# wait. On a rejection the script re-runs EVERY step before the checkpoint as one unit');
+    p.push('# (_awd_plan), where the prose formats re-dispatch only the plan owner and what follows:');
+    p.push('# simpler and always re-runnable here, at the cost of repeating any research or lanes');
+    p.push('# that precede the plan, at most twice.');
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
@@ -11798,7 +11997,7 @@ function genAgentSDK() {
 
   // Generate agent definitions
   agents.forEach(node => {
-    const varName = node.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+    const varName = _sdkVar(node);
     const at = getAgentTypeName(node.config.agentType);
     // No hard tools param (owner ruling: selected tools are suggestions, never a
     // restriction) - the suggestion rides as a comment plus an instruction line.
@@ -11864,6 +12063,50 @@ function genAgentSDK() {
     p.push('');
   });
 
+  // Director approval hook (Approve plan before build): a real pause in the pipeline, not a
+  // comment. Replace _awd_approve_plan with your own UI (same (text, kind) contract); the default reads the console and never
+  // blocks a non-interactive run (no TTY: proceed, and say so).
+  if (_sdkCp) {
+    p.push('');
+    p.push('def _awd_fmt(x):');
+    p.push('    """A context as readable text: a parallel group hands over a list, a step a string."""');
+    p.push('    return "\\n\\n".join(map(str, x)) if isinstance(x, (list, tuple)) else str(x)');
+    p.push('');
+    p.push('def _awd_ask_direction():');
+    p.push('    """A refusal without direction: ask once; nothing given means stop the run."""');
+    p.push('    try:');
+    p.push('        direction = input("Rejected. What should change? (press Enter to stop the run): ").strip()');
+    p.push('    except EOFError:');
+    p.push('        direction = ""');
+    p.push('    return (direction, "reject") if direction else ("", "stop")');
+    p.push('');
+    p.push('def _awd_approve_plan(brief: str):');
+    p.push('    """Director approval checkpoint: show the plan as it stands; wait for approve, modifications, or "reject: <direction>".');
+    p.push('    Shows the FULL output of the steps so far (this script has no briefing step; the prose formats ask the orchestrator for a brief).');
+    p.push('    Returns (text, kind) with kind in approve / modify / reject / stop / unattended. Non-interactive: never blocks."""');
+    p.push('    import sys');
+    p.push('    print("\\n=== Director approval: the plan as it stands (full output of the steps so far) ===\\n" + brief + "\\n")');
+    p.push('    if sys.stdin is None or not sys.stdin.isatty():');
+    p.push('        print("No director available (non-interactive): proceeding without approval - carried as a risk.")');
+    p.push('        return "", "unattended"');
+    p.push('    try:');
+    p.push('        answer = input("Approve as is (press Enter), state modifications, or type reject: <direction>: ").strip()');
+    p.push('    except EOFError:');
+    p.push('        print("Input closed (non-interactive): proceeding without approval - carried as a risk.")');
+    p.push('        return "", "unattended"');
+    p.push('    lowered = answer.lower().rstrip(".!")');
+    p.push('    if lowered in ("", "approve", "approved", "approve as is", "yes", "y", "ok", "okay", "lgtm"):');
+    p.push('        return "", "approve"');
+    p.push('    import re');
+    p.push('    if lowered in ("no", "n", "nope", "stop", "do not build this", "don\'t build this", "do not proceed"):');
+    p.push('        return _awd_ask_direction()');
+    p.push('    rejected = re.match(r"^reject(ed)?\\b", lowered)');
+    p.push('    if rejected:');
+    p.push('        direction = answer[rejected.end():].lstrip(":,; ").strip()');
+    p.push('        return (direction, "reject") if direction else _awd_ask_direction()');
+    p.push('    return answer, "modify"');
+    p.push('');
+  }
   // Generate orchestration function
   p.push('');
   p.push(`async def run_${safeName}():`);
@@ -11925,13 +12168,69 @@ function genAgentSDK() {
   });
 
   let i = 0;
-  let lastResultVar = 'requirements';
+  // With a plan stretch before the checkpoint, the loop writes that stretch on the unit's own
+  // context variable from the first line, so no emitted text is rewritten afterwards.
+  const _sdkHasPlan = !!(_sdkCp && _sdkCp.prior.length);
+  let lastResultVar = _sdkHasPlan ? '_awd_ctx' : 'requirements';
   const emittedPar = new Set();
+  // Director approval (Approve plan before build): every step that runs BEFORE the checkpoint
+  // group is emitted ONCE as `async def _awd_plan(_awd_ctx)` - the loop's own output, captured
+  // and re-indented - so a rejection re-runs the whole plan stretch through the same code that
+  // ran it first. Every shape the loop can emit is re-runnable, and there is no second step
+  // emitter to keep in sync. Each member sees its first-pass input, the rejected attempt, and the
+  // direction, because they ride in on `_awd_ctx`.
+  const _sdkPlanStart = p.length;
+  const _sdkApprove = (label) => {
+    const planLines = p.splice(_sdkPlanStart);
+    const hasPlan = _sdkHasPlan;
+    if (hasPlan) {
+      p.push('    async def _awd_plan(_awd_ctx):');
+      p.push('        """The steps before the director checkpoint, as one unit: run on the requirements first, again on a rejection."""');
+      planLines.forEach(l => p.push(l ? '    ' + l : l));   // indentation only: the stretch was written on _awd_ctx from its first line
+      p.push(`        return ${lastResultVar}`);
+      p.push('');
+      p.push('    _ctx_before_approval = await _awd_plan(requirements)');
+    } else {
+      p.push('    _ctx_before_approval = requirements');
+    }
+    p.push(`    # Director approval checkpoint: before ${label} (approve / modifications / "reject: <direction>"; at most three rounds)`);
+    p.push('    for _round in range(3):');
+    p.push('        _brief = _awd_fmt(_ctx_before_approval)');
+    p.push('        _answer, _kind = _awd_approve_plan(_brief)');
+    p.push('        if _kind == "stop":');
+    p.push('            raise SystemExit("Plan rejected by the director without direction: not building what was refused.")');
+    p.push('        if _kind != "reject":');
+    p.push('            break');
+    p.push('        if _round == 2:');
+    p.push('            raise SystemExit("Plan rejected three times by the director: not building what was refused.")');
+    if (hasPlan) {
+      p.push('        # Rejected: the whole plan stretch runs again - on the requirements, the rejected attempt, and the direction');
+      p.push('        _ctx_before_approval = await _awd_plan(f"{requirements}\\n\\nPrevious attempt (rejected by the director):\\n{_brief}\\n\\nDirector direction (authoritative):\\n{_answer}")');
+    } else {
+      p.push('        # Rejected, but no step runs before this checkpoint, so nothing here can revise the plan.');
+      p.push('        # Nobody builds what the director refused: stop, and hand the direction back.');
+      p.push('        raise SystemExit("Plan rejected by the director and this script cannot revise it here. Direction: " + _answer)');
+    }
+    p.push('    if _kind == "approve":');
+    p.push('        _approved = _brief');
+    p.push('    elif _kind == "unattended":');
+    p.push('        _approved = f"{_brief}\\n\\nDirector approval was not available (non-interactive run): the plan proceeded WITHOUT director approval - carry this as an explicit risk in the plan and the record."');
+    p.push('    else:');
+    p.push('        _approved = f"{_brief}\\n\\nDirector modifications (authoritative): {_answer}"');
+    lastResultVar = '_approved';
+  };
   while (i < agents.length) {
     const node = agents[i];
     if (emittedPar.has(node.id)) { i++; continue; }
-    const varName = node.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+    const varName = _sdkVar(node);
     const isParallel = parallelChildren.has(node.id);
+    if (_sdkCp) {
+      // The checkpoint step may sit anywhere in a parallel group or a per-repo lane: the
+      // hook lands before the group that contains it, so no member starts early.
+      // One definition of "runs alongside": the checkpoint's sibling set from the resolver (an
+      // in-lane checkpoint is always the lane's first step, a direct child of its fork).
+      if (_sdkCp.group.some(g => g.id === node.id)) _sdkApprove(_sdkCp.node.label);
+    }
 
     if (isParallel) {
       const siblings = agents.filter(a => nodeToForkId[a.id] === nodeToForkId[node.id]);
@@ -11943,7 +12242,7 @@ function genAgentSDK() {
         p.push(`    _repos = [${getRepositories().map(r => JSON.stringify(r.path)).join(', ')}] or ['.']`);
         p.push('    async def _lane(repo):');
         p.push(`        _ctx = f"{${lastResultVar}}\\n\\nRepository: {repo} - work in this repository only"`);
-        laneAgents.forEach(a => { const vn = a.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase(); p.push(`        _ctx = await ${vn}.run(context=_ctx)`); });
+        laneAgents.forEach(a => { const vn = _sdkVar(a); p.push(`        _ctx = await ${vn}.run(context=_ctx)`); });
         p.push('        return _ctx');
         p.push('    results = await asyncio.gather(*[_lane(_r) for _r in _repos])');
         lastResultVar = 'results';
@@ -11954,11 +12253,11 @@ function genAgentSDK() {
       }
       p.push('    # Parallel execution');
       const taskNames = siblings.map(s => {
-        const vn = s.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+        const vn = _sdkVar(s);
         return `${vn}_task`;
       });
       siblings.forEach(s => {
-        const vn = s.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+        const vn = _sdkVar(s);
         p.push(`    ${vn}_task = asyncio.create_task(${vn}.run(context=${lastResultVar}))`);
       });
       const _sdkStrat = forkStrategyOf(nodeToForkId[node.id]);
@@ -11968,7 +12267,7 @@ function genAgentSDK() {
         p.push('    results = [t.result() for t in done]');
       } else {
         p.push(`    results = await asyncio.gather(${taskNames.join(', ')})`);
-        p.push(`    ${siblings.map((s, j) => s.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase() + '_result').join(', ')} = results`);
+        p.push(`    ${siblings.map((s, j) => _sdkVar(s) + '_result').join(', ')} = results`);
       }
       lastResultVar = 'results';
       siblings.forEach(s => emittedPar.add(s.id));
@@ -12016,6 +12315,7 @@ function genAgentSDK() {
 function genClaudePrompt() {
   const story = getStory(), name = getName();
   const ordered = topologicalSort();
+  const _apCp = state.approvePlan ? approvalCheckpoint() : null;   // once per generation, passed to every per-step site
   const agents = ordered.filter(n => n.type === 'agent');
   const decisions = ordered.filter(n => n.type === 'decision');
   const parallels = ordered.filter(n => n.type === 'parallel');
@@ -12089,6 +12389,7 @@ function genClaudePrompt() {
           const _ddCpS = datadogStepHint(s); if (_ddCpS) p.push(_ddCpS);
           const _brCpS = browserStepHint(s); if (_brCpS) p.push(_brCpS);
           const _prCpS = perRepoStepHint(s); if (_prCpS) p.push(_prCpS);
+          const _apCpS = approvePlanStepHint(s, _apCp); if (_apCpS) p.push(_apCpS);
           const _csCpS = codeSearchStepHint(s); if (_csCpS) p.push(_csCpS);
           const _veCpS = verifyInstructionsStepHint(s); if (_veCpS) p.push(_veCpS);
           const _fdCpS = foundDefectNote(s); if (_fdCpS) p.push(_fdCpS);
@@ -12121,6 +12422,7 @@ function genClaudePrompt() {
         const _ddCpN = datadogStepHint(node); if (_ddCpN) p.push(_ddCpN);
         const _brCpN = browserStepHint(node); if (_brCpN) p.push(_brCpN);
         const _prCpN = perRepoStepHint(node); if (_prCpN) p.push(_prCpN);
+        const _apCpN = approvePlanStepHint(node, _apCp); if (_apCpN) p.push(_apCpN);
         const _csCpN = codeSearchStepHint(node); if (_csCpN) p.push(_csCpN);
         const _veCpN = verifyInstructionsStepHint(node); if (_veCpN) p.push(_veCpN);
         const _fdCpN = foundDefectNote(node); if (_fdCpN) p.push(_fdCpN);

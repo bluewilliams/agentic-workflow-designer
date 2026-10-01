@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## plan-approval-gate
+
+- record: .workflow/plan-approval-gate.md
+- intent: an off-by-default "Approve plan before build" toggle: the run pauses ONCE before the first step that changes files or produces the deliverable (resolved statically over the agent list the generators emit: coder / frontend / backend / writer / tester / general, an unknown role counting as general; no-builder shapes pause before their first step; an in-lane checkpoint moves to the lane start), presents a brief (approach, files, risks, out of scope, options that lost), asks one question and waits for approve / modifications (authoritative, recorded, never relitigated) / reject with direction (the plan OWNER, never a Skeptic or Verifier that reviewed it, revises; its review gate re-runs; three rounds at most, then the run stops before any further revision); fires once per approval; non-interactive never blocks. Shared-hint emission for the four prose formats, a per-step marker on the checkpoint step, a real approve_plan pause in the SDK export, Explain row, memory log lines, telemetry gate.verdict.
+- files: index.html (toggle, state, prefs, approvalCheckpoint, approvePlanHint, approvePlanStepHint at six sites, SDK helper + hook, Explain row + link, help section), tests.html (Plan approval gate suite + prefs test), README.md
+- status: current | date: 2026-09-30 | note: created; three-way answer; twelve review rounds; the director kept the full SDK design; exports executed with scripted answers (caught the reject regex). 1783 -> 1796.
+
 ## new-project-preset
 
 - record: .workflow/new-project-preset.md

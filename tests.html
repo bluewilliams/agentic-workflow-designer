@@ -847,6 +847,7 @@ describe('Persistence', () => {
   });
 
   describe('savePrefs / restorePrefs', () => {
+    afterEach(() => { try { localStorage.removeItem('awd_prefs'); } catch (e) { /* storage may be unavailable */ } });   // awd_ storage never leaks past a failing assertion
     it('should roundtrip preferences through save and restore', () => {
       win.state.defaultModel = 'sonnet-4.6';
       win.state.memoryEnabled = true;
@@ -868,6 +869,17 @@ describe('Persistence', () => {
       win.state.memoryEnabled = true;
       win.restorePrefs();
       expect(win.state.memoryEnabled).toBe(false);
+    });
+    it('approvePlan persists in awd_prefs, restores with its checkbox, and survives the early-save window like clarifyFirst', () => {
+      localStorage.setItem('awd_prefs', JSON.stringify({ approvePlan: true, exportFormat: 'sdk' }));
+      win.restorePrefs();
+      expect(win.state.approvePlan).toBe(true);
+      expect(win.document.getElementById('approvePlanToggle').checked).toBe(true);
+      expect(JSON.parse(localStorage.getItem('awd_prefs')).approvePlan).toBe(true);
+      win.document.getElementById('approvePlanToggle').checked = false;
+      win.toggleApprovePlan();
+      expect(win.state.approvePlan).toBe(false);
+      expect(JSON.parse(localStorage.getItem('awd_prefs')).approvePlan).toBe(false);
     });
     it('should not clobber a saved default-false toggle during restore (clarifyFirst regression)', () => {
       // setExportFormat/setDefaultModel call savePrefs early in restorePrefs, before clarifyFirst
@@ -1923,6 +1935,472 @@ describe('Consume prior records (read side)', () => {
     win.state.consumeRecords = true;
     const h = win.consumeRecordsHint();
     expect(h).toNotContain('```');
+  });
+});
+
+// ─── Plan approval gate (Approve plan before build: the director checkpoint) ─────────────
+describe('Plan approval gate (Approve plan before build)', () => {
+  let _saved;
+  beforeEach(() => { resetState(); _saved = { memoryEnabled: win.state.memoryEnabled, durableRecord: win.state.durableRecord, clarifyFirst: win.state.clarifyFirst, telemetryEnabled: win.state.telemetryEnabled, repositories: win.state.repositories }; win.state.approvePlan = false; });
+  afterEach(() => { win.state.approvePlan = false; Object.assign(win.state, _saved); resetState(); try { localStorage.removeItem('awd_prefs'); } catch (e) { /* storage may be unavailable */ } });   // one failing assertion never leaks shared state into later suites; the id-keyed memo self-invalidates; awd_ storage never crosses tests
+  const GATE = 'Director approval before the build';
+  const MARK = 'Director approval checkpoint';
+  it('is OFF by default: no hint, no marker, nothing in any format', () => {
+    buildTestWorkflow('linear');
+    expect(win.state.approvePlan).toBe(false);
+    expect(win.approvePlanHint()).toBe(null);
+    expect(win.approvePlanStepHint(win.state.nodes.find(n => n.label === 'Implementer'))).toBe('');
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genAgentSDK(), win.genClaudePrompt()].forEach(o => { expect(o).toNotContain(GATE); expect(o).toNotContain(MARK); expect(o).toNotContain('_awd_approve_plan'); });
+  });
+  it('resolves the checkpoint to the first step that changes files or produces the deliverable: Implementer (feature), Fixer (bugfix), Doc Writer (documentation), Repo Implementer (cross-repo)', () => {
+    win.state.approvePlan = true;
+    win.loadPreset('feature');
+    let cp = win.approvalCheckpoint();
+    expect(cp.node.label).toBe('Implementer');
+    expect(cp.prior.map(n => n.label).join(',')).toBe('Planner,Skeptic review: Planner');   // the plan AND its skeptic run before the pause
+    win.loadPreset('bugfix');
+    cp = win.approvalCheckpoint();
+    expect(cp.node.label).toBe('Fixer');
+    expect(cp.prior.map(n => n.label).join(',')).toBe('Investigator');                    // no planner: the investigation is the plan
+    win.loadPreset('documentation');
+    expect(win.approvalCheckpoint().node.label).toBe('Doc Writer');                         // a writer produces the deliverable
+    win.loadPreset('cross_repo');
+    expect(win.approvalCheckpoint().node.label).toBe('Repo Implementer');
+    win.loadPreset('new_project');
+    expect(win.approvalCheckpoint().node.label).toBe('Scaffolder');
+    win.loadPreset('testing');
+    expect(win.approvalCheckpoint().node.label).toBe('Test Suite Writer');                    // a tester that WRITES the suite produces the deliverable
+    win.loadPreset('parallel_research');
+    const rcp = win.approvalCheckpoint();                                                       // mode-aware preset: assert by role, not label
+    expect(rcp.node.config.agentType).toBe('writer');                                           // research ending in a writer pauses before the writer
+    expect(rcp.prior.some(n => n.config.agentType === 'researcher')).toBe(true);                 // with the research in hand
+    win.AGENT_TYPES.forEach(a => { if (!win.APPROVAL_BUILD_ROLES.has(a.id)) expect(['planner', 'architect', 'researcher', 'debugger', 'analyst', 'appExplorer', 'designAnalyzer', 'reviewer', 'adversary', 'verifier'].indexOf(a.id) !== -1).toBe(true); });   // every role classified deliberately; General builds (pausing early is the safe direction)
+    resetState();
+    const iu = win.addNode('input', 0, 0, 'Spec');
+    const pu = win.addNode('agent', 200, 0, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'p', maxTurns:5 });
+    const xu = win.addNode('agent', 400, 0, 'Legacy Engineer', { agentType:'engineer', model:'opus-5', tools:['Read','Write'], prompt:'x', maxTurns:5 });   // a retired or hand-edited role id
+    const wu = win.addNode('agent', 600, 0, 'Doc Writer', { agentType:'writer', model:'opus-5', tools:['Read','Write'], prompt:'w', maxTurns:5 });
+    win.addConnection(iu.id, pu.id); win.addConnection(pu.id, xu.id); win.addConnection(xu.id, wu.id);
+    expect(win.approvalCheckpoint().node.label).toBe('Legacy Engineer');                         // an unknown role is General, a builder: the pause never lands after it
+    resetState();
+    expect(win.approvalCheckpoint()).toBe(null);                                             // empty canvas: nothing to checkpoint
+    expect(win.approvePlanHint()).toBe(null);
+  });
+  it('a shape with no building step checkpoints before its first step, and says so; a shape with nothing before the checkpoint tells the orchestrator to write the plan itself', () => {
+    win.state.approvePlan = true;
+    resetState();
+    win.addNode('agent', 0, 0, 'Explorer', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'x', maxTurns:5 });
+    win.addNode('agent', 200, 0, 'Analyst', { agentType:'analyst', model:'opus-5', tools:['Read'], prompt:'y', maxTurns:5 });
+    let cp = win.approvalCheckpoint();
+    expect(cp.node.label).toBe('Explorer');
+    expect(cp.prior.length).toBe(0);
+    let h = win.approvePlanHint();
+    expect(h).toContain('this workflow builds nothing, so the director approves the approach before its first step');
+    expect(h).toContain('write the plan yourself first');
+    resetState();
+    win.addNode('agent', 0, 0, 'Solo Builder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'z', maxTurns:5 });
+    h = win.approvePlanHint();
+    expect(h).toContain('before **Solo Builder** starts - the first step that changes files or produces the deliverable');
+    expect(h).toContain('No step runs before it, so write the plan yourself first');
+    expect(h).toNotContain('including any Skeptic gate');
+    expect(h).toContain('goes back to the step that owns the plan (you, since no step ran before the checkpoint)');
+    win.loadPreset('feature');
+    const hf = win.approvePlanHint();
+    expect(hf).toContain('goes back to the step that owns the plan (Planner)');                 // the Skeptic reviews the plan, it does not own it
+    expect(hf).toContain('the Skeptic gate (Skeptic review: Planner) re-runs scoped to what changed');
+    expect(win.approvalCheckpoint().owner.label).toBe('Planner');
+    expect(win.approvalCheckpoint().reviewer.label).toBe('Skeptic review: Planner');
+    const sdkF = win.genAgentSDK();
+    expect(sdkF).toContain('    async def _awd_plan(_awd_ctx):');                                 // the plan stretch is one re-runnable unit
+    expect(sdkF).toContain('        planner_result = await planner.run(context=_awd_ctx)');          // the Planner runs on whatever rides in: requirements first, the rejection later
+    expect(sdkF).toContain('        return skeptic_review__planner_result');
+    expect(sdkF).toContain('    _ctx_before_approval = await _awd_plan(requirements)');
+    expect(sdkF).toContain('_ctx_before_approval = await _awd_plan(f"{requirements}\\n\\nPrevious attempt (rejected by the director):\\n{_brief}\\n\\nDirector direction (authoritative):\\n{_answer}")');
+    expect(sdkF.split('planner_result = await planner.run(').length - 1).toBe(1);               // emitted ONCE: no second step emitter
+    const unit = sdkF.slice(sdkF.indexOf('async def _awd_plan('), sdkF.indexOf('_ctx_before_approval = await _awd_plan(requirements)'));
+    expect(unit).toNotContain('context=requirements');                                           // the unit was written on _awd_ctx from its first line: no text was rewritten
+    expect(unit).toNotContain('{requirements}');
+    expect(unit).toContain('context=_awd_ctx');
+    expect(sdkF).toContain('# In THIS script the pause is the _awd_approve_plan hook below.');    // the banner says what the script does, not what the prose does
+    win.loadPreset('new_project');
+    const sdkN = win.genAgentSDK();
+    expect(sdkN).toContain('        project_scout_result = await project_scout.run(context=_awd_ctx)');
+    expect(sdkN).toContain('        foundation_architect_result = await foundation_architect.run(context=project_scout_result)');   // an owner that is not the first step re-plans on its upstream context
+    expect(sdkF).toContain('        skeptic_review__planner_result = await skeptic_review__planner.run(context=planner_result)');
+    expect(sdkF).toNotContain('skeptic_review__planner.run(context=f"{skeptic_review__planner_result}');   // never the skeptic as the owner
+    win.loadPreset('incident_rca');
+    const cpR = win.approvalCheckpoint();
+    expect(cpR.owner.config.reviewLoopFor === undefined).toBe(true);                             // a Verifier attached to a step reviews the plan; it never owns it
+    expect(cpR.owner.label).toBe('Investigator');
+    expect(cpR.reviewer.config.agentType).toBe('verifier');
+    expect(win.approvePlanHint()).toContain('the Verifier gate (' + cpR.reviewer.label + ') re-runs scoped to what changed');
+  });
+  it('the gate: brief not plan, one question and wait, modifications authoritative and never relitigated, fires once, non-interactive never blocks', () => {
+    win.state.approvePlan = true;
+    buildTestWorkflow('linear');
+    const h = win.approvePlanHint();
+    expect(h).toContain('runs this checkpoint ONCE, before **Implementer** starts');
+    expect(h).toContain('only after every step before it has completed, including any Skeptic gate on the plan');
+    expect(h).toContain('Present a BRIEF, not the whole plan');
+    expect(h).toContain('the ones that lost and why');
+    const sig0 = win.graphShapeSig();
+    win.addNode('agent', 900, 0, 'Extra', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'e', maxTurns:5 });
+    expect(win.graphShapeSig() === sig0).toBe(false);                                            // a structural change is a new shape (the memo test covers liveness)
+    expect(h).toContain('ask ONE question and wait: approve as is, state modifications, or reject with direction');
+    expect(h).toContain('Do not start **Implementer** (or any step that runs alongside it) until the director has approved');
+    expect(h).toContain('**Modifications** (bounded changes that keep the approach) are authoritative');
+    expect(h).toContain('Do not relitigate them with a Skeptic');
+    expect(h).toContain('**Rejection with direction** (the approach itself changes) goes back to the step that owns the plan (Planner)');
+    expect(h).toContain('At most three approval rounds');
+    expect(h).toContain('a plan rejected three times is NOT built');
+    expect(h).toNotContain('the Skeptic gate re-runs');                                         // the linear test shape has no skeptic
+    expect(h).toContain('Fires once per approval');
+    expect(h).toContain('does not ask again');
+    expect(h).toContain('running non-interactively');
+    expect(h).toContain('do NOT block');
+    expect(h).toContain('proceeded without director approval as an explicit risk');
+    expect(h).toNotContain('\u2014'); expect(h).toNotContain('\u2013');
+  });
+  it('memory, record, and telemetry lines are gated: OFF emits none of them; ON emits each, using the orchestrator log line and the gate.verdict event', () => {
+    win.state.approvePlan = true;
+    buildTestWorkflow('linear');
+    win.state.memoryEnabled = false; win.state.durableRecord = false; win.state.telemetryEnabled = false;
+    let h = win.approvePlanHint();
+    expect(h).toNotContain('shared.md');
+    expect(h).toNotContain('durable record');
+    expect(h).toNotContain('gate.verdict');
+    win.state.memoryEnabled = true; win.state.durableRecord = true; win.state.telemetryEnabled = true;
+    h = win.approvePlanHint();
+    expect(h).toContain('## @orchestrator | {ISO-timestamp} | awaiting director approval of the plan');
+    expect(h).toContain('run the kickoff first if it has not run yet');
+    expect(h).toContain('plan approved by director (modifications: none | the list)');
+    expect(h).toContain('record each one in the durable record as a decision');
+    expect(h).toContain('`gate.verdict` event with step `director-approval`');
+  });
+  it('every format carries the gate once and the per-step marker exactly once, on the checkpoint step and nowhere else', () => {
+    win.state.approvePlan = true;
+    win.loadPreset('feature');
+    const count = (o, needle) => o.split(needle).length - 1;
+    [win.genWorkflow(), win.genSubAgents(), win.genAgentTeams(), win.genClaudePrompt()].forEach(o => {
+      expect(count(o, GATE)).toBe(1);
+      expect(count(o, MARK)).toBe(1);
+      expect(o.indexOf(GATE) < o.indexOf(MARK)).toBe(true);                                    // the gate precedes the marker
+    });
+    const wf = win.genWorkflow();
+    const hdr = wf.match(/\*\*Step (\d+): Implementer\*\*/);                                  // the skeptic loop may take a step number of its own
+    expect(!!hdr).toBe(true);
+    expect(wf.indexOf(MARK) > hdr.index).toBe(true);                                             // the marker sits inside the Implementer step
+    const nextStep = wf.indexOf('**Step ' + (Number(hdr[1]) + 1) + ':');
+    expect(nextStep === -1 || wf.indexOf(MARK) < nextStep).toBe(true);
+    const nodes = win.state.nodes.filter(n => n.type === 'agent');
+    expect(nodes.filter(n => win.approvePlanStepHint(n)).map(n => n.label).join(',')).toBe('Implementer');
+  });
+  it('parallel builders: the marker lands on the first builder in order and the SDK hook lands before the whole group; per-repo lanes: before the lane', () => {
+    win.state.approvePlan = true;
+    win.loadPreset('fullstack');
+    const cp = win.approvalCheckpoint();
+    expect(['Backend', 'Frontend'].indexOf(cp.node.label) !== -1).toBe(true);
+    const wf = win.genWorkflow();
+    expect(wf.split('Director approval checkpoint').length - 1).toBe(2);                         // Backend AND Frontend carry the marker: neither starts early
+    expect(wf).toContain('(it runs alongside ' + cp.node.label + ')');
+    expect(cp.group.map(n => n.label).sort().join(',')).toBe('Backend,Frontend');            // live nodes, like every other field
+    expect(cp.prior.map(n => n.label).join(',')).toBe('Architect');                            // a sibling that runs alongside is never a prior step (no mutual wait)
+    const sdk = win.genAgentSDK();
+    const hook = sdk.indexOf('_awd_approve_plan(_brief)');
+    expect(hook > 0).toBe(true);
+    expect(sdk.indexOf('backend_task = asyncio.create_task(') > hook).toBe(true);
+    expect(sdk.indexOf('frontend_task = asyncio.create_task(') > hook).toBe(true);
+    expect(sdk).toContain('create_task(backend.run(context=_approved))');                      // the approved brief is the context the group receives
+    expect(sdk).toContain('        architect_result = await architect.run(context=_awd_ctx)');
+    win.loadPreset('parallel_research');
+    const sdk3 = win.genAgentSDK();
+    expect(sdk3).toContain('_brief = _awd_fmt(_ctx_before_approval)');                                 // after a join the brief is readable, not a list repr
+    expect(sdk3.indexOf('        results = await asyncio.gather(') > sdk3.indexOf('async def _awd_plan(_awd_ctx):')).toBe(true);   // the research group lives inside the plan unit and re-runs on a rejection
+    const cpPR = win.approvalCheckpoint();
+    expect(cpPR.ownerGroup.length > 1).toBe(true);
+    expect(win.approvePlanHint()).toContain('steps that produced the plan together (');          // prose names the whole group, like the SDK re-gathers it
+    expect(win.approvePlanHint()).toContain('re-dispatch all of them');
+    resetState();
+    const ig = win.addNode('input', 0, 0, 'Spec');
+    const fg = win.addNode('parallel', 200, 0, 'Fork', { strategy:'all' });
+    const ra = win.addNode('agent', 400, 0, 'Researcher A', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'a', maxTurns:5 });
+    const rb = win.addNode('agent', 400, 150, 'Researcher B', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'b', maxTurns:5 });
+    const jg = win.addNode('parallel', 600, 0, 'Join', { strategy:'all' });
+    const sg = win.addNode('agent', 800, 0, 'Skeptic', { agentType:'adversary', model:'opus-5', tools:['Read'], prompt:'s', maxTurns:5 });
+    const wg = win.addNode('agent', 1000, 0, 'Writer', { agentType:'writer', model:'opus-5', tools:['Read','Write'], prompt:'w', maxTurns:5 });
+    win.addConnection(ig.id, fg.id); win.addConnection(fg.id, ra.id); win.addConnection(fg.id, rb.id); win.addConnection(ra.id, jg.id); win.addConnection(rb.id, jg.id); win.addConnection(jg.id, sg.id); win.addConnection(sg.id, wg.id);
+    const sdkG = win.genAgentSDK();
+    expect(sdkG.indexOf('        skeptic_task = asyncio.create_task(skeptic.run(context=results))') > sdkG.indexOf('        results = await asyncio.gather(')).toBe(true);   // the group, then its reviewer (a join's lone child, emitted the group way), inside the one plan unit: prose and SDK agree
+    // a group owner that is not the LAST member in order still re-gathers (its siblings are never chained)
+    resetState();
+    const ig2 = win.addNode('input', 0, 0, 'Spec');
+    const fg2 = win.addNode('parallel', 200, 0, 'Fork', { strategy:'all' });
+    const pa2 = win.addNode('agent', 400, 0, 'Planner A', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'a', maxTurns:5 });
+    const rb2 = win.addNode('agent', 400, 150, 'Researcher B', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'b', maxTurns:5 });
+    const jg2 = win.addNode('parallel', 600, 0, 'Join', { strategy:'all' });
+    const cd2 = win.addNode('agent', 800, 0, 'Coder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'c', maxTurns:5 });
+    win.addConnection(ig2.id, fg2.id); win.addConnection(fg2.id, pa2.id); win.addConnection(fg2.id, rb2.id); win.addConnection(pa2.id, jg2.id); win.addConnection(rb2.id, jg2.id); win.addConnection(jg2.id, cd2.id);
+    const sdkG2 = win.genAgentSDK();
+    expect(sdkG2).toContain('        planner_a_task = asyncio.create_task(planner_a.run(context=_awd_ctx))');   // whatever the order, the group re-runs as the loop wrote it
+    expect(sdkG2).toNotContain('cannot revise it here');
+    expect(sdkG).toContain('        return results');                                             // a join's lone child binds through the group path, so the unit returns `results`
+    resetState();
+    win.addNode('agent', 0, 0, 'Solo Builder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'z', maxTurns:5 });
+    const sdk5 = win.genAgentSDK();
+    expect(sdk5).toContain('no step runs before this checkpoint, so nothing here can revise the plan');
+    expect(sdk5).toContain('raise SystemExit("Plan rejected by the director and this script cannot revise it here. Direction: " + _answer)');   // never build what was refused
+    expect(sdk5).toNotContain('_awd_plan(');
+    expect(sdk5).toContain('    _ctx_before_approval = requirements');
+    // an owner that ran inside a per-repo lane has no result variable: carry forward, never NameError
+    resetState();
+    win.state.repositories = [{ path: '/work/alpha', branch: '' }, { path: '/work/beta', branch: '' }];
+    const i6 = win.addNode('input', 0, 0, 'Spec');
+    const f6 = win.addNode('parallel', 200, 0, 'Lanes', { strategy:'per-repo' });
+    const ex6 = win.addNode('agent', 400, 0, 'Repo Explorer', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'x', maxTurns:5 });
+    const j6 = win.addNode('parallel', 600, 0, 'Collect', { strategy:'all' });
+    const fx6 = win.addNode('agent', 800, 0, 'Fixer', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'f', maxTurns:5 });
+    win.addConnection(i6.id, f6.id); win.addConnection(f6.id, ex6.id); win.addConnection(ex6.id, j6.id); win.addConnection(j6.id, fx6.id);
+    expect(win.approvalCheckpoint().owner.label).toBe('Repo Explorer');
+    const sdk6 = win.genAgentSDK();
+    expect(sdk6).toContain('        async def _lane(repo):');                                     // the lane lives inside the plan unit...
+    expect(sdk6).toContain('            _ctx = f"{_awd_ctx}\\n\\nRepository: {repo} - work in this repository only"');   // ...and runs on whatever rides in
+    expect(sdk6).toContain('        return results');
+    expect(sdk6).toNotContain('cannot re-run it in isolation');                                   // every shape the loop emits is re-runnable
+    win.state.repositories = [{ path: '/work/alpha', branch: '' }, { path: '/work/beta', branch: '' }];
+    win.loadPreset('cross_repo');
+    const sdk2 = win.genAgentSDK();
+    const hook2 = sdk2.indexOf('_awd_approve_plan(_brief)');
+    expect(hook2 > 0).toBe(true);
+    expect(sdk2.indexOf('async def _lane(repo):') > hook2).toBe(true);                        // before the lane fans out
+    expect(sdk2.split('_awd_approve_plan(_brief)').length - 1).toBe(1);                              // once, never per lane
+    // A read step ahead of the builder INSIDE the lane: the checkpoint moves to the lane's first step in every format
+    const fork = win.state.nodes.find(n => n.type === 'parallel' && n.config.strategy === 'per-repo');
+    const impl = win.state.nodes.find(n => n.label === 'Repo Implementer');
+    const scout = win.addNode('agent', 800, 250, 'Repo Explorer', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'look', maxTurns:5 });
+    const edge = win.state.connections.find(c => c.from === fork.id && c.to === impl.id);
+    edge.to = scout.id; win.addConnection(scout.id, impl.id);
+    const cp2 = win.approvalCheckpoint();
+    expect(cp2.node.label).toBe('Repo Explorer');                                              // one approval covers every repository
+    expect(cp2.builds).toBe(true);
+    expect(win.approvePlanHint()).toNotContain('this workflow builds nothing');                  // a builder still runs later in the lane
+    expect(win.approvePlanHint()).toContain('the first step of the per-repository lane that will build');
+    expect(win.approvePlanHint()).toNotContain('before **Repo Explorer** starts - the first step that changes files');
+    expect(cp2.prior.map(n => n.label).indexOf('Repo Implementer')).toBe(-1);
+    expect(win.approvePlanHint()).toContain('before **Repo Explorer** starts');
+    const sdk4 = win.genAgentSDK();
+    expect(sdk4.indexOf('_awd_approve_plan(_brief)') < sdk4.indexOf('async def _lane(repo):')).toBe(true);
+    expect(sdk4).toContain('        contract_architect_result = await contract_architect.run(context=_awd_ctx)');   // the contract work is the plan unit
+  });
+  it('a stray node the run cannot reach is never the checkpoint and never a prior step; a mixed parallel group excludes its siblings from prior', () => {
+    win.state.approvePlan = true;
+    resetState();
+    const inp = win.addNode('input', 0, 0, 'Spec');
+    const rev = win.addNode('agent', 200, 0, 'Reviewer', { agentType:'reviewer', model:'opus-5', tools:['Read'], prompt:'r', maxTurns:5 });
+    const out = win.addNode('output', 400, 0, 'Done', { format:'report' });
+    win.addConnection(inp.id, rev.id); win.addConnection(rev.id, out.id);
+    win.addNode('agent', 600, 300, 'Orphan Coder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'o', maxTurns:5 });   // dragged from the palette, never wired
+    const cp = win.approvalCheckpoint();
+    expect(cp.node.label).toBe('Orphan Coder');                                                  // the generators RUN an unwired node (first, in fact), so the director approves before it
+    expect(win.genWorkflow().indexOf('Director approval checkpoint') < win.genWorkflow().indexOf('**Step 2:')).toBe(true);
+    win.state.nodes = win.state.nodes.filter(n => n.label !== 'Orphan Coder');
+    expect(win.approvalCheckpoint().node.label).toBe('Reviewer');                                // review-only shape: approve the approach before its first step
+    expect(win.approvePlanHint()).toContain('this workflow builds nothing');
+    resetState();
+    const i2 = win.addNode('input', 0, 0, 'Spec');
+    const fork = win.addNode('parallel', 200, 0, 'Fork', { strategy:'all' });
+    const res = win.addNode('agent', 400, 0, 'Researcher', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'a', maxTurns:5 });
+    const cod = win.addNode('agent', 400, 150, 'Coder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'b', maxTurns:5 });
+    win.addConnection(i2.id, fork.id); win.addConnection(fork.id, res.id); win.addConnection(fork.id, cod.id);
+    const cp2 = win.approvalCheckpoint();
+    expect(cp2.node.label).toBe('Coder');
+    expect(cp2.prior.length).toBe(0);                                                            // the Researcher runs alongside: it waits, it is not waited for
+    expect(win.approvePlanStepHint(res)).toContain('(it runs alongside Coder)');
+    expect(win.approvePlanStepHint(res)).toContain('dispatches this step only after it passes');   // the marker carries its own contract: a sub-agent file never sees the gate
+    expect(win.approvePlanHint()).toContain('No step runs before it, so write the plan yourself first');
+    resetState();
+    const ic = win.addNode('input', 0, 0, 'Spec');
+    const crv = win.addNode('agent', 200, 0, 'Code Reviewer', { agentType:'reviewer', model:'opus-5', tools:['Read'], prompt:'c', maxTurns:5 });
+    const fxr = win.addNode('agent', 400, 0, 'Fixer', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'f', maxTurns:5 });
+    win.addConnection(ic.id, crv.id); win.addConnection(crv.id, fxr.id);
+    expect(win.approvalCheckpoint().owner).toBe(null);
+    expect(win.approvePlanHint()).toContain('none of the steps before the checkpoint owns a plan, so you revise it yourself');   // never "no step ran" when one did
+    resetState();
+    const i3 = win.addNode('input', 0, 0, 'Spec');
+    const pl = win.addNode('agent', 200, 0, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'p', maxTurns:5 });
+    const sk = win.addNode('agent', 400, 0, 'Skeptic', { agentType:'adversary', model:'opus-5', tools:['Read'], prompt:'s', maxTurns:5 });   // dragged from the palette: no reviewLoopFor
+    const im = win.addNode('agent', 600, 0, 'Implementer', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'i', maxTurns:5 });
+    win.addConnection(i3.id, pl.id); win.addConnection(pl.id, sk.id); win.addConnection(sk.id, im.id);
+    const cp3 = win.approvalCheckpoint();
+    expect(cp3.owner.label).toBe('Planner');                                                     // a hand-wired Skeptic reviews the plan, it never owns it
+    expect(cp3.reviewer.label).toBe('Skeptic');
+    // a review loop attached to ANOTHER step never reviews the plan
+    const rsx = win.addNode('agent', 450, 200, 'Research Check', { agentType:'verifier', reviewLoopFor: 'n999', reviewLoopKind:'verifier', model:'opus-5', tools:['Read'], prompt:'v', maxTurns:5 });
+    const ex = win.state.connections.find(c => c.from === sk.id && c.to === im.id); ex.to = rsx.id; win.addConnection(rsx.id, im.id);
+    expect(win.approvalCheckpoint().reviewer.label).toBe('Skeptic');
+    ex.to = im.id; win.state.connections = win.state.connections.filter(c => c.from !== rsx.id); win.state.nodes = win.state.nodes.filter(n => n.id !== rsx.id);
+    // a Researcher or a Code Reviewer between the Planner and the builder never owns the plan
+    const rs = win.addNode('agent', 500, 100, 'Researcher', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'r', maxTurns:5 });
+    const cr = win.addNode('agent', 550, 100, 'Code Reviewer', { agentType:'reviewer', model:'opus-5', tools:['Read'], prompt:'c', maxTurns:5 });
+    const e1 = win.state.connections.find(c => c.from === sk.id && c.to === im.id); e1.to = rs.id;
+    win.addConnection(rs.id, cr.id); win.addConnection(cr.id, im.id);
+    const cp4 = win.approvalCheckpoint();
+    expect(cp4.owner.label).toBe('Planner');
+    expect(cp4.reviewer.label).toBe('Skeptic');
+    // with no Skeptic or Verifier, a Code Reviewer is never promoted to the plan gate
+    win.state.nodes = win.state.nodes.filter(n => n.id !== sk.id); win.state.connections = win.state.connections.filter(c => c.from !== sk.id && c.to !== sk.id); win.addConnection(pl.id, rs.id);
+    const cp5 = win.approvalCheckpoint();
+    expect(cp5.owner.label).toBe('Planner');
+    expect(cp5.reviewer).toBe(null);
+    expect(win.approvePlanHint()).toNotContain('Code Reviewer gate');
+    // a General agent builds: the pause lands before it, never after it
+    resetState();
+    const i5 = win.addNode('input', 0, 0, 'Spec');
+    const pl5 = win.addNode('agent', 200, 0, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'p', maxTurns:5 });
+    const ge = win.addNode('agent', 400, 0, 'Fix It', { agentType:'general', model:'opus-5', tools:['Read','Write','Edit'], prompt:'implement the fix', maxTurns:5 });
+    const dw = win.addNode('agent', 600, 0, 'Doc Writer', { agentType:'writer', model:'opus-5', tools:['Read','Write'], prompt:'d', maxTurns:5 });
+    win.addConnection(i5.id, pl5.id); win.addConnection(pl5.id, ge.id); win.addConnection(ge.id, dw.id);
+    expect(win.approvalCheckpoint().node.label).toBe('Fix It');
+    // an Input node that is not wired to the agents yet never makes the gate vanish
+    resetState();
+    win.addNode('input', 0, 0, 'Spec');
+    const pa = win.addNode('agent', 200, 0, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'p', maxTurns:5 });
+    const ia = win.addNode('agent', 400, 0, 'Implementer', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'i', maxTurns:5 });
+    win.addConnection(pa.id, ia.id);
+    expect(win.approvalCheckpoint().node.label).toBe('Implementer');
+    expect(win.approvePlanHint()).toContain('before **Implementer** starts');
+    resetState();
+    expect(win.explainWorkflow('prompt').find(r => r.part === 'Plan approval gate').reason).toContain('no agent step to pause before');
+  });
+  it('the memo holds ids, not objects: a rename shows live, undo shows live, a decision No-label edit re-sorts, and the signature is the shared one', () => {
+    win.state.approvePlan = true;
+    win.loadPreset('feature');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    expect(win.approvePlanHint()).toContain('before **Implementer** starts');
+    impl.label = 'Builder';
+    expect(win.approvePlanHint()).toContain('before **Builder** starts');                        // no structural change, yet the label is live
+    const snapshot = JSON.parse(JSON.stringify({ nodes: win.state.nodes, connections: win.state.connections }));
+    snapshot.nodes.find(n => n.id === impl.id).label = 'Implementer';
+    win.state.nodes = snapshot.nodes; win.state.connections = snapshot.connections;              // an undo / re-import replaces the objects under the same ids
+    expect(win.approvePlanHint()).toContain('before **Implementer** starts');
+    expect(win.approvalCheckpoint().node === win.state.nodes.find(n => n.id === impl.id)).toBe(true);
+    const sigBefore = win.graphShapeSig();
+    win.state.nodes.find(n => n.label === 'Plan sound?').config.noLabel = 'Revise';             // the back-edge is no longer a revise edge: the shape changed
+    expect(win.graphShapeSig() === sigBefore).toBe(false);
+    const sig2 = win.graphShapeSig(true), lane2 = win.graphShapeSig();
+    win.state.nodes.find(n => n.label === 'Skeptic review: Planner').config.reviewLoopFor = undefined;   // a loop attachment is shape for the checkpoint (owner / reviewer depend on it)...
+    expect(win.graphShapeSig(true) === sig2).toBe(false);
+    expect(win.graphShapeSig() === lane2).toBe(true);                                            // ...but not for lane membership: the lane map never re-walks on a role edit
+    expect(win.perRepoLaneMap !== undefined).toBe(true);
+  });
+  it('the SDK export is a real pause: approve_plan helper with a no-TTY guard, the hook before the checkpoint step, and the approved brief as the next context; absent when off', () => {
+    win.state.approvePlan = true;
+    buildTestWorkflow('linear');
+    const sdk = win.genAgentSDK();
+    expect(sdk).toContain('def _awd_approve_plan(brief: str):');
+    expect(sdk).toContain('Returns (text, kind) with kind in approve / modify / reject');
+    expect(sdk).toContain('if sys.stdin is None or not sys.stdin.isatty():');
+    expect(sdk).toContain('except EOFError:');
+    expect(sdk).toContain('proceeding without approval - carried as a risk');
+    expect(sdk).toContain('answer = input("Approve as is (press Enter), state modifications, or type reject: <direction>: ").strip()');
+    expect(sdk).toContain('# Director approval checkpoint: before Implementer');
+    const hook = sdk.indexOf('_awd_approve_plan(_brief)');
+    const impl = sdk.indexOf('implementer_result = await implementer.run(context=_approved)');
+    expect(hook > 0 && impl > hook).toBe(true);
+    expect(sdk.indexOf('planner_result = await planner.run(') < hook).toBe(true);              // the planner runs BEFORE the pause
+    expect(sdk).toContain('for _round in range(3):');
+    expect(sdk).toContain('_answer, _kind = _awd_approve_plan(_brief)');
+    expect(sdk).toContain('if _kind != "reject":');
+    expect(sdk).toContain('        planner_result = await planner.run(context=_awd_ctx)');          // the plan unit runs on what rides in
+    expect(sdk).toContain('raise SystemExit("Plan rejected three times by the director: not building what was refused.")');
+    expect(sdk).toContain('if lowered in ("", "approve", "approved", "approve as is", "yes", "y", "ok", "okay", "lgtm"):');   // a plain yes is an approval, never a modification
+    expect(sdk).toContain('rejected = re.match(r"^reject(ed)?\\b", lowered)');                   // (ed)? not d?: "rejected?" demanded "rejecte" and never matched "reject:" (caught by executing the export)                      // a word, not a prefix: "Rejecting X is fine" is a modification, "reject:use a queue" is a rejection
+    expect(sdk).toContain('direction = answer[rejected.end():].lstrip(":,; ").strip()');
+    expect(sdk).toContain('return (direction, "reject") if direction else _awd_ask_direction()');   // reject with direction proceeds; without it, the same single ask
+    expect(sdk).toContain('if lowered in ("no", "n", "nope", "stop", "do not build this", "don\'t build this", "do not proceed"):');   // a plain refusal is a rejection, never a modification
+    expect(sdk).toContain('direction = input("Rejected. What should change? (press Enter to stop the run): ").strip()');   // a bare refusal asks once for direction
+    expect(sdk).toContain('return (direction, "reject") if direction else ("", "stop")');
+    expect(sdk).toContain('if _kind == "stop":\n            raise SystemExit("Plan rejected by the director without direction: not building what was refused.")');
+    expect(sdk).toContain('(full output of the steps so far)');                                     // the SDK shows the plan as it stands, honestly labeled
+    expect(sdk.split('direction = input("Rejected. What should change? (press Enter to stop the run): ").strip()').length - 1).toBe(1);   // ONE ask-direction helper...
+    expect(sdk.split('_awd_ask_direction()').length - 1).toBe(3);                                  // ...defined once, called from the refusal path and the bare-reject path
+    // every step between the reviewer and the pause re-runs on the revised plan, in order
+    resetState();
+    const ich = win.addNode('input', 0, 0, 'Spec');
+    const pch = win.addNode('agent', 200, 0, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'p', maxTurns:5 });
+    const sch = win.addNode('agent', 400, 0, 'Skeptic', { agentType:'adversary', model:'opus-5', tools:['Read'], prompt:'s', maxTurns:5 });
+    const rch = win.addNode('agent', 600, 0, 'Researcher', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'r', maxTurns:5 });
+    const bch = win.addNode('agent', 800, 0, 'Implementer', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'i', maxTurns:5 });
+    win.addConnection(ich.id, pch.id); win.addConnection(pch.id, sch.id); win.addConnection(sch.id, rch.id); win.addConnection(rch.id, bch.id);
+    const sdkC = win.genAgentSDK();
+    expect(sdkC).toContain('        researcher_result = await researcher.run(context=skeptic_result)');   // inside the plan unit, in its first-pass position
+    expect(sdkC.split('skeptic_result = await skeptic.run(context=planner_result)').length - 1).toBe(1);
+    // a step BETWEEN the owner and a hand-wired reviewer re-runs too, and the reviewer sees the same kind of input as the first time
+    resetState();
+    const ib = win.addNode('input', 0, 0, 'Spec');
+    const pb = win.addNode('agent', 200, 0, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'p', maxTurns:5 });
+    const rb = win.addNode('agent', 400, 0, 'Researcher', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'r', maxTurns:5 });
+    const sb = win.addNode('agent', 600, 0, 'Skeptic', { agentType:'adversary', model:'opus-5', tools:['Read'], prompt:'s', maxTurns:5 });
+    const bb = win.addNode('agent', 800, 0, 'Implementer', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'i', maxTurns:5 });
+    win.addConnection(ib.id, pb.id); win.addConnection(pb.id, rb.id); win.addConnection(rb.id, sb.id); win.addConnection(sb.id, bb.id);
+    const sdkB = win.genAgentSDK();
+    expect(sdkB).toContain('        researcher_result = await researcher.run(context=planner_result)');
+    expect(sdkB).toContain('        skeptic_result = await skeptic.run(context=researcher_result)');
+    expect(sdkB).toNotContain('skeptic.run(context=planner_result)');
+    expect(sdkC).toContain('        return researcher_result');
+    expect(sdkC).toContain('implementer_result = await implementer.run(context=_approved)');
+    // a step labeled like the helper never shadows it
+    resetState();
+    const iap = win.addNode('input', 0, 0, 'Spec');
+    const pap = win.addNode('agent', 200, 0, 'Approve Plan', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'p', maxTurns:5 });
+    const bap = win.addNode('agent', 400, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'b', maxTurns:5 });
+    win.addConnection(iap.id, pap.id); win.addConnection(pap.id, bap.id);
+    const sdkS = win.genAgentSDK();
+    expect(sdkS).toContain('approve_plan = Agent(config=approve_plan_config)');
+    expect(sdkS).toContain('def _awd_approve_plan(brief: str):');
+    expect(sdkS).toNotContain('def approve_plan(');
+    expect(sdk).toContain('def _awd_fmt(x):');
+    expect(sdk).toContain('return answer, "modify"');
+    expect(sdk).toContain('if _kind == "approve":\n        _approved = _brief');
+    expect(sdk).toContain('elif _kind == "unattended":');                                        // a non-interactive run carries the unapproved-plan risk forward
+    expect(sdk).toContain('the plan proceeded WITHOUT director approval - carry this as an explicit risk');
+    expect(sdk).toContain('return "", "unattended"');
+    expect(sdk).toContain('        if _round == 2:\n            raise SystemExit(');                 // the third rejection raises BEFORE any revision runs
+    expect(sdk).toContain('# ── Director approval before the build');
+    win.state.approvePlan = false;
+    const off = win.genAgentSDK();
+    expect(off).toNotContain('_awd_approve_plan');
+    expect(off).toNotContain('_approved');
+  });
+  it('Explain names the checkpoint step and deep-links to Requirements; New Workflow resets the toggle; help modal documents it', () => {
+    win.state.approvePlan = true;
+    win.loadPreset('bugfix');
+    const rows = win.explainWorkflow('prompt');
+    const row = rows.find(r => r.part === 'Plan approval gate');
+    expect(row.status).toBe('emitted');
+    const fixer = win.state.nodes.find(n => n.label === 'Fixer');
+    const stepRow = win.explainNode(fixer, 'prompt').find(r => r.part === 'Director approval checkpoint');
+    expect(stepRow.status).toBe('emitted');                                                      // the per-step anatomy accounts for the marker
+    expect(win.explainNode(win.state.nodes.find(n => n.label === 'Investigator'), 'prompt').find(r => r.part === 'Director approval checkpoint').status).toBe('skipped');
+    expect(row.reason).toContain('pauses once before Fixer');
+    expect(win.genWorkflow()).toContain(row.probe);
+    win.state.approvePlan = false;
+    expect(rows.length > 0 && win.explainWorkflow('prompt').find(r => r.part === 'Plan approval gate').status).toBe('skipped');
+    win.state.approvePlan = true;
+    win.document.getElementById('approvePlanToggle').checked = true;
+    win.clearCanvas();
+    expect(win.state.approvePlan).toBe(false);
+    expect(win.document.getElementById('approvePlanToggle').checked).toBe(false);
+    const help = win.document.getElementById('helpOverlay').textContent;
+    expect(help).toContain('Approve plan before build');
+    expect(help).toContain('reject with direction');
+    expect(help).toContain('A plan rejected three times is not built');
+    expect(help).toContain('does not re-ask');
+  });
+  it('clarify-first and approve-plan stack: clarify opens the run, approval pauses before the build, in that order', () => {
+    win.state.approvePlan = true; win.state.clarifyFirst = true;
+    buildTestWorkflow('linear');
+    const wf = win.genWorkflow();
+    expect(wf.indexOf('Clarify ambiguous requirements before planning') < wf.indexOf(GATE)).toBe(true);
   });
 });
 
@@ -15238,7 +15716,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.MONITOR_IDLE_MS = MONITOR_IDLE_MS; window.TELEMETRY_DEFAULT_SERVICE = TELEMETRY_DEFAULT_SERVICE; window.TELEMETRY_EVENTS = TELEMETRY_EVENTS; window.VERIFIER_HONESTY = VERIFIER_HONESTY; window.TASK_SIGNAL = TASK_SIGNAL; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.MONITOR_IDLE_MS = MONITOR_IDLE_MS; window.TELEMETRY_DEFAULT_SERVICE = TELEMETRY_DEFAULT_SERVICE; window.TELEMETRY_EVENTS = TELEMETRY_EVENTS; window.approvePlanHint = approvePlanHint; window.approvePlanStepHint = approvePlanStepHint; window.approvalCheckpoint = approvalCheckpoint; window.APPROVAL_PLAN_OWNER_ROLES = APPROVAL_PLAN_OWNER_ROLES; window.graphShapeSig = graphShapeSig; window.APPROVAL_BUILD_ROLES = APPROVAL_BUILD_ROLES; window.toggleApprovePlan = toggleApprovePlan; window.VERIFIER_HONESTY = VERIFIER_HONESTY; window.TASK_SIGNAL = TASK_SIGNAL; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
