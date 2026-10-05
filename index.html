@@ -1179,6 +1179,9 @@ svg.canvas{width:100%;height:100%;display:block}
 <h3>Approve Plan Before Build</h3>
 <p>The <strong>Approve plan before build</strong> toggle (off by default) adds a director checkpoint to the run itself. The orchestrator pauses once, right before the first step that changes files or produces the deliverable (the Implementer in a feature run, the Fixer in a bug fix, the Writer in a documentation run), after every step before it has finished, including a Skeptic gate on the plan when the shape has one. It presents a brief, not the whole plan: the approach, the files or artifacts that will change, the risks, what is out of scope, and the options that lost. Then it asks one question and waits: approve as is, state modifications, or reject with direction. Modifications (bounded changes that keep the approach) are authoritative: applied to the plan and the task list, recorded in the durable record when one is kept, never relitigated with a Skeptic. A rejection with direction goes back to the step that owns the plan, which revises it; the Skeptic gate re-runs when the shape has one, and the brief comes back for approval, at most three rounds. A plan rejected three times is not built: the run stops and records why. Once approved, the checkpoint does not fire again: a revise loop returning to that step does not re-ask. A research or analysis run that ends in a Writer pauses before the Writer, so you approve the synthesis with the research in hand; a shape with no file-changing or deliverable-producing step at all (a pure review) pauses before its first step so you approve the approach. A non-interactive run (CI, a schedule, an SDK pipeline without an approval hook) never blocks: it records that the plan proceeded without approval as a risk and continues. The Agent SDK export carries a real <code>_awd_approve_plan(brief)</code> hook returning <code>(text, kind)</code> that you can replace with your own UI. With memory on, the wait and the answer are logged to <code>shared.md</code>, so the live monitor shows the run waiting on you rather than idle.</p>
 
+<h3>Depth (Exhaustive Steps)</h3>
+<p>Every step runs as one pass, as it always has. The <strong>Depth</strong> row in Node Configuration, beside Effort, can set a single step to <strong>exhaustive</strong>: in the Claude Code formats that step runs as an orchestrated fan-out inside itself (decompose, run the parts in parallel, verify every finding adversarially, synthesize) and still hands off one result through its normal contract. The canvas stays the team; depth is how hard one member works. Effort is reasoning depth, Depth is orchestration depth. It is deliberate and costly, so it belongs on the step where one pass misses things (a review, an audit, a research sweep), never on every step. The generated prompt carries Claude Code's opt-in word for its orchestration tool only when at least one step is exhaustive; with none, the output is identical to before this lever existed. Validation warns when an exhaustive step sits inside a parallel branch or a per-repository lane (it would fan out again inside every branch), the advisor notes an exhaustive build step, and Explain shows a Depth row at workflow and step level. Claude.ai has no orchestration tool, so that format skips it; the SDK export carries a comment per step and no mechanism. This rides on a preview feature of Claude Code: the hint describes the intent, and one real run is the proof that the orchestrator takes it.</p>
+
 <h2 id="hg-build">Build the Workflow</h2>
 
 <h3>Editing Agent Prompts</h3>
@@ -1670,6 +1673,50 @@ function effortHint() {
     ' Effort sets reasoning depth and overall token spend, so it is the lever to reach for before dropping a step to a weaker model.');
   r.push('>');
   r.push('> How to honor it: in Claude Code effort is a **session-level** flag (`claude --effort <level>`), not a Task tool parameter, so run the workflow - or the steps that matter most - in a session set to that level. On the API it is `output_config: {"effort": "<level>"}` per request, and the Agent SDK export sets it per step for you.');
+  return r.join('\n');
+}
+// ── Depth ────────────────────────────────────────────────────────────────────
+// Depth is orchestration depth INSIDE one step, the way effort is reasoning depth: standard
+// (the shipped behavior - nothing emitted) or exhaustive (the step runs as an orchestrated
+// fan-out in Claude Code's multi-agent orchestration: decompose, fan out, verify adversarially,
+// synthesize into the step's ONE handoff). Per step only, never workflow-wide: the canvas stays
+// the team, depth is how hard one member works. Unset emits nothing at all - a workflow with
+// no exhaustive step emits byte-identical output to before this lever existed.
+const DEPTH_LEVELS = ['exhaustive'];
+const DEPTH_OPTION_LABELS = { exhaustive: 'Exhaustive - orchestrated fan-out inside this step (Claude Code; costly; still one handoff)' };
+// Claude Code's opt-in word for its orchestration tool. A pasted prompt IS the user's message,
+// so carrying the word is a real opt-in, and the step block's explicit ask is the other one.
+const DEPTH_KEYWORD = 'ultracode';
+function nodeDepth(node) { const d = node && node.config ? node.config.depth : ''; return DEPTH_LEVELS.includes(d) ? d : ''; }
+// The exhaustive steps, in canvas order - the ONE selector every emitter and guardrail uses.
+function depthNodes() { return state.nodes.filter(n => n.type === 'agent' && nodeDepth(n)); }
+function workflowHasDepth() { return depthNodes().length > 0; }
+// Per-step note, peer of effortStepNote: emitted in the step block of the single-session Workflow
+// format only, where the session that holds the opt-in runs the step itself. Sub-Agents and Teams
+// carry the ask on the orchestrator's or lead's card instead (depthOrchestratorNote), so a spawned
+// prompt is a plain brief and a helper is never told to fan out again. Never Claude.ai.
+function depthStepNote(node) {
+  const level = nodeDepth(node);
+  if (!level) return '';
+  return '**Depth: ' + level + '** (' + DEPTH_KEYWORD + '). Run this step as an orchestrated fan-out: decompose its job into independent parts, run them in parallel, verify every finding adversarially, then synthesize - and hand off ONE result through this step\'s normal contract. The fan-out is internal to this step: it adds no steps to the workflow and never changes who owns the next step' + (state.memoryEnabled ? '; its helpers follow the dynamic fan-out naming rule (`{your-slug}-{item}`), so their memory files pool under this step on the live board, and the handoff still comes from you' : '') + '. If your runner offers no orchestration tool, do the same work in this session - split the job, check each finding against its evidence, then synthesize - and say which way you ran it; one result either way.';
+}
+// The orchestrator's step-card line for the Sub-Agents format: the orchestrator is the session
+// that holds the opt-in, so IT runs the fan-out for this step instead of one plain spawn.
+function depthOrchestratorNote(node) {
+  const level = nodeDepth(node);
+  if (!level) return '';
+  return '**Depth: ' + level + '**: dispatch this step as an orchestrated fan-out (' + DEPTH_KEYWORD + ' - the Workflow tool: decompose its job, fan out, verify every finding adversarially, synthesize), with this step\'s prompt below as the brief for every helper (its role, its suggested tools, its contract) - the prompt block is that brief, never a second dispatch, so do not also run it as one plain spawn' + (state.memoryEnabled ? '; perform this step\'s memory duties AS the step (open its own memory file with an active entry, name helpers `{step-slug}-{item}`, tick its tasks, write its handoff from the step\'s slug)' : '') + '; hand its ONE result to the next step as usual. If no orchestration tool is available, spawn it as written and let it do the same work in one session - split the job, check each finding, synthesize - one result either way.';
+}
+// Workflow-level beat: explains the mechanism ONCE so the per-step lines stay terse, and
+// carries the opt-in word. Nothing when no step is exhaustive.
+function depthHint(nodesGiven) {
+  const names = (nodesGiven || depthNodes()).map(n => n.label);
+  if (!names.length) return null;
+  const one = names.length === 1;
+  const r = [];
+  r.push('> **Depth (configured): ' + DEPTH_KEYWORD + '.** ' + (one ? 'One step' : names.length + ' steps') + ' in this workflow (' + names.join(', ') + ') ' + (one ? 'is' : 'are') + ' set to exhaustive depth: run ' + (one ? 'it' : 'each of them') + ' as an orchestrated fan-out with Claude Code\'s multi-agent orchestration (the Workflow tool), as the step block says. Every other step runs exactly as it always has.');
+  r.push('> - An exhaustive step still hands off ONE result through its own contract' + (state.memoryEnabled ? ', and its helpers are named by the dynamic fan-out naming rule so their memory files pool under the step on the live board' : '') + '. The task board and the durable record attribute the result to the step, never to a helper.');
+  r.push('> - Exhaustive depth is deliberate and expensive: it belongs where one pass misses things (a review, an audit, a research sweep), never on every step.');
   return r.join('\n');
 }
 function isLongContextModel(val) { return /-1m$/.test(String(val || '')); }
@@ -3809,6 +3856,12 @@ function deserializeWorkflow(data) {
     if (n.type === 'agent' && n.config && n.config.effort && !EFFORT_LEVELS.includes(n.config.effort)) {
       n.config.effort = '';
     }
+    // Same rule for depth: an unknown value is standard. '' is a legitimate stored value (the
+    // user picked Standard after Exhaustive), exactly as effort stores it; a key that was never
+    // written stays absent, so untouched workflows keep their exact JSON.
+    if (n.type === 'agent' && n.config && n.config.depth && !DEPTH_LEVELS.includes(n.config.depth)) {
+      n.config.depth = '';
+    }
   });
   state.connections = c.connections || [];
   state.nextId = c.nextId || (state.nodes.length + 1);
@@ -5402,6 +5455,7 @@ function duplicateNode() {
   if (!node) return;
   const configCopy = { ...node.config };
   if (configCopy.tools) configCopy.tools = [...configCopy.tools];
+  delete configCopy.depth;   // depth is a per-use choice on ONE step: a copy starts standard, like every other new node
   addNode(node.type, node.x + 30, node.y + 30, node.label + ' (copy)', configCopy);
   hideContextMenu();
 }
@@ -5702,6 +5756,11 @@ function updateConfig() {
     H[H.length] = configSelect('Effort', 'effort', node.config.effort || '',
       [{ value: '', label: effortInheritLabel() }]
         .concat(modelEffortLevels(node.config.model).map(l => ({ value: l, label: effortOptionLabel(l) }))));
+    // Depth rides beside Effort: reasoning depth above, orchestration depth here. Standard is
+    // the shipped behavior; exhaustive is a deliberate, costly choice for one step.
+    H[H.length] = configSelect('Depth', 'depth', node.config.depth || '',
+      [{ value: '', label: 'Standard (default) - one pass, as today' }]
+        .concat(DEPTH_LEVELS.map(l => ({ value: l, label: DEPTH_OPTION_LABELS[l] || l }))));
     // Defect posture: two knobs, two homes. The coder family tunes fix-vs-record; the
     // reviewer tunes flag-back intensity (spot-and-report to the orchestrator, never fix,
     // never gate-failing). Testers/verifiers carry the balanced protocol without a knob.
@@ -6923,6 +6982,9 @@ function compareAgentVersions(a, b) {
   return 0;
 }
 // Keep only the known agent-node config fields, with safe defaults (foreign packs may be sparse/dirty).
+// Library-only normalizer (saved and imported agents, and nodes instantiated from them). It
+// never carries `depth`: depth is a per-use choice on one canvas step, not part of a reusable
+// agent, so a pack or a saved agent cannot bake an exhaustive fan-out into every future drop.
 function normalizeAgentConfig(c) {
   c = c || {};
   return {
@@ -9446,6 +9508,15 @@ function validateWorkflow() {
       }
     }
   });
+  // Exhaustive depth inside a fan-out the canvas already models: the step would fan out
+  // again inside every branch (or every repository lane) - a double fan-out.
+  const _dn = depthNodes();
+  const _laneMap = _dn.length ? perRepoLaneMap() : {};   // once, and only when a step is exhaustive (off by default costs nothing)
+  _dn.forEach(n => {
+    const underFork = explainIsParallelChild(n);   // the one fork-child predicate Explain uses
+    const inLane = !!_laneMap[n.id];
+    if (underFork || inLane) warnings.push({ type: 'warn', msg: '"' + n.label + '" is set to exhaustive depth inside a ' + (inLane ? 'per-repository lane' : 'parallel branch') + ' - it would fan out again inside every ' + (inLane ? 'repository' : 'branch') + '. Exhaustive depth earns its cost on a lone review, audit, or research step.' });
+  });
   // Parallel siblings with a dependency path between them cannot truly run simultaneously.
   // Revision paths never count as dependencies - shared predicate with topologicalSort.
   const isReviseEdge = isReviseBackEdge;
@@ -9578,11 +9649,24 @@ function adviseWorkflow() {
   const agents = state.nodes.filter(n => n.type === 'agent');
   const outputs = state.nodes.filter(n => n.type === 'output');
 
-  // (a) A build step whose work reaches the output with no review on the way.
-  agents.forEach(n => {
+  // The advisor's one notion of "a build step": the code roles, or a General agent that holds
+  // write tools (consulted here as advice only - never an emitted contract).
+  const advisorIsBuilder = n => {
     const at = n.config.agentType;
     const holdsWrite = (n.config.tools || []).some(t => t === 'Write' || t === 'Edit');
-    const builder = at === 'coder' || at === 'frontend' || at === 'backend' || (at === 'general' && holdsWrite);
+    return at === 'coder' || at === 'frontend' || at === 'backend' || (at === 'general' && holdsWrite);
+  };
+
+  // (0) Exhaustive depth on a step that writes code: a fan-out of parallel edits inside one
+  // step is where depth stops paying for itself. Only fires when the user set it.
+  agents.forEach(n => {
+    if (!nodeDepth(n) || !advisorIsBuilder(n)) return;
+    s.push({ msg: '"' + n.label + '" is a build step set to exhaustive depth - the fan-out would run parallel edits inside one step. Depth pays off on a review, audit, or research step; a build step usually wants a Skeptic or Verifier loop instead.' });
+  });
+
+  // (a) A build step whose work reaches the output with no review on the way.
+  agents.forEach(n => {
+    const builder = advisorIsBuilder(n);
     if (!builder) return;
     if (advisorReachesOutputUnreviewed(n.id)) {
       const sug = { msg: '"' + n.label + '" builds work that reaches the output with no review step (Reviewer, Tester, Skeptic, or Verifier) on the way - consider a Skeptic review loop.' };
@@ -9978,6 +10062,13 @@ function explainAgentNode(node, format) {
           ? 'Effort is ' + _nEffLvl + ', and ' + getModelLabel(node.config.model) + ' supports up to ' + _nEffRes + ' - this step runs at ' + _nEffRes
           : 'Effort ' + _nEffRes + ' applies to this step (lever: the Effort row in Node Configuration)';
   rows.push(exRow('Effort', format !== 'claude' && !!_nEffRes, _nEffReason, ''));
+  const _nDepth = nodeDepth(node);
+  const _nDepthReason = format === 'claude'
+    ? 'Claude.ai has no orchestration tool - exhaustive depth is a Claude Code lever'
+    : _nDepth
+      ? 'Depth is exhaustive for this step (lever: the Depth row in Node Configuration) - it runs as an orchestrated fan-out and hands off one result'
+      : 'Depth is standard for this step - one pass, as always (lever: the Depth row in Node Configuration, for a review, audit, or research step where one pass misses things)';
+  rows.push(exRow('Depth', format !== 'claude' && !!_nDepth, _nDepthReason, _nDepth ? depthStepNote(node) : ''));
 
   if (format === 'claude') {
     rows.push(exRow('Suggested tools', false, 'Claude.ai format carries no CLI tool lines'));
@@ -10193,7 +10284,8 @@ function explainNode(node, format) {
       : _sEff
         ? '. Effort: this step emits output_config effort ' + _sEff + (_sEff !== _sWant ? ', lowered from the configured ' + _sWant + ' because ' + getModelLabel(node.config.model) + ' does not support that level' : '')
         : '. Effort: the configured ' + _sWant + ' is skipped for this step because ' + getModelLabel(node.config.model) + ' does not accept the effort parameter';
-    return [exRow('Agent SDK', true, 'suggested tools ride as a comment plus an instruction line (suggestions, never a restriction - no hard tools param); per-step MCP hints are excluded to keep the format minimal by owner priority' + _sEffNote, '')];
+    const _sDepthNote = nodeDepth(node) ? '. Depth: this step is exhaustive - the skeleton carries a "# depth" comment on its config (no orchestration tool here; the harness wires the fan-out)' : '';
+    return [exRow('Agent SDK', true, 'suggested tools ride as a comment plus an instruction line (suggestions, never a restriction - no hard tools param); per-step MCP hints are excluded to keep the format minimal by owner priority' + _sEffNote + _sDepthNote, '')];
   }
   if (node.type === 'agent') return explainAgentNode(node, format);
   if (node.type === 'input') return explainInputNode(node, format);
@@ -10307,7 +10399,8 @@ function explainWorkflow(format) {
   format = format || state.exportFormat;
   if (format === 'sdk') {
     return [exRow('Agent SDK', true, 'Python skeleton: suggested tools ride as comments and instruction lines (no hard tools param - suggestions, never a restriction); per-step MCP hints excluded to keep the format minimal by owner priority; clarify/Datadog toggles render as comment banners'
-      + (workflowHasEffort() ? '. Effort is configured on one or more steps, and this is the one format that emits it as a real per-step output_config parameter - lowered or skipped where a step\'s model does not support that level, with the difference named in a comment' : ''), '')];
+      + (workflowHasEffort() ? '. Effort is configured on one or more steps, and this is the one format that emits it as a real per-step output_config parameter - lowered or skipped where a step\'s model does not support that level, with the difference named in a comment' : '')
+      + (depthNodes().length ? '. Depth: ' + depthNodes().map(n => n.label).join(', ') + ' set to exhaustive - a comment banner and a "# depth" comment per config; the skeleton has no orchestration tool, so the harness wires the fan-out' : ''), '')];
   }
   const rows = [];
   // Capstone framing row: the orchestrator is not a canvas node, and users go looking
@@ -10381,6 +10474,14 @@ function explainWorkflow(format) {
       ? 'effort configured on one or more steps (lever: the Effort row in Node Configuration, defaulted by Default Effort in the sidebar) - carried as run intent, since the Task tool has no effort parameter and Claude Code sets it per session'
       : 'no step carries an effort level - the run uses whatever the runner defaults to (high on the API, xhigh in Claude Code); set one per step in Node Configuration or set Default Effort in the sidebar';
   rows.push(exRow('Effort', format !== 'claude' && workflowHasEffort(), efReason, ef || ''));
+  const _dnW = depthNodes();   // once per render
+  const dh = format === 'claude' ? null : depthHint(_dnW);
+  const dhReason = format === 'claude'
+    ? 'Claude.ai has no orchestration tool - exhaustive depth is a Claude Code lever'
+    : _dnW.length
+      ? 'one or more steps set to exhaustive depth (lever: the Depth row in Node Configuration) - each runs as an orchestrated fan-out inside the step and hands off one result'
+      : 'no step is set to exhaustive depth - every step runs as one pass; set Depth per step in Node Configuration where one pass misses things';
+  rows.push(exRow('Depth', format !== 'claude' && _dnW.length > 0, dhReason, dh || ''));
   const cr = consumeRecordsHint(format);
   rows.push(exRow('Grounding in prior records', !!cr, cr ? 'Ground-in-prior-records toggle on - three-tier lookup, Current behavior first; also scans any openspec/ docs found (bounded: names first, grep to narrow, few files opened)' : 'Ground-in-prior-records toggle off', cr));
   const cl = clarifyFirstHint();
@@ -11080,6 +11181,10 @@ function pushSharedHints(p, format, includeEffort) {
     const ef = effortHint();
     if (ef) { p.push(ef); p.push(''); }
   }
+  if (format !== 'claude') {   // the by-design Claude.ai skip: no orchestration tool there (gated on the format, not on the effort flag)
+    const dh = depthHint();
+    if (dh) { p.push(dh); p.push(''); }
+  }
   const cr = consumeRecordsHint(format);
   if (cr) { p.push(cr); p.push(''); }
   const cl = clarifyFirstHint();
@@ -11152,6 +11257,7 @@ function genWorkflow() {
           const _brS = browserStepHint(s); if (_brS) p.push('  ' + _brS);
           const _prS = perRepoStepHint(s); if (_prS) p.push('  ' + _prS);
           const _apS = approvePlanStepHint(s, _apCp); if (_apS) p.push('  ' + _apS);
+          const _dpS = depthStepNote(s); if (_dpS) p.push('  ' + _dpS);
           const _csS = codeSearchStepHint(s); if (_csS) p.push('  ' + _csS);
           const _veS = verifyInstructionsStepHint(s); if (_veS) p.push('  ' + _veS);
           const _fdS = foundDefectNote(s); if (_fdS) p.push('  ' + _fdS);
@@ -11180,6 +11286,7 @@ function genWorkflow() {
         const _brN = browserStepHint(node); if (_brN) p.push('- ' + _brN);
         const _prN = perRepoStepHint(node); if (_prN) p.push('- ' + _prN);
         const _apN = approvePlanStepHint(node, _apCp); if (_apN) p.push('- ' + _apN);
+        const _dpN = depthStepNote(node); if (_dpN) p.push('- ' + _dpN);
         const _csN = codeSearchStepHint(node); if (_csN) p.push('- ' + _csN);
         const _veN = verifyInstructionsStepHint(node); if (_veN) p.push('- ' + _veN);
         const _fdN = foundDefectNote(node); if (_fdN) p.push('- ' + _fdN);
@@ -11474,6 +11581,7 @@ function genSubAgents() {
         p.push(`- **Model**: ${getModelLabel(s.config.model)} (\`${getTaskModelParam(s.config.model)}\`)`);
         const _mcP = modelContextNote(s.config.model); if (_mcP) p.push('- ' + _mcP);
         const _efP = effortStepNote(s); if (_efP) p.push('- ' + _efP);
+        const _dpP = depthOrchestratorNote(s); if (_dpP) p.push('- ' + _dpP);
         if (s.config.tools.length > 0) p.push('- ' + toolAccessText(s.config.tools));
         p.push(`- **Max turns**: ${s.config.maxTurns}`);
         if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
@@ -11492,6 +11600,7 @@ function genSubAgents() {
       p.push(`- **Model**: ${getModelLabel(node.config.model)} (\`${getTaskModelParam(node.config.model)}\`)`);
       const _mcQ = modelContextNote(node.config.model); if (_mcQ) p.push('- ' + _mcQ);
       const _efQ = effortStepNote(node); if (_efQ) p.push('- ' + _efQ);
+      const _dpQ = depthOrchestratorNote(node); if (_dpQ) p.push('- ' + _dpQ);
       if (node.config.tools.length > 0) p.push('- ' + toolAccessText(node.config.tools));
       p.push(`- **Max turns**: ${node.config.maxTurns}`);
       if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
@@ -11620,6 +11729,7 @@ function genAgentTeams() {
     lines.push(`${pre}- Model: \`${getTaskModelParam(node.config.model)}\` (${getModelLabel(node.config.model)})`);
     const _mcT = modelContextNote(node.config.model); if (_mcT) lines.push(`${pre}- ` + _mcT);
     const _efT = effortStepNote(node); if (_efT) lines.push(`${pre}- ` + _efT);
+    const _dpT = depthOrchestratorNote(node); if (_dpT) lines.push(`${pre}- ` + _dpT);   // lead-facing: the lead holds the opt-in, a teammate does not
     if (node.config.tools.length > 0) lines.push(`${pre}- ` + toolAccessText(node.config.tools));
     const _scTm = toolScopeNote(node.config.tools); if (_scTm) lines.push(`${pre}- ` + _scTm);
     lines.push(`${pre}- Max turns: ${node.config.maxTurns}`);
@@ -11881,6 +11991,16 @@ function genAgentSDK() {
     p.push('# ────────────────────────────────────────────────────────────────────────────');
     p.push('');
   }
+  const _sdkDepth = depthNodes();
+  if (_sdkDepth.length) {
+    p.push('# ── Depth: exhaustive steps ─────────────────────────────────────────────────');
+    p.push('# ' + _sdkDepth.map(n => n.label).join(', ') + ': set to exhaustive depth - an orchestrated fan-out inside the step');
+    p.push('# (decompose, fan out, verify adversarially, synthesize into one result). This skeleton');
+    p.push('# has no orchestration tool; see the "# depth" comment on each config and wire the');
+    p.push('# fan-out in your harness.');
+    p.push('# ────────────────────────────────────────────────────────────────────────────');
+    p.push('');
+  }
   const _sdkAp = approvePlanHint(_sdkCp);
   if (_sdkAp) {
     p.push('# ── Director approval before the build ──────────────────────────────────────');
@@ -12020,6 +12140,7 @@ function genAgentSDK() {
         p.push(`    output_config={"effort": "${_eff}"},`);
       }
     }
+    if (nodeDepth(node)) p.push('    # depth: exhaustive - orchestrate this step internally in your harness (decompose, fan out, verify adversarially, synthesize into one result); this skeleton has no orchestration tool');
     p.push(`    max_turns=${node.config.maxTurns},`);
 
     const instructions = [];

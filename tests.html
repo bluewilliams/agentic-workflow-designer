@@ -1938,6 +1938,183 @@ describe('Consume prior records (read side)', () => {
   });
 });
 
+// ─── Depth (exhaustive steps: orchestration depth inside one step) ─────────────────────
+describe('Depth (exhaustive steps)', () => {
+  let _savedRepos;
+  beforeEach(() => { resetState(); _savedRepos = win.state.repositories; win.state.memoryEnabled = false; });
+  afterEach(() => { win.state.repositories = _savedRepos; win.state.memoryEnabled = false; resetState(); });   // a failing assertion never leaks repositories into later suites
+  const GEN = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genAgentSDK', 'genClaudePrompt'];
+  it('unset emits NOTHING: every preset, every format, no Depth text and no opt-in word; the hint is null', () => {
+    const keys = [...win.document.querySelectorAll('.preset-item[data-preset]')].map(el => el.dataset.preset);
+    expect(keys.length > 15).toBe(true);
+    keys.forEach(k => {
+      resetState();
+      win.loadPreset(k);
+      expect(win.workflowHasDepth()).toBe(false);
+      expect(win.depthHint()).toBeNull();
+      GEN.forEach(g => { const o = win[g](); expect(o).toNotContain('Depth (configured)'); expect(o).toNotContain('**Depth: exhaustive**'); expect(o).toNotContain('Depth: exhaustive steps'); expect(o).toNotContain(win.DEPTH_KEYWORD); expect(o).toNotContain('# depth'); });
+      expect(JSON.stringify(win.serializeWorkflow())).toNotContain('"depth"');   // untouched workflows keep their exact JSON
+    });
+  });
+  it('nodeDepth ignores bogus values; a foreign value is dropped on load; a valid one round-trips', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.depth = 'turbo';
+    expect(win.nodeDepth(impl)).toBe('');
+    expect(win.depthStepNote(impl)).toBe('');
+    const blob = win.serializeWorkflow();
+    blob.canvas.nodes.find(n => n.label === 'Implementer').config.depth = 'turbo';
+    expect(win.deserializeWorkflow(blob)).toBe(true);
+    expect(win.state.nodes.find(n => n.label === 'Implementer').config.depth).toBe('');   // a foreign value is Standard, like effort
+    win.state.nodes.find(n => n.label === 'Implementer').config.depth = 'exhaustive';
+    const blob2 = win.serializeWorkflow();
+    expect(JSON.stringify(blob2)).toContain('"depth":"exhaustive"');
+    expect(win.deserializeWorkflow(blob2)).toBe(true);
+    expect(win.nodeDepth(win.state.nodes.find(n => n.label === 'Implementer'))).toBe('exhaustive');
+    // Standard picked after Exhaustive persists as '' and round-trips symmetrically (save == load)
+    win.state.nodes.find(n => n.label === 'Implementer').config.depth = '';
+    const blob3 = win.serializeWorkflow();
+    expect(JSON.stringify(blob3)).toContain('"depth":""');
+    expect(win.deserializeWorkflow(blob3)).toBe(true);
+    expect(win.state.nodes.find(n => n.label === 'Implementer').config.depth).toBe('');
+    expect(JSON.stringify(win.serializeWorkflow().canvas)).toBe(JSON.stringify(blob3.canvas));   // the canvas round-trips byte for byte (savedAt is a timestamp)
+    // the Agent Library never bakes depth into a reusable agent - on save AND on import (the normalizer drops it)
+    win.state.nodes.find(n => n.label === 'Implementer').config.depth = 'exhaustive';
+    const lib = win.normalizeAgentConfig(win.state.nodes.find(n => n.label === 'Implementer').config);
+    expect(lib.depth).toBe(undefined);
+    expect(JSON.stringify(lib)).toNotContain('depth');
+  });
+  it('an exhaustive reviewer: the Claude Code formats carry the opt-in word once at workflow level and the step note on that step only; Claude.ai carries neither; the SDK carries comments and no word', () => {
+    win.loadPreset('feature');
+    const rev = win.state.nodes.find(n => n.label === 'Reviewer');
+    rev.config.depth = 'exhaustive';
+    const count = (o, needle) => o.split(needle).length - 1;
+    ['genWorkflow', 'genSubAgents', 'genAgentTeams'].forEach(g => {
+      const o = win[g]();
+      expect(count(o, 'Depth (configured): ' + win.DEPTH_KEYWORD)).toBe(1);
+      expect(o).toContain('One step in this workflow (Reviewer) is set to exhaustive depth');
+      expect(o).toContain('Every other step runs exactly as it always has');
+    });
+    const wf = win.genWorkflow();
+    expect(count(wf, '**Depth: exhaustive** (' + win.DEPTH_KEYWORD + ')')).toBe(1);               // single session: the step block carries the ask
+    expect(wf).toContain('hand off ONE result');
+    expect(wf).toNotContain('dispatch this step as an orchestrated fan-out');
+    const sa = win.genSubAgents();
+    expect(count(sa, '**Depth: exhaustive**: dispatch this step as an orchestrated fan-out')).toBe(1);   // the orchestrator's card holds the ONE instruction
+    expect(sa).toNotContain('**Depth: exhaustive** (' + win.DEPTH_KEYWORD + ')');                  // the spawned prompt is a plain brief: a helper is never told to fan out again
+    expect(sa).toContain('the prompt block is that brief, never a second dispatch');
+    expect(win.depthOrchestratorNote(win.state.nodes.find(n => n.label === 'Implementer'))).toBe('');
+    const tm = win.genAgentTeams();
+    expect(count(tm, 'dispatch this step as an orchestrated fan-out')).toBe(1);                  // the lead-facing line: the lead holds the opt-in, a teammate does not
+    expect(tm).toNotContain('**Depth: exhaustive** (' + win.DEPTH_KEYWORD + ')');                  // the teammate prompt is a plain brief
+    // a copy is a new use: depth never rides along
+    win.state.selectedId = rev.id;
+    win.duplicateNode();
+    const copy = win.state.nodes.find(n => n.label === 'Reviewer (copy)');
+    expect(copy.config.depth).toBe(undefined);
+    expect(win.depthNodes().map(n => n.label).join(',')).toBe('Reviewer');
+    const cl = win.genClaudePrompt();
+    expect(cl).toNotContain('Depth (configured)');
+    expect(cl).toNotContain('**Depth: exhaustive**');
+    expect(cl).toNotContain(win.DEPTH_KEYWORD);
+    const sdk = win.genAgentSDK();
+    expect(sdk).toContain('# ── Depth: exhaustive steps');
+    expect(sdk).toContain('# Reviewer: set to exhaustive depth');
+    expect(sdk).toContain('    # depth: exhaustive - orchestrate this step internally in your harness');
+    expect(count(sdk, '    # depth: exhaustive')).toBe(1);
+    expect(sdk).toNotContain(win.DEPTH_KEYWORD);
+    win.state.exportFormat = 'sdk';
+    expect(win.explainWorkflow('sdk')[0].reason).toContain('Depth: Reviewer set to exhaustive');
+    expect(win.explainNode(rev, 'sdk')[0].reason).toContain('Depth: this step is exhaustive');
+    expect(win.explainNode(win.state.nodes.find(n => n.label === 'Implementer'), 'sdk')[0].reason).toNotContain('Depth:');
+    win.state.exportFormat = 'prompt';
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    expect(win.depthStepNote(impl)).toBe('');
+    const tester = win.state.nodes.find(n => n.label === 'Tester');
+    tester.config.depth = 'exhaustive';
+    expect(win.genWorkflow()).toContain('2 steps in this workflow (Reviewer, Tester) are set to exhaustive depth: run each of them');
+  });
+  it('the step note names the contract: internal fan-out, no new steps, one handoff; memory-gated wording OFF then ON', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    impl.config.depth = 'exhaustive';
+    const n = win.depthStepNote(impl);
+    ['decompose its job into independent parts', 'verify every finding adversarially', 'then synthesize', 'hand off ONE result', 'adds no steps to the workflow', 'never changes who owns the next step', 'If your runner offers no orchestration tool, do the same work in this session', 'one result either way'].forEach(x => expect(n).toContain(x));   // the ask stands alone if the opt-in word is not recognized
+    expect(n).toNotContain('memory');                                                            // memory off: no file talk at all
+    expect(win.depthHint()).toNotContain('fan-out naming rule');                                // OFF assertion for the hint's memory-gated clause
+    expect(win.depthOrchestratorNote(impl)).toNotContain('memory');
+    win.state.memoryEnabled = true;
+    const nm = win.depthStepNote(impl);
+    expect(nm).toContain('dynamic fan-out naming rule (`{your-slug}-{item}`)');                 // memory on: ALIGNED with the protocol's existing rule, never contradicting it
+    expect(nm).toContain('pool under this step on the live board');
+    expect(win.depthHint()).toContain('named by the dynamic fan-out naming rule');
+    expect(win.genWorkflow()).toNotContain('write no memory files');
+    const oc = win.depthOrchestratorNote(impl);
+    expect(oc).toContain('with this step\'s prompt below as the brief for every helper');
+    expect(oc).toContain('perform this step\'s memory duties AS the step');
+    expect(oc).toContain('write its handoff from the step\'s slug');
+    win.state.memoryEnabled = false;
+    expect(win.depthOrchestratorNote(impl)).toNotContain('memory duties');
+    expect(n).toNotContain('\u2014'); expect(n).toNotContain('\u2013');
+  });
+  it('validation warns on a double fan-out (inside a parallel branch, inside a per-repo lane) and stays quiet on a lone step; the advisor notes an exhaustive build step only', () => {
+    win.loadPreset('fullstack');
+    const be = win.state.nodes.find(n => n.label === 'Backend');
+    be.config.depth = 'exhaustive';
+    let w = win.validateWorkflow().map(x => x.msg).join('\n');
+    expect(w).toContain('"Backend" is set to exhaustive depth inside a parallel branch');
+    expect(win.adviseWorkflow().map(x => x.msg).join('\n')).toContain('"Backend" is a build step set to exhaustive depth');
+    be.config.depth = '';
+    const gen = win.addNode('agent', 900, 500, 'Helper', { agentType:'general', model:'opus-5', tools:['Read','Write'], prompt:'h', maxTurns:5, depth:'exhaustive' });
+    expect(win.adviseWorkflow().map(x => x.msg).join('\n')).toContain('"Helper" is a build step set to exhaustive depth');   // the advisor's own builder rule: a General agent holding write tools
+    win.state.nodes = win.state.nodes.filter(n => n.id !== gen.id);
+    win.clearUndo();                                                                             // the addNode snapshot must not outlive the node
+    const rv = win.state.nodes.find(n => n.label === 'Reviewer');
+    rv.config.depth = 'exhaustive';
+    w = win.validateWorkflow().map(x => x.msg).join('\n');
+    expect(w).toNotContain('exhaustive depth inside');
+    expect(win.adviseWorkflow().map(x => x.msg).join('\n')).toNotContain('exhaustive depth');
+    win.state.repositories = [{ path: '/work/alpha', branch: '' }, { path: '/work/beta', branch: '' }];
+    win.loadPreset('cross_repo');
+    const rt = win.state.nodes.find(n => n.label === 'Repo Tester');
+    rt.config.depth = 'exhaustive';
+    w = win.validateWorkflow().map(x => x.msg).join('\n');
+    expect(w).toContain('"Repo Tester" is set to exhaustive depth inside a per-repository lane');
+  });
+  it('Explain: a Depth row at workflow and step level, emitted when set, skipped with the lever named when not, by-design skip on Claude.ai; the Node Configuration row offers Standard and Exhaustive', () => {
+    buildTestWorkflow('linear');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    const wfRow = (fmt) => win.explainWorkflow(fmt).find(r => r.part === 'Depth');
+    const stRow = (fmt) => win.explainNode(impl, fmt || 'prompt').find(r => r.part === 'Depth');
+    expect(wfRow('prompt').status).toBe('skipped');
+    expect(wfRow('prompt').reason).toContain('Node Configuration');
+    expect(stRow().status).toBe('skipped');
+    expect(stRow().reason).toContain('one pass, as always');
+    impl.config.depth = 'exhaustive';
+    expect(wfRow('prompt').status).toBe('emitted');
+    expect(win.genWorkflow()).toContain(wfRow('prompt').probe);
+    expect(stRow().status).toBe('emitted');
+    expect(wfRow('claude').status).toBe('skipped');
+    expect(wfRow('claude').reason).toContain('no orchestration tool');
+    expect(stRow('claude').status).toBe('skipped');
+    win.state.selectedId = impl.id;
+    win.updateConfig();
+    const panel = win.document.getElementById('configPanel') || win.document.getElementById('nodeConfig') || win.document.body;
+    const sel = [...panel.querySelectorAll('[data-key="depth"]')];
+    expect(sel.length).toBe(1);
+    expect(sel[0].textContent).toContain('Exhaustive');
+    expect(sel[0].querySelectorAll('.custom-select-option').length).toBe(1 + win.DEPTH_LEVELS.length);   // options derive from DEPTH_LEVELS
+    impl.config.depth = 'turbo';                                                                 // a foreign value shows AS ITSELF in the panel, never as Standard
+    win.updateConfig();
+    expect([...panel.querySelectorAll('[data-key="depth"]')][0].textContent).toContain('turbo');
+    impl.config.depth = 'exhaustive';
+    expect(win.depthNodes().map(n => n.label).join(',')).toBe('Implementer');
+    const help = win.document.getElementById('helpOverlay').textContent;
+    expect(help).toContain('Depth (Exhaustive Steps)');
+    expect(help).toContain('depth is how hard one member works');
+  });
+});
+
 // ─── Plan approval gate (Approve plan before build: the director checkpoint) ─────────────
 describe('Plan approval gate (Approve plan before build)', () => {
   let _saved;
@@ -15716,7 +15893,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.MONITOR_IDLE_MS = MONITOR_IDLE_MS; window.TELEMETRY_DEFAULT_SERVICE = TELEMETRY_DEFAULT_SERVICE; window.TELEMETRY_EVENTS = TELEMETRY_EVENTS; window.approvePlanHint = approvePlanHint; window.approvePlanStepHint = approvePlanStepHint; window.approvalCheckpoint = approvalCheckpoint; window.APPROVAL_PLAN_OWNER_ROLES = APPROVAL_PLAN_OWNER_ROLES; window.graphShapeSig = graphShapeSig; window.APPROVAL_BUILD_ROLES = APPROVAL_BUILD_ROLES; window.toggleApprovePlan = toggleApprovePlan; window.VERIFIER_HONESTY = VERIFIER_HONESTY; window.TASK_SIGNAL = TASK_SIGNAL; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.MONITOR_IDLE_MS = MONITOR_IDLE_MS; window.TELEMETRY_DEFAULT_SERVICE = TELEMETRY_DEFAULT_SERVICE; window.TELEMETRY_EVENTS = TELEMETRY_EVENTS; window.DEPTH_LEVELS = DEPTH_LEVELS; window.DEPTH_KEYWORD = DEPTH_KEYWORD; window.nodeDepth = nodeDepth; window.workflowHasDepth = workflowHasDepth; window.depthStepNote = depthStepNote; window.depthHint = depthHint; window.depthNodes = depthNodes; window.depthOrchestratorNote = depthOrchestratorNote; window.approvePlanHint = approvePlanHint; window.approvePlanStepHint = approvePlanStepHint; window.approvalCheckpoint = approvalCheckpoint; window.APPROVAL_PLAN_OWNER_ROLES = APPROVAL_PLAN_OWNER_ROLES; window.graphShapeSig = graphShapeSig; window.APPROVAL_BUILD_ROLES = APPROVAL_BUILD_ROLES; window.toggleApprovePlan = toggleApprovePlan; window.VERIFIER_HONESTY = VERIFIER_HONESTY; window.TASK_SIGNAL = TASK_SIGNAL; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

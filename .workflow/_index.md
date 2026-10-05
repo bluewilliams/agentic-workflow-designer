@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (MODELS labels + trigger), tests.html (label assertions + invariant), README.md, TECHNICAL.md
 - status: current | date: 2026-08-26 | note: 1707 -> 1708.
 
+## step-depth
+
+- record: .workflow/step-depth.md
+- intent: a per-step Depth lever beside Effort - standard (one pass, nothing emitted, the shipped behavior) or exhaustive (the step runs as an orchestrated fan-out in the Claude Code formats via the orchestration opt-in word plus the step's explicit ask: decompose, fan out, verify adversarially, synthesize, ONE handoff; helpers invisible to memory, board, record). Unset emits byte-identical output; validation warns on a double fan-out (under a parallel node or in a per-repo lane); the advisor notes an exhaustive build step; Explain rows at both levels; Claude.ai skips by design; SDK carries comments only.
+- files: index.html (DEPTH_LEVELS, DEPTH_KEYWORD, nodeDepth, workflowHasDepth, depthStepNote, depthHint, shared hint, four per-step sites, config row, normalize + deserialize, Explain rows, SDK comments, validation, advisor, help), tests.html (Depth suite), README.md
+- status: current | date: 2026-10-04 | note: created; four review rounds (the last reduced emission: Sub-Agents and Teams carry the ask on the orchestrator card only). 1796 -> 1802.
+
 ## plan-approval-gate
 
 - record: .workflow/plan-approval-gate.md
