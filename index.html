@@ -24,9 +24,11 @@
 }
 html,body{height:100%;overflow:hidden}
 body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid;
-  grid-template-columns:320px 1fr;grid-template-rows:1fr auto auto;height:100vh;height:100dvh}
+  grid-template-columns:320px 1fr;grid-template-rows:1fr auto auto;grid-auto-rows:0;height:100vh;height:100dvh}
+/* The four panels are pinned to their cells: an element a browser extension injects into <body>
+   (a stray in-flow child) must never take a cell and shove the prompt panel into the sidebar column. */
 /* Sidebar */
-.sidebar{grid-row:1/4;background:var(--surface);border-right:1px solid var(--border);
+.sidebar{grid-column:1;grid-row:1/4;background:var(--surface);border-right:1px solid var(--border);
   display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
 .sidebar::-webkit-scrollbar{width:6px}
 .sidebar::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px}
@@ -254,7 +256,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 .custom-select-option:hover{background:var(--surface2)}
 .custom-select-option.selected{color:var(--accent);background:var(--bg)}
 /* Main Canvas Area */
-.main-area{display:flex;flex-direction:column;background:var(--bg);position:relative}
+.main-area{grid-column:2;grid-row:1;display:flex;flex-direction:column;background:var(--bg);position:relative}
 .toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;
   background:var(--surface);border-bottom:1px solid var(--border);min-height:44px;flex-shrink:0}
 .toolbar .sep{width:1px;height:20px;background:var(--border);margin:0 4px}
@@ -299,10 +301,10 @@ svg.canvas{width:100%;height:100%;display:block}
 .temp-connection{fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:6 4;
   pointer-events:none;opacity:.7}
 /* Prompt Output */
-.prompt-resize{height:6px;cursor:ns-resize;background:transparent;border-top:1px solid var(--border);
+.prompt-resize{grid-column:2;grid-row:2;height:6px;cursor:ns-resize;background:transparent;border-top:1px solid var(--border);
   flex-shrink:0;transition:background .15s}
 .prompt-resize:hover,.prompt-resize.active{background:var(--accent);opacity:.5}
-.prompt-area{background:var(--surface);
+.prompt-area{grid-column:2;grid-row:3;background:var(--surface);
   display:flex;flex-direction:column;overflow:hidden}
 .prompt-header{display:flex;align-items:center;gap:0;
   border-bottom:1px solid var(--border);flex-shrink:0;min-height:38px}

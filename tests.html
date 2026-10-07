@@ -12093,6 +12093,62 @@ describe('Prompt Panel Resize', () => {
   });
 });
 
+describe('Page grid pins the four panels to their cells (a foreign body child never steals one)', () => {
+  // A browser extension that injects an in-flow element into <body> used to take the top-right
+  // grid cell: the canvas dropped to the middle and the prompt panel fell into the 320px sidebar
+  // column, clipping the format tabs and the Copy button. Measured with the iframe shown.
+  const frame = document.getElementById('app');
+  let foreign = null;
+  beforeEach(() => { frame.style.display = 'block'; });
+  afterEach(() => { if (foreign && foreign.parentNode) foreign.remove(); foreign = null; frame.style.display = 'none'; });
+  function geometry() {
+    const doc = win.document;
+    const r = el => el.getBoundingClientRect();
+    const copy = Array.from(doc.querySelectorAll('.prompt-actions button')).find(b => b.textContent.trim() === 'Copy');
+    return { sidebar: r(doc.querySelector('.sidebar')), main: r(doc.querySelector('.main-area')), prompt: r(doc.getElementById('promptArea')), copy: r(copy) };
+  }
+  it('baseline: the canvas sits beside the sidebar and the prompt panel spans the canvas column with Copy inside it', () => {
+    const g = geometry();
+    expect(g.sidebar.width).toBe(320);
+    expect(g.main.left).toBe(g.sidebar.right);
+    expect(g.main.top).toBe(0);
+    expect(g.prompt.left).toBe(g.sidebar.right);
+    expect(g.prompt.width).toBe(g.main.width);
+    expect(g.copy.width).toBeGreaterThan(0);
+    expect(g.copy.right <= g.prompt.right && g.copy.left >= g.prompt.left).toBe(true);
+  });
+  it('an in-flow element injected at the start of <body> changes nothing', () => {
+    const before = geometry();
+    foreign = win.document.createElement('x-ext-helper');
+    win.document.body.prepend(foreign);
+    const after = geometry();
+    expect(after.main.top).toBe(before.main.top);
+    expect(after.main.height).toBe(before.main.height);
+    expect(after.prompt.left).toBe(before.prompt.left);
+    expect(after.prompt.width).toBe(before.prompt.width);
+    expect(after.copy.right <= after.prompt.right && after.copy.left >= after.prompt.left).toBe(true);
+  });
+  it('a visible 40px element injected before the canvas changes nothing either (implicit rows are zero height)', () => {
+    const before = geometry();
+    foreign = win.document.createElement('div');
+    foreign.style.height = '40px'; foreign.textContent = 'banner';
+    win.document.body.insertBefore(foreign, win.document.querySelector('.main-area'));
+    const after = geometry();
+    expect(after.main.height).toBe(before.main.height);
+    expect(after.sidebar.height).toBe(before.sidebar.height);
+    expect(after.prompt.left).toBe(before.prompt.left);
+    expect(after.prompt.width).toBe(before.prompt.width);
+  });
+  it('removing the foreign element leaves the baseline intact', () => {
+    foreign = win.document.createElement('x-ext-helper');
+    win.document.body.prepend(foreign);
+    foreign.remove();
+    const g = geometry();
+    expect(g.prompt.left).toBe(g.sidebar.right);
+    expect(g.copy.right <= g.prompt.right).toBe(true);
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Suite: Atlassian two-block model (ticket-fetch + general) - scenario matrix
 // ═══════════════════════════════════════════════════════════

@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## page-grid-pinning
+
+- record: .workflow/page-grid-pinning.md
+- intent: the four body-grid panels (sidebar, canvas, resize handle, prompt panel) are pinned to their grid cells and implicit rows are zero height, so an in-flow element a browser extension injects into <body> can never take a cell: before, it pushed the canvas to the middle and dropped the prompt panel into the 320px sidebar column, clipping the format tabs and the Copy button.
+- files: index.html (body grid, .sidebar, .main-area, .prompt-resize, .prompt-area), tests.html (page grid suite)
+- status: current | date: 2026-10-07 | note: created from a colleague's report; reproduced and proven in headless Chrome. 1802 -> 1806.
+
 ## model-label-floating
 
 - record: .workflow/model-label-floating.md
