@@ -6937,6 +6937,70 @@ describe('Preset prompt craft batch', () => {
   });
 });
 
+// UI Design craft: the Analyzer's Visual Identity (look-only, never a blocker) and the Reviewer's advisory critique.
+// Static templates, no gating; the preset and auto-workflow tests load the canvas and write awd_ prefs, so
+// state, storage, and the story input are cleaned in afterEach.
+describe('UI Design craft (visual identity in the Brief, advisory design critique)', () => {
+  afterEach(() => { resetState(); clearStorage(); win.document.getElementById('storyInput').value = ''; });
+  it('UI Design craft: the Analyzer records the visual identity only when the app can be looked at, never as a blocker', () => {
+    const a = win.PROMPTS.designSystemAnalyzer;
+    expect(a).toContain('**The product as it looks** (only when it can be done, never a blocker)');
+    expect(a).toContain('Only load local dev servers (localhost)');                              // localhost only: the frontend template's safety scope, worded for a look rather than a verification
+    expect(a).toContain('the app\'s local dev server is already running');                        // look only: a server must already be running...
+    expect(a).toContain('If no server is already running');                                       // ...and its absence is a skip, never a start
+    expect(a).toContain('Do not start a server, install anything, or change the environment to take this look');
+    expect(a).toContain('skip this step, say so in the Brief');                                  // no app: proceed from code, as before
+    expect(a).toContain('Spend at most three turns on this whole step, finding and looking included');   // the look has a budget, so the Brief sections that gate the Implementer are never starved
+    expect(a).toContain('open one or two screens that render the newest components you read in step 5');   // grounded in a discovery step that has run; nothing is canonical yet
+    expect(a).toNotContain('screenshot');                                                         // the Brief is prose; no image artifacts
+    expect(a).toNotContain('App Under Test path');                                                // the prompt makes no claim on the path (the path lint names App Explorer consumers only)
+    expect(a).toContain('screens not found within the turn budget');                              // every skip condition has a reason the Brief can state
+    expect(a).toContain('on the code-only path, name the components instead');                    // nothing to invent when no screen was seen
+    expect(a).toContain('The Brief is complete without this step');
+    expect(a).toContain('### Visual Identity');
+    expect(a).toContain('derived from code only');
+    expect(a).toContain('- **Visual Identity**: One line');
+    expect(a.indexOf('### Visual Identity') < a.indexOf('### Patterns to AVOID')).toBe(true);
+    expect(win.PROMPTS.uiImplementer).toContain('Visual Identity section when it has one');          // the consumer matches it, optional
+    expect(win.PROMPTS.uiImplementer).toContain('the voice of labels and empty states');              // the Implementer is told what the critique grades
+    expect(win.PROMPTS.uiImplementer).toContain('states are designed, not merely present');
+  });
+  it('UI Design craft: the Reviewer critique is advisory and never flips the verdict on its own', () => {
+    const r = win.PROMPTS.uiReviewer;
+    expect(r).toContain('## Design Critique (advisory)');
+    expect(r).toContain('never make the verdict NEEDS REVISION on their own');
+    expect(r).toContain('stays in the Design category even when it touches styling');             // no route from taste to Critical
+    expect(r).toContain('only a breach of the Brief\'s own rules');
+    expect(r).toContain('filed under Correctness or Accessibility at that category\'s severity, never under Design System');   // no antecedent that routes a defect to Critical
+    expect(r).toContain('against the canonical component the Brief names');
+    expect(r).toContain('say whether it is justified');                                            // restraint in plain words
+    expect(r).toContain('Your default verdict is PASS');                                             // the gating sentence survives unchanged
+    expect(r).toContain('**Design system violations are Critical severity**');
+    expect(r).toContain('- **Design Notes**: Critique findings, non-blocking');
+    expect(r.indexOf('## Design Critique (advisory)') > r.indexOf('## Standard Code Review')).toBe(true);
+  });
+  it('UI Design craft: the preset shape, the Analyzer tool list, and the review gate are unchanged', () => {
+    win.loadPreset('ui_component');
+    const dsa = win.state.nodes.find(n => n.label === 'Design System Analyzer');
+    expect(dsa.config.tools.join(',')).toBe('Read,Grep,Glob,Bash,LSP');                               // no browser tool required: it is used only when present
+    expect(dsa.config.prompt).toBe(win.PROMPTS.designSystemAnalyzer);
+    const gate = win.state.nodes.find(n => n.label === 'UI review passed?');
+    expect(gate.config.condition).toBe('Design-system compliant with no critical issues');
+    expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(4);
+    const out = win.genWorkflow();
+    expect(out).toContain('### Visual Identity');
+    expect(out).toContain('## Design Critique (advisory)');
+  });
+  it('UI Design craft: the auto-workflow UI shape installs the same Analyzer with the same tool list', () => {
+    win.document.getElementById('storyInput').value = 'Build a settings modal with form components, a responsive layout, and keyboard-accessible tabs';
+    win.generateFromStory(true);
+    const dsa = win.state.nodes.find(n => n.label === 'Design System Analyzer');
+    expect(dsa).toBeTruthy();
+    expect(dsa.config.tools.join(',')).toBe('Read,Grep,Glob,Bash,LSP');                               // no browser tool required on this path either
+    expect(dsa.config.prompt).toBe(win.PROMPTS.designSystemAnalyzer);
+  });
+});
+
 // ─── Suite 12h: Live Run Monitor core (parsers, merge, diff, scan, panel) ─────
 describe('Live Run Monitor core', () => {
   afterEach(() => {

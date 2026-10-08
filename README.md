@@ -191,7 +191,7 @@ Ready-made pipelines, each a strong opinion you can override.
 - **Review Swarm** - parallel Security + Quality + Performance + Architecture audit > Aggregate > Report Builder > Audit Report (read-only, never touches code)
 - **Delivery Swarm** - the showcase. Discovery fan-out (Codebase Cartographer + Requirements Analyst + Prior-Art Researcher) > Synthesize > Lead Planner (Skeptic doubts the plan) > parallel Backend + Frontend > Integrator (Verifier proves it runs) > Code Review gate > Test > Feature Delivered
 - **Test Automation** - [Test Planner | UI Explorer] > parallel Feature Writer + Screen Objects + Step Definitions > Test Reviewer (with app source path + branch support)
-- **UI Design & Development** - Design System Analyzer > UI Implementer > (Verifier proves it works in a browser) > UI Reviewer
+- **UI Design & Development** - Design System Analyzer > UI Implementer > (Verifier proves it works in a browser) > UI Reviewer. The Analyzer's brief includes the product's visual identity (from the running app when one is already running and browser tools are available, from code otherwise; it never starts a server and the step is never a blocker) so new work looks like it belongs; the Reviewer adds an advisory design critique that never blocks on its own
 - **Refactoring** - Planner > Code Analyzer > Refactorer > Reviewer > Decision gate > Tester
 - **Documentation** - Planner > Researcher > Doc Writer (Writer: Technical) > (Skeptic reviews the docs)
 - **Analysis & Forecast** - Data Gatherer (Analyst) > Analyst > (Skeptic checks the arithmetic, units, and assumptions) > Report Writer (Writer: Business) - measurement and forecasting with visible methodology

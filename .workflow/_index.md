@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## ui-design-craft
+
+- record: .workflow/ui-design-craft.md
+- intent: the UI Design preset gains design judgment without a new control: the Design Analyzer looks at the running local app only when browser tools and a dev server are available (never a blocker; code-only otherwise, as before) and records the product's Visual Identity in the Brief; the Implementer matches it when present; the UI Reviewer adds an advisory Design Critique whose findings never flip the verdict on their own. Gate condition, tool lists, and preset shape unchanged.
+- files: index.html (PROMPTS.designSystemAnalyzer, PROMPTS.uiImplementer, PROMPTS.uiReviewer, help modal, agent-type description), tests.html (UI Design craft tests in the craft batch), README.md
+- status: current | date: 2026-10-07 | note: created after an honest assessment; two review rounds; a Design Explorer step for net-new surfaces is a deferred design discussion. 1806 -> 1810.
+
 ## page-grid-pinning
 
 - record: .workflow/page-grid-pinning.md
