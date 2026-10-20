@@ -457,7 +457,8 @@ svg.canvas{width:100%;height:100%;display:block}
 .monitor-task .tick{flex:0 0 auto;width:14px;height:14px;border-radius:3px;border:1px solid var(--border);
   display:inline-flex;align-items:center;justify-content:center;font-size:10px;margin-top:1px}
 .monitor-task.confirmed .tick{background:rgba(52,211,153,.15);border-color:#34d399;color:#34d399}
-.monitor-task.provisional .tick{border-color:#3b82f6;color:#3b82f6}
+.monitor-task.provisional .tick{border-color:#a78bfa;color:#a78bfa}
+.monitor-task.inflight .tick{border-color:#3b82f6;color:#3b82f6;animation:monitorPulse 1.6s ease-in-out infinite}
 .monitor-task.confirmed{color:var(--text3)}
 .monitor-task .owner{color:var(--text3);font-size:10px;white-space:nowrap}
 .monitor-task code{font-size:11px;background:rgba(0,0,0,.28);padding:0 4px;border-radius:3px;color:var(--text)}
@@ -486,7 +487,8 @@ svg.canvas{width:100%;height:100%;display:block}
 @keyframes monitorPulse{0%,100%{opacity:1}50%{opacity:.25}}
 .monitor-progress{height:6px;border-radius:3px;background:var(--surface2);overflow:hidden;display:flex;margin:8px 0 4px}
 .monitor-progress .seg-confirmed{background:#34d399;transition:width .6s ease}
-.monitor-progress .seg-provisional{background:#3b82f6;opacity:.55;transition:width .6s ease}
+.monitor-progress .seg-provisional{background:#a78bfa;opacity:.7;transition:width .6s ease}
+.monitor-progress .seg-inflight{background:#3b82f6;opacity:.55;transition:width .6s ease}
 .monitor-task.just-changed{animation:monitorFlash 1.6s ease-out}
 @keyframes monitorFlash{0%{background:rgba(52,211,153,.22)}100%{background:transparent}}
 .monitor-agent .dot.pulse{animation:monitorPulse 1.6s ease-in-out infinite}
@@ -498,7 +500,7 @@ svg.canvas{width:100%;height:100%;display:block}
    scale. Reduced motion gets a static blue outline instead of the animation. */
 .monitor-node-live{stroke:#3b82f6;animation:monitorNodeStroke 1.6s ease-in-out infinite}
 @keyframes monitorNodeStroke{0%,100%{stroke-width:1.5;stroke-opacity:.55}50%{stroke-width:3;stroke-opacity:1}}
-@media (prefers-reduced-motion: reduce){.monitor-live .beacon,.monitor-agent .dot.pulse,.monitor-task.just-changed,.monitor-dot-live{animation:none}.monitor-node-live{animation:none;stroke-width:2;stroke-opacity:1}}
+@media (prefers-reduced-motion: reduce){.monitor-live .beacon,.monitor-agent .dot.pulse,.monitor-task.just-changed,.monitor-task.inflight .tick,.monitor-dot-live{animation:none}.monitor-node-live{animation:none;stroke-width:2;stroke-opacity:1}}
 .monitor-tabs{display:flex;gap:4px;margin:12px 0 2px;border-bottom:1px solid var(--border);padding-bottom:6px}
 /* House-styled tooltip (replaces the native title box app-wide via one delegate) */
 #appTip{position:fixed;z-index:400;max-width:340px;background:var(--surface);border:1px solid var(--border);
@@ -1313,7 +1315,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>Every other preset STARTS work; the <strong>Amend an existing deliverable</strong> group in the Presets section changes work that already shipped - and keeps the durable artifacts telling the truth about it. <strong>Touch-Up</strong> is for follow-up changes to a delivered capability (post-run adjustments, PR feedback, a small behavior tweak): a Scoper grounds in the existing record or <code>openspec/</code> spec and defines the smallest delta plus the behaviors that must NOT move, an Amender applies it, a Delta Reviewer gates on regressions and lists every artifact statement the change made untrue, and an Artifact Steward amends the record IN PLACE (History line, refreshed index and timeline entries) - never minting a new record for a tweak. <strong>Record Sync</strong> touches no code at all: a Drift Auditor proves (with file-and-line evidence) where the records or specs stopped matching the working tree, and the Steward amends the artifacts back to reality - anywhere the CODE is what broke the truth, that gets flagged for a Touch-Up run instead of being papered over. Both presets self-gate on what exists (no <code>.workflow</code> or <code>openspec/</code> means they simply ground in code and tests), work per-repository on multi-repo workflows, and compose with every toggle - memory, records, the Live Run Monitor - like any other preset.</p>
 
 <h3>Live Run Monitor</h3>
-<p>The <strong>Monitor</strong> toolbar button (Chromium only) watches folders while a run executes: pick the <code>workflow-memory</code> folder once - the monitor follows whichever run is active (a Run selector appears when several exist) - and the panel shows the task checklist ticking live (confirmed ticks from <code>tasks.md</code>, half-ticks from agents' provisional <code>t:</code> lines the moment each task completes), per-agent status chips, a change feed, and every file one click from view - while canvas nodes carry live status dots. One watch covers a multi-repo run's live surface (the memory folder is shared); add each repo's <code>.workflow</code> folder to browse its durable records in the same panel, rendered as markdown with a record chip. To watch code changes too, pick the narrowest folder that holds the work (a repo's <code>src</code> beats its root): each tree's scan has a file budget, and an over-budget tree is flagged <strong>capped</strong> and reports only modifications to files it has already seen. Read-only, polling-based, paused while the tab is hidden. A <strong>Run Health</strong> row appears (amber, above the tab content) only when the RUN drifts from the protocol - agents whose progress ticks match no checklist item, a checklist nobody has ticked while agents keep writing, or entry timestamps that disagree with real file times. Each hint carries a <strong>Copy nudge</strong> button: paste the nudge into the running session to correct the drift mid-run. Silence means healthy.</p>
+<p>The <strong>Monitor</strong> toolbar button (Chromium only) watches folders while a run executes: pick the <code>workflow-memory</code> folder once - the monitor follows whichever run is active (a Run selector appears when several exist) - and the panel shows the task checklist ticking live (green confirmed ticks from <code>tasks.md</code>, violet half-ticks from agents' provisional <code>t:</code> lines the moment each task completes, and a blue pulsing marker on an active agent's next open task in checklist order (the best the board can know about what it is working now), shown as a blue segment on the progress bar; blue means running everywhere in the panel and on the canvas), per-agent status chips, a change feed, and every file one click from view - while canvas nodes carry live status dots. One watch covers a multi-repo run's live surface (the memory folder is shared); add each repo's <code>.workflow</code> folder to browse its durable records in the same panel, rendered as markdown with a record chip. To watch code changes too, pick the narrowest folder that holds the work (a repo's <code>src</code> beats its root): each tree's scan has a file budget, and an over-budget tree is flagged <strong>capped</strong> and reports only modifications to files it has already seen. Read-only, polling-based, paused while the tab is hidden. A <strong>Run Health</strong> row appears (amber, above the tab content) only when the RUN drifts from the protocol - agents whose progress ticks match no checklist item, a checklist nobody has ticked while agents keep writing, or entry timestamps that disagree with real file times. Each hint carries a <strong>Copy nudge</strong> button: paste the nudge into the running session to correct the drift mid-run. Silence means healthy.</p>
 <h3>Handoff</h3>
 <p>The <strong>Handoff package</strong> option in the <strong>Export</strong> menu (under <strong>Workflow Management</strong>) downloads a single resume package (<code>.md</code>) so another engineer can pick up in-progress work: how to resume, the durable-record path, the ready-to-run prompt, and the full workflow definition. The live run state travels with your git branch and the durable record, not this file - so enable <strong>Keep a durable record</strong> before running for a truly resumable handoff.</p>
 
@@ -14148,6 +14150,31 @@ function monitorMergeTasks(checklist, provisionalTexts) {
     return { text: item.text, owner: item.owner, tier: hit ? 'provisional' : 'open' };
   });
 }
+// In flight (pure): for each owner whose status resolves to active, its FIRST open task in
+// checklist order - its next open task, the best the board can know (agents work their
+// checklist in order and tick as they go). A fourth signal beside the tiers, never a tier:
+// derived from the agent's status, not from a tick, so it appears the moment the agent
+// announces itself and clears when the task is ticked or the agent finishes. Owners resolve
+// through the same rule as the canvas dots (case-insensitive, fan-out pool, siblings
+// excluded), so the board and the canvas agree. Returns task INDICES: duplicate texts must
+// never share a marker, and an ownerless row must never be marked.
+// `claimedSlugs` (optional) adds the canvas's node slugs to the sibling-exclusion set, so an
+// owner never absorbs a step that has no checklist row of its own ("plan" must not take
+// "plan-review"'s helpers just because the review step owns no task).
+function monitorInFlightTasks(tasks, agents, claimedSlugs) {
+  const owners = [];
+  (tasks || []).forEach(t => { if (t.owner) { const o = String(t.owner).toLowerCase(); if (owners.indexOf(o) === -1) owners.push(o); } });
+  const claimedAll = owners.concat((claimedSlugs || []).map(x => String(x).toLowerCase()).filter(x => owners.indexOf(x) === -1));
+  const statusByOwner = Object.create(null), seen = Object.create(null), out = [];
+  (tasks || []).forEach((t, i) => {
+    if (!t.owner || t.tier !== 'open') return;
+    const o = String(t.owner).toLowerCase();
+    if (seen[o]) return;
+    if (!(o in statusByOwner)) statusByOwner[o] = monitorSlugStatus(o, agents, claimedAll.filter(x => x !== o));
+    if (statusByOwner[o] === 'active') { seen[o] = 1; out.push(i); }
+  });
+  return out;
+}
 // Latest status per agent: its own @slug.md is authoritative for activity; a done
 // handoff in shared.md confirms completion when the agent file lags - but never
 // overrides a LATER entry in the agent's own file (a revise-dispatched agent goes
@@ -14748,33 +14775,47 @@ function monitorNodeStatus(node) {
   // Own-property reads only: agents maps can be plain literals (test fixtures), so a node
   // labeled "Constructor" must never resurrect an Object.prototype member as a status.
   const getOwn = k => Object.prototype.hasOwnProperty.call(runMonitor.agents, k) ? runMonitor.agents[k] : null;
-  let exact = getOwn(slug) || getOwn(labelSlug);
-  if (!exact) {
-    // Mirror the pool's casing rule: an off-protocol verbatim-cased file (@Plan-Review.md)
-    // must match its node exactly, not only its node's children.
-    const hit = Object.keys(runMonitor.agents).find(k => k.toLowerCase() === slug);
-    if (hit) exact = runMonitor.agents[hit];
-  }
-  if (exact) return exact;
-  // Dynamic fan-out fallback: an orchestrator may spawn per-item agents from one canvas
-  // node (a "Review" node running review-farwake, review-omerta, ...). When no exact
-  // match exists, a node whose slug is a HYPHEN-BOUNDARY prefix of run agents aggregates
-  // them, trouble first: failed > blocked > active > done > pending (the priority list
-  // below is the authority). Duplicate-labeled nodes (slug-N disambiguation) do not
-  // aggregate - ownership of a shared pool would be ambiguous between the duplicates.
-  const pre = slug + '-';
+  // The label slug is the one lookup the shared rule does not know (a disambiguated node's
+  // own label); everything else - exact key, verbatim casing, the fan-out pool, and the
+  // roster-pending-yields-to-pool rule - is monitorSlugStatus, so the canvas and the task
+  // board can never disagree. Duplicate-labeled nodes (slug-N disambiguation) do not
+  // aggregate a pool - ownership of a shared pool would be ambiguous between the duplicates.
   // Sibling exclusion: a key that IS another canvas node's claimed slug - or lives under a
   // LONGER claimed prefix - is that node's business. "plan" must never absorb "plan-review",
   // and "deploy" must not aggregate the children of a "deploy-staging" node (the more
-  // specific owner wins). Comparison is lowercase: agent files may carry verbatim casing.
+  // specific owner wins).
+  const own = getOwn(labelSlug);
+  if (own && own !== 'pending') return own;
   const claimed = map ? Object.keys(map).filter(id => id !== node.id).map(id => map[id]) : [];
-  const pool = Object.keys(runMonitor.agents).filter(k => {
+  return monitorSlugStatus(slug, runMonitor.agents, claimed) || own;
+}
+// The one slug -> status rule (pure), shared by the canvas dots and the task board so they
+// never disagree about who is working: an own-property exact key, else a case-insensitive
+// key (an off-protocol verbatim-cased file), else the hyphen-boundary fan-out pool of
+// `{slug}-{item}` helpers minus any key claimed by a sibling slug (or living under a longer
+// claimed prefix), aggregated trouble first: failed > blocked > active > done > pending
+// (the priority list below is the authority). Comparison is lowercase: agent files may
+// carry verbatim casing. Null when nothing matches.
+function monitorSlugStatus(slug, agents, claimed) {
+  agents = agents || {};
+  const getOwn = k => Object.prototype.hasOwnProperty.call(agents, k) ? agents[k] : null;
+  let exact = getOwn(slug);
+  if (!exact) {
+    const hit = Object.keys(agents).find(k => k.toLowerCase() === slug);
+    if (hit) exact = agents[hit];
+  }
+  // A pending exact key is roster-seeded (a tasks.md owner tag; no agent file ever writes
+  // "pending"), so it yields to a live fan-out pool: @review-alpha.md active makes "review"
+  // active even while the roster still holds review: pending.
+  if (exact && exact !== 'pending') return exact;
+  const pre = slug + '-';
+  const pool = Object.keys(agents).filter(k => {
     const kl = k.toLowerCase();
     if (kl.indexOf(pre) !== 0) return false;
-    return !claimed.some(c => kl === c || (c.length > slug.length && kl.indexOf(c + '-') === 0));
+    return !(claimed || []).some(c => kl === c || (c.length > slug.length && kl.indexOf(c + '-') === 0));
   });
-  if (!pool.length) return null;
-  const st = pool.map(k => runMonitor.agents[k]);
+  if (!pool.length) return exact;
+  const st = pool.map(k => agents[k]);
   // Trouble outranks motion: one failed pack member must alarm the node even while
   // seven siblings still work - the chips carry the per-agent truth beside it.
   if (st.indexOf('failed') !== -1) return 'failed';
@@ -14867,18 +14908,26 @@ function renderMonitorPanel() {
     }
     if (_tab === 'tasks' && runMonitor.tasks.length) {
       const provN = runMonitor.tasks.filter(t => t.tier === 'provisional').length;
-      H.push('<h3>Tasks (' + _doneN + '/' + runMonitor.tasks.length + ' confirmed' + (provN ? ', ' + provN + ' in progress' : '') + ')</h3>');
-      // Stacked progress bar: solid green = confirmed, translucent blue = provisional in flight.
+      const _slugMap = (typeof buildAgentSlugMap === 'function') ? buildAgentSlugMap() : null;
+      const _flight = monitorInFlightTasks(runMonitor.tasks, runMonitor.agents, _slugMap ? Object.keys(_slugMap).map(id => _slugMap[id]) : []);
+      H.push('<h3>Tasks (' + _doneN + '/' + runMonitor.tasks.length + ' confirmed' + (provN ? ', ' + provN + ' in progress' : '') + (_flight.length ? ', ' + _flight.length + ' in flight' : '') + ')</h3>');
+      // Stacked progress bar: solid green = confirmed, violet = provisional (ticked by the agent,
+      // not yet confirmed), blue = in flight (an active agent's current open task: blue means
+      // running everywhere - canvas dot, chip, row, bar).
       const total = runMonitor.tasks.length;
-      H.push('<div class="monitor-progress"><div class="seg-confirmed" style="width:' + Math.round(_doneN / total * 100) + '%"></div><div class="seg-provisional" style="width:' + Math.round(provN / total * 100) + '%"></div></div>');
+      const _confPct = Math.round(_doneN / total * 100), _provPct = Math.round(provN / total * 100);
+      // Three rounded shares can sum past 100 and squeeze the green; the in-flight share yields.
+      const _flightPct = Math.max(0, Math.min(Math.round(_flight.length / total * 100), 100 - _confPct - _provPct));
+      H.push('<div class="monitor-progress"><div class="seg-confirmed" style="width:' + _confPct + '%"></div><div class="seg-provisional" style="width:' + _provPct + '%"></div>' + (_flightPct > 0 ? '<div class="seg-inflight" style="width:' + _flightPct + '%"></div>' : '') + '</div>');
       // A task whose tier advanced since the last render flashes once - the tick you SEE land.
       const prevT = runMonitor._prevTiers || {};
       const nextT = {};
-      runMonitor.tasks.forEach(t => {
+      runMonitor.tasks.forEach((t, i) => {
         nextT[t.text] = t.tier;
         const flash = prevT[t.text] !== undefined && prevT[t.text] !== t.tier ? ' just-changed' : '';
-        const mark = t.tier === 'confirmed' ? '\u2713' : t.tier === 'provisional' ? '\u2248' : '';
-        H.push('<div class="monitor-task ' + t.tier + flash + '"><span class="tick">' + mark + '</span><span>' + inlineFmt(t.text)
+        const inFlight = _flight.indexOf(i) !== -1;
+        const mark = t.tier === 'confirmed' ? '\u2713' : t.tier === 'provisional' ? '\u2248' : inFlight ? '\u25B8' : '';
+        H.push('<div class="monitor-task ' + t.tier + (inFlight ? ' inflight' : '') + flash + '"' + (inFlight ? ' title="In flight: @' + escHtml(t.owner) + ' is active and this is its next open task"' : '') + '><span class="tick">' + mark + '</span><span>' + inlineFmt(t.text)
           + (t.owner ? ' <span class="owner">@' + escHtml(t.owner) + '</span>' : '') + '</span></div>');
       });
       runMonitor._prevTiers = nextT;

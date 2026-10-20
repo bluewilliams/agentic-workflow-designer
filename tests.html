@@ -7122,6 +7122,97 @@ describe('Live Run Monitor core', () => {
     expect(html).toContain('current');
     expect(html).toNotContain('monitor-task provisional');   // tabs isolate content
   });
+  it('in flight: an active owner\'s next open task carries the blue marker and a blue third bar segment; nothing when no owner is active', () => {
+    const texts = (tasks, agents) => win.monitorInFlightTasks(tasks, agents).map(i => tasks[i].text).join(',');
+    expect(texts([
+      { text: 'plan', owner: 'planner', tier: 'open' },
+      { text: 'wire', owner: 'backend', tier: 'open' },
+      { text: 'wire more', owner: 'backend', tier: 'open' },
+      { text: 'ticked', owner: 'tester', tier: 'provisional' },
+      { text: 'orphan', owner: null, tier: 'open' }], { planner: 'active', backend: 'active', tester: 'active' })).toBe('plan,wire');   // first open task per active owner; a provisional task is already past in-flight
+    expect(win.monitorInFlightTasks([{ text: 'plan', owner: 'planner', tier: 'open' }], { planner: 'pending' }).length).toBe(0);                      // dispatched-but-quiet is not in flight
+    expect(texts([{ text: 'review all', owner: 'review', tier: 'open' }], { review: 'pending', 'review-alpha': 'active', 'review-beta': 'done' })).toBe('review all');   // the same rule as the canvas: the roster's pending seed yields to a live fan-out pool
+    expect(win.monitorSlugStatus('review', { review: 'pending', 'review-alpha': 'active' }, [])).toBe('active');
+    expect(win.monitorSlugStatus('review', { review: 'pending' }, [])).toBe('pending');                                                             // no pool: the roster seed stands
+    expect(win.monitorSlugStatus('review', { review: 'done', 'review-alpha': 'active' }, [])).toBe('done');                                        // a written status is never overridden by the pool
+    expect(texts([{ text: 'plan', owner: 'Planner', tier: 'open' }], { planner: 'active' })).toBe('plan');                                           // owner tag casing never hides an active agent
+    expect(texts([{ text: 'plan', owner: 'plan', tier: 'open' }, { text: 'review it', owner: 'plan-review', tier: 'open' }], { 'plan-review': 'active' })).toBe('review it');   // sibling exclusion: plan never absorbs plan-review
+    expect(texts([{ text: 'review', owner: 'a', tier: 'open' }, { text: 'review', owner: null, tier: 'open' }], { a: 'active' })).toBe('review');       // duplicate texts: indices, so the ownerless twin is never marked
+    expect(win.monitorInFlightTasks([{ text: 'plan', owner: 'plan', tier: 'open' }], { plan: 'pending', 'plan-review': 'active' }).length).toBe(1);                 // with no canvas, plan-review looks like plan's helper...
+    expect(win.monitorInFlightTasks([{ text: 'plan', owner: 'plan', tier: 'open' }], { plan: 'pending', 'plan-review': 'active' }, ['plan', 'plan-review']).length).toBe(0);   // ...the canvas's slugs say it is a step of its own
+    expect(win.monitorInFlightTasks([{ text: 'plan', owner: 'planner', tier: 'open' }], { planner: 'done' }).length).toBe(0);
+    expect(win.monitorInFlightTasks([{ text: 'plan', owner: 'constructor', tier: 'open' }], {}).length).toBe(0);                                      // own-property read only
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
+    win.runMonitor.timer = 1;
+    win.runMonitor.tasks = [
+      { text: 'plan the change', owner: 'planner', tier: 'open' },
+      { text: 'skeptic review', owner: 'skeptic-review-planner', tier: 'open' },
+      { text: 'wire the handler', owner: 'implementer', tier: 'open' },
+      { text: 'write tests', owner: 'implementer', tier: 'open' }];
+    win.runMonitor.agents = { planner: 'active', 'skeptic-review-planner': 'pending', implementer: 'pending' };
+    win.renderMonitorPanel();
+    let html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('0/4 confirmed, 1 in flight');
+    expect(html).toContain('seg-inflight" style="width:25%');
+    expect(win.runMonitor.tasks.map(x => x.tier).join(',')).toBe('open,open,open,open');                 // never a tier...
+    expect(Object.keys(win.runMonitor._prevTiers).map(k => win.runMonitor._prevTiers[k]).join(',')).toBe('open,open,open,open');   // ...and the flash memory is untouched
+    expect(html).toContain('monitor-task open inflight"');
+    expect((html.match(/ inflight/g) || []).length).toBe(1);                                            // the planner\'s task only
+    expect(html).toContain('@planner is active and this is its next open task');
+    expect(html.indexOf('seg-provisional') < html.indexOf('seg-inflight')).toBe(true);                   // confirmed, provisional, in flight: the bar reads left to right
+    // the tick lands: the task goes provisional and in-flight moves nowhere (the owner has no other open task)
+    win.runMonitor.tasks[0].tier = 'provisional';
+    win.renderMonitorPanel();
+    html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('0/4 confirmed, 1 in progress)');
+    expect(html).toNotContain('seg-inflight');                                                           // OFF: no segment element at all, not a zero-width one
+    expect(html).toNotContain(' inflight');
+    win.runMonitor.agents = {}; win.renderMonitorPanel();
+    const noAgentsHtml = win.document.getElementById('monitorPanel').innerHTML;
+    win.runMonitor.agents = { planner: 'active', 'skeptic-review-planner': 'pending', implementer: 'pending' }; win.renderMonitorPanel();
+    expect(win.document.getElementById('monitorPanel').innerHTML.replace(/<h3>Agents<\/h3><div>.*?<\/div>/, '')).toBe(noAgentsHtml);   // byte-identical task board whether or not agents exist, when none is in flight
+    // the owner finishes: nothing in flight even with open tasks left to it
+    win.runMonitor.tasks[0].tier = 'confirmed'; win.runMonitor.agents = { planner: 'done', implementer: 'pending' };
+    win.renderMonitorPanel();
+    html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toNotContain('in flight');
+    expect(html).toNotContain('seg-inflight');
+    // the next owner starts: its first open task, not every task it owns
+    win.runMonitor.agents = { planner: 'done', implementer: 'active' };
+    win.renderMonitorPanel();
+    html = win.document.getElementById('monitorPanel').innerHTML;
+    expect((html.match(/ inflight/g) || []).length).toBe(1);
+    expect(html.indexOf('wire the handler') < html.indexOf('write tests')).toBe(true);
+    expect(html).toContain('title="In flight: @implementer');
+    // duplicate texts on the board: one owned and in flight, its ownerless twin unmarked, no throw
+    win.runMonitor.tasks = [{ text: 'review', owner: 'a', tier: 'open' }, { text: 'review', owner: null, tier: 'open' }];
+    win.runMonitor.agents = { a: 'active' };
+    win.renderMonitorPanel();
+    html = win.document.getElementById('monitorPanel').innerHTML;
+    expect((html.match(/ inflight/g) || []).length).toBe(1);
+    expect(html).toContain('1 in flight');
+    // rounding: three shares that would sum past 100 leave the green and violet exact and let the blue yield
+    win.runMonitor.tasks = [
+      { text: 'a', owner: 'x', tier: 'confirmed' }, { text: 'b', owner: 'y', tier: 'provisional' },
+      { text: 'c', owner: 'p', tier: 'open' }, { text: 'd', owner: 'q', tier: 'open' }, { text: 'e', owner: 'r', tier: 'open' }, { text: 'f', owner: 's', tier: 'open' }];
+    win.runMonitor.agents = { p: 'active', q: 'active', r: 'active', s: 'active' };
+    win.renderMonitorPanel();
+    html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('seg-confirmed" style="width:17%');
+    expect(html).toContain('seg-provisional" style="width:17%');
+    expect(html).toContain('seg-inflight" style="width:66%');                                             // 67 would overflow; the in-flight share yields
+    // the cap can clamp the share to nothing: the heading still counts it, the bar emits no zero-width segment
+    const many = []; for (let k = 0; k < 199; k++) many.push({ text: 'done ' + k, owner: 'z', tier: 'confirmed' });
+    many.push({ text: 'last one', owner: 'p', tier: 'open' });
+    win.runMonitor.tasks = many; win.runMonitor.agents = { p: 'active' };
+    win.renderMonitorPanel();
+    html = win.document.getElementById('monitorPanel').innerHTML;
+    expect(html).toContain('199/200 confirmed, 1 in flight');
+    expect(html).toContain('seg-confirmed" style="width:100%');
+    expect(html).toNotContain('seg-inflight');
+    expect((html.match(/ inflight/g) || []).length).toBe(1);                                            // the row still carries the marker
+  });
   it('liveness layer: LIVE beacon with an active timer, progress bar segments, pulsing active chips, colored feed kinds', () => {
     win.runMonitor.open = true;
     win.runMonitor.watches = [{ handle: {}, name: 'x', status: 'granted' }];
@@ -7331,6 +7422,12 @@ describe('Live Run Monitor core', () => {
     expect(win.monitorNodeStatus(n)).toBe('done');              // all done completes
     win.runMonitor.agents = { 'review-farwake': 'done', 'review-omerta': 'blocked' };
     expect(win.monitorNodeStatus(n)).toBe('blocked');           // trouble surfaces over done
+    win.runMonitor.agents = { review: 'pending', 'review-farwake': 'done', 'review-omerta': 'active' };
+    expect(win.monitorNodeStatus(n)).toBe('active');            // the roster's pending seed yields to a live pool on the canvas as on the board
+    win.runMonitor.agents = { review: 'pending' };
+    expect(win.monitorNodeStatus(n)).toBe('pending');           // no pool: the seed stands
+    win.runMonitor.agents = { review: 'done', 'review-omerta': 'active' };
+    expect(win.monitorNodeStatus(n)).toBe('done');              // a written status is never overridden
     win.runMonitor.agents = { 'review-farwake': 'active', 'review-omerta': 'failed' };
     expect(win.monitorNodeStatus(n)).toBe('failed');            // ...and over active: an alarm never hides behind motion
     win.runMonitor.agents = { 'review-farwake': 'done', 'review-omerta': 'pending' };
