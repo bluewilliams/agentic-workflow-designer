@@ -9,12 +9,19 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (PROMPTS.designSystemAnalyzer, PROMPTS.uiImplementer, PROMPTS.uiReviewer, help modal, agent-type description), tests.html (UI Design craft tests in the craft batch), README.md
 - status: current | date: 2026-10-07 | note: created after an honest assessment; two review rounds; a Design Explorer step for net-new surfaces is a deferred design discussion. 1806 -> 1810.
 
+## saved-workflow-context
+
+- record: .workflow/saved-workflow-context.md
+- intent: a saved workflow carries the sidebar context the generated prompt depends on (App & UI Context, verification paths and notes and posture, rules and product doc paths, the clarify and approve switches) as the same flat keys the prefs use, and restores them on load through the same paths restorePrefs uses; absent keys leave the current context alone (old saves load as before); a file from someone else adopts only into empty fields and never moves the access grant or the switches; the OpenSpec meta import keeps its own adopt rule.
+- files: index.html (serializeWorkflow, applyWorkflowContext, deserializeWorkflow opts, import call sites, export meta lines, Save title), tests.html (round-trip and modes), README.md
+- status: current | date: 2026-10-23 | note: created from a director audit question. 1816 -> 1818.
+
 ## page-grid-pinning
 
 - record: .workflow/page-grid-pinning.md
 - intent: the four body-grid panels (sidebar, canvas, resize handle, prompt panel) are pinned to their grid cells and implicit rows are zero height, so an in-flow element a browser extension injects into <body> can never take a cell: before, it pushed the canvas to the middle and dropped the prompt panel into the 320px sidebar column, clipping the format tabs and the Copy button.
 - files: index.html (body grid, .sidebar, .main-area, .prompt-resize, .prompt-area), tests.html (page grid suite)
-- status: current | date: 2026-10-07 | note: created from a colleague's report; reproduced and proven in headless Chrome. 1802 -> 1806.
+- status: current | date: 2026-10-23 | note: narrow windows (column shrinks, toolbar wraps, labels collapse to icons below a 1150px column). Earlier: created from a colleague's report; reproduced and proven in headless Chrome. 1818.
 
 ## model-label-floating
 
@@ -132,8 +139,8 @@ Scan-then-open: read this index first, match an entry against the files or capab
 
 - record: .workflow/touch-up-presets.md
 - intent: an "Amend an existing deliverable" preset group - Touch-Up (Scoper grounds in the existing record/openspec spec and defines the smallest delta + a Must Not Move list; Amender; Delta Reviewer gates on regressions and names every artifact statement made untrue; Artifact Steward amends the record IN PLACE with a History line, index/timeline refresh, and openspec updates - never a new record for a tweak) and Record Sync (Drift Auditor proves artifact drift with file:line evidence, refute-first; Steward amends artifacts only - no code changes by gate contract; broken-truth items flagged for a Touch-Up run). Five self-gating craft templates; per-repository on multi-repo workflows; composes with every toggle.
-- files: index.html (PROMPTS x5, presets touchup + record_sync, sidebar group + CSS, help modal), tests.html (Suite 12i), README.md
-- status: current | date: 2026-09-13 | note: two-halves archive doctrine + greenfield spec creation folded into steward/auditor; suite 1743.
+- files: index.html (PROMPTS x5, presets touchup + record_sync, sidebar group + CSS, help modal, amendScopeNodes + storyLooksLikeOtherTemplate in validation, PROMPT_LIBRARY Sync Durable Artifacts), tests.html (Suite 12i), README.md
+- status: current | date: 2026-10-23 | note: scope clarity (auditor branch-diff default, Sync Scope node description, stale-template warning) and the single-prompt form `Sync Durable Artifacts` in the Prompt Library. Earlier: two-halves archive doctrine + greenfield spec creation. suite 1816.
 
 ## live-run-monitor
 

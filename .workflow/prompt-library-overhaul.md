@@ -70,3 +70,4 @@ Direct campaign by Claude (Fable) as a fork: full read of all 75 entries, per-pi
 
 - Grounds on / touches: grounds on `.workflow/prompt-overhaul-wave-a.md`, `.workflow/prompt-overhaul-wave-b.md`, `.workflow/prompt-overhaul-wave-c.md`, `.workflow/strengthen-agent-prompts.md` (the philosophy and calibration bar); amended no other records.
 - Branch: main (uncommitted delivery for the director).
+- 2026-10-23: entry 77, `Sync Durable Artifacts` (Post-Work): the single-prompt form of the Record Sync workflow for one unit of work (optional input with the branch-diff fallback; grounding rendered by IIFE over `groundingLookupSteps()`, the first library prompt to do so). The two Post-Work tracker tests now target the PR and Jira prompts by title. Recorded in full under touch-up-presets. (by direct session)

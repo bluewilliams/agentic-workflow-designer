@@ -848,6 +848,87 @@ describe('Persistence', () => {
 
   describe('savePrefs / restorePrefs', () => {
     afterEach(() => { try { localStorage.removeItem('awd_prefs'); } catch (e) { /* storage may be unavailable */ } });   // awd_ storage never leaks past a failing assertion
+    it('a saved workflow carries its sidebar context and restores it; an old save leaves the current context alone', () => {
+      const doc = win.document;
+      const setCtx = (c) => {
+        doc.getElementById('appSourcePath').value = c.app; doc.getElementById('appSourceBranch').value = c.branch; doc.getElementById('appSourceAccess').value = c.access;
+        doc.getElementById('uiContextNotes').value = c.ui;
+        win.state.rulesPaths = c.rules.slice(); win.state.productDocPaths = c.docs.slice(); win.state.verifyPaths = c.verify.slice();
+        win.state.verifyNotes = c.vnotes; win.state.verifyFailRun = c.fail; win.state.clarifyFirst = c.clarify; win.state.approvePlan = c.approve;
+      };
+      const readCtx = () => ({
+        app: doc.getElementById('appSourcePath').value, branch: doc.getElementById('appSourceBranch').value, access: doc.getElementById('appSourceAccess').value,
+        ui: doc.getElementById('uiContextNotes').value, rules: win.state.rulesPaths.slice(), docs: win.state.productDocPaths.slice(), verify: win.state.verifyPaths.slice(),
+        vnotes: win.state.verifyNotes, fail: win.state.verifyFailRun, clarify: win.state.clarifyFirst, approve: win.state.approvePlan });
+      const A = { app: '/work/alpha', branch: 'feature/PROJ-1', access: 'writable', ui: 'Tailwind only', rules: ['/work/alpha/.claude/rules'], docs: ['/work/alpha/docs'], verify: ['/work/alpha/VERIFY.md'], vnotes: 'e2e must pass', fail: false, clarify: true, approve: true };
+      const B = { app: '/work/beta', branch: '', access: 'readonly', ui: '', rules: [], docs: [], verify: [], vnotes: '', fail: true, clarify: false, approve: false };
+      try {
+        resetState();
+        win.loadPreset('feature');
+        setCtx(A);
+        const saved = JSON.parse(JSON.stringify(win.serializeWorkflow()));
+        ['appSourcePath', 'appSourceBranch', 'appSourceAccess', 'uiContextNotes', 'rulesPaths', 'productDocPaths', 'verifyPaths', 'verifyNotes', 'verifyFailRun', 'clarifyFirst', 'approvePlan'].forEach(k => expect(k in saved).toBe(true));
+        expect(saved.verifyFailRun).toBe(false);                                          // an explicit false survives (never defaulted)
+        setCtx(B);
+        expect(win.deserializeWorkflow(saved)).toBe(true);                                // restore: every saved key wins
+        expect(JSON.stringify(readCtx())).toBe(JSON.stringify(A));
+        expect(doc.getElementById('clarifyFirstToggle').checked).toBe(true);              // the switches' checkboxes follow
+        expect(doc.getElementById('approvePlanToggle').checked).toBe(true);
+        expect(doc.getElementById('verifyFailRunToggle').checked).toBe(false);
+        // a save carrying EMPTY lists, notes, and text never wipes what is there (explicit switches and access still apply)
+        setCtx(A);
+        const emptyCtx = JSON.parse(JSON.stringify(saved)); emptyCtx.rulesPaths = []; emptyCtx.productDocPaths = []; emptyCtx.verifyPaths = []; emptyCtx.verifyNotes = ''; emptyCtx.uiContextNotes = ''; emptyCtx.appSourcePath = ''; emptyCtx.appSourceBranch = '';
+        expect(win.deserializeWorkflow(emptyCtx)).toBe(true);
+        const kept = readCtx();
+        expect(kept.rules.join(',') + '|' + kept.vnotes + '|' + kept.ui + '|' + kept.app).toBe('/work/alpha/.claude/rules|e2e must pass|Tailwind only|/work/alpha');
+        // an old save (canvas + requirements only): the current context stays exactly as it is
+        setCtx(B);
+        const old = JSON.parse(JSON.stringify(saved));
+        ['appSourcePath', 'appSourceBranch', 'appSourceAccess', 'uiContextNotes', 'rulesPaths', 'productDocPaths', 'verifyPaths', 'verifyNotes', 'verifyFailRun', 'clarifyFirst', 'approvePlan'].forEach(k => delete old[k]);
+        expect(win.deserializeWorkflow(old)).toBe(true);
+        expect(JSON.stringify(readCtx())).toBe(JSON.stringify(B));
+        // adopt (a file from someone else): paths and text land only where this user has nothing; switches and access never move
+        setCtx(B);
+        expect(win.deserializeWorkflow(saved, { context: 'none' })).toBe(true);
+        const adopted = win.openSpecAdoptContextPaths(saved);                              // the one adopt rule, as both file imports call it
+        expect(adopted).toBe(6);                                                          // branch, ui, rules, docs, verify, notes: one item each
+        expect(win.genWorkflow().indexOf('feature/PROJ-1') !== -1).toBe(true);            // an adopted text field reaches the prompt without a further edit
+        const after = readCtx();
+        expect(after.app).toBe('/work/beta');                                             // non-empty: kept
+        expect(after.branch).toBe('feature/PROJ-1');                                      // empty: adopted
+        expect(after.access).toBe('readonly');                                            // an access grant is never adopted
+        expect(after.ui).toBe('Tailwind only');
+        expect(after.rules.join(',')).toBe('/work/alpha/.claude/rules');
+        expect(after.vnotes).toBe('e2e must pass');
+        expect(after.fail).toBe(true); expect(after.clarify).toBe(false); expect(after.approve).toBe(false);
+        // none (the imports' first half): nothing touched until the adopt call
+        setCtx(B);
+        expect(win.deserializeWorkflow(saved, { context: 'none' })).toBe(true);
+        expect(JSON.stringify(readCtx())).toBe(JSON.stringify(B));
+        // restore goes through the sidebar's own helpers: a hand-edited list is trimmed, deduplicated, and non-strings are dropped
+        const dirty = JSON.parse(JSON.stringify(saved)); dirty.rulesPaths = ['/a', '/a ', null, 42, ' '];
+        expect(win.deserializeWorkflow(dirty)).toBe(true);
+        expect(win.state.rulesPaths.join(',')).toBe('/a');
+        win.state.verifyPaths = [];
+        expect(win.openSpecAdoptContextPaths({ verifyPaths: ['VERIFY.md', 'VERIFY.md', ' VERIFY.md'] })).toBe(1);   // the count is what landed, after dedupe
+        const badAccess = JSON.parse(JSON.stringify(saved)); badAccess.appSourceAccess = 'rw';
+        setCtx(B);
+        expect(win.deserializeWorkflow(badAccess)).toBe(true);
+        expect(doc.getElementById('appSourceAccess').value).toBe('readonly');               // an unknown access value is ignored, never a blank select
+        // the export file carries the same keys through the one serializer
+        const exported = JSON.parse(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, ...win.serializeWorkflow() }));
+        expect(Array.isArray(exported.rulesPaths) && typeof exported.appSourcePath === 'string').toBe(true);
+      } finally {
+        ['appSourcePath', 'appSourceBranch', 'uiContextNotes'].forEach(id => { doc.getElementById(id).value = ''; });
+        doc.getElementById('appSourceAccess').value = 'readonly'; win.refreshEnhancedSelect(doc.getElementById('appSourceAccess'));
+        win.state.rulesPaths = []; win.state.productDocPaths = []; win.state.verifyPaths = []; win.state.verifyNotes = ''; doc.getElementById('verifyNotesInput').value = '';
+        win.renderRulesRows(); win.renderProductDocRows(); win.renderVerifyRows();
+        win.state.verifyFailRun = true; doc.getElementById('verifyFailRunToggle').checked = true;
+        win.state.clarifyFirst = false; doc.getElementById('clarifyFirstToggle').checked = false;
+        win.state.approvePlan = false; doc.getElementById('approvePlanToggle').checked = false;
+        resetState(); clearStorage();
+      }
+    });
     it('should roundtrip preferences through save and restore', () => {
       win.state.defaultModel = 'sonnet-4.6';
       win.state.memoryEnabled = true;
@@ -8956,6 +9037,90 @@ describe('Amend presets: Touch-Up and Record Sync', () => {
     const approved = win.state.connections.find(c => c.from === d.id && c.to === st.id);
     expect(!!approved).toBe(true);                                   // the steward runs only after approval
   });
+  it('sync scope: the auditor reads the unit of work from Requirements and defaults to the branch diff; the Sync Scope node says where it goes', () => {
+    const a = win.PROMPTS.driftAuditor;
+    expect(a).toContain('**Scope: the unit of work comes from the Requirements block, and you stay inside it**');
+    expect(a).toNotContain('If the scope input names an area');                                   // the older sentence is folded in, not duplicated
+    expect(a).toContain('git diff --name-only {base}...HEAD');
+    expect(a).toContain('Audit the whole repository only when the scope says everything');
+    expect(a.indexOf('**Scope: the unit of work') < a.indexOf('**Locate what to audit')).toBe(true);   // scope before the scan it bounds
+    win.loadPreset('record_sync');
+    const inp = win.state.nodes.find(n => n.type === 'input');
+    expect(inp.label).toBe('Sync Scope');
+    expect(inp.config.description).toContain('supplied as the workflow requirements');           // surface-neutral: this text reaches the OpenSpec schema export
+    expect(inp.config.description).toNotContain('sidebar');
+    expect(inp.config.description).toContain('current branch\'s diff');
+  });
+  it('sync scope: validation warns only when another workflow\'s template still sits in Requirements for an amend preset; an empty box and a real scope are silent, and build presets never warn', () => {
+    const story = win.document.getElementById('storyInput');
+    const warnTexts = () => win.validateWorkflow().map(w => w.msg);
+    try {
+      win.loadPreset('record_sync');
+      story.value = '';
+      expect(warnTexts().some(m => m.indexOf('another workflow') !== -1)).toBe(false);                 // empty is fine: the placeholder is the cue, the auditor defaults to the branch diff
+      story.value = 'User story:\nAs a reports admin, I want CSV export so that finance can reconcile.\n\nAcceptance criteria:\n- [ ] Export button';
+      const w1 = warnTexts().find(m => m.indexOf('still holds another workflow\'s template') !== -1);
+      expect(w1.indexOf('"Drift Auditor"') !== -1).toBe(true);
+      expect(w1.indexOf('Steward') === -1).toBe(true);                                                 // only the scoping step reads the box; the Steward is not named
+      expect(w1.indexOf('load the preset with the box empty') !== -1).toBe(true);                     // a remedy that fits either preset
+      story.value = win.STORY_PLACEHOLDERS.touchup;
+      expect(warnTexts().some(m => m.indexOf('another workflow') !== -1)).toBe(true);                  // the OTHER amend preset's template counts as foreign here
+      story.value = win.STORY_PLACEHOLDERS.record_sync;
+      expect(warnTexts().some(m => m.indexOf('another workflow') !== -1)).toBe(false);                 // its own template (typed verbatim) does not
+      story.value = 'Scope to reconcile: live-run-monitor\nKnown or suspected drift: the in-flight rule\nHints: .workflow/live-run-monitor.md\nOut of scope: code';
+      expect(warnTexts().some(m => m.indexOf('another workflow') !== -1)).toBe(false);                 // a real scope: silent
+      story.value = 'What to refactor:\nthe export module';
+      expect(warnTexts().some(m => m.indexOf('another workflow') !== -1)).toBe(true);                  // every other preset's template heading counts, read from STORY_PLACEHOLDERS
+      story.value = 'Scope to reconcile: billing\nAcceptance criteria: the invoice totals still match\nOut of scope: code';
+      expect(warnTexts().some(m => m.indexOf('another workflow') !== -1)).toBe(false);                 // a scope that happens to list acceptance criteria is not a template
+      story.value = 'What to change: fix the slow export\nBug description: 10k rows take 40s\nWhat must not move: CSV columns';
+      expect(warnTexts().some(m => m.indexOf('another workflow') !== -1)).toBe(false);                 // only the FIRST line decides: a real unit of work can quote a heading further down
+      const au = win.state.nodes.find(n => n.label === 'Drift Auditor');
+      au.config.prompt = au.config.prompt.replace('produce a confirmed drift list', 'PRODUCE A CONFIRMED DRIFT LIST') + '\n\nAlso check the README.';   // a tailored, re-cased prompt keeps the check
+      story.value = 'User story:\nAs a user';
+      expect(warnTexts().some(m => m.indexOf('"Drift Auditor"') !== -1)).toBe(true);
+      expect(win.amendScopeNodes().length).toBe(1);                                                    // the Steward never qualifies
+      win.loadPreset('touchup');
+      story.value = 'Bug description:\nthe export is slow\nSteps to reproduce:\n1. open';
+      const w2 = warnTexts().find(m => m.indexOf('another workflow') !== -1);
+      expect(w2.indexOf('"Touch-Up Scoper"') !== -1 && w2.indexOf('Amender') === -1 && w2.indexOf('Reviewer') === -1).toBe(true);   // Touch-Up is the other amend preset; only its Scoper reads the box
+      story.value = win.STORY_PLACEHOLDERS.record_sync;
+      expect(warnTexts().some(m => m.indexOf('another workflow') !== -1)).toBe(true);                  // a Record Sync template on a Touch-Up canvas is foreign
+      expect(win.state.nodes.find(n => n.type === 'input').config.description).toContain('what must not move');   // the Touch-Up input node carries the cue too
+      win.loadPreset('feature');
+      story.value = 'User story:\nAs a user';
+      expect(warnTexts().some(m => m.indexOf('another workflow') !== -1)).toBe(false);                 // OFF: a build preset never draws the warning
+    } finally { story.value = ''; resetState(); }
+  });
+  it('sync scope: the Prompt Library carries the single-prompt form of Record Sync with one optional question', () => {
+    const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Post-Work');
+    const p = cat.prompts.find(x => x.title === 'Sync Durable Artifacts');
+    expect(!!p).toBe(true);
+    expect(p.input.optional).toBe(true);
+    expect(p.input.fallback).toContain('git diff --name-only {base}...HEAD');
+    expect(p.input.find).toBe('[the unit of work]');
+    expect(p.prompt).toContain('[the unit of work]');
+    expect(p.prompt).toContain('Use the Record Sync workflow instead when the work spans more than one unit');
+    expect(p.prompt).toContain('ARTIFACTS ONLY - never code, never tests');
+    expect(p.prompt).toContain('**Step 1: Scope.**');
+    expect(p.prompt).toContain(win.groundingLookupSteps().scanIndex);                       // the same grounding the workflow runs
+    expect(p.prompt).toContain('An artifact statement you cannot prove false is not drift');   // the auditor's discipline
+    expect(p.prompt).toContain('append a dated History line');                                // the steward's rules
+    expect(p.prompt).toContain('as the FIRST entry below the header');
+    expect(p.prompt).toContain('two halves, spec first');
+    expect(p.prompt).toContain('no em or en dashes');
+    expect(p.prompt).toNotContain('\u2014');
+    expect(p.prompt).toContain('truth trapped in the archive');                                   // the auditor's inverse archive check...
+    expect(p.prompt).toContain('re-confirm the record\'s own quality checklist');                  // ...and the steward's three rules the first draft dropped
+    expect(p.prompt).toContain('do not manufacture a proposal after the fact');
+    expect(p.prompt).toContain('a validation failure means the amendment is not done');
+    // end-to-end, as the popup copies it: the fallback replaces the token and the preamble strips
+    let body = p.prompt.split(p.input.find).join(p.input.fallback);
+    body = body.replace(/^> \*\*Your input\*\*.*?\n> Example:.*?\n\n/s, '');
+    expect(body).toContain('back to the truth: the current branch\'s diff against its base');
+    expect(body).toNotContain('[the unit of work]');
+    expect(body.startsWith('> **Your input**')).toBe(false);
+  });
   it('record_sync preset: auditor -> steward -> gate, artifacts-only contract in the gate condition', () => {
     win.loadPreset('record_sync');
     expect(win.state.nodes.filter(n => n.type === 'agent').length).toBe(2);
@@ -12133,6 +12298,7 @@ describe('Coverage Gaps', () => {
       expect(keys.length > 0).toBe(true);
       keys.forEach(preset => {
         resetState();
+        win.document.getElementById('storyInput').value = '';   // the invariant is about a FRESH preset: an earlier test's requirements must not leak in
         win.loadPreset(preset);
         expect(preset + ':' + (win.state.nodes.length > 0 ? 'loaded' : 'EMPTY (tile without builder?)')).toBe(preset + ':loaded');
         const warnings = win.validateWorkflow();
@@ -12201,17 +12367,13 @@ describe('Writing Style & Post-Work', () => {
       expect(cat.prompts.find(p => p.title === 'Generate PR Description').prompt.length > 200).toBe(true);
       expect(cat.prompts.find(p => p.title === 'Generate Jira Update').prompt.length > 200).toBe(true);
     });
-    it('should reference Atlassian MCP in both post-work prompts', () => {
-      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Post-Work');
-      cat.prompts.forEach(p => {
-        expect(p.prompt).toContain('Atlassian MCP');
-      });
+    const DELIVERY_PROMPTS = ['Generate PR Description', 'Generate Jira Update'];   // the two that talk to a tracker; Sync Durable Artifacts works on the tree alone
+    const deliveryPrompts = () => { const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Post-Work'); return DELIVERY_PROMPTS.map(title => { const p = cat.prompts.find(x => x.title === title); expect(!!p).toBe(true); return p; }); };
+    it('should reference Atlassian MCP in the PR and Jira post-work prompts', () => {
+      deliveryPrompts().forEach(p => { expect(p.prompt).toContain('Atlassian MCP'); });
     });
-    it('should reference Chrome browser fallback in both post-work prompts', () => {
-      const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Post-Work');
-      cat.prompts.forEach(p => {
-        expect(p.prompt).toContain('Chrome browser');
-      });
+    it('should reference Chrome browser fallback in the PR and Jira post-work prompts', () => {
+      deliveryPrompts().forEach(p => { expect(p.prompt).toContain('Chrome browser'); });
     });
     it('should include original ask vs solution context in PR Description', () => {
       const cat = win.PROMPT_LIBRARY.find(c => c.category === 'Post-Work');
@@ -12392,6 +12554,40 @@ describe('Prompt Panel Resize', () => {
     } catch(e) {
       // localStorage may be unavailable in test env
     }
+  });
+});
+
+describe('Narrow windows: the canvas column shrinks instead of clipping, and toolbar labels collapse to icons', () => {
+  const frame = document.getElementById('app');
+  afterEach(() => { frame.style.display = 'none'; frame.style.width = '1024px'; frame.style.border = ''; });
+  it('at 760px the toolbar wraps and the header fits; at 1400px the icons sit on one row; at 1700px the labels return', () => {
+    frame.style.display = 'block'; frame.style.border = '0'; frame.style.width = '760px';   // no frame border: the widths below are the page's own
+    const doc = win.document;
+    const main = doc.querySelector('.main-area'), toolbar = doc.querySelector('.toolbar'), header = doc.querySelector('.prompt-header');
+    expect('main.getBoundingClientRect().right <= 760 + 1 => ' + (main.getBoundingClientRect().right <= 760 + 1)).toBe('main.getBoundingClientRect().right <= 760 + 1 => true');                    // the column ends inside the window
+    expect('toolbar.scrollWidth <= toolbar.clientWidth + 1 => ' + (toolbar.scrollWidth <= toolbar.clientWidth + 1)).toBe('toolbar.scrollWidth <= toolbar.clientWidth + 1 => true');                   // nothing is cut off: the toolbar wraps
+    expect('header.scrollWidth <= header.clientWidth + 1 => ' + (header.scrollWidth <= header.clientWidth + 1)).toBe('header.scrollWidth <= header.clientWidth + 1 => true');
+    expect('page scrollWidth <= 760 => ' + (doc.documentElement.scrollWidth <= 760)).toBe('page scrollWidth <= 760 => true');   // the page itself never scrolls sideways
+    expect('promptArea right <= 761 => ' + (doc.getElementById('promptArea').getBoundingClientRect().right <= 761)).toBe('promptArea right <= 761 => true');
+    const tabs = doc.querySelector('.format-tabs');
+    expect(win.getComputedStyle(tabs).overflowX).toBe('auto');                           // the tab strip scrolls inside its own box...
+    expect('tabs.scrollWidth > tabs.clientWidth => ' + (tabs.scrollWidth > tabs.clientWidth)).toBe('tabs.scrollWidth > tabs.clientWidth => true');                              // ...rather than pushing the header wider
+    const lbl = doc.querySelector('#modeSelect .lbl');
+    expect(lbl.textContent).toBe('Select');
+    expect(win.getComputedStyle(lbl).display).toBe('none');                              // collapsed to the icon
+    expect(doc.querySelector('#modeSelect svg')).toBeTruthy();                           // the icon stays
+    frame.style.width = '1400px';                                                        // a 1080px column: the icons alone fit on one row
+    expect(win.getComputedStyle(lbl).display).toBe('none');
+    expect('toolbar.getBoundingClientRect().height < 60 => ' + (toolbar.getBoundingClientRect().height < 60)).toBe('toolbar.getBoundingClientRect().height < 60 => true');
+    frame.style.width = '1470px';                                                        // a 1150px column: the edge, still collapsed
+    expect(win.getComputedStyle(lbl).display).toBe('none');
+    frame.style.width = '1471px';                                                        // one pixel wider: labels return
+    expect('win.getComputedStyle(lbl).display !== \'none\' => ' + (win.getComputedStyle(lbl).display !== 'none')).toBe('win.getComputedStyle(lbl).display !== \'none\' => true');
+    frame.style.width = '1700px';                                                        // a 1380px column: the full toolbar fits, labels return
+    expect('win.getComputedStyle(lbl).display !== \'none\' => ' + (win.getComputedStyle(lbl).display !== 'none')).toBe('win.getComputedStyle(lbl).display !== \'none\' => true');                     // (a flex child, so block, not inline)
+    expect('toolbar.getBoundingClientRect().height < 60 => ' + (toolbar.getBoundingClientRect().height < 60)).toBe('toolbar.getBoundingClientRect().height < 60 => true');                      // ...still on one row
+    expect(doc.querySelectorAll('.toolbar .btn .lbl').length).toBe(7);                   // Select, Connect, Delete, Auto Layout, Prompts, Agents, Monitor
+    doc.querySelectorAll('.toolbar .btn .lbl').forEach(sp => { expect(sp.closest('button').getAttribute('aria-label')).toBe(sp.textContent); });   // a durable name survives the hidden label and the stripped title
   });
 });
 
@@ -16251,7 +16447,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.MONITOR_IDLE_MS = MONITOR_IDLE_MS; window.TELEMETRY_DEFAULT_SERVICE = TELEMETRY_DEFAULT_SERVICE; window.TELEMETRY_EVENTS = TELEMETRY_EVENTS; window.DEPTH_LEVELS = DEPTH_LEVELS; window.DEPTH_KEYWORD = DEPTH_KEYWORD; window.nodeDepth = nodeDepth; window.workflowHasDepth = workflowHasDepth; window.depthStepNote = depthStepNote; window.depthHint = depthHint; window.depthNodes = depthNodes; window.depthOrchestratorNote = depthOrchestratorNote; window.approvePlanHint = approvePlanHint; window.approvePlanStepHint = approvePlanStepHint; window.approvalCheckpoint = approvalCheckpoint; window.APPROVAL_PLAN_OWNER_ROLES = APPROVAL_PLAN_OWNER_ROLES; window.graphShapeSig = graphShapeSig; window.APPROVAL_BUILD_ROLES = APPROVAL_BUILD_ROLES; window.toggleApprovePlan = toggleApprovePlan; window.VERIFIER_HONESTY = VERIFIER_HONESTY; window.TASK_SIGNAL = TASK_SIGNAL; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.MONITOR_IDLE_MS = MONITOR_IDLE_MS; window.TELEMETRY_DEFAULT_SERVICE = TELEMETRY_DEFAULT_SERVICE; window.TELEMETRY_EVENTS = TELEMETRY_EVENTS; window.DEPTH_LEVELS = DEPTH_LEVELS; window.DEPTH_KEYWORD = DEPTH_KEYWORD; window.nodeDepth = nodeDepth; window.workflowHasDepth = workflowHasDepth; window.depthStepNote = depthStepNote; window.depthHint = depthHint; window.depthNodes = depthNodes; window.depthOrchestratorNote = depthOrchestratorNote; window.approvePlanHint = approvePlanHint; window.approvePlanStepHint = approvePlanStepHint; window.approvalCheckpoint = approvalCheckpoint; window.APPROVAL_PLAN_OWNER_ROLES = APPROVAL_PLAN_OWNER_ROLES; window.graphShapeSig = graphShapeSig; window.APPROVAL_BUILD_ROLES = APPROVAL_BUILD_ROLES; window.toggleApprovePlan = toggleApprovePlan; window.VERIFIER_HONESTY = VERIFIER_HONESTY; window.TASK_SIGNAL = TASK_SIGNAL; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN; window.STORY_PLACEHOLDERS = STORY_PLACEHOLDERS; window.AMEND_SCOPE_MARKERS = AMEND_SCOPE_MARKERS;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

@@ -256,9 +256,13 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 .custom-select-option:hover{background:var(--surface2)}
 .custom-select-option.selected{color:var(--accent);background:var(--bg)}
 /* Main Canvas Area */
-.main-area{grid-column:2;grid-row:1;display:flex;flex-direction:column;background:var(--bg);position:relative}
-.toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;
+/* min-width:0 lets the 1fr column shrink below its content width (a grid item's default minimum
+   is its content, which cut the toolbar and prompt header off at narrow windows); the container
+   query collapses toolbar labels to their icons when the column is narrow. */
+.main-area{grid-column:2;grid-row:1;display:flex;flex-direction:column;background:var(--bg);position:relative;min-width:0;container-type:inline-size}
+.toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 12px;
   background:var(--surface);border-bottom:1px solid var(--border);min-height:44px;flex-shrink:0}
+@container (max-width: 1150px){.toolbar .btn .lbl{display:none}}
 .toolbar .sep{width:1px;height:20px;background:var(--border);margin:0 4px}
 .toolbar .info{font-size:11px;color:var(--text3);margin-left:auto}
 .canvas-wrap{flex:1;position:relative;overflow:hidden;cursor:default}
@@ -305,10 +309,12 @@ svg.canvas{width:100%;height:100%;display:block}
   flex-shrink:0;transition:background .15s}
 .prompt-resize:hover,.prompt-resize.active{background:var(--accent);opacity:.5}
 .prompt-area{grid-column:2;grid-row:3;background:var(--surface);
-  display:flex;flex-direction:column;overflow:hidden}
-.prompt-header{display:flex;align-items:center;gap:0;
+  display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.prompt-header{display:flex;align-items:center;flex-wrap:wrap;gap:0;
   border-bottom:1px solid var(--border);flex-shrink:0;min-height:38px}
-.format-tabs{display:flex;align-items:stretch;flex:1;gap:0}
+.format-tabs{display:flex;align-items:stretch;flex:1;gap:0;min-width:0;overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--surface3) transparent}
+.format-tabs::-webkit-scrollbar{height:4px}
+.format-tabs::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:2px}
 .format-tab{padding:8px 14px;font-size:11px;font-weight:600;color:var(--text2);
   cursor:pointer;border:none;background:none;font-family:var(--font);
   border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;
@@ -839,7 +845,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <div class="sidebar-section" data-collapse-id="workflow-management">
     <h3 title="Save and load workflows by name (browser-local), clone variants, and export or import: Workflow JSON, OpenSpec schema, Handoff package, or the committable Explain report.">Workflow Management</h3>
     <div class="btn-row">
-      <button class="btn sm primary" onclick="saveWorkflow()" title="Save this workflow by name in your browser (localStorage) - nothing leaves your machine. Use Export for a shareable file.">Save</button>
+      <button class="btn sm primary" onclick="saveWorkflow()" title="Save this workflow by name in your browser (localStorage) - nothing leaves your machine. The save keeps the canvas, the requirements, the repositories, and the sidebar context this workflow was built with (app and UI context, verification, rules and doc paths, the clarify and approve switches), so it loads back as it was. Use Export for a shareable file.">Save</button>
       <button class="btn sm" onclick="duplicateWorkflow()" title="Save a copy: renames the current workflow to &quot;(copy)&quot; so your next Save creates a new workflow, leaving the original untouched. Handy for spinning off a variant.">Clone</button>
       <div class="export-dd" style="position:relative;display:inline-flex">
         <button class="btn sm" id="exportMenuBtn" aria-haspopup="true" aria-expanded="false" onclick="toggleExportMenu(event)" title="Download the workflow as a file - Workflow JSON, OpenSpec schema, or a Handoff package.">Export &#9662;</button>
@@ -967,17 +973,17 @@ svg.canvas{width:100%;height:100%;display:block}
 <!-- Main Canvas -->
 <div class="main-area">
   <div class="toolbar">
-    <button class="btn sm active" id="modeSelect" onclick="setMode('select')" title="Select mode (1): click a node to select it, drag to move it">
+    <button aria-label="Select" class="btn sm active" id="modeSelect" onclick="setMode('select')" title="Select mode (1): click a node to select it, drag to move it">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
-      Select
+      <span class="lbl">Select</span>
     </button>
-    <button class="btn sm" id="modeConnect" onclick="setMode('connect')" title="Connect mode (2): drag from one node to another to link them">
+    <button aria-label="Connect" class="btn sm" id="modeConnect" onclick="setMode('connect')" title="Connect mode (2): drag from one node to another to link them">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-      Connect
+      <span class="lbl">Connect</span>
     </button>
-    <button class="btn sm" id="modeDelete" onclick="setMode('delete')" title="Delete mode (3): click a node or connection to remove it">
+    <button aria-label="Delete" class="btn sm" id="modeDelete" onclick="setMode('delete')" title="Delete mode (3): click a node or connection to remove it">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-      Delete
+      <span class="lbl">Delete</span>
     </button>
     <div class="sep"></div>
     <button class="btn sm" onclick="undo()" title="Undo (Ctrl+Z)">
@@ -987,9 +993,9 @@ svg.canvas{width:100%;height:100%;display:block}
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-5.64-10.36L23 10"/></svg>
     </button>
     <div class="sep"></div>
-    <button class="btn sm" onclick="autoLayout()" title="Auto-arrange the nodes into a clean left-to-right layout">
+    <button aria-label="Auto Layout" class="btn sm" onclick="autoLayout()" title="Auto-arrange the nodes into a clean left-to-right layout">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-      Auto Layout
+      <span class="lbl">Auto Layout</span>
     </button>
     <button class="btn sm" onclick="zoomFit()" title="Fit the whole workflow in view">Fit</button>
     <div class="sep"></div>
@@ -1001,17 +1007,17 @@ svg.canvas{width:100%;height:100%;display:block}
     <span class="info" id="statusInfo"></span>
     <span class="info" id="validationInfo" style="cursor:pointer;color:var(--text3)" onclick="showValidation()" title="Workflow health check"></span>
     <div class="sep"></div>
-    <button class="btn sm" onclick="togglePromptLib()" title="Prompt Library">
+    <button aria-label="Prompts" class="btn sm" onclick="togglePromptLib()" title="Prompt Library">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
-      Prompts
+      <span class="lbl">Prompts</span>
     </button>
-    <button class="btn sm" onclick="if(typeof toggleAgentLib==='function')toggleAgentLib()" title="Agent Library">
+    <button aria-label="Agents" class="btn sm" onclick="if(typeof toggleAgentLib==='function')toggleAgentLib()" title="Agent Library">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>
-      Agents
+      <span class="lbl">Agents</span>
     </button>
-    <button class="btn sm" id="monitorBtn" style="display:none" onclick="toggleRunMonitor()" title="Live Run Monitor: watch a run's memory folder (tasks ticking live, agent status, the shared log) or browse a .workflow folder's durable records. Chromium only.">
+    <button aria-label="Monitor" class="btn sm" id="monitorBtn" style="display:none" onclick="toggleRunMonitor()" title="Live Run Monitor: watch a run's memory folder (tasks ticking live, agent status, the shared log) or browse a .workflow folder's durable records. Chromium only.">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-      Monitor
+      <span class="lbl">Monitor</span>
     </button>
     <button class="btn sm" onclick="toggleHelp()" title="Help (?)">?</button>
   </div>
@@ -1325,7 +1331,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>Together, <strong>Keep a durable record</strong> (the write side) and <strong>Ground in prior records</strong> (the read side) form a flywheel: every run leaves behind its decisions, gotchas, and a tested spec, and the next run reads them before planning - so workflows in the same repo get sharper and stop repeating the same mistakes over time, with nobody curating anything by hand. The more you run, the better-grounded each new workflow starts. The flywheel is OpenSpec-compatible on both sides: runs ground in <code>openspec/</code> specs and active changes they find, and the OpenSpec export's runs scan our records - the two systems inform each other. And with <strong>Write OpenSpec artifacts</strong> (an option under the durable-record toggle), the run also leaves FAITHFUL OpenSpec artifacts: a change under <code>openspec/changes/</code> (proposal, tasks, design) archived at finalize, and specs under <code>openspec/specs/</code> updated by delta - first-class, unstamped, committable by teams whose repos keep <code>openspec/</code> and not <code>.workflow/</code>. The record remains the run's working spine (checklist, monitor, verify); whether it gets committed is the team's choice, and future runs ground on the OpenSpec artifacts either way.</p>
 
 <h3>Amend Presets: Touch-Up &amp; Record Sync</h3>
-<p>Every other preset STARTS work; the <strong>Amend an existing deliverable</strong> group in the Presets section changes work that already shipped - and keeps the durable artifacts telling the truth about it. <strong>Touch-Up</strong> is for follow-up changes to a delivered capability (post-run adjustments, PR feedback, a small behavior tweak): a Scoper grounds in the existing record or <code>openspec/</code> spec and defines the smallest delta plus the behaviors that must NOT move, an Amender applies it, a Delta Reviewer gates on regressions and lists every artifact statement the change made untrue, and an Artifact Steward amends the record IN PLACE (History line, refreshed index and timeline entries) - never minting a new record for a tweak. <strong>Record Sync</strong> touches no code at all: a Drift Auditor proves (with file-and-line evidence) where the records or specs stopped matching the working tree, and the Steward amends the artifacts back to reality - anywhere the CODE is what broke the truth, that gets flagged for a Touch-Up run instead of being papered over. Both presets self-gate on what exists (no <code>.workflow</code> or <code>openspec/</code> means they simply ground in code and tests), work per-repository on multi-repo workflows, and compose with every toggle - memory, records, the Live Run Monitor - like any other preset.</p>
+<p>Every other preset STARTS work; the <strong>Amend an existing deliverable</strong> group in the Presets section changes work that already shipped - and keeps the durable artifacts telling the truth about it. <strong>Touch-Up</strong> is for follow-up changes to a delivered capability (post-run adjustments, PR feedback, a small behavior tweak): a Scoper grounds in the existing record or <code>openspec/</code> spec and defines the smallest delta plus the behaviors that must NOT move, an Amender applies it, a Delta Reviewer gates on regressions and lists every artifact statement the change made untrue, and an Artifact Steward amends the record IN PLACE (History line, refreshed index and timeline entries) - never minting a new record for a tweak. <strong>Record Sync</strong> touches no code at all: a Drift Auditor proves (with file-and-line evidence) where the records or specs stopped matching the working tree, and the Steward amends the artifacts back to reality - anywhere the CODE is what broke the truth, that gets flagged for a Touch-Up run instead of being papered over. Both presets self-gate on what exists (no <code>.workflow</code> or <code>openspec/</code> means they simply ground in code and tests), work per-repository on multi-repo workflows, and compose with every toggle - memory, records, the Live Run Monitor - like any other preset. <strong>Where the unit of work goes</strong>: the Requirements box in the sidebar. Loading either preset retargets its placeholder (Record Sync: scope to reconcile, suspected drift, hints such as record slugs, spec names, or files, out of scope; Touch-Up: what to change, where it lives, what must not move, how to verify), the input node on each canvas says the same, and validation warns when the box still holds another workflow's template. Left empty, the Drift Auditor scopes to the current branch's diff against its base. For one unit of work in the session you are already in, the Prompt Library's <strong>Sync Durable Artifacts</strong> entry (Post-Work) is the single-prompt form of Record Sync: same grounding, same audit-then-amend discipline, one question up front.</p>
 
 <h3>Live Run Monitor</h3>
 <p>The <strong>Monitor</strong> toolbar button (Chromium only) watches folders while a run executes: pick the <code>workflow-memory</code> folder once - the monitor follows whichever run is active (a Run selector appears when several exist) - and the panel shows the task checklist ticking live (green confirmed ticks from <code>tasks.md</code>, violet half-ticks from agents' provisional <code>t:</code> lines the moment each task completes, and a blue pulsing marker on an active agent's next open task in checklist order (the best the board can know about what it is working now), shown as a blue segment on the progress bar; blue means running everywhere in the panel and on the canvas), per-agent status chips, a change feed, and every file one click from view - while canvas nodes carry live status dots. One watch covers a multi-repo run's live surface (the memory folder is shared); add each repo's <code>.workflow</code> folder to browse its durable records in the same panel, rendered as markdown with a record chip. To watch code changes too, pick the narrowest folder that holds the work (a repo's <code>src</code> beats its root): each tree's scan has a file budget, and an over-budget tree is flagged <strong>capped</strong> and reports only modifications to files it has already seen. Read-only, polling-based, paused while the tab is hidden. A <strong>Run Health</strong> row appears (amber, above the tab content) only when the RUN drifts from the protocol - agents whose progress ticks match no checklist item, a checklist nobody has ticked while agents keep writing, or entry timestamps that disagree with real file times. Each hint carries a <strong>Copy nudge</strong> button: paste the nudge into the running session to correct the drift mid-run. Silence means healthy.</p>
@@ -2557,7 +2563,7 @@ const PROMPTS = {
   touchupAmender: 'Apply the scoped delta to a capability that already works - the Scoper\'s task list is your work list, and existing behavior is the contract.\n\n**The touch-up discipline: the diff should read as "the delivered capability, adjusted" - never a new implementation.** Prefer the smallest change that satisfies the delta inside the existing structure; reshaping the structure is out of scope unless a task explicitly names it.\n\n1. Read the existing implementation before changing it (`LSP goToDefinition`; `findReferences` on every symbol you touch - a delivered capability has callers).\n2. Work the task list in order. Stay inside it: pre-existing warts you notice are reported, not fixed.\n3. Honor the Must Not Move list: after each change, check the adjacent behaviors the Scoper named.\n4. Update or add the tests the Verification Plan names, in the style of the newest neighboring tests. Never weaken an existing assertion to make the delta pass - if a guarding test genuinely must change, that IS a behavior change: flag it against the Delta.\n5. Run the focused tests after each task, and the full suite when one exists and is runnable before you finish.\n6. Signal each completed task the moment it completes - where workflow memory is on, that is a provisional `t: {task} done` line in your OWN memory file. The orchestrator owns the shared checklist and its ticks: never edit tasks.md or the record checklist yourself, and never batch at the end.\n\nReport: every change mapped to its task, test results, and anything you saw but deliberately did not touch.\n\n## Handoff Summary\nEnd your response with:\n- **Tasks Completed**: X of Y, each mapped to files changed\n- **Tests**: adjusted or added, and suite results\n- **Must Not Move Check**: adjacent behaviors verified intact\n- **Not Touched**: issues seen and left, with why\n- **Record Notes**: facts the artifact steward needs (behavior changes, new scenarios, files touched)',
   touchupReviewer: 'Review the touch-up delta - a change to a capability that was already delivered and reviewed once. Scope your review to the delta and its blast radius, not the whole capability.\n\n**Two review dimensions, both required:**\n\n**A. The change itself.** Establish the actual diff surface first. Then: correctness of the delta against the Scoper\'s Delta list, regression risk to the Must Not Move behaviors (read the callers, not just the changed lines), test adequacy (each changed behavior has a guarding test; no existing assertion was weakened), and proportionality (the diff is the delta, nothing more).\n\n**B. Artifact truth.** Where a durable record or openspec spec exists for this capability, check whether the delta makes any statement in it FALSE - a requirement, a scenario, a file map, a gotcha. List every such statement. You do not update the artifacts (the steward does); you name what is now untrue. When the delta touched multiple repositories, check the artifact surfaces of each touched repo.\n\nMateriality bars: the default verdict is PASS - only Critical or High findings gate, and a regression to a Must Not Move behavior is always at least High. Style preferences and pre-existing issues are noted, never gating. Call out low-value comments the change added; the default comment bar is why-comments, gotchas, or API docs only.\n\n## Handoff Summary\nEnd your response with:\n- **Verdict**: PASS or NEEDS REVISION (only Critical/High gate)\n- **Findings**: each with severity, file:line, and the concrete fix\n- **Regression Check**: Must Not Move behaviors verified, with evidence\n- **Artifact Deltas**: every record/spec statement the change made untrue (for the steward)\n- **Noted, Not Gating**: pre-existing issues and style notes',
   artifactSteward: 'Bring the durable artifacts back to the truth: after this run\'s change, every artifact statement about the capability must match the working tree. You change ARTIFACTS ONLY - never code, never tests (a needed code change goes back as a finding, not an edit).\n\n**Inputs**: the upstream Handoff Summaries (the Scoper\'s Record Plan, the Amender\'s Record Notes, the Reviewer\'s Artifact Deltas - or, in a sync run, the Auditor\'s confirmed drift list). Verify each claim against the tree before writing it: you record what IS, not what was reported.\n\nWhen the run spans multiple repositories, do all of the below in EACH repository the change touched - every repo keeps its own record, index, and timeline, and sibling cross-links between related records must stay accurate.\n\n**Work each artifact surface that exists; skip silently what does not:**\n1. **Durable record** (where `.workflow/` holds one for this capability): amend IN PLACE - update the requirements and scenarios the delta changed, refresh the file map, tick or add task checklist boxes, re-confirm the record\'s own quality checklist where it has one, and append a dated History line stating what changed and why. Supersede only on an explicit, justified escalation from upstream. Never create a new record for a tweak.\n2. **Record index** (`.workflow/_index.md`): re-check the capability\'s entry - REWRITE its intent line whenever the amendment changes what a scanner should know (a stale intent line silently hides the change from every future grounding scan), and refresh its facets (files, status, date) - so the entry matches the amended record.\n3. **Timeline** (`.workflow/_timeline.md`): insert one line for this amendment as the FIRST entry below the header - newest on top is the file\'s convention.\n4. **OpenSpec** (where `openspec/` exists): `openspec/specs/` holds the CURRENT TRUTH per capability and `openspec/changes/` holds in-flight proposals - amend the affected spec so its requirements and scenarios match delivered behavior, in the spec file\'s own format and granularity. Where delivered behavior has NO spec file yet (including a capability whose change sits in the archive with `specs/` never updated), CREATE `openspec/specs/{capability-slug}/spec.md` with a `## Purpose` line and the full `## Requirements` the capability delivers - the same shape a finalize-time greenfield creation produces - and validate with the openspec CLI where available (a validation failure means the amendment is not done). When an active change proposal covers this delta, complete it in TWO halves, spec first: apply its deltas to `openspec/specs/`, THEN archive it the way this repository archives changes (tasks ticked, then moved per its convention; the openspec CLI archive command does both halves itself, and a manual archive must too) - never leave an active change contradicting the spec it targets, and never archive without applying: a change moved to the archive with `specs/` untouched is truth trapped in the archive, drift not delivery. When no proposal exists, the spec amendment alone is the correct end state for a delivered touch-up; do not manufacture a proposal after the fact.\n5. **Other capability docs** the record\'s file map names (README sections, API docs) IF the delta made them false - the smallest correcting edit only.\n\n**Fidelity rules**: every artifact edit must be traceable to a verified change in the tree. Do not editorialize, do not restructure documents while amending them, and preserve each document\'s existing format and conventions exactly.\n\n## Handoff Summary\nEnd your response with:\n- **Artifacts Amended**: each file with a one-line summary of the amendment\n- **History Line**: the line appended to the record (quoted)\n- **Skipped**: artifact surfaces that do not exist in this repo (expected, not a failure)\n- **Unresolvable**: any claimed change you could NOT verify in the tree (returned upstream, not recorded)',
-  driftAuditor: (function (g) { return 'Audit the durable artifacts against the working tree and produce a confirmed drift list - the places where the artifacts no longer tell the truth about the code.\n\n**Refute-first discipline: only PROVEN drift makes the list.** For every suspected drift, hold the artifact statement against the actual code (file:line) before recording it. An artifact statement you cannot prove false is not drift. If the scope input names an area, stay inside it.\n\n**Locate what to audit with the canonical grounding protocol, rendered below verbatim:**\n- ' + [g.scanIndex, g.openSpecDocs, g.multiRepo, g.greenfield].join('\n- ') + '\n\n**Then audit everything the scan surfaced:**\n1. Each matched record: hold its Current behavior, requirements, scenarios, file map, and outcome against the tree. A named verifying test that no longer exists or no longer covers its scenario is drift.\n2. Each matched spec: hold its requirements against delivered behavior the same way, and check `openspec/changes/` for active proposals whose work the tree shows delivered but never archived - a completed-but-still-active change is drift. Check the archive for the INVERSE failure too: an archived change whose spec deltas never landed in `openspec/specs/` (delivered behavior with no current spec statement) is MISSING drift - truth trapped in the archive - and the correcting amendment is creating the spec.\n3. The breadcrumbs themselves (`.workflow/_index.md` and the newest-first `.workflow/_timeline.md`): entries whose intent line or facets (files, status) contradict their records.\n4. Classify each confirmed item: STALE (artifact says X, code does Y), MISSING (delivered behavior with no artifact statement), or ORPHANED (artifact claims something the tree no longer contains).\n5. For each item, state the correcting amendment in one sentence - the steward works from your list.\n\nCode changes are OUT of scope for this run. Where the truth is that the CODE is wrong (the artifact records the intent and the tree broke it), flag it as a defect for a separate touch-up run instead of proposing an artifact edit that would canonize the bug.\n\n## Handoff Summary\nEnd your response with:\n- **Confirmed Drift**: each item with artifact path, the statement, the contradicting evidence (file:line), and its classification\n- **Proposed Amendments**: one line each, for the steward\n- **Code Defects Flagged**: truth-is-broken items for a follow-up touch-up run, not for artifact edits\n- **Clean**: artifact areas checked and found truthful'; })(groundingLookupSteps()),
+  driftAuditor: (function (g) { return 'Audit the durable artifacts against the working tree and produce a confirmed drift list - the places where the artifacts no longer tell the truth about the code.\n\n**Refute-first discipline: only PROVEN drift makes the list.** For every suspected drift, hold the artifact statement against the actual code (file:line) before recording it. An artifact statement you cannot prove false is not drift.\n\n**Scope: the unit of work comes from the Requirements block, and you stay inside it** (scope to reconcile, known or suspected drift, hints such as record slugs, spec names, or files, out of scope). When that block is empty or names nothing, scope to the current branch\'s diff against its base: `git diff --name-only {base}...HEAD` (the default branch when nothing else is named), map the touched files to records through the index entries\' file lists and to specs through their names, and audit those. Audit the whole repository only when the scope says everything, and then say in your handoff what you covered and what you did not.\n\n**Locate what to audit with the canonical grounding protocol, rendered below verbatim:**\n- ' + [g.scanIndex, g.openSpecDocs, g.multiRepo, g.greenfield].join('\n- ') + '\n\n**Then audit everything the scan surfaced:**\n1. Each matched record: hold its Current behavior, requirements, scenarios, file map, and outcome against the tree. A named verifying test that no longer exists or no longer covers its scenario is drift.\n2. Each matched spec: hold its requirements against delivered behavior the same way, and check `openspec/changes/` for active proposals whose work the tree shows delivered but never archived - a completed-but-still-active change is drift. Check the archive for the INVERSE failure too: an archived change whose spec deltas never landed in `openspec/specs/` (delivered behavior with no current spec statement) is MISSING drift - truth trapped in the archive - and the correcting amendment is creating the spec.\n3. The breadcrumbs themselves (`.workflow/_index.md` and the newest-first `.workflow/_timeline.md`): entries whose intent line or facets (files, status) contradict their records.\n4. Classify each confirmed item: STALE (artifact says X, code does Y), MISSING (delivered behavior with no artifact statement), or ORPHANED (artifact claims something the tree no longer contains).\n5. For each item, state the correcting amendment in one sentence - the steward works from your list.\n\nCode changes are OUT of scope for this run. Where the truth is that the CODE is wrong (the artifact records the intent and the tree broke it), flag it as a defect for a separate touch-up run instead of proposing an artifact edit that would canonize the bug.\n\n## Handoff Summary\nEnd your response with:\n- **Confirmed Drift**: each item with artifact path, the statement, the contradicting evidence (file:line), and its classification\n- **Proposed Amendments**: one line each, for the steward\n- **Code Defects Flagged**: truth-is-broken items for a follow-up touch-up run, not for artifact edits\n- **Clean**: artifact areas checked and found truthful'; })(groundingLookupSteps()),
 
   // --- Platform provisioning ---
   estateSurveyor: 'Survey the engineering estate BEFORE anything is created. Greenfield provisioning succeeds by matching what already ships, not by inventing shapes - your survey is what keeps every new artifact looking like a sibling of the existing ones.\n\nWork read-only across every repository and doc source available to you (connected repo folders, the version-control host via MCP where one is connected, the Repo Context paths, org docs). Where a needed fact is not discoverable, record the gap - never invent a convention.\n\n1. **Precedents**: for each kind of deliverable being stood up (service, frontend module, library, IaC), find the most recently shipped sibling of the same kind. Recent beats abundant - the newest shipped example carries the current conventions. Note its repo shape: directory layout, project structure, config files, test arrangement.\n2. **Templates and generators**: find org scaffolding templates or generators for these shapes (template repos, generator CLIs, starter kits). Generating beats cloning beats inventing. Record the exact invocation and every parameter a generator takes - parameters chosen wrongly usually mean regenerating from scratch.\n3. **Pipelines**: how sibling repos build and release - shared pipeline template repos and the exact pinned versions or tags they reference, artifact publishing (registries, feeds, image repositories), and how releases reach each environment.\n4. **Infrastructure patterns**: how siblings declare infrastructure - separate IaC repo or in-repo, the per-environment configuration layout, pinned provider and tool versions, and how state and secrets are handled.\n5. **Naming grammar**: derive the estate\'s naming conventions from real examples - how a repo slug maps to package names, image names, namespaces, and per-environment resources, including any length or character limits. Write the grammar down as rules with the examples that prove them.\n6. **Access and routing registration**: how a new deployable becomes reachable and gated - gateway or router registration, navigation entries, permission codes, and where each is declared.\n7. **Observability baseline**: what a shipped sibling emits by default (health endpoints, tracing, log shipping) - the baseline the new deliverables must match.\n\n## Handoff Summary\nEnd your response with:\n- **Precedent Map**: per deliverable kind, the sibling to mirror (repo, and why it is the best precedent)\n- **Templates & Generators**: what exists, exact invocations, every parameter\n- **Convention Ledger**: pinned versions, naming grammar rules with examples, environment list and layout, pipeline template refs\n- **Access & Registration Pattern**: how deployables get routed and gated here\n- **Gaps**: conventions you could NOT discover, each stated as an open question - never a guess',
@@ -3620,7 +3626,9 @@ function renderRepoRows() {
 
 // -- Repo context paths (rules / constitution + product docs) --
 // Sticky repo-level context: flat path lists honored across this repo's workflows.
-// Mirrors the repository list pattern; persisted to prefs; only Clear-all empties them.
+// Mirrors the repository list pattern; persisted to prefs. Two writers besides these helpers:
+// Clear-all empties a list, and loading a saved workflow (or the autosave, or a clone) that
+// carries a NON-EMPTY list replaces it (applyWorkflowContext); an empty saved list never wipes.
 function addRulesPath(path) {
   const v = (path || '').trim();
   if (!v) return;
@@ -3817,8 +3825,9 @@ function syncVerifyFailRunUI() {
   const hint = $('verifyFailRunHint');
   if (hint) hint.style.display = armed ? 'none' : 'block';
 }
-// The fail-the-run posture is a sticky boolean pref (not a per-workflow value): update state,
-// persist, and refresh the prompt so the workflow-level beat re-renders with the new posture text.
+// The fail-the-run posture is a boolean pref: the machine-wide default between workflows, and a
+// saved workflow carries its own copy that wins when it loads (applyWorkflowContext). Update
+// state, persist, and refresh the prompt so the workflow-level beat re-renders with the new text.
 function setVerifyFailRun(on) {
   state.verifyFailRun = !!on;
   savePrefsDebounced();
@@ -3840,6 +3849,20 @@ function serializeWorkflow() {
     durableRecord: state.durableRecord,
     openSpecArtifacts: state.openSpecArtifacts,
     artifactPath: state.artifactPath,
+    // Sidebar context the generated prompt depends on, saved WITH the workflow so a saved
+    // workflow comes back as it was built (the global prefs keep the same keys for the
+    // machine-wide defaults between workflows).
+    appSourcePath: $('appSourcePath') ? $('appSourcePath').value : '',
+    appSourceBranch: $('appSourceBranch') ? $('appSourceBranch').value : '',
+    appSourceAccess: $('appSourceAccess') ? $('appSourceAccess').value : 'readonly',
+    uiContextNotes: $('uiContextNotes') ? $('uiContextNotes').value : '',
+    rulesPaths: state.rulesPaths || [],
+    productDocPaths: state.productDocPaths || [],
+    verifyPaths: state.verifyPaths || [],
+    verifyNotes: state.verifyNotes || '',
+    verifyFailRun: state.verifyFailRun,
+    clarifyFirst: !!state.clarifyFirst,
+    approvePlan: !!state.approvePlan,
     canvas: {
       nodes: JSON.parse(JSON.stringify(state.nodes)),
       connections: JSON.parse(JSON.stringify(state.connections)),
@@ -3849,9 +3872,69 @@ function serializeWorkflow() {
     }
   };
 }
-function deserializeWorkflow(data) {
+// A path list as the sidebar's add helpers would leave it: strings only, trimmed, no blanks,
+// no duplicates. The add helpers apply the same rule one path at a time; this applies it to a
+// whole list at once so a restore renders each row group once.
+function normalizePathList(arr) {
+  const out = [];
+  (Array.isArray(arr) ? arr : []).forEach(v => { if (typeof v !== 'string') return; const t = v.trim(); if (t && out.indexOf(t) === -1) out.push(t); });
+  return out;
+}
+let _autoRestoring = false;   // true while the boot-time autosave restore runs: nothing is persisted on a pure read
+// Applies the sidebar context a saved workflow carries. A value that has something wins; an
+// empty one never wipes what is there (a workflow saved with no paths or notes must never erase
+// a user's current ones, and there is no undo for that). mode 'restore' (a saved workflow, the
+// autosave, a clone): every non-empty key wins, and the three switches and the access grant
+// (explicit choices) always apply. mode 'adopt' (a file from someone else): a non-empty value
+// lands only where this user has nothing set - the rule the OpenSpec import always applied to
+// repo paths - and the access grant and the switches never move. Lists go through the same
+// normalization the add helpers apply, text through the same DOM fields a hand edit uses; the
+// prompt refreshes once at the end (restore callers render right after; adopt refreshes here)
+// and prefs persist once, never during the boot-time autosave read. Returns how many items
+// landed (paths count one each, after normalization).
+function applyWorkflowContext(p, mode) {
+  if (!p) return 0;
+  const adopt = mode === 'adopt';
+  let n = 0;
+  const text = (key, id) => {
+    if (typeof p[key] !== 'string' || !p[key].trim()) return;
+    const el = $(id); if (!el) return;
+    if (adopt && (el.value || '').trim()) return;
+    el.value = p[key]; n++;
+  };
+  text('appSourcePath', 'appSourcePath'); text('appSourceBranch', 'appSourceBranch'); text('uiContextNotes', 'uiContextNotes');
+  if (!adopt && typeof p.appSourceAccess === 'string') {   // an access grant is never adopted from a file
+    const el = $('appSourceAccess');
+    if (el && Array.from(el.options).some(o => o.value === p.appSourceAccess)) { el.value = p.appSourceAccess; n++; if (typeof refreshEnhancedSelect === 'function') refreshEnhancedSelect(el); }
+  }
+  const list = (key, render) => {
+    const incoming = normalizePathList(p[key]);
+    if (!incoming.length) return;
+    if (adopt && (state[key] || []).length) return;
+    state[key] = incoming; n += incoming.length; render();
+  };
+  list('rulesPaths', renderRulesRows); list('productDocPaths', renderProductDocRows); list('verifyPaths', renderVerifyRows);
+  if (typeof p.verifyNotes === 'string' && p.verifyNotes.trim() && !(adopt && (state.verifyNotes || '').trim())) {
+    state.verifyNotes = p.verifyNotes; const vn = $('verifyNotesInput'); if (vn) vn.value = p.verifyNotes; n++;
+  }
+  if (!adopt) {   // the switches describe how THIS workflow runs; a file from someone else does not flip yours
+    if (typeof p.verifyFailRun === 'boolean') { state.verifyFailRun = p.verifyFailRun; const t = $('verifyFailRunToggle'); if (t) t.checked = p.verifyFailRun; n++; }
+    if (typeof p.clarifyFirst === 'boolean') { state.clarifyFirst = p.clarifyFirst; const t = $('clarifyFirstToggle'); if (t) t.checked = p.clarifyFirst; n++; }
+    if (typeof p.approvePlan === 'boolean') { state.approvePlan = p.approvePlan; const t = $('approvePlanToggle'); if (t) t.checked = p.approvePlan; n++; }
+  }
+  if (typeof syncVerifyFailRunUI === 'function') syncVerifyFailRunUI();
+  if (n) {
+    if (adopt) updatePrompt();                     // restore callers render (and so regenerate) right after
+    if (!_autoRestoring) savePrefsDebounced();     // the machine-wide copy follows what is on screen
+  }
+  return n;
+}
+// opts.context: 'restore' (default: a saved workflow, the autosave, a clone) or 'none' (file
+// imports, which adopt afterwards through openSpecAdoptContextPaths so the toast can count).
+function deserializeWorkflow(data, opts) {
   if (!data || !data.canvas) return false;
   const c = data.canvas;
+  const _ctxMode = (opts && opts.context) || 'restore';
   // Validate node types
   const validTypes = Object.keys(NODE_DEFAULTS);
   if (c.nodes && !c.nodes.every(n => validTypes.includes(n.type))) return false;
@@ -3913,6 +3996,7 @@ function deserializeWorkflow(data) {
   state.openSpecArtifacts = !!data.openSpecArtifacts && state.durableRecord;
   syncDurableUI();
   renderRepoRows();
+  if (_ctxMode !== 'none') applyWorkflowContext(data, _ctxMode);
   updateTransform();
   render();
   updateMemoryPath();
@@ -3939,7 +4023,8 @@ function restoreAutoSave() {
     if (!raw) return false;
     const data = JSON.parse(raw);
     if (!data || !data.canvas || !data.canvas.nodes || data.canvas.nodes.length === 0) return false;
-    return deserializeWorkflow(data);
+    _autoRestoring = true;
+    try { return deserializeWorkflow(data); } finally { _autoRestoring = false; }
   } catch(e) { return false; }
 }
 
@@ -4088,9 +4173,9 @@ function importWorkflowText(text, fileName) {
     if (meta) {
       const vt = Object.keys(NODE_DEFAULTS);
       if (!meta.canvas.nodes.every(n => vt.includes(n.type))) { showToast('Unknown node types in embedded workflow'); return; }
-      if (deserializeWorkflow(meta)) {
+      if (deserializeWorkflow(meta, { context: 'none' })) {
         const adopted = openSpecAdoptContextPaths(meta);
-        showToast('Imported from OpenSpec schema: ' + (meta.name || 'workflow') + (adopted ? ' (+' + adopted + ' repo context path' + (adopted !== 1 ? 's' : '') + ')' : ''));
+        showToast('Imported from OpenSpec schema: ' + (meta.name || 'workflow') + (adopted ? ' (+' + adopted + ' context item' + (adopted !== 1 ? 's' : '') + ' adopted where yours were empty)' : ''));
         zoomFit();  // fit the freshly-imported workflow into view (like presets do)
       } else { showToast('Failed to import workflow'); }
       return;
@@ -4111,7 +4196,7 @@ function importWorkflowText(text, fileName) {
       // Foreign OpenSpec schema (no awd:meta): best-effort reconstruction for viewing/editing.
       // The content sniff covers the filename-less clipboard path (a schema.yaml has an artifacts: key).
       const wf = (typeof openSpecImportForeign === 'function') ? openSpecImportForeign(text) : null;
-      if (wf && deserializeWorkflow(wf)) {
+      if (wf && deserializeWorkflow(wf, { context: 'none' })) {   // a foreign schema carries no sidebar context
         const n = wf.canvas.nodes.length;
         showToast('Imported foreign OpenSpec schema: ' + (wf.name || 'workflow') + ' (' + n + ' node' + (n !== 1 ? 's' : '') + ') - best-effort view; agent roles, models, and positions are defaults you can adjust');
         zoomFit();  // fit the freshly-imported workflow into view (like presets do)
@@ -4126,8 +4211,9 @@ function importWorkflowText(text, fileName) {
       if (!data.canvas || !data.canvas.nodes) { showToast('Invalid workflow data'); return; }
       const validTypes = Object.keys(NODE_DEFAULTS);
       if (!data.canvas.nodes.every(n => validTypes.includes(n.type))) { showToast('Unknown node types in file'); return; }
-      if (deserializeWorkflow(data)) {
-        showToast('Imported: ' + (data.name || 'workflow'));
+      if (deserializeWorkflow(data, { context: 'none' })) {
+        const adopted = openSpecAdoptContextPaths(data);
+        showToast('Imported: ' + (data.name || 'workflow') + (adopted ? ' (+' + adopted + ' context item' + (adopted !== 1 ? 's' : '') + ' adopted where yours were empty)' : ''));
         zoomFit();  // fit the freshly-imported workflow into view (like presets do)
       } else {
         showToast('Failed to import workflow');
@@ -7541,6 +7627,10 @@ const PROMPT_LIBRARY = [
       prompt: '> **Your input**: Describe the update you need to send. Include recipient, medium, and topic.\n> Example: Teams message to my manager with this week\'s migration progress, or Jira comment on PROJ-123 summarizing status\n> **Requires**: memory-mode-portable (Obsidian vault with People/, Projects/, Sessions/)\n\nWrite a status update for: [the update context]\n\nThis prompt uses your Obsidian memory vault for recipient context and recent work. Start by reading `~/.claude/memory-config.json` for the vault path. If memory-mode-portable is not set up, tell the user.\n\n**Step 1: Parse the input**\nExtract:\n- **Recipient(s)**: names - match to `People/{Name}.md`\n- **Medium**: Teams / email / Jira comment / Confluence update / status channel post\n- **Topic**: project, ticket, initiative (for searching notes and Jira)\n- **Scope**: this week / last 2 weeks / since last update / all time\n\n**Step 2: Gather context (parallel where possible)**\n\nRecipient:\n- Read `People/{Name}.md` for communication style, role, what they care about\n\nTopic (recent activity only - this is a status update, not a deep dive):\n- Grep `Sessions/` for recent sessions on the topic (last 7-14 days depending on scope)\n- Grep `Progress/{project}.md` for the cumulative progress log\n- Read the active project note if relevant\n\nJira (if Atlassian MCP available):\n- `searchJiraIssuesUsingJql` for tickets matching topic, updated in the relevant window\n- For each: key, summary, status, last comment\n\nGit (if topic relates to code):\n- `git log --since="{relevant window}" --author="$(git config user.email)" --oneline` for your recent commits\n\n**Step 3: Write the update**\n\nAdapt format and tone to the medium AND the recipient (cross-reference their People note):\n\n**Teams**:\n- Informal to semi-formal, short paragraphs or tight bullets\n- Use thread-able structure where possible (lead line + detail in replies)\n- Call out asks with `@mentions` or explicit "Can you..."\n- Markdown is supported in the Teams desktop client (bold, italics, lists, inline code)\n- For longer posts, use headings sparingly; Teams renders them prominently\n\n**Email**:\n- Subject line: `{Topic}: {one-line verb summary}` (e.g. "Migration: Backend rewrite complete, follow-up items identified")\n- Greeting appropriate to formality\n- Structured body: status, next steps, asks, risks\n- Brief closing\n\n**Jira comment**:\n- Factual, reference other ticket keys inline (e.g. "blocked by PROJ-123")\n- Skip greetings, get to the update\n- Use h3 headings if long, bullets if short\n- Tag collaborators with `[~username]` if a response is needed\n\n**Confluence update** (status section on a page):\n- More formal, headings for scannability\n- Tables for multi-ticket status\n- Links to tickets/PRs/dashboards\n\n**Content structure** (adapt to medium, skip sections that do not apply):\n- **What is done** - completed work in the relevant window, with ticket refs\n- **What is in flight** - active work and expected completion\n- **What is next** - upcoming priorities (only if recipient cares about forward-looking)\n- **What I need** - asks, if any\n- **What you should know** - risks, dependencies, context the recipient may not have\n\n**Writing principles**:\n- Respect the reader\'s time. No filler, no hedging ("I think we might possibly"), no preamble about what the update will cover\n- Lead with the most important thing to THEM, not to you\n- Quantify where you can: "3 PRs merged" beats "made good progress"\n- Concrete ticket refs and dates, not vague "last week"\n- If there is bad news, surface it clearly but not alarmingly\n- Match their formality: if their People note says "direct, no preamble", do not open with "Hope you are well!"\n\n**Step 4: Output**\nProduce the finished update ready to paste. Include the subject line (for email) or the channel/chat suggestion (for Teams). No meta-commentary about the update - just the update itself.\n\nIf Atlassian MCP is available AND the medium is Jira or Confluence, optionally offer to post it directly (using `addCommentToJiraIssue` or `updateConfluencePage`). Ask the user to confirm before posting.\n\n**Step 5: Save a copy to the Obsidian vault for the record**\nResolve the vault path from `~/.claude/memory-config.json` and write to `{vault}/Resources/Status Updates/{YYYY-MM-DD} {topic-slug}.md`. Create the `Resources/Status Updates/` folder if it does not exist.\n\nFrontmatter:\n```\n---\ntype: status-update\ndate: {YYYY-MM-DD}\nrecipient: "[[People/{Name}]]"\nmedium: {teams / email / jira / confluence}\nproject: "[[Projects/{project-name}]]"\ntickets: [PROJ-123]\nsummary: "{one-line summary}"\ntags:\n  - status-update\n  - {domain-tag}\n---\n```\n\nBody: the finished update content as written. Use wikilinks for recipient and any referenced projects/people/decisions. This gives the user a searchable record of what was communicated to whom and when, which is useful for future prep ("what did I tell them last week?") and for tracking commitments made in async updates.\n\nTell the user the file path so they can reference it later.' }
   ]},
   { category: 'Post-Work', prompts: [
+    { title: 'Sync Durable Artifacts',
+      input: { label: 'Unit of work to sync: a capability, record slug, spec name, change name, or files. Leave empty to sync the current branch\'s diff against its base.', placeholder: 'e.g. live-run-monitor, or openspec change adopt-design-system, or src/billing/ - leave empty for the branch diff', find: '[the unit of work]', optional: true, fallback: 'the current branch\'s diff against its base (`git diff --name-only {base}...HEAD`; the default branch when nothing else is named)' },
+      desc: 'Bring the durable artifacts for one unit of work back to the truth: audit each claim against the tree, then amend in place. Artifacts only. For more than one unit, or drift you cannot name, run the Record Sync workflow instead.',
+      prompt: (function (g) { return '> **Your input**: Name the unit of work, or leave it empty to sync the current branch\'s diff.\n> Example: live-run-monitor, or openspec change adopt-design-system, or src/billing/\n\nBring the durable artifacts for ONE unit of work back to the truth: [the unit of work]. Use the Record Sync workflow instead when the work spans more than one unit, or when you cannot name what drifted.\n\nYou change ARTIFACTS ONLY - never code, never tests. Where the tree shows the CODE broke the truth (the artifact records the intent and the code no longer does it), flag it as a defect for a touch-up and leave the artifact as the intent.\n\n**Step 1: Scope.** Resolve the unit of work to files: a named capability, record slug, spec or change name maps through `.workflow/_index.md` entries (their file lists) and the `openspec/` listings; a directory or file list is its own scope; the branch diff is `git diff --name-only {base}...HEAD`. State the scope you resolved in one line before you read anything.\n\n**Step 2: Locate the artifacts with the canonical grounding protocol, rendered below verbatim:**\n- ' + [g.scanIndex, g.openSpecDocs, g.multiRepo, g.greenfield].join('\n- ') + '\n\n**Step 3: Audit, refute-first.** For every artifact statement about this unit (the record\'s Current behavior, requirements, scenarios, file map, verifying tests; the spec\'s requirements; the index entry\'s intent line and facets; the timeline line; an active `openspec/changes/` proposal the tree shows delivered), hold it against the actual code at file:line before you call it drift. An artifact statement you cannot prove false is not drift. Classify each confirmed item: STALE (artifact says X, code does Y), MISSING (delivered behavior with no artifact statement), or ORPHANED (artifact claims something the tree no longer contains). A named verifying test that no longer exists or no longer covers its scenario is drift. Check the archive for the INVERSE failure too: an archived change whose spec deltas never landed in `openspec/specs/` is MISSING drift - truth trapped in the archive - and the correcting amendment is creating the spec.\n\n**Step 4: Amend each surface that exists; skip silently what does not.**\n1. Durable record: amend IN PLACE - update what the drift list changed, refresh the file map, tick or add checklist boxes, re-confirm the record\'s own quality checklist where it has one, and append a dated History line stating what changed and why. Never create a new record for a tweak; supersede only for a whole-capability replacement.\n2. `.workflow/_index.md`: rewrite the entry\'s intent line when the amendment changes what a scanner should know, and refresh its facets (files, status, date).\n3. `.workflow/_timeline.md`: insert one line for this amendment as the FIRST entry below the header.\n4. `openspec/`: amend the affected spec so its requirements and scenarios match delivered behavior, in the spec file\'s own format. Delivered behavior with no spec file gets `openspec/specs/{capability-slug}/spec.md` with a `## Purpose` line and full `## Requirements`. An active change proposal for this unit is completed in two halves, spec first: apply its deltas to `openspec/specs/`, then archive it the way this repository archives changes - never archive without applying, never leave an active change contradicting its spec. When no proposal exists, the spec amendment alone is the correct end state; do not manufacture a proposal after the fact. Validate with the openspec CLI where available: a validation failure means the amendment is not done.\n5. Other capability docs the record\'s file map names (README sections, API docs), only where the drift made them false, with the smallest correcting edit.\n\n**Fidelity rules:** every edit traces to a verified change in the tree; no editorializing, no restructuring while amending, each document\'s existing format and conventions preserved exactly; the hygiene rules of this repository (`CLAUDE.md`, content lint, no em or en dashes) apply to every line you write.\n\n**Report:** the scope you resolved; each confirmed drift item with its evidence (file:line) and classification; each artifact amended with a one-line summary and the History line quoted; surfaces skipped because they do not exist; code defects flagged for a touch-up; artifact areas checked and found truthful.'; })(groundingLookupSteps()) },
     { title: 'Generate PR Description',
       input: { label: 'Paste the pull request URL.', placeholder: 'e.g. https://bitbucket.org/team/repo/pull-requests/42 or https://github.com/org/repo/pull/123', find: '[the PR URL]' },
       desc: 'Generate a structured PR description and update it on an existing PR. Uses Atlassian MCP, Chrome browser, or outputs markdown.',
@@ -7845,6 +7935,7 @@ function isJiraKeyOnly(text) {
 }
 function validateStoryInput(fromUser) {
   autoSaveWorkflow();
+  if (typeof amendScopeNodes === 'function' && amendScopeNodes().length) updateValidation();   // only the amend presets' template check reads this box
   // While the name box is empty, memory/record paths derive from the requirements text,
   // so refresh the displayed paths live as the user types.
   updateMemoryPath();
@@ -8962,7 +9053,7 @@ function loadPreset(preset, _confirmed) {
       // apply the smallest correct delta, then a steward brings every artifact back
       // to the truth. Amend-in-place doctrine rides in the prompts, self-gated on
       // which artifact surfaces actually exist.
-      const i = addNode('input', 80, 250, 'Change Request');
+      const i = addNode('input', 80, 250, 'Change Request', { description: 'The unit of work, supplied as the workflow requirements: what to change, where it lives (a capability name, record slug, spec or change name, ticket, or files), what must not move, and how to verify.' });
       const s = addNode('agent', 340, 250, 'Touch-Up Scoper', { agentType:'planner', model:state.defaultModel, tools:['Read','Grep','Glob','LSP','Bash'], prompt:PROMPTS.touchupScoper, maxTurns:5 });
       const a = addNode('agent', 620, 250, 'Amender', { agentType:'coder', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.touchupAmender, maxTurns:10 });
       const r = addNode('agent', 900, 250, 'Delta Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Bash','Grep','Glob','LSP'], prompt:PROMPTS.touchupReviewer, maxTurns:5 });
@@ -8977,7 +9068,7 @@ function loadPreset(preset, _confirmed) {
       // Artifacts-only reconciliation: prove where records/specs stopped telling the
       // truth about the tree, then amend the ARTIFACTS to match reality. Code changes
       // are out of scope by contract - broken-truth items get flagged for a touch-up.
-      const i = addNode('input', 80, 250, 'Sync Scope');
+      const i = addNode('input', 80, 250, 'Sync Scope', { description: 'The unit of work, supplied as the workflow requirements: the scope to reconcile (a capability, an area, or everything), known or suspected drift, hints (record slugs, spec names, files), and what is out of scope. Left empty, the Drift Auditor syncs only the current branch\'s diff against its base.' });
       const au = addNode('agent', 340, 250, 'Drift Auditor', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Bash','Grep','Glob','LSP'], prompt:PROMPTS.driftAuditor, maxTurns:8 });
       const st = addNode('agent', 620, 250, 'Artifact Steward', { agentType:'writer', writingStyle:'technical', model:state.defaultModel, tools:WRITER_TOOL_DEFAULTS.technical, prompt:PROMPTS.artifactSteward, maxTurns:8 });
       const d = addNode('decision', 900, 242, 'Artifacts true?', { condition:'Every confirmed drift item is resolved with a traceable artifact amendment and no code or test files were modified', yesLabel:'Synced', noLabel:'Revise', maxRevisions:2 });
@@ -9448,9 +9539,11 @@ function clearCanvas(skipConfirm) {
   const _apt = $('approvePlanToggle'); if (_apt) _apt.checked = false;
   const _mcn = $('mcpCustomNotes'); if (_mcn) _mcn.value = '';
   // state.rulesPaths, state.productDocPaths, and state.verifyPaths are intentionally NOT reset
-  // here: they are sticky repo-level context that carries across workflows in the same repo. Only
-  // the Clear-all controls (clearRulesPaths / clearProductDocPaths / clearVerifyPaths) empty them.
-  // state.verifyFailRun (the fail-the-run posture) is likewise a sticky pref, left untouched here.
+  // here: they are sticky repo-level context that carries across workflows in the same repo. The
+  // Clear-all controls (clearRulesPaths / clearProductDocPaths / clearVerifyPaths) empty them, and
+  // a saved workflow carrying a non-empty list replaces them on load (applyWorkflowContext).
+  // state.verifyFailRun (the fail-the-run posture) is likewise left untouched here; a saved
+  // workflow carries its own copy that wins on load.
   render();
   updateConfig();
   updateMemoryPath();
@@ -9510,9 +9603,50 @@ function updateFormatRec() {
   }
 }
 
+// The amend presets (Touch-Up, Record Sync) work on a unit of work the Requirements box
+// names. Identified by phrases the step prompts carry in every version (a tailored prompt,
+// an older autosave, or an imported canvas keeps the check), never by the preset tile.
+// Each scoping step's opening sentence is unique to it (the Steward, Amender, and Delta
+// Reviewer mention the drift list and the Must Not Move list without carrying these).
+const AMEND_SCOPE_MARKERS = [
+  { re: /produce a confirmed drift list/i, preset: 'record_sync' },
+  { re: /scope a touch-up:/i, preset: 'touchup' }
+];
+function amendScopeNodes() {
+  return state.nodes.filter(n => n.type === 'agent' && n.config && typeof n.config.prompt === 'string' && AMEND_SCOPE_MARKERS.some(m => m.re.test(n.config.prompt)))
+    .map(n => ({ node: n, preset: AMEND_SCOPE_MARKERS.find(m => m.re.test(n.config.prompt)).preset }));
+}
+// A Requirements box that still holds another workflow's template is not a unit of work.
+// The markers are the first heading of every OTHER preset's template, read from
+// STORY_PLACEHOLDERS itself, so a new preset is covered the day its template lands; the
+// canvas's own preset(s) are the only ones excluded, so a Touch-Up template left in the box
+// of a Record Sync canvas is flagged like any other.
+function otherTemplateHeadings(ownKeys) {
+  const out = [];
+  Object.keys(STORY_PLACEHOLDERS).forEach(k => {
+    if ((ownKeys || []).indexOf(k) !== -1) return;
+    const first = String(STORY_PLACEHOLDERS[k] || '').split('\n').map(l => l.trim()).find(l => l);
+    if (first && out.indexOf(first) === -1) out.push(first);
+  });
+  return out;
+}
+function storyLooksLikeOtherTemplate(story, ownKeys) {
+  // The box IS another template when it STARTS with one (the same first-heading rule that picks
+  // the markers); a heading-like phrase further down a real unit of work is not a template.
+  const first = String(story || '').split('\n').map(l => l.trim()).find(l => l) || '';
+  const heads = otherTemplateHeadings(ownKeys);
+  return heads.some(h => first.toLowerCase().indexOf(h.toLowerCase()) === 0);
+}
 function validateWorkflow() {
   const warnings = [];
   if (state.nodes.length === 0) return warnings;
+  // Amend presets read their unit of work from the Requirements box. An empty box is fine
+  // (the placeholder is the cue, and the auditor falls back to the branch diff); another
+  // workflow's template left in the box is the one mistake worth a warning.
+  const _amend = amendScopeNodes();
+  if (_amend.length && storyLooksLikeOtherTemplate(getStory(), _amend.map(a => a.preset))) {
+    warnings.push({ type: 'warn', msg: 'The Requirements box still holds another workflow\'s template, and ' + _amend.map(a => '"' + a.node.label + '"').join(' and ') + ' will read it as the unit of work. Replace it with this preset\'s unit of work: load the preset with the box empty to see the fields its placeholder asks for.' });
+  }
   // Disconnected nodes (no connections in or out)
   state.nodes.forEach(n => {
     const hasIn = state.connections.some(c => c.to === n.id);
@@ -12838,24 +12972,12 @@ function openSpecExtractMeta(text) {
   return null;
 }
 function openSpecAdoptContextPaths(meta) {
-  // A shared schema carries the exporter's Repo Context Paths in awd:meta. On import, ADOPT them only
-  // if THIS user has none set, so a shared schema is self-contained for a new teammate - but never
-  // clobber an existing user's own (global, sticky) config. Reuses addRulesPath/addProductDocPath so
-  // chips, persistence, and the prompt refresh stay consistent. Returns how many paths were adopted.
-  let adopted = 0;
-  if (meta && Array.isArray(meta.rulesPaths) && meta.rulesPaths.length && !(state.rulesPaths || []).length) {
-    meta.rulesPaths.forEach(p => addRulesPath(p)); adopted += meta.rulesPaths.length;
-  }
-  if (meta && Array.isArray(meta.productDocPaths) && meta.productDocPaths.length && !(state.productDocPaths || []).length) {
-    meta.productDocPaths.forEach(p => addProductDocPath(p)); adopted += meta.productDocPaths.length;
-  }
-  if (meta && Array.isArray(meta.verifyPaths) && meta.verifyPaths.length && !(state.verifyPaths || []).length) {
-    meta.verifyPaths.forEach(p => addVerifyPath(p)); adopted += meta.verifyPaths.length;
-  }
-  if (meta && typeof meta.verifyNotes === 'string' && meta.verifyNotes.trim() && !(state.verifyNotes || '').trim()) {
-    setVerifyNotes(meta.verifyNotes); const vn = $('verifyNotesInput'); if (vn) vn.value = meta.verifyNotes; adopted += 1;
-  }
-  return adopted;
+  // A shared file carries the exporter's sidebar context. On import, ADOPT it only where THIS
+  // user has nothing set, so a shared workflow is self-contained for a new teammate but never
+  // clobbers an existing user's own config; the access grant and the run switches never move.
+  // One rule, shared with the saved-workflow restore path (applyWorkflowContext). Returns how
+  // many items were adopted (paths count one each).
+  return applyWorkflowContext(meta, 'adopt');
 }
 // Role -> which record-section set its output doc should scaffold. Maps the designer's agent types
 // onto the handoff/durable-record structure so each step leaves a clean, role-appropriate record.
@@ -13092,7 +13214,7 @@ function buildOpenSpecSchema() {
   L.push('');
   L.push('# Round-trip metadata for the Agentic Workflow Designer (ignored by openspec validate).');
   L.push('# Re-import this file into the designer to edit the workflow visually.');
-  L.push('# awd:meta ' + JSON.stringify({ format: 'agentic-workflow-designer', version: 1, rulesPaths: state.rulesPaths || [], productDocPaths: state.productDocPaths || [], verifyPaths: state.verifyPaths || [], verifyNotes: state.verifyNotes || '', verifyFailRun: state.verifyFailRun, ...serializeWorkflow() }));
+  L.push('# awd:meta ' + JSON.stringify({ format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow() }));   // the serializer carries the repo context paths and verification posture
 
   // Graph position for each artifact's record (task-inclusive, straight off the requires we built).
   const idLabel = {};
@@ -13621,7 +13743,7 @@ function genTuningPrompt() {
   L.push('## Current workflow definition (awd JSON)');
   L.push('');
   L.push('```json');
-  L.push(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, rulesPaths: state.rulesPaths || [], productDocPaths: state.productDocPaths || [], verifyPaths: state.verifyPaths || [], verifyNotes: state.verifyNotes || '', verifyFailRun: state.verifyFailRun, ...serializeWorkflow() }, null, 2));
+  L.push(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow() }, null, 2));
   L.push('```');
   L.push('');
   L.push('If you can write files, ALSO save your improved workflow JSON to `~/.awd/outbox/tuning-' + slugify(name) + '.json` (create the directories; skip silently if not permitted) - the Workflow Designer watches that spot and offers one-click import.');
