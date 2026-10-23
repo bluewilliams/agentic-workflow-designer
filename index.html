@@ -453,6 +453,19 @@ svg.canvas{width:100%;height:100%;display:block}
   font-size:12px;color:var(--text2);box-shadow:-6px 0 18px rgba(0,0,0,.35)}
 .monitor-panel h3{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin:14px 0 6px}
 .monitor-panel h3:first-child{margin-top:0}
+/* Run picker: the app's own menu (the Export/Import idiom), never the OS-painted <select>. */
+.monitor-run-dd{position:relative;display:block}
+.monitor-run-btn{display:flex;align-items:center;gap:6px;width:100%;text-align:left;font-family:var(--mono);font-size:11px}
+.monitor-run-btn .monitor-run-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.monitor-run-btn .caret{flex:0 0 auto;color:var(--text3)}
+.monitor-run-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,0.4);padding:4px;max-height:50vh;overflow-y:auto}
+.monitor-run-menu::-webkit-scrollbar{width:6px}
+.monitor-run-menu::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px}
+.monitor-run-item{display:flex;align-items:center;gap:6px;width:100%;text-align:left;margin:2px 0;font-family:var(--mono);font-size:11px}
+.monitor-run-item .monitor-run-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.monitor-run-item .monitor-run-mark{flex:0 0 12px;color:var(--accent);text-align:center}
+.monitor-run-item[aria-selected="true"]{color:var(--accent)}
 .monitor-task{display:flex;gap:7px;align-items:flex-start;padding:3px 0;line-height:1.4}
 .monitor-task .tick{flex:0 0 auto;width:14px;height:14px;border-radius:3px;border:1px solid var(--border);
   display:inline-flex;align-items:center;justify-content:center;font-size:10px;margin-top:1px}
@@ -4209,6 +4222,7 @@ function genHandoffBundle() {
 function toggleImportMenu(e) {
   e.stopPropagation();
   closeExportMenu();   // one dropdown open at a time
+  if (typeof closeMonitorRunMenu === 'function') closeMonitorRunMenu();
   const m = $('importMenu'), b = $('importMenuBtn');
   const open = m.style.display !== 'none';
   m.style.display = open ? 'none' : 'block';
@@ -4222,6 +4236,7 @@ function closeImportMenu() {
 function toggleExportMenu(e) {
   if (e) e.stopPropagation();
   closeImportMenu();   // one dropdown open at a time
+  if (typeof closeMonitorRunMenu === 'function') closeMonitorRunMenu();
   const m = $('exportMenu'), b = $('exportMenuBtn');
   const open = !m || m.style.display === 'none' || !m.style.display;
   if (m) m.style.display = open ? 'block' : 'none';
@@ -4233,9 +4248,9 @@ function closeExportMenu() {
   if (b) b.setAttribute('aria-expanded', 'false');
 }
 document.addEventListener('click', function(e) {
-  if (!(e.target.closest && e.target.closest('.export-dd'))) { closeExportMenu(); closeImportMenu(); }
+  if (!(e.target.closest && e.target.closest('.export-dd'))) { closeExportMenu(); closeImportMenu(); if (typeof closeMonitorRunMenu === 'function') closeMonitorRunMenu(); }
 });
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeExportMenu(); closeImportMenu(); } });
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeExportMenu(); closeImportMenu(); if (typeof closeMonitorRunMenu === 'function') closeMonitorRunMenu(); } });
 function exportHandoffFile() {
   if (state.nodes.length === 0) { showToast('Add nodes before exporting a handoff'); return; }
   const md = genHandoffBundle();
@@ -14075,7 +14090,7 @@ async function initRepoConnect() {
 // Multi-tree: a run can span repositories, so the monitor holds a LIST of watched
 // folders (the one memory dir covers the live surface for any repo count; per-repo
 // .workflow folders add durable-record browsing). Each entry: {handle, name, status}.
-const runMonitor = { watches: [], timer: null, open: false, snapshot: {}, texts: {}, feed: [], tasks: [], agents: {}, selected: null, runs: [], runBase: null, runPin: null, tab: null, fileMode: 'artifacts', _prevTiers: {} };
+const runMonitor = { watches: [], timer: null, open: false, snapshot: {}, texts: {}, feed: [], tasks: [], agents: {}, selected: null, runs: [], runBase: null, runPin: null, tab: null, fileMode: 'artifacts', _prevTiers: {}, _runMenuOpen: false };
 // Scan and display are independent budgets. The scan budget bounds per-poll stat cost,
 // not junk (the gitignore-honoring scan and skip lists handle junk) - sized to cover a
 // real source tree in full, with depth for real src nesting; big scans halve the poll
@@ -14122,11 +14137,14 @@ function parseTaskChecklist(text) {
 // genAgentMemoryPreamble step 4, the Teams per-teammate DURING rule in buildTeammateBlock,
 // and tasks.md tick discipline in the orchestrator variants)
 // - a format change there must land here, or the Monitor silently stops matching ticks.
+// Agents copy the checklist line whole, owner tag included ("... all green (@implementer)");
+// the row parser strips that tag, so the tick parser strips it too - here, so the board and
+// the Run Health detector read the same text.
 function parseProvisionalTicks(text) {
   const out = [];
   String(text || '').split('\n').forEach(line => {
     const m = line.match(/^\s*t:\s*(.+?)\s*(?:done|\u2705)\s*$/i);
-    if (m) out.push(m[1].trim());
+    if (m) out.push(m[1].trim().replace(/\(@[A-Za-z0-9_-]+\)\s*$/, '').trim());
   });
   return out;
 }
@@ -14141,14 +14159,84 @@ function monitorTickMatches(p, n) {
   return p === n || (Math.min(p.length, n.length) >= MONITOR_MATCH_MIN && (p.indexOf(n) !== -1 || n.indexOf(p) !== -1));
 }
 function monitorNorm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
-function monitorMergeTasks(checklist, provisionalTexts) {
-  const prov = (provisionalTexts || []).map(monitorNorm).filter(Boolean);
-  return (checklist || []).map(item => {
-    if (item.done) return { text: item.text, owner: item.owner, tier: 'confirmed' };
-    const n = monitorNorm(item.text);
-    const hit = !!n && prov.some(p => monitorTickMatches(p, n));
-    return { text: item.text, owner: item.owner, tier: hit ? 'provisional' : 'open' };
+// A tick satisfies ONE row. Checklists repeat task texts across groups ("Run the verify
+// commands; all green" once per group), so a tick must never light every same-text row.
+// Ticks arrive as { owner, text } (owner = the agent file that wrote the line; plain strings
+// are accepted with no owner). Rules, in order:
+//  - one agent reposting the same tick counts once (the health nudge asks agents to repost,
+//    and a revise cycle re-announces the same ticks); the same text from two different
+//    agents is two ticks. Trade-off, deliberate: one agent working several same-text rows in
+//    turn lights only the first until the orchestrator confirms it - a false "not yet" for one
+//    row at a time beats a false "done" on a row nobody touched;
+//  - a tick prefers the row its own agent owns: owner equal first, then a `{owner}-{item}`
+//    fan-out helper of it unless another row's owner is a longer prefix of the tick's owner
+//    (the sibling rule the canvas dots use: "plan" never takes "plan-review"'s tick). Among
+//    rows one agent owns, checklist order decides, never the helper's group: rows carry no
+//    group, so a g4 helper's tick can light the g1 twin when both are open;
+//  - exact normalized matches first: confirmed rows take their exact tick (it was theirs),
+//    then open rows in checklist order;
+//  - then substring matches for the open rows still unmatched, as one greedy pass over
+//    (row, tick) pairs: owner-matched pairs first, then the closest length, whichever side
+//    contains the other. A confirmed row joins this pass only when an open row shares its
+//    exact text, so a restated tick for a finished twin lands on the finished twin and never
+//    on the untouched one; otherwise confirmed rows never consume by substring (that could
+//    only hide progress on a different row).
+// Surplus ticks that match nothing unused are dropped from the board.
+function monitorMergeTasks(checklist, provisional) {
+  const seen = Object.create(null), ticks = [];
+  (provisional || []).forEach(x => {
+    const text = typeof x === 'string' ? x : (x && x.text);
+    const owner = typeof x === 'string' ? '' : String((x && x.owner) || '').toLowerCase();
+    const t = monitorNorm(String(text || '').replace(/\(@[A-Za-z0-9_-]+\)\s*$/, ''));
+    if (!t) return;
+    const key = owner + '\u0000' + t;
+    if (seen[key]) return;
+    seen[key] = 1;
+    ticks.push({ t: t, owner: owner, used: false });
   });
+  const byText = Object.create(null);
+  ticks.forEach(k => { (byText[k.t] = byText[k.t] || []).push(k); });
+  const rows = (checklist || []).map((item, i) => ({ i: i, text: item.text, owner: item.owner, o: String(item.owner || '').toLowerCase(), n: monitorNorm(item.text), tier: item.done ? 'confirmed' : 'open' }));
+  const owners = [];
+  rows.forEach(r => { if (r.o && owners.indexOf(r.o) === -1) owners.push(r.o); });
+  // 2 = the tick's own agent, 1 = a fan-out helper of this owner not claimed by a longer sibling, 0 = no
+  const owns = (k, r) => {
+    if (!r.o || !k.owner) return 0;
+    if (k.owner === r.o) return 2;
+    if (k.owner.indexOf(r.o + '-') !== 0) return 0;
+    const claimed = owners.some(o2 => o2 !== r.o && o2.length > r.o.length && (k.owner === o2 || k.owner.indexOf(o2 + '-') === 0));
+    return claimed ? 0 : 1;
+  };
+  const takeExact = (r, ownerOnly) => {
+    if (!r.n) return false;
+    let cands = (byText[r.n] || []).filter(x => !x.used);
+    if (ownerOnly) cands = cands.filter(k => owns(k, r) > 0).sort((a, b) => owns(b, r) - owns(a, r));
+    if (!cands.length) return false;
+    cands[0].used = true;
+    return true;
+  };
+  [true, false].forEach(ownerOnly => {
+    rows.forEach(r => { if (r.tier === 'confirmed') takeExact(r, ownerOnly); });
+    rows.forEach(r => { if (r.tier === 'open' && takeExact(r, ownerOnly)) r.tier = 'provisional'; });
+  });
+  // Substring pass: one greedy assignment over every (row, unused tick) containment pair.
+  const openTexts = Object.create(null);
+  rows.forEach(r => { if (r.tier === 'open' && r.n) openTexts[r.n] = 1; });
+  const pairs = [];
+  rows.forEach(r => {
+    if (!r.n) return;
+    if (r.tier === 'provisional') return;
+    if (r.tier === 'confirmed' && !openTexts[r.n]) return;   // a finished row joins only to shield its untouched twin
+    ticks.forEach(k => { if (!k.used && monitorTickMatches(k.t, r.n)) pairs.push({ r: r, k: k, own: owns(k, r), diff: Math.abs(k.t.length - r.n.length) }); });
+  });
+  pairs.sort((a, b) => (b.own - a.own) || (a.diff - b.diff) || ((a.r.tier === 'confirmed' ? 0 : 1) - (b.r.tier === 'confirmed' ? 0 : 1)) || (a.r.i - b.r.i));
+  const assigned = Object.create(null);
+  pairs.forEach(pr => {
+    if (pr.k.used || assigned[pr.r.i]) return;
+    pr.k.used = true; assigned[pr.r.i] = 1;
+    if (pr.r.tier === 'open') pr.r.tier = 'provisional';
+  });
+  return rows.map(r => ({ text: r.text, owner: r.owner, tier: r.tier }));
 }
 // In flight (pure): for each owner whose status resolves to active, its FIRST open task in
 // checklist order - its next open task, the best the board can know (agents work their
@@ -14355,7 +14443,10 @@ function monitorRecompute() {
   }
   const taskKey = Object.keys(local).find(n => n.toLowerCase() === 'tasks.md');
   const prov = [];
-  Object.keys(local).forEach(n => { if (/^@.+\.md$/i.test(n)) prov.push.apply(prov, parseProvisionalTicks(local[n])); });
+  Object.keys(local).forEach(n => {
+    const m = n.match(/^@(.+)\.md$/i);
+    if (m) parseProvisionalTicks(local[n]).forEach(text => prov.push({ owner: m[1], text: text }));
+  });
   runMonitor.tasks = monitorMergeTasks(parseTaskChecklist(taskKey ? local[taskKey] : ''), prov);
   runMonitor.agents = monitorAgentStatuses(local, runMonitor.tasks);
   // Confirmed-count rises are the tick signal the AUTHORITATIVE surface reads observe even
@@ -14370,6 +14461,51 @@ function monitorRecompute() {
   runMonitor._health = monitorRunHealth();
   runMonitor._idle = monitorIdleState();
   if (!runMonitor._idle) runMonitor._showIdle = false;
+}
+// Run picker open/close: state-backed so a poll re-render preserves an open menu; the
+// document-level click and Escape handlers (shared with Export/Import) close it.
+function toggleMonitorRunMenu(e) {
+  if (e) e.stopPropagation();
+  if (typeof closeExportMenu === 'function') closeExportMenu();   // one dropdown open at a time
+  if (typeof closeImportMenu === 'function') closeImportMenu();
+  runMonitor._runMenuOpen = !runMonitor._runMenuOpen;
+  const m = $('monitorRunMenu'), b = $('monitorRunBtn');
+  if (m) m.style.display = runMonitor._runMenuOpen ? 'block' : 'none';
+  if (b) b.setAttribute('aria-expanded', String(runMonitor._runMenuOpen));
+  if (runMonitor._runMenuOpen && m) { const cur = m.querySelector('.monitor-run-item[aria-checked="true"]') || m.querySelector('.monitor-run-item'); if (cur) cur.focus(); }
+}
+function closeMonitorRunMenu(refocus) {
+  if (!runMonitor._runMenuOpen) return;
+  runMonitor._runMenuOpen = false;
+  const m = $('monitorRunMenu'), b = $('monitorRunBtn');
+  if (m) m.style.display = 'none';
+  if (b) { b.setAttribute('aria-expanded', 'false'); if (refocus) b.focus(); }
+}
+// A pick from the menu: pin only when the choice changes (re-choosing the current run must
+// not wipe the flash baseline or repaint), close, and hand focus back to the button.
+function monitorPickRun(v) {
+  const next = v === '__auto__' ? null : decodeURIComponent(v);
+  closeMonitorRunMenu(true);
+  if (next === runMonitor.runPin) return;
+  monitorPinRun(v);
+  const b = $('monitorRunBtn'); if (b) b.focus();
+}
+// Arrow keys walk the items (wrapping), Home/End jump, Escape closes back to the button;
+// Tab is left alone so the menu stays a plain stop in the page's order.
+function monitorRunMenuKey(e) {
+  const m = $('monitorRunMenu'); if (!m) return;
+  const items = Array.from(m.querySelectorAll('.monitor-run-item'));
+  if (!items.length) return;
+  const i = items.indexOf(document.activeElement);
+  let to = -1;
+  if (e.key === 'ArrowDown') to = i < items.length - 1 ? i + 1 : 0;
+  else if (e.key === 'ArrowUp') to = i > 0 ? i - 1 : items.length - 1;
+  else if (e.key === 'Home') to = 0;
+  else if (e.key === 'End') to = items.length - 1;
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMonitorRunMenu(true); return; }
+  if (to === -1) return;
+  e.preventDefault();
+  items[to].focus();
 }
 function monitorPinRun(v) {
   runMonitor.runPin = v === '__auto__' ? null : decodeURIComponent(v);
@@ -14540,7 +14676,7 @@ async function monitorRemoveWatch(name) {
   runMonitor.snapshot = {}; runMonitor.texts = {}; runMonitor.selected = null;
   if (!runMonitor.watches.length && runMonitor.timer) { clearInterval(runMonitor.timer); runMonitor.timer = null; }
   runMonitor.feed = []; runMonitor.tasks = []; runMonitor.agents = {};
-  runMonitor.runs = []; runMonitor.runBase = null; runMonitor.runPin = null; runMonitor._prevTiers = {};
+  runMonitor.runs = []; runMonitor.runBase = null; runMonitor.runPin = null; runMonitor._prevTiers = {}; runMonitor._runMenuOpen = false;
   runMonitor._health = []; runMonitor._lastConfirmedN = null; runMonitor._lastConfirmedAt = 0; runMonitor._idle = null; runMonitor._showIdle = false; runMonitor._lastSurfaceAt = 0;
   await monitorPersist();
   if (runMonitor.watches.length) await monitorPoll(true);
@@ -14551,7 +14687,7 @@ async function disconnectRunMonitor() {
   if (runMonitor.timer) clearInterval(runMonitor.timer);
   runMonitor.watches = []; runMonitor.timer = null;
   runMonitor.snapshot = {}; runMonitor.texts = {}; runMonitor.feed = []; runMonitor.tasks = []; runMonitor.agents = {}; runMonitor.selected = null;
-  runMonitor.runs = []; runMonitor.runBase = null; runMonitor.runPin = null;   // a stale pin must not survive Stop All
+  runMonitor.runs = []; runMonitor.runBase = null; runMonitor.runPin = null; runMonitor._runMenuOpen = false;   // a stale pin (or an open picker) must not survive Stop All
   runMonitor._prevTiers = {};
   runMonitor._health = []; runMonitor._lastConfirmedN = null; runMonitor._lastConfirmedAt = 0; runMonitor._idle = null; runMonitor._showIdle = false; runMonitor._lastSurfaceAt = 0;
   try { await awdIdbDel('monitorDirs'); } catch (e) {}
@@ -14863,15 +14999,28 @@ function renderMonitorPanel() {
     H.push('<div style="margin-top:4px"><button class="btn sm" onclick="monitorPoll(true)" title="Scan every watched folder right now (the poll keeps running either way)">Rescan</button> '
       + (runMonitor.watches.length < MONITOR_MAX_WATCHES ? '<button class="btn sm" onclick="connectRunMonitor()" title="Watch another folder (up to 4): a repo\'s .workflow for records, or a source folder for its change feed. The picker reopens at your last pick; dragging a folder from your file manager onto this panel also works.">+ Add Folder</button> ' : '')
       + '<button class="btn sm" onclick="disconnectRunMonitor()" title="Stop watching every folder and forget the saved handles - reconnect any time with Watch Folder">Stop All</button></div>');
+    if (runMonitor.runs.length <= 1) runMonitor._runMenuOpen = false;   // the picker is gone with the second run; it must not reappear open
     if (runMonitor.runs.length > 1) {
-      H.push('<h3>Run</h3><select class="story-input" style="min-height:auto;padding:4px 6px;font-size:11px;width:100%" onchange="monitorPinRun(this.value)">');
-      H.push('<option value="__auto__"' + (runMonitor.runPin === null ? ' selected' : '') + '>Auto - follow the newest activity</option>');
-      runMonitor.runs.forEach(r => {
-        const segs = r.base.replace(/\/$/, '').split('/');
-        const label = segs[segs.length - 1] || 'watched folder root';
-        H.push('<option value="' + encodeURIComponent(r.base) + '"' + (runMonitor.runPin === r.base ? ' selected' : '') + '>' + escHtml(label) + '</option>');
-      });
-      H.push('</select>');
+      // The app's own menu (the Export/Import idiom) rather than a native <select>: the OS
+      // paints that popup its own way and over the canvas. The open flag lives in state so
+      // the poll's re-render never slams the menu shut under the pointer.
+      const runName = b => { const segs = b.replace(/\/$/, '').split('/'); return segs[segs.length - 1] || 'watched folder root'; };
+      const AUTO = 'Auto - follow the newest activity';
+      // A pin names a run that is not in the list only while that run is missing from the scan
+      // (recompute then follows the newest); the picker shows that truth as Auto rather than a
+      // pinned name the Tasks tab does not match.
+      const pinLive = runMonitor.runPin !== null && runMonitor.runs.some(r => r.base === runMonitor.runPin);
+      const current = pinLive ? runName(runMonitor.runPin) : AUTO;
+      const menuOpen = !!runMonitor._runMenuOpen;
+      H.push('<h3>Run</h3><div class="export-dd monitor-run-dd">'
+        + '<button class="btn sm monitor-run-btn" id="monitorRunBtn" aria-haspopup="menu" aria-controls="monitorRunMenu" aria-expanded="' + menuOpen + '" onclick="toggleMonitorRunMenu(event)" title="' + escHtml(pinLive ? 'Pinned to ' + runMonitor.runPin.replace(/\/$/, '') + '. Pick Auto to follow the newest activity again.' : 'Following the newest activity. Pick a run to pin the panel to it.') + '">'
+        + '<span class="monitor-run-label">' + escHtml(current) + '</span><span class="caret">\u25BE</span></button>');
+      H.push('<div class="monitor-run-menu" id="monitorRunMenu" role="menu" aria-label="Run to follow" style="display:' + (menuOpen ? 'block' : 'none') + '" onkeydown="monitorRunMenuKey(event)">');
+      const item = (value, label, checked, title) => '<button class="btn sm monitor-run-item" role="menuitemradio" aria-checked="' + checked + '" data-run="' + escHtml(value) + '" title="' + escHtml(title) + '" onclick="monitorPickRun(this.dataset.run)">'
+        + '<span class="monitor-run-mark">' + (checked ? '\u2713' : '') + '</span><span class="monitor-run-name">' + escHtml(label) + '</span></button>';
+      H.push(item('__auto__', AUTO, !pinLive, 'Follow whichever run wrote most recently'));
+      runMonitor.runs.forEach(r => H.push(item(encodeURIComponent(r.base), runName(r.base), pinLive && runMonitor.runPin === r.base, r.base)));
+      H.push('</div></div>');
     } else if (runMonitor.runBase) {
       const _rbSegs = runMonitor.runBase.replace(/\/$/, '').split('/');
       H.push('<div style="margin-top:6px;color:var(--text3);font-size:11px" title="' + escHtml(runMonitor.runBase) + '">Run: <code style="overflow-wrap:anywhere">' + escHtml(_rbSegs[_rbSegs.length - 1] || 'watched folder root') + '</code></div>');
@@ -15002,7 +15151,14 @@ function renderMonitorPanel() {
     }
   }
   const keepScroll = p.scrollTop;   // a live poll must not yank the user's scroll position
+  // The poll re-renders this panel every cycle: keep keyboard focus where it was when it sat
+  // on the Run picker (its button, or the item under the caret), else Tab restarts at the top.
+  const _ae = document.activeElement;
+  const _focusBtn = !!(_ae && p.contains(_ae) && _ae.id === 'monitorRunBtn');
+  const _focusRun = _ae && p.contains(_ae) && _ae.classList && _ae.classList.contains('monitor-run-item') ? _ae.dataset.run : undefined;
   p.innerHTML = H.join('');
+  if (_focusBtn) { const _b = p.querySelector('#monitorRunBtn'); if (_b) _b.focus(); }
+  else if (_focusRun !== undefined) { const _again = Array.from(p.querySelectorAll('.monitor-run-item')).find(el => el.dataset.run === _focusRun); if (_again) _again.focus(); }
   p.scrollTop = keepScroll;
 }
 async function initRunMonitor() {

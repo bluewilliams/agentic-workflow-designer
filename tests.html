@@ -7043,6 +7043,54 @@ describe('Live Run Monitor core', () => {
     expect(merged[1].tier).toBe('provisional');
     expect(merged[2].tier).toBe('open');
   });
+  it('monitorMergeTasks: a tick satisfies one row - owner-aware, one repost counts once, confirmed take exact first, closest substring last', () => {
+    const tiers = (rows, ticks) => win.monitorMergeTasks(rows, ticks).map(r => r.tier).join(',');
+    const R = (text, done, owner) => ({ text: text, done: !!done, owner: owner || 'implementer' });
+    const T = (text, owner) => ({ text: text, owner: owner || 'implementer' });
+    const VERIFY = 'Run the verify commands; all green';
+    // the live case: group 1's verify row confirmed, group 4's identical row untouched, ONE tick
+    expect(tiers([R(VERIFY, true), R('Write the renderer', false), R(VERIFY, false)], [T(VERIFY)])).toBe('confirmed,open,open');
+    // the live case as the agent actually wrote it: the checklist line copied whole, owner tag included
+    expect(tiers([R(VERIFY, true), R('Write the renderer', false), R(VERIFY, false)], [T(VERIFY + ' (@implementer)', 'implementer-g1')])).toBe('confirmed,open,open');
+    expect(tiers([R(VERIFY, false)], [T(VERIFY + ' (@implementer)', 'implementer-g1')])).toBe('provisional');
+    // the same agent reposting its tick (the health nudge asks for that, and a revise cycle re-announces) counts once;
+    // the deliberate trade-off: one agent working same-text rows in turn lights only the first until it is confirmed
+    expect(tiers([R(VERIFY, true), R('Write the renderer', false), R(VERIFY, false)], [T(VERIFY), T(VERIFY)])).toBe('confirmed,open,open');
+    // the same text from a DIFFERENT agent is a second tick, and it lands on that agent's row
+    expect(tiers([R(VERIFY, false, 'implementer'), R(VERIFY, false, 'reviewer')], [T(VERIFY, 'reviewer')])).toBe('open,provisional');
+    expect(tiers([R(VERIFY, true, 'implementer'), R(VERIFY, false, 'reviewer')], [T(VERIFY, 'implementer'), T(VERIFY, 'reviewer')])).toBe('confirmed,provisional');
+    // a fan-out helper's tick belongs to its parent's row
+    expect(tiers([R(VERIFY, false, 'planner'), R(VERIFY, false, 'review')], [T(VERIFY, 'review-alpha')])).toBe('open,provisional');
+    // sibling rule: a tick from plan-review lands on plan-review's row, never on plan's (owner equal beats prefix; a longer sibling owner claims the tick)
+    expect(tiers([R(VERIFY, false, 'plan'), R(VERIFY, false, 'plan-review')], [T(VERIFY, 'plan-review')])).toBe('open,provisional');
+    expect(tiers([R(VERIFY, false, 'plan'), R(VERIFY, false, 'plan-review')], [T(VERIFY, 'plan-review-alpha')])).toBe('open,provisional');
+    // a restated tick for a finished twin lands on the finished twin, never on the untouched one
+    expect(tiers([R(VERIFY, true), R('Write the renderer', false), R(VERIFY, false)], [T(VERIFY + ' (group 1)', 'implementer-g1')])).toBe('confirmed,open,open');
+    // ...but a confirmed row with no open twin still never consumes by substring
+    expect(tiers([R('Run the verify commands', true), R(VERIFY, false)], [T('run the verify commands all green now')])).toBe('confirmed,provisional');
+    // a shortened tick (the row contains the tick) lands on the closest row, not the longest
+    expect(tiers([R('Add the IdempotencyKey value object', false), R('Add the IdempotencyKey value object and the aggregate key', false)], [T('add the idempotencykey value')])).toBe('provisional,open');
+    // two open same-text rows, one tick, the same owner on both: the first in checklist order
+    expect(tiers([R(VERIFY, false), R(VERIFY, false)], [T(VERIFY)])).toBe('provisional,open');
+    // the confirmed row takes its exact tick even when it sits AFTER the open twin
+    expect(tiers([R(VERIFY, false), R(VERIFY, true)], [T(VERIFY)])).toBe('open,confirmed');
+    // a confirmed row never consumes by substring: the restated tick reaches the open row it describes
+    expect(tiers([R('Run the verify commands', true), R(VERIFY, false)], [T('run the verify commands all green now')])).toBe('confirmed,provisional');
+    // exact before substring: the tick names the longer text exactly, so the shorter row does not steal it
+    expect(tiers([R('Add the IdempotencyKey value object', false), R('Add the IdempotencyKey value object and the aggregate key', false)], [T('Add the IdempotencyKey value object and the aggregate key')])).toBe('open,provisional');
+    // substring: the closest tick wins, not the first in file order (file order would leave the second row open)
+    expect(tiers([R('Write the renderer', false), R('Write the renderer and the tests', false)], [T('write the renderer and the tests and the docs'), T('write the renderer for real')])).toBe('provisional,provisional');
+    expect(tiers([R('write the renderer and the tests', false), R('write the renderer', false)], [T('write the renderer and'), T('the renderer and the tests')])).toBe('provisional,provisional');
+    expect(win.monitorMergeTasks([R('Write the renderer', false), R('Write the renderer and the tests', false)], [T('write the renderer and the tests and the docs')]).map(r => r.tier).join(',')).toBe('open,provisional');
+    // the owner breaks a substring tie between different rows
+    expect(tiers([R('Wire the handler for the export job', false, 'frontend'), R('Wire the handler for the import job', false, 'backend')], [T('wire the handler', 'backend')])).toBe('open,provisional');
+    // plain strings still work (no owner: checklist order)
+    expect(tiers([R('Wire the handler', false), R('Write tests', false)], ['wire the handler'])).toBe('provisional,open');
+    // a tick with the owner tag copied whole still matches the Run Health detector's view (shared parser strips it)
+    expect(win.parseProvisionalTicks('t: Write tests (@tester) done\nt: Plan the API (@planner) \u2705').join('|')).toBe('Write tests|Plan the API');
+    // surplus ticks are dropped, never double-lit
+    expect(tiers([R('Write tests', true)], [T('Write tests'), T('Write tests', 'tester')])).toBe('confirmed');
+  });
   it('monitorAgentStatuses: own file gives latest status; a done handoff in shared.md wins', () => {
     const s = win.monitorAgentStatuses({
       '@backend.md': '## @backend | t1 | \u{1F504}active\nd: x',
@@ -7539,8 +7587,101 @@ describe('Live Run Monitor core', () => {
     win.renderMonitorPanel();
     const html = win.document.getElementById('monitorPanel').innerHTML;
     expect(html).toContain('Auto - follow the newest activity');
-    expect(html).toContain('monitorPinRun');
-    expect(html).toContain('>b</option>');   // run options show the run dir NAME, not the whole path
+    expect(html).toContain('monitorPickRun');                                // a pick routes through monitorPinRun only when the choice changes
+    expect(html).toNotContain('<select');                                   // the app's own menu, never the OS-painted popup
+    expect(html).toContain('<span class="monitor-run-name">b</span>');     // run items show the run dir NAME, not the whole path...
+    expect(html).toContain('title="workflow-memory/b/"');                   // ...with the full path on hover
+    expect(html).toContain('class="monitor-run-label">Auto - follow the newest activity</span>');   // the button shows the current choice
+  });
+  it('the Run picker is state-backed: opens, survives a re-render, pins on pick, closes on pick / Escape / outside click / Stop All', async () => {
+    const frame = document.getElementById('app'); frame.style.display = 'block';   // focus needs a rendered frame...
+    const panelEl = win.document.getElementById('monitorPanel'); const panelDisplay = panelEl.style.display; panelEl.style.display = 'block';   // ...and a rendered panel
+    try {
+    win.runMonitor.open = true;
+    win.runMonitor.watches = [{ handle: {}, name: 'workflow-memory', status: 'granted' }];
+    win.runMonitor.snapshot = { 'workflow-memory/a/tasks.md': { mtime: 1, size: 1 }, 'workflow-memory/b/tasks.md': { mtime: 2, size: 1 } };
+    win.runMonitor.texts = { 'workflow-memory/a/tasks.md': '- [ ] x', 'workflow-memory/b/tasks.md': '- [ ] y' };
+    win.monitorRecompute();
+    win.renderMonitorPanel();
+    const panel = win.document.getElementById('monitorPanel');
+    const menu = () => panel.querySelector('#monitorRunMenu');
+    const btn = () => panel.querySelector('#monitorRunBtn');
+    expect(menu().style.display).toBe('none');
+    expect(btn().getAttribute('aria-expanded')).toBe('false');
+    btn().click();
+    expect(win.runMonitor._runMenuOpen).toBe(true);
+    expect(menu().style.display).toBe('block');
+    expect(btn().getAttribute('aria-expanded')).toBe('true');
+    win.renderMonitorPanel();                                                // the poll re-renders the panel: the open menu stays open
+    expect(menu().style.display).toBe('block');
+    expect(menu().querySelectorAll('.monitor-run-item').length).toBe(3);     // Auto + two runs
+    expect(menu().querySelector('.monitor-run-item[aria-checked="true"] .monitor-run-name').textContent).toBe('Auto - follow the newest activity');
+    expect(win.document.activeElement.classList.contains('monitor-run-item')).toBe(true);   // opening lands focus on the checked item...
+    win.renderMonitorPanel();
+    expect(win.document.activeElement.classList.contains('monitor-run-item')).toBe(true);   // ...and the re-render keeps it there
+    const beforeTiers = win.runMonitor._prevTiers;
+    const itemA = Array.from(menu().querySelectorAll('.monitor-run-item')).find(el => el.querySelector('.monitor-run-name').textContent === 'a');
+    itemA.click();
+    expect(win.runMonitor.runPin).toBe('workflow-memory/a/');                // pinned
+    expect(win.runMonitor._runMenuOpen).toBe(false);                         // picking closes
+    expect(menu().style.display).toBe('none');
+    expect(btn().querySelector('.monitor-run-label').textContent).toBe('a'); // the button shows the pin
+    expect(menu().querySelector('.monitor-run-item[aria-checked="true"] .monitor-run-name').textContent).toBe('a');
+    expect(win.document.activeElement.id).toBe('monitorRunBtn');            // focus returns to the button after a pick
+    const tiersAfterPick = win.runMonitor._prevTiers;
+    btn().click();
+    Array.from(menu().querySelectorAll('.monitor-run-item')).find(el => el.querySelector('.monitor-run-name').textContent === 'a').click();
+    expect(win.runMonitor._prevTiers).toBe(tiersAfterPick);                  // re-picking the current run is a no-op: the flash baseline survives
+    expect(menu().style.display).toBe('none');
+    btn().click();
+    const focused = () => win.document.activeElement.querySelector('.monitor-run-name').textContent;
+    expect(focused()).toBe('a');                                             // opening focuses the checked item (the list is Auto, b, a: newest run first)
+    menu().dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(focused()).toBe('Auto - follow the newest activity');             // arrow keys walk the items and wrap...
+    menu().dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(focused()).toBe('b');
+    menu().dispatchEvent(new win.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    expect(focused()).toBe('a');                                             // ...Home/End jump
+    win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(menu().style.display).toBe('none');                               // Escape closes, like Export/Import
+    btn().click();
+    win.toggleExportMenu();
+    expect(menu().style.display).toBe('none');                               // one dropdown at a time: Export closes the picker...
+    expect(win.document.getElementById('exportMenu').style.display).toBe('block');
+    btn().click();
+    expect(win.document.getElementById('exportMenu').style.display).toBe('none');   // ...and the picker closes Export
+    win.closeMonitorRunMenu();
+    win.runMonitor.runPin = 'workflow-memory/gone/';                         // a pinned run that vanished from the scan
+    win.monitorRecompute(); win.renderMonitorPanel();
+    expect(btn().querySelector('.monitor-run-label').textContent).toBe('Auto - follow the newest activity');   // the picker shows what the panel follows
+    expect(menu().querySelector('.monitor-run-item[aria-checked="true"] .monitor-run-name').textContent).toBe('Auto - follow the newest activity');
+    win.runMonitor.runPin = null;
+    btn().click();
+    delete win.runMonitor.texts['workflow-memory/b/tasks.md']; delete win.runMonitor.snapshot['workflow-memory/b/tasks.md'];
+    win.monitorRecompute(); win.renderMonitorPanel();                        // runs drop to one while the menu is open
+    expect(panel.querySelector('#monitorRunMenu')).toBe(null);
+    expect(win.runMonitor._runMenuOpen).toBe(false);                         // the flag goes with the picker; it cannot reappear open
+    win.runMonitor.texts['workflow-memory/b/tasks.md'] = '- [ ] y'; win.runMonitor.snapshot['workflow-memory/b/tasks.md'] = { mtime: 2, size: 1 };
+    win.monitorRecompute(); win.renderMonitorPanel();
+    expect(menu().style.display).toBe('none');
+    btn().click();
+    win.document.body.click();
+    expect(menu().style.display).toBe('none');                               // an outside click closes
+    btn().click();
+    delete win.runMonitor.texts['workflow-memory/a/tasks.md']; delete win.runMonitor.snapshot['workflow-memory/a/tasks.md'];
+    delete win.runMonitor.texts['workflow-memory/b/tasks.md']; delete win.runMonitor.snapshot['workflow-memory/b/tasks.md'];
+    win.monitorRecompute(); win.renderMonitorPanel();                        // both runs vanish in one poll (watch unchanged)
+    expect(win.runMonitor._runMenuOpen).toBe(false);
+    win.runMonitor.texts['workflow-memory/a/tasks.md'] = '- [ ] x'; win.runMonitor.snapshot['workflow-memory/a/tasks.md'] = { mtime: 1, size: 1 };
+    win.runMonitor.texts['workflow-memory/b/tasks.md'] = '- [ ] y'; win.runMonitor.snapshot['workflow-memory/b/tasks.md'] = { mtime: 2, size: 1 };
+    win.monitorRecompute(); win.renderMonitorPanel();
+    expect(menu().style.display).toBe('none');                               // they return: the picker does not reopen by itself
+    btn().click();
+    expect(win.runMonitor._runMenuOpen).toBe(true);
+    await win.disconnectRunMonitor();
+    expect(win.runMonitor._runMenuOpen).toBe(false);                         // Stop All drops the open flag with the pin
+    expect(win.runMonitor.runPin).toBe(null);
+    } finally { frame.style.display = 'none'; panelEl.style.display = panelDisplay; }
   });
   it('wheel events over the OPEN drawer scroll it natively; ctrl+wheel there still suppresses page zoom; canvas keeps capture', () => {
     win.runMonitor.open = true;   // a closed drawer receives no wheel events in reality
