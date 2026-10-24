@@ -9,12 +9,19 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (PROMPTS.designSystemAnalyzer, PROMPTS.uiImplementer, PROMPTS.uiReviewer, help modal, agent-type description), tests.html (UI Design craft tests in the craft batch), README.md
 - status: current | date: 2026-10-07 | note: created after an honest assessment; two review rounds; a Design Explorer step for net-new surfaces is a deferred design discussion. 1806 -> 1810.
 
+## fresh-view-scroll
+
+- record: .workflow/fresh-view-scroll.md
+- intent: a freshly opened view starts at the top: the expand modal carries the caret only from a field being edited, the Explain and validation lists reset once shown, a changed format tab reads from the top; in-place regenerations and the help modal keep their scroll.
+- files: index.html (openTextExpand, showExplain, showValidation, setExportFormat), tests.html (fresh views suite)
+- status: current | date: 2026-10-23 | note: created from a director observation. 1818 -> 1821.
+
 ## saved-workflow-context
 
 - record: .workflow/saved-workflow-context.md
 - intent: a saved workflow carries the sidebar context the generated prompt depends on (App & UI Context, verification paths and notes and posture, rules and product doc paths, the clarify and approve switches) as the same flat keys the prefs use, and restores them on load through the same paths restorePrefs uses; absent keys leave the current context alone (old saves load as before); a file from someone else adopts only into empty fields and never moves the access grant or the switches; the OpenSpec meta import keeps its own adopt rule.
 - files: index.html (serializeWorkflow, applyWorkflowContext, deserializeWorkflow opts, import call sites, export meta lines, Save title), tests.html (round-trip and modes), README.md
-- status: current | date: 2026-10-23 | note: created from a director audit question. 1816 -> 1818.
+- status: current | date: 2026-10-23 | note: created from a director audit question; three review rounds (never-wipe rule, one normalizer, access rides with the app path, pagehide flush); real-browser reload proof. 1816 -> 1821.
 
 ## page-grid-pinning
 

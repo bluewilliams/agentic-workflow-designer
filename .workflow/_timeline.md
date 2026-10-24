@@ -2,6 +2,8 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-10-23 - fresh-view-scroll - a freshly opened view starts at the top: the expand modal carries the caret only from a field being edited, the Explain and validation lists reset once shown, a changed format tab reads from the top. 1818 -> 1821 - .workflow/fresh-view-scroll.md
+2026-10-23 - saved-workflow-context (update) - round 3: notes through the setter, the access grant rides with the app path, no boot-time writes, pagehide flushes both debounced stores, real-browser reload proof. 1818 -> 1821 - .workflow/saved-workflow-context.md
 2026-10-23 - saved-workflow-context - a saved workflow carries and restores the sidebar context the prompt depends on (app and UI context, verification, rules and doc paths, clarify and approve); old saves load as before; imported files adopt only into empty fields. 1816 -> 1818 - .workflow/saved-workflow-context.md
 2026-10-23 - page-grid-pinning (update) - narrow windows: the canvas column shrinks instead of clipping, the toolbar wraps, the tab strip scrolls, toolbar labels collapse to icons below a 1150px column. 1816 -> 1818 - .workflow/page-grid-pinning.md
 2026-10-23 - touch-up-presets (update) - where the unit of work goes: the Drift Auditor scopes an empty Requirements block to the branch diff, the Sync Scope node says where the scope goes, validation warns when another workflow's template is left in the box; Prompt Library entry Sync Durable Artifacts as the single-prompt form of Record Sync. 1813 -> 1816 - .workflow/touch-up-presets.md

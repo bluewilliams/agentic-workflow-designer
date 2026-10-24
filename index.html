@@ -845,7 +845,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <div class="sidebar-section" data-collapse-id="workflow-management">
     <h3 title="Save and load workflows by name (browser-local), clone variants, and export or import: Workflow JSON, OpenSpec schema, Handoff package, or the committable Explain report.">Workflow Management</h3>
     <div class="btn-row">
-      <button class="btn sm primary" onclick="saveWorkflow()" title="Save this workflow by name in your browser (localStorage) - nothing leaves your machine. The save keeps the canvas, the requirements, the repositories, and the sidebar context this workflow was built with (app and UI context, verification, rules and doc paths, the clarify and approve switches), so it loads back as it was. Use Export for a shareable file.">Save</button>
+      <button class="btn sm primary" onclick="saveWorkflow()" title="Save this workflow by name in your browser (localStorage) - nothing leaves your machine. The save keeps the canvas, the requirements, the repositories, and the sidebar context this workflow was built with (app and UI context, verification, rules and doc paths, the clarify and approve switches), so it loads back with that context: a saved field that has something wins, an empty one leaves yours in place. Use Export for a shareable file.">Save</button>
       <button class="btn sm" onclick="duplicateWorkflow()" title="Save a copy: renames the current workflow to &quot;(copy)&quot; so your next Save creates a new workflow, leaving the original untouched. Handy for spinning off a variant.">Clone</button>
       <div class="export-dd" style="position:relative;display:inline-flex">
         <button class="btn sm" id="exportMenuBtn" aria-haspopup="true" aria-expanded="false" onclick="toggleExportMenu(event)" title="Download the workflow as a file - Workflow JSON, OpenSpec schema, or a Handoff package.">Export &#9662;</button>
@@ -3454,9 +3454,11 @@ function savePrefs() {
   autoSaveWorkflow();
 }
 let _prefTimer = null;
+let _prefsDirty = false;   // a debounced prefs write is pending in THIS tab (the pagehide flush writes only then)
 function savePrefsDebounced() {
   clearTimeout(_prefTimer);
-  _prefTimer = setTimeout(savePrefs, 500);
+  _prefsDirty = true;
+  _prefTimer = setTimeout(() => { _prefsDirty = false; savePrefs(); }, 500);
 }
 function restorePrefs() {
   _restoring = true;
@@ -3903,7 +3905,10 @@ function applyWorkflowContext(p, mode) {
     el.value = p[key]; n++;
   };
   text('appSourcePath', 'appSourcePath'); text('appSourceBranch', 'appSourceBranch'); text('uiContextNotes', 'uiContextNotes');
-  if (!adopt && typeof p.appSourceAccess === 'string') {   // an access grant is never adopted from a file
+  // The access grant belongs to the app path: it applies only when the save names one (a save
+  // with no App Under Test still serializes the default 'readonly', which must not revoke a
+  // grant on the user's current path), and it is never adopted from a file.
+  if (!adopt && typeof p.appSourceAccess === 'string' && typeof p.appSourcePath === 'string' && p.appSourcePath.trim()) {
     const el = $('appSourceAccess');
     if (el && Array.from(el.options).some(o => o.value === p.appSourceAccess)) { el.value = p.appSourceAccess; n++; if (typeof refreshEnhancedSelect === 'function') refreshEnhancedSelect(el); }
   }
@@ -3914,8 +3919,9 @@ function applyWorkflowContext(p, mode) {
     state[key] = incoming; n += incoming.length; render();
   };
   list('rulesPaths', renderRulesRows); list('productDocPaths', renderProductDocRows); list('verifyPaths', renderVerifyRows);
+  let notesChanged = false;
   if (typeof p.verifyNotes === 'string' && p.verifyNotes.trim() && !(adopt && (state.verifyNotes || '').trim())) {
-    state.verifyNotes = p.verifyNotes; const vn = $('verifyNotesInput'); if (vn) vn.value = p.verifyNotes; n++;
+    state.verifyNotes = p.verifyNotes; const vn = $('verifyNotesInput'); if (vn) vn.value = p.verifyNotes; n++; notesChanged = true;
   }
   if (!adopt) {   // the switches describe how THIS workflow runs; a file from someone else does not flip yours
     if (typeof p.verifyFailRun === 'boolean') { state.verifyFailRun = p.verifyFailRun; const t = $('verifyFailRunToggle'); if (t) t.checked = p.verifyFailRun; n++; }
@@ -3923,9 +3929,14 @@ function applyWorkflowContext(p, mode) {
     if (typeof p.approvePlan === 'boolean') { state.approvePlan = p.approvePlan; const t = $('approvePlanToggle'); if (t) t.checked = p.approvePlan; n++; }
   }
   if (typeof syncVerifyFailRunUI === 'function') syncVerifyFailRunUI();
+  if (notesChanged) {   // what setVerifyNotes refreshes, once, after the switches have landed (the prompt refresh is below or in the caller's render)
+    if (typeof updateValidation === 'function') updateValidation();
+    refreshVerifyStatusLine();
+  }
   if (n) {
     if (adopt) updatePrompt();                     // restore callers render (and so regenerate) right after
-    if (!_autoRestoring) savePrefsDebounced();     // the machine-wide copy follows what is on screen
+    if (_autoRestoring) { clearTimeout(_prefTimer); _prefsDirty = false; }   // a pure boot-time read persists nothing...
+    else savePrefsDebounced();                     // ...otherwise the machine-wide copy follows what is on screen
   }
   return n;
 }
@@ -4005,18 +4016,31 @@ function deserializeWorkflow(data, opts) {
 
 // -- Auto-save --
 let _autoSaveTimer = null;
+let _autoSaveDirty = false;   // a debounced autosave write is pending in THIS tab
+function writeAutoSaveNow() {
+  _autoSaveDirty = false;
+  if (state.nodes.length === 0) { localStorage.removeItem('awd_autosave'); return; }
+  localStorage.setItem('awd_autosave', JSON.stringify(serializeWorkflow()));
+}
 function autoSaveWorkflow() {
   clearTimeout(_autoSaveTimer);
+  _autoSaveDirty = true;
   _autoSaveTimer = setTimeout(() => {
-    try {
-      if (state.nodes.length === 0) {
-        localStorage.removeItem('awd_autosave');
-        return;
-      }
-      localStorage.setItem('awd_autosave', JSON.stringify(serializeWorkflow()));
-    } catch(e) { showToast('Auto-save failed, storage may be full'); }
+    try { writeAutoSaveNow(); } catch(e) { showToast('Auto-save failed, storage may be full'); }
   }, 1000);
 }
+// A reload inside the debounce windows (prefs 500ms, autosave 1000ms) would otherwise restore a
+// stale snapshot over a fresher pref, flipping a switch the user just set. Flush both on the
+// way out; pagehide also covers tab discard and bfcache entry.
+// Only writes this tab has pending: an untouched tab must never overwrite what another tab
+// just persisted, and a first visit that changed nothing writes nothing.
+function flushPendingSaves() {
+  try {
+    if (_prefsDirty) { clearTimeout(_prefTimer); _prefsDirty = false; savePrefs(); }
+    if (_autoSaveDirty) { clearTimeout(_autoSaveTimer); writeAutoSaveNow(); }
+  } catch (e) {}
+}
+window.addEventListener('pagehide', flushPendingSaves);
 function restoreAutoSave() {
   try {
     const raw = localStorage.getItem('awd_autosave');
@@ -6428,13 +6452,18 @@ function openTextExpand(source, title) {
   _textExpandSource = source;
   const ta = $('textExpandArea');
   $('textExpandTitle').textContent = title || textExpandTitleFor(source);
+  // Carry the caret only from a field the user is editing (an untouched textarea reports its
+  // selection at the END of its value, which opened the expanded view scrolled to the bottom);
+  // otherwise start at the top, as a fresh view should. Decided before the modal takes focus.
+  const editing = document.activeElement === source;
   ta.value = source.value;
   ta.placeholder = source.placeholder || '';
   $('textExpandOverlay').classList.add('show');
   ta.focus();
-  const s = (source.selectionStart != null) ? source.selectionStart : ta.value.length;
-  const e = (source.selectionEnd != null) ? source.selectionEnd : ta.value.length;
+  const s = editing && source.selectionStart != null ? source.selectionStart : 0;
+  const e = editing && source.selectionEnd != null ? source.selectionEnd : 0;
   try { ta.setSelectionRange(s, e); } catch (_) {}
+  if (!editing) ta.scrollTop = 0;
   updateTextExpandCount();
 }
 
@@ -6482,7 +6511,7 @@ function editAgentContext(nodeId) {
 
 // The corner button markup, shared by every wired textarea (static fields + configTextarea).
 function taExpandButton() {
-  return '<button type="button" class="ta-expand" tabindex="-1" title="Expand editor (Cmd/Ctrl+E)" aria-label="Expand editor" onclick="expandFromButton(this)">'
+  return '<button type="button" class="ta-expand" tabindex="-1" title="Expand editor (Cmd/Ctrl+E)" aria-label="Expand editor" onmousedown="event.preventDefault()" onclick="expandFromButton(this)">'
     + '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'
     + '<path d="M6.5 2.5H2.5v4M9.5 2.5h4v4M6.5 13.5H2.5v-4M9.5 13.5h4v-4"/></svg></button>';
 }
@@ -9555,11 +9584,13 @@ function clearCanvas(skipConfirm) {
 // EXPORT FORMAT SYSTEM
 // ═══════════════════════════════════════════════════════════
 function setExportFormat(format) {
+  const changed = state.exportFormat !== format;
   state.exportFormat = format;
   document.querySelectorAll('.format-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.format === format);
   });
   render();
+  if (changed) { const out = $('promptOutput'); if (out) out.scrollTop = 0; }   // a different format reads from its top; edits in place keep their scroll
   savePrefs();
 }
 
@@ -9613,16 +9644,24 @@ const AMEND_SCOPE_MARKERS = [
   { re: /scope a touch-up:/i, preset: 'touchup' }
 ];
 function amendScopeNodes() {
-  return state.nodes.filter(n => n.type === 'agent' && n.config && typeof n.config.prompt === 'string' && AMEND_SCOPE_MARKERS.some(m => m.re.test(n.config.prompt)))
-    .map(n => ({ node: n, preset: AMEND_SCOPE_MARKERS.find(m => m.re.test(n.config.prompt)).preset }));
+  const out = [];
+  state.nodes.forEach(n => {
+    if (n.type !== 'agent' || !n.config || typeof n.config.prompt !== 'string') return;
+    const m = AMEND_SCOPE_MARKERS.find(x => x.re.test(n.config.prompt));
+    if (m) out.push({ node: n, preset: m.preset });
+  });
+  return out;
 }
 // A Requirements box that still holds another workflow's template is not a unit of work.
 // The markers are the first heading of every OTHER preset's template, read from
 // STORY_PLACEHOLDERS itself, so a new preset is covered the day its template lands; the
 // canvas's own preset(s) are the only ones excluded, so a Touch-Up template left in the box
 // of a Record Sync canvas is flagged like any other.
+const _otherHeadingsCache = Object.create(null);   // STORY_PLACEHOLDERS is constant: one list per own-keys set
 function otherTemplateHeadings(ownKeys) {
-  const out = [];
+  const cacheKey = (ownKeys || []).slice().sort().join('|');
+  if (_otherHeadingsCache[cacheKey]) return _otherHeadingsCache[cacheKey];
+  const out = _otherHeadingsCache[cacheKey] = [];
   Object.keys(STORY_PLACEHOLDERS).forEach(k => {
     if ((ownKeys || []).indexOf(k) !== -1) return;
     const first = String(STORY_PLACEHOLDERS[k] || '').split('\n').map(l => l.trim()).find(l => l);
@@ -10021,6 +10060,7 @@ function showValidation() {
   }
   list.innerHTML = html;
   $('validationOverlay').classList.add('show');
+  list.scrollTop = 0;   // a fresh list opens at the top
 }
 function closeValidation() { $('validationOverlay').classList.remove('show'); }
 
@@ -10721,6 +10761,7 @@ function showExplain(nodeId) {
       + '</div></div>';
   }).join('') + '<div style="font-size:10px;color:var(--text3,#8b95a7);padding-top:8px">' + escHtml(foot) + '</div>';
   $('explainOverlay').classList.add('show');
+  $('explainList').scrollTop = 0;   // a fresh anatomy opens at the top, never where the last one was left (set once shown: a hidden element ignores scrollTop)
 }
 function closeExplain() { $('explainOverlay').classList.remove('show'); }
 // Minimal markdown renderer for prompt preview. Zero dependencies.
