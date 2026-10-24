@@ -26,5 +26,6 @@ These rules are binding for every agent working in this repository.
 ## Tests
 
 - Match the newest suites' conventions (they drift deliberately; recent beats abundant).
+- New test titles start with `should` and read as one sentence of behavior (`it('should keep a pinned section across New Workflow', ...)`). Existing titles are renamed only when their suite is touched for another reason, never in a bulk pass.
 - Tests touching the sidebar collapse module or `awd_` storage must clean up in afterEach (expandAllSections + key removal). Assert section direct-child display contracts, not per-element computed styles (textareas are wrapped).
 - Never weaken an assertion to make a change pass - migrate deliberately to the sharper contract.
