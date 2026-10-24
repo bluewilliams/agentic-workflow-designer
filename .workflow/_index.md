@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (PROMPTS.designSystemAnalyzer, PROMPTS.uiImplementer, PROMPTS.uiReviewer, help modal, agent-type description), tests.html (UI Design craft tests in the craft batch), README.md
 - status: current | date: 2026-10-07 | note: created after an honest assessment; two review rounds; a Design Explorer step for net-new surfaces is a deferred design discussion. 1806 -> 1810.
 
+## branching-strategy
+
+- record: .workflow/branching-strategy.md
+- intent: a Branching strategy on the Output node (single, the shipped fields; per story; per logical chunk) for epic-level work: names are never typed, the planning step discovers the epic's stories, maps each to the repositories in scope (the Repositories list or the launch repo), names one branch per unit and repository by that repository's own convention (a new repository borrows from its nearest sibling), the plan is approved once at the plan gate, builders work their rows, and the delivery opens one PR per branch; a pattern and an integration-branch choice refine it; Branch Name stays the Single-branch control and the per-repo branch field is that repository's base.
+- files: index.html (BRANCHING_STRATEGIES, workflowBranching, branchPlanHint, branchStepNote, branchPlanDeliveryLines, panel, brief clause, Explain rows, validation, SDK banner, help), tests.html (Branching strategy suite), README.md
+- status: current | date: 2026-10-24 | note: created from a relayed request; one review round (plan owner from the gate's roles with an orchestrator fallback, approval wording gated, worktrees for parallel builders, per-repo lanes own every row, one base source). 1821 -> 1830.
+
 ## fresh-view-scroll
 
 - record: .workflow/fresh-view-scroll.md

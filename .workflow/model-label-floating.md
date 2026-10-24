@@ -20,3 +20,4 @@ Fable 5.1 released; the "Fable 5" label lied while the emitted `fable` alias cor
 ## History
 
 - 2026-08-26: created - six labels unnumbered, trigger updated, assertions migrated (incl. the Explain resolved-model line and the effort-unsupported prose), naming-rule invariant test, docs convention notes. 1707 -> 1708 (by direct session)
+- 2026-10-23: README model line reworded (director read "Opus 4.8" as stale now that Opus 5.5 is current) - it now says an unnumbered name is always the current release of its family, so neither the label nor the README goes stale, and a numbered name is the previous generation kept for deliberate pinning. No roster change: whether the pinned legacy moves up to Opus 5 is open (no confirmed id for a pinned Opus 5). (by direct session)

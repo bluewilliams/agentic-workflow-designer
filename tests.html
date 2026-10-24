@@ -2047,6 +2047,273 @@ describe('Consume prior records (read side)', () => {
 });
 
 // ─── Depth (exhaustive steps: orchestration depth inside one step) ─────────────────────
+// ─── Branching strategy (Output node): epic-level work onto branches, planned at run time ───
+describe('Branching strategy (Output node)', () => {
+  const GENS = { prompt: 'genWorkflow', subagent: 'genSubAgents', teams: 'genAgentTeams', sdk: 'genAgentSDK', claude: 'genClaudePrompt' };
+  const allOut = () => Object.keys(GENS).map(k => win[GENS[k]]());
+  function featureWith(outputCfg) {
+    resetState();
+    win.loadPreset('feature');
+    const out = win.state.nodes.find(n => n.type === 'output');
+    Object.assign(out.config, outputCfg);
+    return out;
+  }
+  afterEach(() => { resetState(); clearStorage(); win.state.approvePlan = false; win.state.repositories = []; });
+
+  it('OFF: no preset sets a strategy, and no format emits a Branch plan or step note; the one-branch delivery lines are unchanged', () => {
+    const keys = [...win.document.querySelectorAll('.preset-item[data-preset]')].map(el => el.dataset.preset);
+    keys.forEach(preset => {
+      resetState(); win.loadPreset(preset);
+      expect(win.workflowBranching()).toBe(null);
+      win.state.nodes.filter(n => n.type === 'output').forEach(o => expect(outputCfgHasNoBranchingKey(o)).toBe(true));
+      allOut().forEach(out => { expect(out).toNotContain('Branch plan'); expect(out).toNotContain('**Branch**:'); });
+    });
+    function outputCfgHasNoBranchingKey(o) { return !('branching' in o.config) && !('branchPattern' in o.config) && !('integrationBranch' in o.config); }
+    const out = featureWith({ format: 'pr', branchName: 'feature/PROJ-1-thing', targetBranch: 'develop' });
+    const w = win.genWorkflow();
+    expect(w).toContain('**Feature branch**: `feature/PROJ-1-thing`');                      // Single branch: the shipped lines, byte for byte
+    expect(w).toContain('**Target branch** (PR merges into): `develop`');
+    expect(w).toNotContain('Branch plan');
+    out.config.branchName = '';
+    expect(win.genWorkflow()).toContain('Derive from the ticket ID in the requirements');
+  });
+  it('config: unknown values read as single / auto, a foreign value is dropped on load, a valid one round-trips, and the panel swaps the fields', () => {
+    const out = featureWith({ format: 'pr' });
+    expect(win.outputBranching(out)).toBe('single');
+    out.config.branching = 'bogus';
+    expect(win.outputBranching(out)).toBe('single');
+    out.config.branching = 'story'; out.config.integrationBranch = 'weird'; out.config.branchPattern = 42;
+    const saved = JSON.parse(JSON.stringify(win.serializeWorkflow()));
+    expect(win.deserializeWorkflow(saved)).toBe(true);
+    const back = win.state.nodes.find(n => n.type === 'output');
+    expect(back.config.branching).toBe('story');
+    expect('integrationBranch' in back.config).toBe(false);                                 // foreign values are dropped, not coerced to a label
+    expect('branchPattern' in back.config).toBe(false);
+    expect(win.workflowBranching().integration).toBe('auto');
+    win.state.selectedId = back.id; win.updateConfig();
+    let html = win.document.getElementById('configFields').innerHTML;
+    expect(html).toContain('data-key="branching"');
+    expect(html).toContain('data-key="branchPattern"');
+    expect(html).toContain('data-key="integrationBranch"');
+    expect(html).toNotContain('data-key="branchName"');                                     // the single-branch field hides under a strategy...
+    expect(html).toContain('Base branch');
+    back.config.branching = 'single'; win.updateConfig();
+    html = win.document.getElementById('configFields').innerHTML;
+    expect(html).toContain('data-key="branchName"');                                        // ...and returns
+    expect(html).toNotContain('data-key="branchPattern"');
+    expect(html).toContain('Target Branch');
+    back.config.branching = 'story'; back.config.branchName = 'feature/kept'; win.updateConfig();
+    expect(win.document.getElementById('configFields').innerHTML).toContain('is kept for Single branch and plays no part under a strategy');
+  });
+  it('emission: per story on a Pull Request delivery reaches every format, the planner writes the plan, builders work their rows, reviewers nothing', () => {
+    featureWith({ format: 'pr', branching: 'story', targetBranch: 'develop' });
+    win.state.memoryEnabled = false;                                                      // loadPreset turns memory on for a gated preset; this case is the memory-off text
+    const outs = allOut();
+    outs.forEach((o, i) => {
+      expect(o).toContain(i === 3 ? '# branching: one branch per story per repository' : '**Branch plan (configured): one branch per story, per repository.**');
+    });
+    const w = win.genWorkflow();
+    expect(w).toContain('One branch per story.');
+    expect(w).toContain('the repository this session was launched in');                     // no Repositories list: the launch repo is the scope
+    expect(w).toContain('never guessed into a repository outside it');
+    expect(w).toContain('borrow from the sibling repository in this run that is most like it');   // a new repo with no convention
+    expect(w).toContain('then `feature/{ticket}-{slug}`');
+    expect(w).toContain('decided per repository: use an epic branch only where that repository already works that way');   // integration: auto
+    expect(w).toContain('every story branch forks from `develop` and its PR targets it');
+    expect(w).toContain('in the plan output');                                              // memory off, single session
+    expect(w).toContain('(the same session runs every step and reads it there)');          // single-session: no copying into inputs
+    expect(w).toNotContain('copies each builder');
+    expect(w).toContain('**Branch plan**: produce the branch plan');                        // the Planner's note
+    expect(w).toContain('**Branch**: before changing files, check out the branch the Branch plan assigns');   // the Implementer's note
+    expect(w.split('**Branch**: before changing files').length - 1).toBe(2);                // Implementer and Tester build; Skeptic and Reviewer do not
+    expect(w).toContain('**Branches**: per the Branch plan (one per story and repository');
+    expect(w).toContain('Open ONE pull request per branch into the row\'s PR target');
+    expect(w).toNotContain('Derive from the ticket ID in the requirements');                // the one-branch lines are replaced, not stacked
+    expect(w).toContain('**Base branch**: `develop`');
+    expect(w).toContain('The Branch Name field is the Single-branch control and plays no part here');
+    // the Sub-Agents prompts carry the lane note inside the spawned agent, where it must act
+    const sa = win.genSubAgents();
+    expect(sa).toContain('**Branch**: before changing files');
+    expect(sa).toContain('**Branch plan**: produce the branch plan');
+  });
+  it('emission: chunk, pattern, epic integration, memory on, and a Repositories list with bases change the text as configured', () => {
+    featureWith({ format: 'commit', branching: 'chunk', branchPattern: 'feat/{ticket}-{slug}', integrationBranch: 'epic' });
+    win.state.memoryEnabled = true;
+    win.state.repositories = [{ path: '/work/alpha', branch: 'release/2026.4' }, { path: '/work/beta', branch: '' }];
+    const w = win.genWorkflow();
+    expect(w).toContain('one branch per logical chunk, per repository');
+    expect(w).toContain('Group them into logical chunks: a chunk is the smallest set of stories that must land together');
+    expect(w).toContain('The director set a pattern that overrides this everywhere: `feat/{ticket}-{slug}`');
+    expect(w).toContain('`feature/{ticket}-{slug}` gives `feature/PROJ-12345-some-story-title`');   // the slug follows the separator beside it; the key is whole
+    expect(w).toContain('never repeat the project prefix in the pattern');
+    expect(w).toContain('one epic branch per repository, forked from `main`');
+    expect(w).toContain('the Repositories list in this prompt (each with its path, and a base branch where one is set)');
+    expect(w).toContain('a repository\'s branch in the Repositories list is that repository\'s base');
+    expect(w).toContain('in your OWN memory file `@planner.md`');                          // memory on: the owner's own file, b: lines, never edited; a handoff points builders there
+    expect(w).toContain('b: {unit} | {repository} | {branch} | {base} | {target}');
+    expect(w).toContain('branch plan rows in `@planner.md`');
+    expect(w).toNotContain('PR target');                                                    // a Commit delivery never speaks of pull requests
+    expect(w).toContain('it is pushed for the director to merge');
+    expect(w).toContain('Push each branch: `git push -u origin <branch>` - no pull request');   // the Commit variant
+    expect(w).toNotContain('Open ONE pull request');
+    expect(w).toContain('(logical chunk branches fork from each repository\'s epic branch, which forks from the base)');
+    win.state.memoryEnabled = false;
+    featureWith({ format: 'pr', branching: 'story', integrationBranch: 'none' });
+    const w2 = win.genWorkflow();
+    expect(w2).toContain('none - every story branch forks from `main` and its PR targets it');
+    expect(w2).toNotContain('open the final PR from it to the base');
+    expect(w2).toContain('6. If PR creation fails');                                        // no integration step: the fallback keeps its number
+  });
+  it('the approval brief carries the branch plan only when a strategy is configured; the strategy on a format that creates no branches draws a warning and emits nothing', () => {
+    featureWith({ format: 'pr', branching: 'story' });
+    win.state.approvePlan = true;
+    expect(win.approvePlanHint()).toContain('the branch plan (unit, repository, branch, base, PR target - the names are corrected here, once)');
+    expect(win.genWorkflow()).toContain('and in the brief the director approves');
+    const out = win.state.nodes.find(n => n.type === 'output');
+    out.config.branching = 'single';
+    expect(win.approvePlanHint()).toNotContain('the branch plan (unit');
+    win.state.approvePlan = false;
+    out.config.branching = 'story'; out.config.format = 'code';
+    expect(win.workflowBranching()).toBe(null);                                             // inert without a branch-creating delivery...
+    expect(win.genWorkflow()).toNotContain('Branch plan');
+    const warn = win.validateWorkflow().find(x => x.msg.indexOf('sets Branching to per story but its Format creates no branches') !== -1);
+    expect(!!warn).toBe(true);                                                              // ...and validation says so
+    out.config.format = 'pr';
+    expect(win.validateWorkflow().some(x => x.msg.indexOf('creates no branches') !== -1)).toBe(false);
+  });
+  it('round one: the panel re-renders on a Branching change; Commit gets a Base branch field; the Repositories block and the sub-agent discipline speak per row', () => {
+    const out = featureWith({ format: 'pr' });
+    win.state.selectedId = out.id; win.updateConfig();
+    const fields = win.document.getElementById('configFields');
+    expect(fields.innerHTML).toContain('data-key="branchName"');
+    fields.querySelector('.custom-select[data-key="branching"] .custom-select-option[data-value="story"]').click();   // the app's own dropdown
+    expect(win.state.nodes.find(n => n.type === 'output').config.branching).toBe('story');
+    expect(fields.innerHTML).toNotContain('data-key="branchName"');                       // the panel swapped without a re-select
+    expect(fields.innerHTML).toContain('data-key="branchPattern"');
+    out.config.format = 'commit'; win.updateConfig();
+    expect(fields.innerHTML).toContain('Base branch');                                    // Commit under a strategy needs a base too
+    out.config.targetBranch = 'develop';
+    win.state.repositories = [{ path: '/work/alpha', branch: 'release/2026.4' }];
+    const w = win.genWorkflow();
+    expect(w).toContain('**Base branch**: `develop` for every repository without its own base');   // one base source: the strategy node
+    expect(w).toContain('under the Branch plan it is that repository\'s BASE - never commit to it');   // the Repositories block agrees
+    expect(w).toNotContain('2. Check out the specified branch (if provided) and pull latest');
+    out.config.format = 'pr';
+    win.state.memoryEnabled = false;                                                      // memory off: the rows travel in each builder's input
+    const sa = win.genSubAgents();
+    expect(sa).toContain('Make your changes on the branch the Branch plan assigns to your repository and unit');   // delivery discipline, per row
+    expect(sa).toNotContain('Make your changes on the feature branch.');
+    expect(sa).toNotContain('git worktree');                                              // no worktrees: the durable record and memory files stay in one checkout
+    expect(w).toContain('units that touch the same repository run one at a time on its checkout');
+    expect(sa).toContain('Your rows are in this prompt\'s input, copied from the branch plan by the orchestrator');   // memory off, spawned: the rows travel in the input
+    expect(sa).toContain('**Branch plan rows**: copy this step\'s rows');                   // ...and the orchestrator card says to copy them
+    expect(sa).toContain('produce the branch plan the rules below describe');              // the spawned owner carries the beat itself
+    expect(sa.split('**Branch plan (configured)').length - 1 >= 2).toBe(true);              // once at the top, once inside the owner's prompt
+  });
+  it('round one: the plan owner is the approval gate\'s owner (a debugger-led shape included); with none, the orchestrator writes it and the advisor says so', () => {
+    resetState(); win.loadPreset('bugfix');
+    const out = win.state.nodes.find(n => n.type === 'output'); Object.assign(out.config, { format: 'pr', branching: 'story' });
+    const w = win.genWorkflow();
+    expect(win.branchPlanOwner().config.agentType).toBe('debugger');
+    expect(w).toContain('**Who writes it:** **' + win.branchPlanOwner().label + '** (the plan-owning step the approval gate also names)');
+    // the gate and the beat name the SAME owner, in a shape with two planning steps
+    resetState();
+    const i0 = win.addNode('input', 0, 0, 'Spec');
+    const p1 = win.addNode('agent', 200, 0, 'Planner', { agentType: 'planner', model: 'opus-5', tools: ['Read'], prompt: 'p', maxTurns: 5 });
+    const a1 = win.addNode('agent', 400, 0, 'Architect', { agentType: 'architect', model: 'opus-5', tools: ['Read'], prompt: 'a', maxTurns: 5 });
+    const c1 = win.addNode('agent', 600, 0, 'Coder', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'c', maxTurns: 5 });
+    const o1 = win.addNode('output', 800, 0, 'Out', { deliverable: '', format: 'pr', branching: 'story' });
+    win.addConnection(i0.id, p1.id); win.addConnection(p1.id, a1.id); win.addConnection(a1.id, c1.id); win.addConnection(c1.id, o1.id);
+    expect(win.branchPlanOwner().id).toBe(win.approvalCheckpoint().owner.id);
+    expect(win.branchPlanOwner().label).toBe('Architect');
+    expect(w).toContain('**Branch plan**: produce the branch plan');
+    const dbg = win.explainNode(win.branchPlanOwner(), 'prompt').find(r => r.part === 'Branch plan step note');
+    expect(dbg.reason).toContain('the plan owner the approval gate names');
+    resetState();
+    const i = win.addNode('input', 0, 0, 'Spec');
+    const c = win.addNode('agent', 200, 0, 'Solo Builder', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'b', maxTurns: 5 });
+    const o = win.addNode('output', 400, 0, 'Out', { deliverable: '', format: 'pr', branching: 'story' });
+    win.addConnection(i.id, c.id); win.addConnection(c.id, o.id);
+    expect(win.branchPlanOwner()).toBe(null);
+    expect(win.genWorkflow()).toContain('the orchestrator itself, before the first builder is dispatched, since this workflow has no planning step');
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('no step owns a plan') !== -1)).toBe(true);   // advice: the badge stays green
+    expect(win.validateWorkflow().some(x => x.msg.indexOf('planning role') !== -1)).toBe(false);
+  });
+  it('round one: approval off is said plainly everywhere and nudged; mixed branch-creating formats warn and the PR delivery wins; chunk tokens; per-repo lanes own every row', () => {
+    featureWith({ format: 'pr', branching: 'story' });
+    win.state.approvePlan = false;
+    let w = win.genWorkflow();
+    expect(w).toContain('Present the plan to the director and wait for a yes before any branch exists');
+    expect(w).toContain('shown to the director before any branch exists');                 // the delivery lines never claim an approval that did not happen
+    expect(w).toNotContain('approved by the director at the plan gate');
+    expect(w).toContain(', presented to the director before any branch exists');           // the owner's note
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('Approve plan before build off') !== -1)).toBe(true);   // advice, not an issue: the badge stays green
+    expect(win.validateWorkflow().some(x => x.msg.indexOf('Approve plan') !== -1)).toBe(false);
+    expect(win.explainWorkflow('prompt').find(r => r.part === 'Branching').reason).toContain('Approve plan before build is off');
+    win.state.approvePlan = true;
+    w = win.genWorkflow();
+    expect(w).toContain('The plan is part of the brief the director approves at the plan gate');
+    expect(w).toContain('approved by the director at the plan gate');
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('Approve plan before build off') !== -1)).toBe(false);
+    win.state.approvePlan = false;
+    // two branch-creating Output nodes with different formats: warned, and the PR delivery is what the plan describes
+    const commitOut = win.addNode('output', 1800, 500, 'Also commit', { deliverable: '', format: 'commit', branching: 'chunk' });
+    expect(win.workflowBranching().pr).toBe(true);
+    expect(win.validateWorkflow().some(x => x.msg.indexOf('Two Output nodes create branches with different formats') !== -1)).toBe(true);
+    win.state.nodes = win.state.nodes.filter(n => n.id !== commitOut.id);
+    const singleOut = win.addNode('output', 1800, 600, 'Named PR', { deliverable: '', format: 'pr', branchName: 'feature/PROJ-9-x', targetBranch: 'release/1' });
+    expect(win.validateWorkflow().some(x => x.msg.indexOf('names a single branch while') !== -1 && x.msg.indexOf('are ignored') !== -1)).toBe(true);   // its name would be discarded: say so
+    win.state.nodes = win.state.nodes.filter(n => n.id !== singleOut.id);
+    const second = win.addNode('output', 1800, 700, 'Second strategy', { deliverable: '', format: 'pr', branching: 'chunk' });
+    expect(win.validateWorkflow().some(x => x.msg.indexOf('Two Output nodes set a branching strategy') !== -1)).toBe(true);
+    win.state.nodes = win.state.nodes.filter(n => n.id !== second.id);
+    // the Commit brief never speaks of pull requests at the gate
+    win.state.approvePlan = true; win.state.nodes.find(n => n.type === 'output').config.format = 'commit';
+    expect(win.approvePlanHint()).toContain('branch, base, where it lands');
+    win.state.approvePlan = false; win.state.nodes.find(n => n.type === 'output').config.format = 'pr';
+    // a plain Fork with two builders under a strategy is advised
+    resetState(); win.loadPreset('fullstack');
+    Object.assign(win.state.nodes.find(n => n.type === 'output').config, { format: 'pr', branching: 'story' });
+    expect(win.adviseWorkflow().some(x => x.msg.indexOf('builders at once under a branching strategy') !== -1)).toBe(true);
+    // chunk mode: tokens mean the epic and the chunk, and the fallback names say so
+    const out = win.state.nodes.find(n => n.type === 'output'); out.config.branching = 'chunk';
+    w = win.genWorkflow();
+    expect(w).toContain('{ticket} means the epic key here, since a chunk carries several stories');
+    expect(w).toContain('then `feature/{epic}-{chunk}`');
+    // a per-repository lane owns every row for its repository
+    resetState(); win.state.repositories = [{ path: '/work/alpha', branch: '' }, { path: '/work/beta', branch: '' }];
+    win.loadPreset('cross_repo');
+    const o2 = win.state.nodes.find(n => n.type === 'output'); Object.assign(o2.config, { format: 'pr', branching: 'story' });
+    const lane = win.state.nodes.find(n => n.label === 'Repo Implementer');
+    expect(win.branchStepNote(lane)).toContain('this lane owns every row of the Branch plan for its repository - one branch per row');
+    expect(win.explainNode(lane, 'prompt').find(r => r.part === 'Branch plan step note').reason).toContain('a per-repository lane: every row for its repository');
+    expect(win.genSubAgents()).toContain('one branch per row');
+  });
+  it('Explain: a workflow row, a step row per role, and the Output node row describe the lever and its skips', () => {
+    featureWith({ format: 'pr', branching: 'story', branchPattern: 'feature/{ticket}-{slug}' });
+    const wf = win.explainWorkflow('prompt').find(r => r.part === 'Branching');
+    expect(wf.status).toBe('emitted');
+    expect(wf.reason).toContain('one branch per story');
+    const planner = win.state.nodes.find(n => n.config && n.config.agentType === 'planner');
+    const reviewer = win.state.nodes.find(n => n.config && n.config.agentType === 'reviewer');
+    const coder = win.state.nodes.find(n => n.config && n.config.agentType === 'coder');
+    expect(win.explainNode(planner, 'prompt').find(r => r.part === 'Branch plan step note').reason).toContain('the plan owner the approval gate names');
+    expect(win.explainNode(coder, 'prompt').find(r => r.part === 'Branch plan step note').reason).toContain('this step builds');
+    const rv = win.explainNode(reviewer, 'prompt').find(r => r.part === 'Branch plan step note');
+    expect(rv.status).toBe('skipped');
+    expect(rv.reason).toContain('reviewers and verifiers read branches, they do not create them');
+    const outNode = win.state.nodes.find(n => n.type === 'output');
+    const br = win.explainNode(outNode, 'prompt').find(r => r.part === 'Branches');
+    expect(br.reason).toContain('one branch per story, per repository, planned at run time');
+    expect(br.reason).toContain('pattern: feature/{ticket}-{slug}');
+    outNode.config.branching = 'single';
+    expect(win.explainWorkflow('prompt').find(r => r.part === 'Branching').status).toBe('skipped');
+    expect(win.explainWorkflow('prompt').find(r => r.part === 'Branching').reason).toContain('no Output node sets a branching strategy');
+    outNode.config.branching = 'story'; outNode.config.format = 'docs';
+    expect(win.explainWorkflow('prompt').find(r => r.part === 'Branching').reason).toContain('its format creates no branches');
+  });
+});
+
 describe('Depth (exhaustive steps)', () => {
   let _savedRepos;
   beforeEach(() => { resetState(); _savedRepos = win.state.repositories; win.state.memoryEnabled = false; });
@@ -16537,7 +16804,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.MONITOR_IDLE_MS = MONITOR_IDLE_MS; window.TELEMETRY_DEFAULT_SERVICE = TELEMETRY_DEFAULT_SERVICE; window.TELEMETRY_EVENTS = TELEMETRY_EVENTS; window.DEPTH_LEVELS = DEPTH_LEVELS; window.DEPTH_KEYWORD = DEPTH_KEYWORD; window.nodeDepth = nodeDepth; window.workflowHasDepth = workflowHasDepth; window.depthStepNote = depthStepNote; window.depthHint = depthHint; window.depthNodes = depthNodes; window.depthOrchestratorNote = depthOrchestratorNote; window.approvePlanHint = approvePlanHint; window.approvePlanStepHint = approvePlanStepHint; window.approvalCheckpoint = approvalCheckpoint; window.APPROVAL_PLAN_OWNER_ROLES = APPROVAL_PLAN_OWNER_ROLES; window.graphShapeSig = graphShapeSig; window.APPROVAL_BUILD_ROLES = APPROVAL_BUILD_ROLES; window.toggleApprovePlan = toggleApprovePlan; window.VERIFIER_HONESTY = VERIFIER_HONESTY; window.TASK_SIGNAL = TASK_SIGNAL; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN; window.STORY_PLACEHOLDERS = STORY_PLACEHOLDERS; window.AMEND_SCOPE_MARKERS = AMEND_SCOPE_MARKERS; window.cancelPendingSaves = function () { clearTimeout(_prefTimer); clearTimeout(_autoSaveTimer); _prefsDirty = false; _autoSaveDirty = false; }; window.flushPendingSaves = flushPendingSaves; window.savePrefsDebounced = savePrefsDebounced;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.MONITOR_IDLE_MS = MONITOR_IDLE_MS; window.TELEMETRY_DEFAULT_SERVICE = TELEMETRY_DEFAULT_SERVICE; window.TELEMETRY_EVENTS = TELEMETRY_EVENTS; window.DEPTH_LEVELS = DEPTH_LEVELS; window.DEPTH_KEYWORD = DEPTH_KEYWORD; window.nodeDepth = nodeDepth; window.workflowHasDepth = workflowHasDepth; window.depthStepNote = depthStepNote; window.depthHint = depthHint; window.depthNodes = depthNodes; window.depthOrchestratorNote = depthOrchestratorNote; window.approvePlanHint = approvePlanHint; window.approvePlanStepHint = approvePlanStepHint; window.approvalCheckpoint = approvalCheckpoint; window.APPROVAL_PLAN_OWNER_ROLES = APPROVAL_PLAN_OWNER_ROLES; window.graphShapeSig = graphShapeSig; window.APPROVAL_BUILD_ROLES = APPROVAL_BUILD_ROLES; window.toggleApprovePlan = toggleApprovePlan; window.VERIFIER_HONESTY = VERIFIER_HONESTY; window.TASK_SIGNAL = TASK_SIGNAL; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN; window.STORY_PLACEHOLDERS = STORY_PLACEHOLDERS; window.AMEND_SCOPE_MARKERS = AMEND_SCOPE_MARKERS; window.BRANCHING_STRATEGIES = BRANCHING_STRATEGIES; window.INTEGRATION_CHOICES = INTEGRATION_CHOICES; window.cancelPendingSaves = function () { clearTimeout(_prefTimer); clearTimeout(_autoSaveTimer); _prefsDirty = false; _autoSaveDirty = false; }; window.flushPendingSaves = flushPendingSaves; window.savePrefsDebounced = savePrefsDebounced;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;

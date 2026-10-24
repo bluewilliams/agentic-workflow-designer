@@ -1303,6 +1303,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Documentation</strong> - produce docs in the project's conventions; leave any code uncommitted.</li>
 </ul>
 <p>Click the Output node to set it. No preset defaults to Pull Request - commit/push/PR is always an explicit choice.</p>
+<p><strong>Branching</strong> (Commit and Pull Request only): <strong>Single branch</strong> is the default and uses the Branch Name field. For epic-level work pick <strong>Per story</strong> (one branch per story, per repository) or <strong>Per logical chunk</strong> (stories grouped so each branch leaves every repository working). Names are not typed: the planning step reads the epic's child stories, maps each to the repositories it touches, and names each branch by that repository's own convention (a new repository borrows from its nearest sibling in the run); a unit that spans repositories gets the same branch name in each. An optional <strong>Branch pattern</strong> (tokens <code>{ticket}</code>, <code>{epic}</code>, <code>{story}</code>, <code>{slug}</code>, <code>{repo}</code>) overrides the convention everywhere; <strong>Integration branch</strong> is inferred per repository by default (an epic branch only where the repo already works that way), or forced to none or to an epic branch per repository. The branch plan is written down before anything exists and shown to the director (at the plan gate when Approve plan before build is on, which is the recommended pairing), so names are corrected once; in chunk mode <code>{ticket}</code> means the epic key and <code>{chunk}</code> the chunk slug; units that touch one repository run one at a time on its checkout (no branch switching under another step); a builder creates its unit's branch from its base when it starts, only the delivery step pushes, and nothing is ever pushed to a base.</p>
 
 <h3>OpenSpec export</h3>
 <p>The <strong>Export</strong> menu (under Workflow Management) offers an <strong>OpenSpec schema</strong> option that downloads your workflow as an OpenSpec custom schema for the <code>openspec</code> CLI - a <code>.zip</code> holding <code>schema.yaml</code> plus one template per step. Unzip it at your repo root (it lands under <code>openspec/schemas/&lt;name&gt;/</code>) and run <code>openspec schema validate &lt;name&gt;</code> to use it in an OpenSpec run.</p>
@@ -1714,6 +1715,129 @@ function nodeDepth(node) { const d = node && node.config ? node.config.depth : '
 // The exhaustive steps, in canvas order - the ONE selector every emitter and guardrail uses.
 function depthNodes() { return state.nodes.filter(n => n.type === 'agent' && nodeDepth(n)); }
 function workflowHasDepth() { return depthNodes().length > 0; }
+// ── Branching strategy (Output node): how an epic's work maps onto branches ──
+// 'single' is the shipped behavior (the Branch Name and Target Branch fields). 'story' and
+// 'chunk' are for epic-level work: the names are not typed, they are planned at run time from
+// the epic's child stories and each repository's own convention, approved once at the plan
+// gate, and created only by a delivery that commits. Absent keys read as 'single'.
+const BRANCHING_STRATEGIES = ['single', 'story', 'chunk'];
+const INTEGRATION_CHOICES = ['auto', 'none', 'epic'];
+function outputBranching(node) { const b = node && node.config ? node.config.branching : ''; return BRANCHING_STRATEGIES.includes(b) ? b : 'single'; }
+// A strategy matters only on an Output node whose format creates branches; elsewhere it is inert.
+// Ordered as delivery dispatches (a Pull Request node outranks a Commit node), so the strategy
+// the prompt describes is the one the delivery block acts on.
+function branchingOutputs() {
+  return state.nodes.filter(n => n.type === 'output' && n.config && (n.config.format === 'pr' || n.config.format === 'commit') && outputBranching(n) !== 'single')
+    .sort((a, b) => (a.config.format === 'pr' ? 0 : 1) - (b.config.format === 'pr' ? 0 : 1));
+}
+function workflowBranching() {
+  const o = branchingOutputs()[0];
+  if (!o) return null;
+  return {
+    node: o,
+    strategy: outputBranching(o),
+    pattern: String(o.config.branchPattern || '').trim(),
+    integration: INTEGRATION_CHOICES.includes(o.config.integrationBranch) ? o.config.integrationBranch : 'auto',
+    target: String(o.config.targetBranch || '').trim() || 'main',
+    pr: deliversPr()   // what the delivery block will do, which is what the plan must describe
+  };
+}
+// The plan owner: the first step in run order with a plan-owning role (the approval gate's
+// definition). With none, the orchestrator writes the plan itself before the first builder.
+// The branch plan's owner IS the approval gate's plan owner (approvalCheckpoint, memoized on the
+// graph shape): the same sibling exclusion, per-repository lane shift, and unknown-role rule,
+// so the step that writes the plan is the step a rejection at the gate goes back to. A plan
+// owned by a group of steps belongs to the last of them in run order. Null means the
+// orchestrator writes the plan itself before the first builder.
+function branchPlanOwner() {
+  const cp = (typeof approvalCheckpoint === 'function') ? approvalCheckpoint() : null;
+  if (!cp) return null;
+  if (cp.owner) return cp.owner;
+  const group = cp.ownerGroup || [];
+  return group.length ? group[group.length - 1] : null;
+}
+function branchPlanReview() {
+  return state.approvePlan
+    ? 'The plan is part of the brief the director approves at the plan gate; names are corrected there, once.'
+    : 'Present the plan to the director and wait for a yes before any branch exists (turn on Approve plan before build to make this the plan gate); names are corrected there, once.';
+}
+function integrationMeaning(bp) {
+  const unit = branchUnitWord(bp);
+  const lands = bp.pr ? 'its PR targets it' : 'it is pushed for the director to merge';
+  return bp.integration === 'epic'
+    ? 'one epic branch per repository, forked from `' + bp.target + '`; every ' + unit + ' branch forks from it and ' + lands + (bp.pr ? '; one final PR from the epic branch to `' + bp.target + '` when the last unit of that repository lands' : '; the epic branch is pushed and its merge to `' + bp.target + '` is the director\'s')
+    : bp.integration === 'none'
+      ? 'none - every ' + unit + ' branch forks from `' + bp.target + '` and ' + lands
+      : 'decided per repository: use an epic branch only where that repository already works that way (existing `epic/`, `release/`, or long-lived integration branches); otherwise every ' + unit + ' branch forks from `' + bp.target + '` and ' + lands;
+}
+function branchUnitWord(bp) { return bp.strategy === 'chunk' ? 'logical chunk' : 'story'; }
+function branchPlanHome(spawned) {
+  if (state.memoryEnabled) {
+    const owner = branchPlanOwner();
+    const file = owner ? '`@' + slugify(owner.label) + '.md`' : '`shared.md` (as the orchestrator)';
+    return 'in your OWN memory file ' + file + ' as one `b: {unit} | {repository} | {branch} | {base} | {target}` line per row under your active entry (append-only like every memory file: never edited in place; a corrected plan is a new set of `b:` lines in a new entry; progress is the task board, not the plan), with one handoff line in `shared.md` per builder (`\u2192 @{builder-slug}: branch plan rows in ' + file + '`)';
+  }
+  return 'in the plan output' + (spawned ? ', and the orchestrator copies each builder\'s rows into that builder\'s input' : spawned === false ? ' (the same session runs every step and reads it there)' : '; a step that runs in its own context gets its rows copied into its input by the orchestrator');
+}
+// The workflow-level contract: how the plan is discovered, mapped, named, and written down.
+function branchPlanHint(spawned) {
+  const bp = workflowBranching();
+  if (!bp) return null;
+  const unit = branchUnitWord(bp);
+  const r = [];
+  r.push('> **Branch plan (configured): one branch per ' + unit + ', per repository.** Branches exist because the delivery is ' + (bp.pr ? 'Pull Request' : 'Commit') + ': the step that starts a unit creates that unit\'s branch from its base, ' + (state.approvePlan ? 'after the director approves the plan at the gate' : 'after the director has seen the plan') + '; only the delivery step pushes; nothing is ever committed or pushed to a base or integration branch directly.');
+  r.push('> - **Discover the units of work.** When the Requirements name an epic (a Jira epic URL or key), fetch its child stories (keys, titles, status, components, labels, linked repositories) through the Atlassian MCP when it is available, and treat the open ones as the units; requirements that already list the stories are the same list. '
+    + (bp.strategy === 'chunk'
+      ? 'Group them into logical chunks: a chunk is the smallest set of stories that must land together to leave every repository working, and a story that stands alone is its own chunk. One branch per chunk, named by the epic and the chunk, with every story key it carries in the PR body.'
+      : 'One branch per story.'));
+  r.push('> - **Repositories in scope** are ' + (getRepositories().length ? 'the Repositories list in this prompt (each with its path' + (getRepositories().some(x => x.branch) ? ', and a base branch where one is set' : '') + ')' : 'the repository this session was launched in') + '. **Map each unit to its repositories** from the story\'s components, labels, and the files and services it names, confirmed against the code: a unit touches a repository only where the tree shows the work lands. A unit that maps to no repository in scope is flagged in the plan as out of scope, never guessed into a repository outside it. A unit that spans repositories gets the SAME branch name in each of them, so its pull requests find each other by the key.');
+  const slugRule = ' - a slug is the title lowercased with its words joined by the separator the pattern places next to it (`feature/{ticket}-{slug}` gives `feature/PROJ-12345-some-story-title`, `feature/{ticket}_{slug}` gives `feature/PROJ-12345_some_story_title`); a key token is the whole key, prefix included, so never repeat the project prefix in the pattern';
+  const tokens = bp.strategy === 'chunk'
+    ? '{epic}, {chunk} (the chunk slug), {slug} (the same), {repo}; {ticket} means the epic key here, since a chunk carries several stories' + slugRule
+    : '{ticket} (the whole story key, e.g. PROJ-12345), {story} (the same), {epic}, {slug} (the story title), {repo}' + slugRule;
+  const fallback = bp.strategy === 'chunk' ? '`feature/{epic}-{chunk}`' : '`feature/{ticket}-{slug}`';
+  r.push('> - **Name branches by each repository\'s own convention, never by one team\'s habit.** Teams differ, so repositories differ. For each repository in scope read what it already does: the names on `git branch -r`, the subjects of `git log --merges`, CONTRIBUTING, CLAUDE.md and `.claude/rules/`, and branch protection where visible; derive the prefix, the separator, the casing, and where the ticket key goes; record the convention you found per repository and apply it per repository.'
+    + (bp.pattern ? ' The director set a pattern that overrides this everywhere: `' + bp.pattern + '` (tokens: ' + tokens + ').' : ' Tokens, when you state a name as a pattern: ' + tokens + '.'));
+  r.push('> - **A repository with no convention yet** (new, or too few branches to tell): borrow from the sibling repository in this run that is most like it (same organization, same language or build system, the same team by CODEOWNERS or recent commit authors), then the most common convention across the repositories in scope, then ' + fallback + '. Say which you borrowed and why; the director corrects it once when the plan is reviewed.');
+  r.push('> - **Bases:** a repository\'s branch in the Repositories list is that repository\'s base; the Output node\'s base (`' + bp.target + '`) applies to every repository without one. The Branch Name field is the Single-branch control and plays no part here.');
+  r.push('> - **Integration branch:** ' + integrationMeaning(bp) + '.');
+  const owner = branchPlanOwner();
+  r.push('> - **Who writes it:** ' + (owner ? '**' + owner.label + '** (the plan-owning step the approval gate also names), as part of its plan' : 'the orchestrator itself, before the first builder is dispatched, since this workflow has no planning step') + '. **Write the plan down before anything is created:** one row per unit and repository - unit, repository, branch, base, ' + (bp.pr ? 'PR target' : 'where it lands') + ' - ' + branchPlanHome(spawned) + (state.durableRecord ? ', and in the durable record' : '') + '. ' + branchPlanReview());
+  r.push('> - **In every lane:** work only on the branch the plan assigns to that repository and unit; create it from its base when it does not exist; never commit to a base or an integration branch. One working tree per repository: units that touch the same repository run one at a time on its checkout (the orchestrator sequences them), and no step switches branches in a tree another step is using; a separate clone per branch is allowed only when the director prepared one, and the durable record and the memory files always stay in the launch checkout. The delivery step opens one ' + (bp.pr ? 'pull request' : 'commit series') + ' per branch with the unit\'s story keys recorded.');
+  return r.join('\n');
+}
+// Per-step: the plan owner writes the plan, every builder works on its row, everyone else nothing.
+// spawned: true when the step runs in its own context (Sub-Agents, Agent Teams), where the
+// workflow-level beat is not in front of it - the owner's note then carries the beat itself,
+// and a builder is told how its rows reach it.
+function branchStepNote(node, spawned) {
+  const bp = workflowBranching();
+  if (!bp || !node || node.type !== 'agent') return '';
+  const t = node.config && node.config.agentType;
+  const owner = branchPlanOwner();
+  if (owner && owner.id === node.id) {
+    const lead = '**Branch plan**: produce the branch plan ' + (spawned ? 'the rules below describe' : 'the Branch plan beat describes') + ' (units of work, the repositories each touches, one branch per unit and repository named by that repository\'s own convention or the director\'s pattern, its base, ' + (bp.pr ? 'its PR target' : 'where it lands') + ') and include it in your plan output' + (state.approvePlan ? ' and in the brief the director approves' : ', presented to the director before any branch exists') + '. Write it ' + branchPlanHome(spawned ? true : false) + ' before any branch exists.';
+    return spawned ? lead + '\n\n' + branchPlanHint(true) : lead;
+  }
+  if (APPROVAL_BUILD_ROLES.has(t)) {
+    const inLane = !!perRepoLaneMap()[node.id];
+    const _own = branchPlanOwner();
+    const rows = state.memoryEnabled ? 'Your rows are the `b:` lines in ' + (_own ? '`@' + slugify(_own.label) + '.md`' : '`shared.md`') + ' (the handoff in `shared.md` points you there)' : (spawned ? 'Your rows are in this prompt\'s input, copied from the branch plan by the orchestrator' : 'Your rows are in the branch plan');
+    return inLane
+      ? '**Branches**: this lane owns every row of the Branch plan for its repository - one branch per row. ' + rows + '. Before changing files for a unit, check out that row\'s branch (`git checkout -b <branch> <base>` when it does not exist yet) and confirm it with `git branch --show-current`; work the rows one at a time on this checkout and commit each unit on its own branch; never commit to the base or an integration branch. Name every branch in your handoff.'
+      : '**Branch**: before changing files, check out the branch the Branch plan assigns to this repository and unit (`git checkout -b <branch> <base>` when it does not exist yet) and confirm it with `git branch --show-current`. ' + rows + '. Never commit to a base or an integration branch; a change that belongs to another unit goes on that unit\'s branch; never switch branches in a tree another step is using. Name the branch in your handoff.';
+  }
+  return '';
+}
+// The orchestrator's own line for a spawned builder when memory is off: it carries the rows.
+function branchOrchestratorNote(node) {
+  const bp = workflowBranching();
+  if (!bp || state.memoryEnabled || !node || node.type !== 'agent') return '';
+  const t = node.config && node.config.agentType;
+  if (!APPROVAL_BUILD_ROLES.has(t)) return '';
+  const owner = branchPlanOwner();
+  return '**Branch plan rows**: copy this step\'s rows from the branch plan (' + (owner ? owner.label + '\'s plan output' : 'the plan you wrote') + ') into its input: the branch, base, and ' + (bp.pr ? 'PR target' : 'landing') + ' for ' + (perRepoLaneMap()[node.id] ? 'every unit in its repository' : 'its repository and unit') + '.';
+}
 // Per-step note, peer of effortStepNote: emitted in the step block of the single-session Workflow
 // format only, where the session that holds the opt-in runs the step itself. Sub-Agents and Teams
 // carry the ask on the orchestrator's or lead's card instead (depthOrchestratorNote), so a spawned
@@ -2217,7 +2341,7 @@ function approvePlanHint(cpGiven) {
   const cpRole = AGENT_TYPES.some(a => a.id === cp.node.config.agentType) ? cp.node.config.agentType : 'general';
   const r = [];
   r.push('> **Director approval before the build.** The orchestrator (the top-level agent driving this workflow and spawning its steps) runs this checkpoint ONCE, before ' + label + ' starts' + (builds ? (APPROVAL_BUILD_ROLES.has(cpRole) ? ' - the first step that changes files or produces the deliverable' : ' - the first step of the per-repository lane that will build, so one approval covers every repository') : ' - this workflow builds nothing, so the director approves the approach before its first step') + (cp.prior.length ? ', and only after every step before it has completed, including any Skeptic gate on the plan.' : '. No step runs before it, so write the plan yourself first: a short approach for the whole run.'));
-  r.push('> - Present a BRIEF, not the whole plan: the approach in a few lines; the files, modules, or artifacts that will change; the risks and how each is handled; what is deliberately out of scope; and, where a step weighed options, the ones that lost and why. Readable in a minute.');
+  r.push('> - Present a BRIEF, not the whole plan: the approach in a few lines; the files, modules, or artifacts that will change; ' + (workflowBranching() ? 'the branch plan (unit, repository, branch, base, ' + (workflowBranching().pr ? 'PR target' : 'where it lands') + ' - the names are corrected here, once); ' : '') + 'the risks and how each is handled; what is deliberately out of scope; and, where a step weighed options, the ones that lost and why. Readable in a minute.');
   r.push('> - Then ask ONE question and wait: approve as is, state modifications, or reject with direction. Do not start ' + label + ' (or any step that runs alongside it) until the director has approved.');
   r.push('> - **Modifications** (bounded changes that keep the approach) are authoritative: apply them to the plan and the task list' + (state.durableRecord ? ', record each one in the durable record as a decision (director modification -> resulting change)' : '') + ', and proceed. Do not relitigate them with a Skeptic and do not re-open the parts that were approved.');
   const groupOwned = cp.ownerGroup.length > 1;
@@ -3597,7 +3721,7 @@ function repoBlock(heading) {
   const lines = [h, ''];
   lines.push('This workflow spans multiple repositories. For each repo below:');
   lines.push('1. Verify the path exists');
-  lines.push('2. Check out the specified branch (if provided) and pull latest');
+  lines.push(workflowBranching() ? '2. Fetch and pull the specified branch (if provided): under the Branch plan it is that repository\'s BASE - never commit to it; the plan\'s branches fork from it' : '2. Check out the specified branch (if provided) and pull latest');
   lines.push('3. Before making changes in a repo, read its own rules - `CLAUDE.md`, `CLAUDE.local.md`, and `.claude/rules/` if present. Claude Code auto-loads these ONLY for the single directory the session launched in; another repository\'s rules are NOT loaded automatically (subagents inherit the launch repo\'s rules, not a re-scan of new directories), so read them yourself before working there.');
   lines.push('4. Scope rules to their repository. Each repository\'s CLAUDE.md and `.claude/rules` govern ONLY that repository\'s own work. The CLAUDE.md auto-loaded at session start belongs to the repository you launched in - treat it as that repository\'s rules, not a global default for the others; do not apply it to changes you make in another repository, even though it stays loaded in your context. When you change a repository, follow the rules of the repository you are changing, and where two repositories\' rules conflict, the repository being changed wins.');
   lines.push('5. When making changes, note which repo each change belongs to in your output');
@@ -3955,6 +4079,11 @@ function deserializeWorkflow(data, opts) {
     if (n.type === 'output') {
       if (n.config.targetBranch === undefined) n.config.targetBranch = '';
       if (n.config.branchName === undefined) n.config.branchName = '';
+      // Branching strategy: an unknown value reads as single, an unknown integration choice as
+      // auto, a non-string pattern is dropped; absent keys stay absent (untouched saves keep their JSON).
+      if (n.config.branching !== undefined && !BRANCHING_STRATEGIES.includes(n.config.branching)) delete n.config.branching;
+      if (n.config.integrationBranch !== undefined && !INTEGRATION_CHOICES.includes(n.config.integrationBranch)) delete n.config.integrationBranch;
+      if (n.config.branchPattern !== undefined && typeof n.config.branchPattern !== 'string') delete n.config.branchPattern;
     }
     // A workflow saved on a model we no longer offer would otherwise emit its stored value
     // verbatim as the Task model param (getModelId falls through), which is not a valid model
@@ -5966,10 +6095,25 @@ function updateConfig() {
       [{ value:'code', label:'Leave Uncommitted' },{ value:'commit', label:'Commit' },{ value:'pr', label:'Pull Request' },{ value:'report', label:'Report' },{ value:'docs', label:'Documentation' }]);
     H[H.length] = configInput('Deliverable', 'deliverable', node.config.deliverable);
     if (node.config.format === 'pr' || node.config.format === 'commit') {
-      H[H.length] = configInput('Branch Name', 'branchName', node.config.branchName || '', 'text', 'e.g. feature/PRJ-6069-profile-redesign');
+      H[H.length] = configSelect('Branching', 'branching', outputBranching(node), [
+        { value: 'single', label: 'Single branch - one named branch (the fields below)' },
+        { value: 'story', label: 'Per story - one branch per story, planned from the epic at run time' },
+        { value: 'chunk', label: 'Per logical chunk - stories grouped so each branch leaves every repo working' }]);
+      if (outputBranching(node) === 'single') {
+        H[H.length] = configInput('Branch Name', 'branchName', node.config.branchName || '', 'text', 'e.g. feature/PRJ-6069-profile-redesign');
+      } else {
+        H[H.length] = configInput('Branch pattern (optional)', 'branchPattern', node.config.branchPattern || '', 'text', 'empty: each repository\'s own convention; or e.g. feature/{ticket}-{slug}');
+        H[H.length] = '<div style="font-size:10px;color:var(--text3);margin:-2px 0 8px;line-height:1.5" title="Tokens: {ticket} the whole story key (prefix included, so never repeat it), {story} the same, {epic}, {slug} the story title, {repo}; in chunk mode {ticket} is the epic key and {chunk} the chunk slug. The slug joins its words with the separator you place beside it.">Example: <code>feature/{ticket}-{slug}</code> gives <code>feature/PROJ-12345-some-story-title</code> (hyphens are the usual choice; <code>feature/{ticket}_{slug}</code> gives the underscore form). The key is whole, so never repeat the project prefix. A pattern overrides every repository\'s own convention; empty follows each repository.</div>';
+        if (node.config.branchName) H[H.length] = '<div style="font-size:10px;color:var(--text3);margin:-2px 0 8px">Branch Name `' + escHtml(node.config.branchName) + '` is kept for Single branch and plays no part under a strategy.</div>';
+        H[H.length] = configSelect('Integration branch', 'integrationBranch', INTEGRATION_CHOICES.includes(node.config.integrationBranch) ? node.config.integrationBranch : 'auto', [
+          { value: 'auto', label: 'Infer per repository - epic branch only where that repo already works that way' },
+          { value: 'none', label: 'None - every branch targets the base' },
+          { value: 'epic', label: 'Epic branch per repository - stories target it, one final PR to the base' }]);
+        H[H.length] = '<div style="font-size:10px;color:var(--text3);margin:-2px 0 8px;line-height:1.5">Names are not typed here: the planning step reads the epic\'s stories and each repository\'s own branch convention (a new repository borrows from its nearest sibling), writes the branch plan, and the director sees it before any branch exists (at the plan gate when Approve plan before build is on). A builder creates its unit\'s branch from its base when it starts; only this delivery pushes.</div>';
+      }
     }
-    if (node.config.format === 'pr') {
-      H[H.length] = configInput('Target Branch', 'targetBranch', node.config.targetBranch || '', 'text', 'e.g. main, develop (default: main)');
+    if (node.config.format === 'pr' || (node.config.format === 'commit' && outputBranching(node) !== 'single')) {
+      H[H.length] = configInput(outputBranching(node) === 'single' ? 'Target Branch' : 'Base branch', 'targetBranch', node.config.targetBranch || '', 'text', 'e.g. main, develop (default: main)');
     }
   }
 
@@ -6043,7 +6187,7 @@ function updateConfig() {
       else node.config[key] = val;
 
       // Re-render config panel when output format changes (show/hide PR fields)
-      if (key === 'format' && node.type === 'output') {
+      if ((key === 'format' || key === 'branching') && node.type === 'output') {
         updateConfig();
       }
 
@@ -9709,6 +9853,17 @@ function validateWorkflow() {
     const inLane = !!_laneMap[n.id];
     if (underFork || inLane) warnings.push({ type: 'warn', msg: '"' + n.label + '" is set to exhaustive depth inside a ' + (inLane ? 'per-repository lane' : 'parallel branch') + ' - it would fan out again inside every ' + (inLane ? 'repository' : 'branch') + '. Exhaustive depth earns its cost on a lone review, audit, or research step.' });
   });
+  // A branching strategy with no approval gate creates branches from names nobody reviewed at a gate.
+  const _bpV = workflowBranching();
+  if (_bpV && branchingOutputs().length > 1) warnings.push({ type: 'warn', msg: 'Two Output nodes set a branching strategy: only "' + _bpV.node.label + '" drives the plan and the other is ignored - keep one strategy node' });
+  if (_bpV && new Set(state.nodes.filter(n => n.type === 'output' && (n.config.format === 'pr' || n.config.format === 'commit')).map(n => n.config.format)).size > 1) warnings.push({ type: 'warn', msg: 'Two Output nodes create branches with different formats (Commit and Pull Request) while a branching strategy is set: the Pull Request delivery wins and the plan follows it - remove one Output node or give both the same format' });
+  if (_bpV) state.nodes.filter(n => n.type === 'output' && (n.config.format === 'pr' || n.config.format === 'commit') && outputBranching(n) === 'single' && (n.config.branchName || n.config.targetBranch)).forEach(n => {
+    warnings.push({ type: 'warn', msg: '"' + n.label + '" names a single branch while "' + _bpV.node.label + '" sets a branching strategy: the strategy drives the delivery and this node\'s Branch Name and Target Branch are ignored - remove one Output node or align them' });
+  });
+  // A branching strategy on an Output node whose format never creates branches is inert; say so.
+  state.nodes.filter(n => n.type === 'output' && outputBranching(n) !== 'single' && n.config.format !== 'pr' && n.config.format !== 'commit').forEach(n => {
+    warnings.push({ type: 'warn', msg: '"' + n.label + '" sets Branching to per ' + (outputBranching(n) === 'chunk' ? 'logical chunk' : 'story') + ' but its Format creates no branches - set the Format to Commit or Pull Request, or set Branching back to Single' });
+  });
   // Parallel siblings with a dependency path between them cannot truly run simultaneously.
   // Revision paths never count as dependencies - shared predicate with topologicalSort.
   const isReviseEdge = isReviseBackEdge;
@@ -9840,6 +9995,18 @@ function adviseWorkflow() {
   if (state.nodes.length === 0) return s;
   const agents = state.nodes.filter(n => n.type === 'agent');
   const outputs = state.nodes.filter(n => n.type === 'output');
+  // A branching strategy pairs naturally with the plan gate: that is where names are corrected once.
+  const _bpA = workflowBranching();
+  if (_bpA && !state.approvePlan) s.push({ msg: 'Branching is per ' + branchUnitWord(_bpA) + ' with Approve plan before build off: the plan owner presents the branch plan and waits, but the plan gate is where the director corrects names once - consider turning on Approve plan before build (Workflow Name & Requirements section)' });
+  if (_bpA && !branchPlanOwner()) s.push({ msg: 'Branching is per ' + branchUnitWord(_bpA) + ' and no step owns a plan (Planner, Architect, Debugger before the first builder): the orchestrator writes the branch plan itself - add a Planner if you want a step to own it' });
+  if (_bpA) {
+    // Two builders in a plain Fork share one checkout: branches cannot be switched under each other.
+    const _laneMapA = perRepoLaneMap();
+    state.nodes.filter(n => n.type === 'parallel' && !isPerRepoFork(n)).forEach(f => {
+      const kids = state.connections.filter(c => c.from === f.id).map(c => state.nodes.find(n => n.id === c.to)).filter(n => n && n.type === 'agent' && APPROVAL_BUILD_ROLES.has(n.config.agentType) && !_laneMapA[n.id]);
+      if (kids.length > 1) s.push({ msg: 'Fork "' + f.label + '" runs ' + kids.length + ' builders at once under a branching strategy: in one repository they would switch branches under each other - set the Fork\'s strategy to Per Repository (one checkout per lane) or let the orchestrator run them one at a time' });
+    });
+  }
 
   // The advisor's one notion of "a build step": the code roles, or a General agent that holds
   // write tools (consulted here as advice only - never an emitted contract).
@@ -10311,6 +10478,12 @@ function explainAgentNode(node, format) {
        : (!state.mcpCodeSearch ? 'Code search toggle off'
           : 'Code search is on, but Writer steps do not get the step hint (docs work rarely spans repo seams). What changes this row: the node\'s Agent Type.'),
     cs));
+  const brStep = branchStepNote(node);
+  const _bplCfg = workflowBranching();
+  const _bplOwner = _bplCfg ? branchPlanOwner() : null;
+  rows.push(exRow('Branch plan step note', !!brStep, brStep
+    ? (_bplOwner && _bplOwner.id === node.id ? 'a branching strategy is configured and this step is the plan owner the approval gate names - it writes the branch plan' : 'a branching strategy is configured and this step builds - it works on the branch the plan assigns' + (perRepoLaneMap()[node.id] ? ' (a per-repository lane: every row for its repository)' : ''))
+    : _bplCfg ? (APPROVAL_PLAN_OWNER_ROLES.has(node.config.agentType) ? 'a branching strategy is configured but another step owns the plan (the one the approval gate names)' : 'a branching strategy is configured but this step neither plans nor builds (reviewers and verifiers read branches, they do not create them)') : 'no branching strategy configured on an Output node that delivers by Commit or Pull Request', brStep));
   const veStep = verifyInstructionsStepHint(node);
   rows.push(exRow('Verification-instructions step hint', !!veStep,
     veStep ? 'verification paths configured and this step is the owning verification step (the last Verifier in execution order, else the last Tester)'
@@ -10459,10 +10632,12 @@ function explainOutputNode(node, format) {
   rows.push(exRow('Delivery block', true,
     "this output's format is '" + mine + "'; the delivery block is driven by priority pr > commit > report > docs across all output nodes ('" + winner + "' wins)" ,
     mine === winner || (winner === 'none' && mine === 'code') ? deliveryBlock(explainHeadingLevel(format)) : ''));
-  if (mine === 'pr') {
+  if (mine === 'pr' || (mine === 'commit' && outputBranching(node) !== 'single')) {
+    const _ob = outputBranching(node);
     rows.push(exRow('Branches', true,
-      (node.config.branchName ? 'feature branch: ' + node.config.branchName : 'feature branch derived from the ticket ID at run time')
-      + '; target: ' + (node.config.targetBranch || 'main (default)'), ''));
+      _ob !== 'single'
+        ? 'one branch per ' + (_ob === 'chunk' ? 'logical chunk' : 'story') + ', per repository, planned at run time from the epic\'s stories and each repository\'s convention' + (node.config.branchPattern ? ' (pattern: ' + node.config.branchPattern + ')' : '') + '; integration branch: ' + (INTEGRATION_CHOICES.includes(node.config.integrationBranch) ? node.config.integrationBranch : 'auto') + (mine === 'pr' ? '; base: ' + (node.config.targetBranch || 'main (default)') : '')
+        : (node.config.branchName ? 'feature branch: ' + node.config.branchName : 'feature branch derived from the ticket ID at run time') + (mine === 'pr' ? '; target: ' + (node.config.targetBranch || 'main (default)') : ''), ''));
   }
   return rows;
 }
@@ -10675,6 +10850,12 @@ function explainWorkflow(format) {
       ? 'one or more steps set to exhaustive depth (lever: the Depth row in Node Configuration) - each runs as an orchestrated fan-out inside the step and hands off one result'
       : 'no step is set to exhaustive depth - every step runs as one pass; set Depth per step in Node Configuration where one pass misses things';
   rows.push(exRow('Depth', format !== 'claude' && _dnW.length > 0, dhReason, dh || ''));
+  const _bpW = workflowBranching();
+  const _bpOff = state.nodes.some(n => n.type === 'output' && outputBranching(n) !== 'single');
+  rows.push(exRow('Branching', !!_bpW, _bpW
+    ? 'an Output node delivering by ' + (_bpW.pr ? 'Pull Request' : 'Commit') + ' is set to one branch per ' + branchUnitWord(_bpW) + ' (lever: Branching on the Output node) - ' + (branchPlanOwner() ? branchPlanOwner().label : 'the orchestrator') + ' writes the branch plan from the epic and each repository\'s convention, ' + (state.approvePlan ? 'the director approves it at the plan gate' : 'the director sees it before any branch exists (Approve plan before build is off)') + ', every builder works on its row'
+    : _bpOff ? 'an Output node sets a branching strategy but its format creates no branches - switch it to Commit or Pull Request, or set Branching to Single'
+    : 'no Output node sets a branching strategy - a Commit or Pull Request delivery uses its one named branch (set Branching on the Output node for epic-level work)', _bpW ? branchPlanHint() : ''));
   const cr = consumeRecordsHint(format);
   rows.push(exRow('Grounding in prior records', !!cr, cr ? 'Ground-in-prior-records toggle on - three-tier lookup, Current behavior first; also scans any openspec/ docs found (bounded: names first, grep to narrow, few files opened)' : 'Ground-in-prior-records toggle off', cr));
   const cl = clarifyFirstHint();
@@ -10971,10 +11152,38 @@ function deliveryBlock(level) {
 function deliveryAgentNote(level) {
   const fmts = deliveryFormats();
   const L = level || '##';
-  if (fmts.includes('pr')) return [L + ' Delivery Discipline', '', 'A pull request delivery step runs ONCE at the end of this workflow, owned by the orchestrator. Make your changes on the feature branch. Do NOT commit or push to the target branch, and do NOT push the feature branch or open a pull request yourself.', ''];
-  if (fmts.includes('commit')) return [L + ' Delivery Discipline', '', 'The commit delivery runs ONCE at the end of this workflow, owned by the orchestrator. Make your changes on the working branch; do NOT push, and do NOT finalize the delivery commit yourself.', ''];
+  const _bpA = workflowBranching();
+  if (fmts.includes('pr')) return [L + ' Delivery Discipline', '', (_bpA ? 'A pull request delivery step runs ONCE at the end of this workflow, owned by the orchestrator. Make your changes on the branch the Branch plan assigns to your repository and unit (never on a base or integration branch). Do NOT push any branch or open a pull request yourself.' : 'A pull request delivery step runs ONCE at the end of this workflow, owned by the orchestrator. Make your changes on the feature branch. Do NOT commit or push to the target branch, and do NOT push the feature branch or open a pull request yourself.'), ''];
+  if (fmts.includes('commit')) return [L + ' Delivery Discipline', '', (_bpA ? 'The commit delivery runs ONCE at the end of this workflow, owned by the orchestrator. Make your changes on the branch the Branch plan assigns to your repository and unit (never on a base or integration branch); do NOT push, and do NOT finalize the delivery commit yourself.' : 'The commit delivery runs ONCE at the end of this workflow, owned by the orchestrator. Make your changes on the working branch; do NOT push, and do NOT finalize the delivery commit yourself.'), ''];
   if (fmts.includes('report') || fmts.includes('docs')) return [];
   return noCommitBlock(L + ' Delivery');
+}
+// Delivery under a branching strategy: the branch plan names every branch, base, and target;
+// the steps run per row. Shared by the PR and Commit blocks (the PR lines are the difference).
+function branchPlanDeliveryLines(bp, pr) {
+  const unit = branchUnitWord(bp);
+  const lines = [];
+  lines.push('**Branches**: per the Branch plan (one per ' + unit + ' and repository, written ' + branchPlanHome() + ' and ' + (state.approvePlan ? 'approved by the director at the plan gate' : 'shown to the director before any branch exists') + '). Each row names the branch, its base, and ' + (pr ? 'its PR target' : 'where it lands') + '; nothing here is derived from the ticket id alone.');
+  lines.push('');
+  lines.push('**Base branch**: `' + bp.target + '`' + (getRepositories().length ? ' for every repository without its own base in the Repositories list' : '') + (bp.integration === 'epic' ? ' (' + unit + ' branches fork from each repository\'s epic branch, which forks from the base)' : bp.integration === 'auto' ? ' (or that repository\'s epic branch where the plan found one)' : ''));
+  lines.push('');
+  lines.push('**Steps, for EACH row of the plan:**');
+  lines.push('1. Check out the row\'s branch: `git checkout <branch>`, or `git checkout -b <branch> <base>` when it does not exist yet; confirm with `git branch --show-current` before every commit');
+  lines.push('2. Commit that row\'s changes on that branch only - a change that belongs to another row goes on that row\'s branch');
+  if (pr) {
+    lines.push('3. Push each branch: `git push -u origin <branch>`');
+    lines.push('4. Detect the git provider from `git remote -v`:');
+    lines.push('   - `github.com` \u2192 use `gh pr create --base <PR target>`');
+    lines.push('   - `bitbucket.org` \u2192 use the Atlassian MCP `create_pull_request` tool if available, or `curl -X POST` the Bitbucket REST API');
+    lines.push('   - `gitlab.com` \u2192 use `glab mr create` if available, or the GitLab API');
+    lines.push('5. Open ONE pull request per branch into the row\'s PR target; title: the unit\'s key and a concise summary; description: what changed, why, how to test, and every story key the branch carries');
+    if (bp.integration !== 'none') lines.push('6. Where a repository has an epic branch, open the final PR from it to the base when that repository\'s last unit lands');
+    lines.push((bp.integration !== 'none' ? '7' : '6') + '. If PR creation fails (auth, missing tool), push the branch and provide the user a URL to create the PR manually');
+  } else {
+    lines.push('3. Push each branch: `git push -u origin <branch>` - no pull request');
+  }
+  lines.push('');
+  return lines;
 }
 function prBlock(heading) {
   const outputs = state.nodes.filter(n => n.type === 'output' && n.config.format === 'pr');
@@ -10983,6 +11192,8 @@ function prBlock(heading) {
   const lines = [h, ''];
   lines.push('**CRITICAL: NEVER commit or push directly to the target branch.** Always work on a feature branch.');
   lines.push('');
+  const _bp = workflowBranching();
+  if (_bp) { branchPlanDeliveryLines(_bp, true).forEach(l => lines.push(l)); return lines; }
   const branchNames = outputs.map(o => o.config.branchName).filter(Boolean);
   if (branchNames.length > 0) {
     lines.push('**Feature branch**: `' + branchNames[0] + '`');
@@ -11025,6 +11236,8 @@ function commitBlock(heading) {
   const lines = [h, ''];
   lines.push('**CRITICAL: NEVER commit or push directly to the target branch.** Always work on a feature branch.');
   lines.push('');
+  const _bp = workflowBranching();
+  if (_bp) { branchPlanDeliveryLines(_bp, false).forEach(l => lines.push(l)); return lines; }
   const branchNames = outputs.map(o => o.config.branchName).filter(Boolean);
   if (branchNames.length > 0) {
     lines.push('**Feature branch**: `' + branchNames[0] + '`');
@@ -11379,6 +11592,8 @@ function pushSharedHints(p, format, includeEffort) {
     const dh = depthHint();
     if (dh) { p.push(dh); p.push(''); }
   }
+  const bh = branchPlanHint(format === 'subagent' || format === 'teams');   // every format: delivery (and so branching) is emitted in all of them
+  if (bh) { p.push(bh); p.push(''); }
   const cr = consumeRecordsHint(format);
   if (cr) { p.push(cr); p.push(''); }
   const cl = clarifyFirstHint();
@@ -11454,6 +11669,7 @@ function genWorkflow() {
           const _dpS = depthStepNote(s); if (_dpS) p.push('  ' + _dpS);
           const _csS = codeSearchStepHint(s); if (_csS) p.push('  ' + _csS);
           const _veS = verifyInstructionsStepHint(s); if (_veS) p.push('  ' + _veS);
+          const _bplS = branchStepNote(s); if (_bplS) p.push('  ' + _bplS);
           const _fdS = foundDefectNote(s); if (_fdS) p.push('  ' + _fdS);
           const _rhS = recordHandoffHint(s); if (_rhS) p.push('  ' + _rhS);
           p.push(`  - Instructions: ${getEffectivePrompt(s)}`);
@@ -11483,6 +11699,7 @@ function genWorkflow() {
         const _dpN = depthStepNote(node); if (_dpN) p.push('- ' + _dpN);
         const _csN = codeSearchStepHint(node); if (_csN) p.push('- ' + _csN);
         const _veN = verifyInstructionsStepHint(node); if (_veN) p.push('- ' + _veN);
+        const _bplN = branchStepNote(node); if (_bplN) p.push('- ' + _bplN);
         const _fdN = foundDefectNote(node); if (_fdN) p.push('- ' + _fdN);
         const _rhN = recordHandoffHint(node); if (_rhN) p.push('- ' + _rhN);
         p.push(`- Instructions: ${getEffectivePrompt(node)}`);
@@ -11685,6 +11902,7 @@ function genSubAgents() {
     const _apSa = approvePlanStepHint(node, _apCp); if (_apSa) { promptLines.push(''); promptLines.push(_apSa); }
     const _csSa = codeSearchStepHint(node); if (_csSa) { promptLines.push(''); promptLines.push(_csSa); }
     const _veSa = verifyInstructionsStepHint(node); if (_veSa) { promptLines.push(''); promptLines.push(_veSa); }
+    const _bplSa = branchStepNote(node, true); if (_bplSa) { promptLines.push(''); promptLines.push(_bplSa); }
     const _fdSa = foundDefectNote(node); if (_fdSa) { promptLines.push(''); promptLines.push(_fdSa); }
     const _rhSa = recordHandoffHint(node); if (_rhSa) { promptLines.push(''); promptLines.push(_rhSa); }
     promptLines.push('');
@@ -11776,6 +11994,7 @@ function genSubAgents() {
         const _mcP = modelContextNote(s.config.model); if (_mcP) p.push('- ' + _mcP);
         const _efP = effortStepNote(s); if (_efP) p.push('- ' + _efP);
         const _dpP = depthOrchestratorNote(s); if (_dpP) p.push('- ' + _dpP);
+        const _bpoP = branchOrchestratorNote(s); if (_bpoP) p.push('- ' + _bpoP);
         if (s.config.tools.length > 0) p.push('- ' + toolAccessText(s.config.tools));
         p.push(`- **Max turns**: ${s.config.maxTurns}`);
         if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
@@ -11795,6 +12014,7 @@ function genSubAgents() {
       const _mcQ = modelContextNote(node.config.model); if (_mcQ) p.push('- ' + _mcQ);
       const _efQ = effortStepNote(node); if (_efQ) p.push('- ' + _efQ);
       const _dpQ = depthOrchestratorNote(node); if (_dpQ) p.push('- ' + _dpQ);
+      const _bpoQ = branchOrchestratorNote(node); if (_bpoQ) p.push('- ' + _bpoQ);
       if (node.config.tools.length > 0) p.push('- ' + toolAccessText(node.config.tools));
       p.push(`- **Max turns**: ${node.config.maxTurns}`);
       if (deps.length > 0) p.push(`- **Depends on**: ${deps.join(', ')}`);
@@ -11923,7 +12143,8 @@ function genAgentTeams() {
     lines.push(`${pre}- Model: \`${getTaskModelParam(node.config.model)}\` (${getModelLabel(node.config.model)})`);
     const _mcT = modelContextNote(node.config.model); if (_mcT) lines.push(`${pre}- ` + _mcT);
     const _efT = effortStepNote(node); if (_efT) lines.push(`${pre}- ` + _efT);
-    const _dpT = depthOrchestratorNote(node); if (_dpT) lines.push(`${pre}- ` + _dpT);   // lead-facing: the lead holds the opt-in, a teammate does not
+    const _dpT = depthOrchestratorNote(node); if (_dpT) lines.push(`${pre}- ` + _dpT);
+    const _bpoT = branchOrchestratorNote(node); if (_bpoT) lines.push(`${pre}- ` + _bpoT);   // lead-facing too: the lead copies the rows   // lead-facing: the lead holds the opt-in, a teammate does not
     if (node.config.tools.length > 0) lines.push(`${pre}- ` + toolAccessText(node.config.tools));
     const _scTm = toolScopeNote(node.config.tools); if (_scTm) lines.push(`${pre}- ` + _scTm);
     lines.push(`${pre}- Max turns: ${node.config.maxTurns}`);
@@ -11953,6 +12174,7 @@ function genAgentTeams() {
     const _apAt = approvePlanStepHint(node, _apCp); if (_apAt) lines.push(`${pre}  ${_apAt}`);
     const _csAt = codeSearchStepHint(node); if (_csAt) lines.push(`${pre}  ${_csAt}`);
     const _veAt = verifyInstructionsStepHint(node); if (_veAt) lines.push(`${pre}  ${_veAt}`);
+    const _bplAt = branchStepNote(node, true); if (_bplAt) _bplAt.split('\n').forEach(l => lines.push(`${pre}  ${l}`));
     const _fdAt = foundDefectNote(node); if (_fdAt) lines.push(`${pre}  ${_fdAt}`);
     const _rhAt = recordHandoffHint(node); if (_rhAt) lines.push(`${pre}  ${_rhAt}`);
     lines.push('');
@@ -12460,6 +12682,11 @@ function genAgentSDK() {
     _sdkDelivery.slice(2).forEach(l => { if (l) p.push('    # ' + l); else p.push('    #'); });
     p.push('');
   }
+  const _sdkBp = workflowBranching();
+  if (_sdkBp) {
+    p.push('    # branching: one branch per ' + branchUnitWord(_sdkBp) + ' per repository, planned at run time from the epic and each repository\'s convention' + (_sdkBp.pattern ? ' (pattern ' + _sdkBp.pattern + ')' : '') + '; integration branch: ' + (_sdkBp.integration === 'auto' ? 'inferred per repository' : _sdkBp.integration === 'epic' ? 'an epic branch per repository' : 'none') + '. The skeleton has no git mechanism - the harness owner wires branch creation and PRs from the plan the planning step returns.');
+    p.push('');
+  }
   const _sdkRepos = getRepositories();
   if (_sdkRepos.length > 0) {
     const _esc = s => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -12707,6 +12934,7 @@ function genClaudePrompt() {
           const _apCpS = approvePlanStepHint(s, _apCp); if (_apCpS) p.push(_apCpS);
           const _csCpS = codeSearchStepHint(s); if (_csCpS) p.push(_csCpS);
           const _veCpS = verifyInstructionsStepHint(s); if (_veCpS) p.push(_veCpS);
+          const _bplCpS = branchStepNote(s); if (_bplCpS) p.push(_bplCpS);
           const _fdCpS = foundDefectNote(s); if (_fdCpS) p.push(_fdCpS);
           const _rhCpS = recordHandoffHint(s); if (_rhCpS) p.push(_rhCpS);
           p.push('');
@@ -12740,6 +12968,7 @@ function genClaudePrompt() {
         const _apCpN = approvePlanStepHint(node, _apCp); if (_apCpN) p.push(_apCpN);
         const _csCpN = codeSearchStepHint(node); if (_csCpN) p.push(_csCpN);
         const _veCpN = verifyInstructionsStepHint(node); if (_veCpN) p.push(_veCpN);
+        const _bplCpN = branchStepNote(node); if (_bplCpN) p.push(_bplCpN);
         const _fdCpN = foundDefectNote(node); if (_fdCpN) p.push(_fdCpN);
         const _rhCpN = recordHandoffHint(node); if (_rhCpN) p.push(_rhCpN);
         p.push('');
