@@ -2103,7 +2103,11 @@ describe('Branching strategy (Output node)', () => {
     expect(html).toNotContain('data-key="branchPattern"');
     expect(html).toContain('Target Branch');
     back.config.branching = 'story'; back.config.branchName = 'feature/kept'; win.updateConfig();
-    expect(win.document.getElementById('configFields').innerHTML).toContain('is kept for Single branch and plays no part under a strategy');
+    const brLabel = win.document.querySelector('#configFields .custom-select[data-key="branching"]').parentElement.querySelector('label');
+    expect(brLabel.getAttribute('title')).toContain('is kept and plays no part under a strategy');   // the explanation is a tooltip on the label, not prose under the field
+    const patLabel = win.document.querySelector('#configFields input[data-key="branchPattern"]').parentElement.querySelector('label');
+    expect(patLabel.getAttribute('title')).toContain('feature/{ticket}-{slug} gives feature/PROJ-12345-some-story-title');
+    expect(win.document.getElementById('configFields').textContent).toNotContain('Names are not typed here');   // no paragraph under the fields
   });
   it('emission: per story on a Pull Request delivery reaches every format, the planner writes the plan, builders work their rows, reviewers nothing', () => {
     featureWith({ format: 'pr', branching: 'story', targetBranch: 'develop' });
@@ -6384,9 +6388,9 @@ describe('Repo context paths', () => {
       // descriptive labels + helper text present
       const html = doc.querySelector('body').innerHTML;
       expect(html).toContain('Rules / constitution paths');
-      expect(html).toContain('(binding constraints on how to build)');
+      expect(html).toContain('Binding constraints every agent must follow');          // the explanation lives in the label tooltip now
       expect(html).toContain('Product docs (PRD / ADR)');
-      expect(html).toContain('(goals/direction to honor)');
+      expect(html).toContain('Goals and direction agents should honor');
     });
     it('suggestion buttons hide while their path is configured and return on removal', () => {
       const doc = win.document;
@@ -10223,8 +10227,8 @@ describe('Agent craft batch', () => {
       win.render();
       expect(win.document.getElementById('appSourceSection').style.display).toBe('');
       expect(win.document.getElementById('uiContextSection').style.display).toBe('');
-      expect(win.document.getElementById('appSourceSection').textContent).toContain('Used by App Explorer steps');
-      expect(win.document.getElementById('uiContextSection').textContent).toContain('Used by Design Analyzer');
+      expect(win.document.getElementById('appSourceSection').innerHTML).toContain('Used by App Explorer steps');   // in the label tooltip
+      expect(win.document.getElementById('uiContextSection').innerHTML).toContain('Used by Design Analyzer');
       // always-visible changes DISCOVERY only - emission still gates on content
       expect(win.document.getElementById('appSourcePath').value).toBe('');
       expect(win.appSourceBlock().length).toBe(0);

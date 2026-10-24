@@ -614,19 +614,16 @@ svg.canvas{width:100%;height:100%;display:block}
       <div class="custom-select-trigger" id="defaultModelTrigger">Opus</div>
       <div class="custom-select-options" id="defaultModelOptions"></div>
     </div>
-    <div style="font-size:10px;color:var(--text3);margin-top:6px">New nodes, presets, and generated workflows will use this model.</div>
 
-    <h3 style="margin-top:14px">Default Effort</h3>
+    <h3 style="margin-top:14px" title="Reasoning depth and token spend new nodes start with. Override any step in Node Configuration. Leave on Inherit to use whatever the runner defaults to (high on the API, xhigh in Claude Code).">Default Effort</h3>
     <div class="custom-select" id="effortSelect">
       <div class="custom-select-trigger" id="effortTrigger">Inherit (runner default)</div>
       <div class="custom-select-options" id="effortOptions"></div>
     </div>
-    <div style="font-size:10px;color:var(--text3);margin-top:6px">Reasoning depth and token spend new nodes start with. Override any step in Node Configuration. Leave on Inherit to use whatever the runner defaults to (<code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">high</code> on the API, <code style="font-size:10px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px">xhigh</code> in Claude Code).</div>
   </div>
 
   <div class="sidebar-section" data-collapse-id="repositories">
-    <h3 title="For work spanning repositories, or repos with binding rules: list every repo the workflow touches (per-repo grounding, records, and briefs) and the paths agents must read and honor.">Multi-Repo &amp; Context Paths</h3>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Leave this empty when you launch inside the only repo you touch. List repos when work spans more than one, or to pin a branch - agents check it out and pull latest first.</div>
+    <h3 title="For work spanning repositories, or repos with binding rules: list every repo the workflow touches (per-repo grounding, records, and briefs) and the paths agents must read and honor. Leave the list empty when you launch inside the only repo you touch; list repos when work spans more than one, or to pin a branch (agents check it out and pull latest first).">Multi-Repo &amp; Context Paths</h3>
     <div id="repoList"></div>
     <button class="btn sm" onclick="addRepoRow()" title="Add a repository this workflow touches (path + branch). Multi-repo workflows get per-repo grounding, records, and briefs.">+ Add Repository</button>
     <div style="height:1px;background:var(--border);opacity:.5;margin:14px 0 10px"></div>
@@ -634,7 +631,6 @@ svg.canvas{width:100%;height:100%;display:block}
 
     <div style="margin-bottom:10px">
       <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px" title="Binding constraints every agent must follow while building - coding standards, architecture rules, a team constitution. Emitted as must-honor context to every step that touches the repo.">Rules / constitution paths</div>
-      <div style="font-size:10px;color:var(--text3);margin-bottom:5px">(binding constraints on how to build)</div>
       <div class="path-input-row">
         <input type="text" id="rulesPathInput" placeholder="e.g. .claude/rules or CONVENTIONS.md" onkeydown="if(event.key==='Enter'){event.preventDefault();addRulesPathFromInput();}"/>
         <button class="btn sm" onclick="addRulesPathFromInput()">Add</button>
@@ -650,7 +646,6 @@ svg.canvas{width:100%;height:100%;display:block}
 
     <div>
       <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px" title="Goals and direction agents should honor - PRDs, architecture decision records, roadmaps. Guidance for judgment calls, softer than rules.">Product docs (PRD / ADR)</div>
-      <div style="font-size:10px;color:var(--text3);margin-bottom:5px">(goals/direction to honor)</div>
       <div class="path-input-row">
         <input type="text" id="productDocPathInput" placeholder="e.g. docs/ or ARCHITECTURE.md" onkeydown="if(event.key==='Enter'){event.preventDefault();addProductDocPathFromInput();}"/>
         <button class="btn sm" onclick="addProductDocPathFromInput()">Add</button>
@@ -667,7 +662,6 @@ svg.canvas{width:100%;height:100%;display:block}
 
     <div style="margin-top:10px">
       <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px" title="What a change must PROVE before it ships - MUST items are required, SHOULD items are expected. Routed to the owning Verifier (or the final Tester), tracked in a verification ledger, and with the checkbox below armed, unmet MUSTs fail the run honestly instead of shipping around it.">Verification instructions (verifier / tester owned)</div>
-      <div style="font-size:10px;color:var(--text3);margin-bottom:5px">(what a change must prove; routed to the owning Verifier, else the final Tester)</div>
       <div class="path-input-row">
         <input type="text" id="verifyPathInput" placeholder="e.g. VERIFY.md or rules/E2E.md" onkeydown="if(event.key==='Enter'){event.preventDefault();addVerifyPathFromInput();}"/>
         <button class="btn sm" onclick="addVerifyPathFromInput()">Add</button>
@@ -826,8 +820,7 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-section" id="appSourceSection" data-collapse-id="app-under-test">
     <h3 title="For UI work and test automation: point agents at the app being explored and capture styling preferences - both optional, both consumed only by the steps that need them.">App &amp; UI Context <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
-    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px" title="The local path to an app agents explore: they map its structure, screens, navigation, and (for UI test work) element selectors - with a branch pin if you set one, and the Access selector keeping the repo read-only unless you deliberately grant writes.">App Under Test</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Used by App Explorer steps (and the Test Automation preset).</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px" title="The local path to an app agents explore: they map its structure, screens, navigation, and (for UI test work) element selectors - with a branch pin if you set one, and the Access selector keeping the repo read-only unless you deliberately grant writes. Used by App Explorer steps (and the Test Automation preset).">App Under Test</div>
     <input type="text" id="appSourcePath" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px" placeholder="/path/to/app/repo" oninput="updatePrompt();savePrefsDebounced()"/>
     <input type="text" id="appSourceBranch" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px" placeholder="Branch (optional, e.g. feature/PROJ-123)" oninput="updatePrompt();savePrefsDebounced()"/>
     <select id="appSourceAccess" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px;width:100%" onchange="updatePrompt();savePrefsDebounced()" title="Whether steps may modify this repo. Read-only is the safe default; Writable is a deliberate grant that applies to any step whose task genuinely requires it.">
@@ -836,8 +829,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </select>
     <div style="height:1px;background:var(--border);opacity:.5;margin:14px 0 10px"></div>
     <div id="uiContextSection">
-    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px" title="Styling preferences or migration notes for any platform - web, mobile, or desktop UI (e.g. which styling library to prefer or avoid). Leave it blank and the Design Analyzer discovers your design system from the code instead.">UI Context</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Used by Design Analyzer and UI-building steps.</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px" title="Styling preferences or migration notes for any platform - web, mobile, or desktop UI (e.g. which styling library to prefer or avoid). Leave it blank and the Design Analyzer discovers your design system from the code instead. Used by Design Analyzer and UI-building steps.">UI Context</div>
     <textarea id="uiContextNotes" class="story-input" style="min-height:48px;padding:6px 8px;font-size:12px" placeholder="e.g. Use vanilla-extract + clsx, avoid SCSS and MUI v4; or Compose Material3 tokens only; or SwiftUI over UIKit for new screens" oninput="updatePrompt();savePrefsDebounced()"></textarea>
     </div>
   </div>
@@ -880,7 +872,6 @@ svg.canvas{width:100%;height:100%;display:block}
       <span style="display:none"><br><strong>Atlassian MCP setup:</strong><br><code style="font-size:10px;word-break:break-all;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">claude mcp add --transport http atlassian https://mcp.atlassian.com/v1/mcp --scope user</code><br><br><strong>Datadog MCP setup:</strong><br><code style="font-size:10px;word-break:break-all;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">curl -sSL https://coterm.datadoghq.com/mcp-cli/install.sh | bash</code><br>then <code style="font-size:10px;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">datadog_mcp_cli login</code> and <code style="font-size:10px;word-break:break-all;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">claude mcp add -s user datadog -- ~/.local/bin/datadog_mcp_cli --endpoint-path "/api/unstable/mcp-server/mcp?toolsets=core,alerting,apm"</code><br><br><strong>PR creation:</strong> GitHub repos use <code style="font-size:10px;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">gh</code> CLI (built-in). Bitbucket repos can use the same Atlassian MCP above. GitLab repos need <code style="font-size:10px;background:rgba(0,0,0,.2);padding:2px 4px;border-radius:3px">glab</code> CLI or a GitLab MCP.</span>
     </span>
   </div>
-    <div style="font-size:10px;color:var(--text3);margin:8px 0 6px">These toggles add usage hints to generated prompts so agents lean on the tools - they do not install or connect anything (see setup above).</div>
     <label class="memory-toggle">
       <input type="checkbox" id="mcpAtlassianToggle" onchange="toggleMcpAtlassian()" checked/>
       <span style="font-size:12px">Atlassian <span style="color:var(--text3);font-weight:400">(Jira, Confluence, Bitbucket)</span></span>
@@ -6098,22 +6089,23 @@ function updateConfig() {
       H[H.length] = configSelect('Branching', 'branching', outputBranching(node), [
         { value: 'single', label: 'Single branch - one named branch (the fields below)' },
         { value: 'story', label: 'Per story - one branch per story, planned from the epic at run time' },
-        { value: 'chunk', label: 'Per logical chunk - stories grouped so each branch leaves every repo working' }]);
+        { value: 'chunk', label: 'Per logical chunk - stories grouped so each branch leaves every repo working' }],
+        'How epic-level work maps onto branches. Single branch uses the Branch Name field. Per story and Per logical chunk never take names: the planning step reads the epic\'s stories and each repository\'s own branch convention (a new repository borrows from its nearest sibling), writes the branch plan, and the director sees it before any branch exists (at the plan gate when Approve plan before build is on). A builder creates its unit\'s branch from its base when it starts; only this delivery pushes.' + (node.config.branchName && outputBranching(node) !== 'single' ? ' The Branch Name entered for Single branch (' + node.config.branchName + ') is kept and plays no part under a strategy.' : ''));
       if (outputBranching(node) === 'single') {
         H[H.length] = configInput('Branch Name', 'branchName', node.config.branchName || '', 'text', 'e.g. feature/PRJ-6069-profile-redesign');
       } else {
-        H[H.length] = configInput('Branch pattern (optional)', 'branchPattern', node.config.branchPattern || '', 'text', 'empty: each repository\'s own convention; or e.g. feature/{ticket}-{slug}');
-        H[H.length] = '<div style="font-size:10px;color:var(--text3);margin:-2px 0 8px;line-height:1.5" title="Tokens: {ticket} the whole story key (prefix included, so never repeat it), {story} the same, {epic}, {slug} the story title, {repo}; in chunk mode {ticket} is the epic key and {chunk} the chunk slug. The slug joins its words with the separator you place beside it.">Example: <code>feature/{ticket}-{slug}</code> gives <code>feature/PROJ-12345-some-story-title</code> (hyphens are the usual choice; <code>feature/{ticket}_{slug}</code> gives the underscore form). The key is whole, so never repeat the project prefix. A pattern overrides every repository\'s own convention; empty follows each repository.</div>';
-        if (node.config.branchName) H[H.length] = '<div style="font-size:10px;color:var(--text3);margin:-2px 0 8px">Branch Name `' + escHtml(node.config.branchName) + '` is kept for Single branch and plays no part under a strategy.</div>';
+        H[H.length] = configInput('Branch pattern (optional)', 'branchPattern', node.config.branchPattern || '', 'text', 'e.g. feature/{ticket}-{slug}', '',
+          'Empty follows each repository\'s own convention. A pattern overrides it everywhere. Example: feature/{ticket}-{slug} gives feature/PROJ-12345-some-story-title (hyphens are the usual choice; feature/{ticket}_{slug} gives the underscore form). Tokens: {ticket} the whole story key, prefix included, so never repeat the project prefix; {story} the same; {epic}; {slug} the story title, its words joined with the separator you place beside it; {repo}. In chunk mode {ticket} is the epic key and {chunk} the chunk slug.');
         H[H.length] = configSelect('Integration branch', 'integrationBranch', INTEGRATION_CHOICES.includes(node.config.integrationBranch) ? node.config.integrationBranch : 'auto', [
           { value: 'auto', label: 'Infer per repository - epic branch only where that repo already works that way' },
           { value: 'none', label: 'None - every branch targets the base' },
-          { value: 'epic', label: 'Epic branch per repository - stories target it, one final PR to the base' }]);
-        H[H.length] = '<div style="font-size:10px;color:var(--text3);margin:-2px 0 8px;line-height:1.5">Names are not typed here: the planning step reads the epic\'s stories and each repository\'s own branch convention (a new repository borrows from its nearest sibling), writes the branch plan, and the director sees it before any branch exists (at the plan gate when Approve plan before build is on). A builder creates its unit\'s branch from its base when it starts; only this delivery pushes.</div>';
+          { value: 'epic', label: 'Epic branch per repository - stories target it, one final PR to the base' }],
+          'Whether story branches target the base directly or an epic branch per repository. Infer reads each repository: an epic branch only where it already uses epic/, release/, or long-lived integration branches. Epic branch per repository forks one from the base, every story branch forks from it, and one final PR goes to the base when the last unit lands.');
       }
     }
     if (node.config.format === 'pr' || (node.config.format === 'commit' && outputBranching(node) !== 'single')) {
-      H[H.length] = configInput(outputBranching(node) === 'single' ? 'Target Branch' : 'Base branch', 'targetBranch', node.config.targetBranch || '', 'text', 'e.g. main, develop (default: main)');
+      H[H.length] = configInput(outputBranching(node) === 'single' ? 'Target Branch' : 'Base branch', 'targetBranch', node.config.targetBranch || '', 'text', 'e.g. main, develop (default: main)', '',
+        outputBranching(node) === 'single' ? 'The branch the pull request merges into (default main).' : 'The branch every planned branch forks from (default main). A repository with its own branch in the Repositories list uses that as its base instead.');
     }
   }
 
@@ -6316,11 +6308,12 @@ function updateConfig() {
   }
 }
 
-function configInput(label, key, value, type, placeholder, attrs) {
-  return `<div class="config-field"><label>${label}</label>
+// `tip` (optional) is the house tooltip on the label: the explanation lives on hover, not under the field.
+function configInput(label, key, value, type, placeholder, attrs, tip) {
+  return `<div class="config-field"><label${tip ? ` title="${escHtml(tip)}"` : ''}>${label}</label>
     <input type="${type||'text'}" data-key="${key}" value="${escHtml(String(value||''))}"${placeholder ? ` placeholder="${escHtml(placeholder)}"` : ''}${attrs ? ' ' + attrs : ''} /></div>`;
 }
-function configSelect(label, key, value, options) {
+function configSelect(label, key, value, options, tip) {
   // Never show a value the node is not actually holding: an unrecognized value renders as itself
   // rather than silently borrowing the first option's label (which made the panel disagree with
   // the emitted prompt). Recognized values are unaffected.
@@ -6332,14 +6325,14 @@ function configSelect(label, key, value, options) {
   const optHtml = options.map(o =>
     `<div class="custom-select-option${o.value === value ? ' selected' : ''}" data-value="${o.value}">${o.label}</div>`
   ).join('');
-  return `<div class="config-field"><label>${label}</label>
+  return `<div class="config-field"><label${tip ? ` title="${escHtml(tip)}"` : ''}>${label}</label>
     <div class="custom-select config-select" data-key="${key}">
       <div class="custom-select-trigger">${selected ? selected.label : ''}</div>
       <div class="custom-select-options">${optHtml}</div>
     </div></div>`;
 }
-function configTextarea(label, key, value, placeholder, attrs) {
-  return `<div class="config-field"><label>${label}</label>
+function configTextarea(label, key, value, placeholder, attrs, tip) {
+  return `<div class="config-field"><label${tip ? ` title="${escHtml(tip)}"` : ''}>${label}</label>
     <div class="ta-wrap"><textarea data-key="${key}" placeholder="${escHtml(placeholder||'')}"${attrs ? ' ' + attrs : ''}>${escHtml(value||'')}</textarea>${taExpandButton()}</div></div>`;
 }
 // Display-only status line + read-only preview for an agent node's effective prompt.
