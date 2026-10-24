@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (PROMPTS.designSystemAnalyzer, PROMPTS.uiImplementer, PROMPTS.uiReviewer, help modal, agent-type description), tests.html (UI Design craft tests in the craft batch), README.md
 - status: current | date: 2026-10-07 | note: created after an honest assessment; two review rounds; a Design Explorer step for net-new surfaces is a deferred design discussion. 1806 -> 1810.
 
+## default-delivery-and-pins
+
+- record: .workflow/default-delivery-and-pins.md
+- intent: the sidebar is the shop, the canvas is the job: a Default Delivery section (beside Default Model and Effort) that every code preset's Output node follows through a new `Default` Format and the `outCfg` resolver, with an adopt link on an overriding node; seven pins on the shop section headers (Defaults and Repo Context Paths ship pinned, the shipped behavior) so a pinned section survives New Workflow; the New Workflow dialog names what the pins keep.
+- files: index.html (state.defaultDelivery/pins, outCfg, deliveryFieldsHtml, renderDefaultDelivery, adoptDeliveryAsDefault, pins block, clearCanvas, Explain rows: workflow Default Delivery, Output node Default Delivery / Deliverable / Branch plan, help), tests.html (Default Delivery and section pins suite), README.md
+- status: current | date: 2026-10-24 | note: created from a design conversation (three options weighed; director chose pins everywhere, then the Defaults pin for one rule); four review rounds; 1830 -> 1846.
+
 ## branching-strategy
 
 - record: .workflow/branching-strategy.md

@@ -149,6 +149,8 @@ Every generated prompt is a composition: role templates, tool lines, MCP hints, 
 
 ## Repo Context Paths
 
+The **Repositories** list (top of the Multi-Repo & Context Paths sidebar section) names each repository the workflow touches with an optional **start branch**: agents check it out and pull before any work, so a hotfix off `release/2.3` begins there. Leave it empty and agents work on whatever branch that working tree already has checked out, as it is (no checkout, no pull, no fallback to a default branch). A repository with a start branch delivers back to it (its pull request targets it; under a branching strategy it is the base), so a hotfix needs only the start branch. The Output node's Target Branch covers repositories without one; empty, that is the repository's default branch, detected at run time and never assumed to be `main`. One repository is fine when the point is only the branch. The field takes a branch name, never a commit.
+
 The **Repo Context Paths** area (inside the Multi-Repo & Context Paths sidebar section) lets you point agents at a repo's own rules and product docs, so generated workflows read and honor more than just the per-task spec. It captures path strings only (the designer never touches your filesystem); the agents do the reading. Verification instructions also take inline notes - type "mutation testing MUST keep the kill score >= 80%" straight into the box when the mandate has no file to live in; the MUST/SHOULD language classifies it exactly like a file-borne check. Three optional chip lists, each with a text input, an Add button, per-chip remove, Clear-all, and one-click quick-add suggestions:
 
 - **Rules / constitution paths** (binding; CLAUDE.md already read) - paths whose rules and conventions are binding constraints on HOW you build. Quick-add: `.claude/rules`, `CONVENTIONS.md`, `CONTRIBUTING.md`.
@@ -250,7 +252,8 @@ Splits the workflow into concurrent branches. **Strategy** shapes the join seman
 
 ### Output
 The Output node's **Format** is the single delivery control - it decides what happens to the work at the end. Code changes are produced either way (even with no output node, changes are left uncommitted for review); the format only chooses the finish:
-- **Leave Uncommitted** (default) - make the changes, commit nothing
+- **Default** - follows **Default Delivery**, the Delivery row of the sidebar's **Defaults** section beside Model and Effort (ships as Leave Uncommitted). Every code preset's Output node starts here, so a delivery you set once applies to every new workflow; pick any other Format on the node to override it for one workflow, and use *Make this my default delivery* on an overriding node to lift its settings into the sidebar
+- **Leave Uncommitted** - make the changes, commit nothing
 - **Commit** - feature branch, commit + push, no PR
 - **Pull Request** - feature branch, commit + push, open a PR (git provider auto-detected: GitHub, Bitbucket, GitLab)
 - **Report** - produce a written report; leave any code uncommitted
@@ -367,7 +370,7 @@ LSP is enabled by default on most agent presets. Code-analysis prompts in the Pr
 
 ## Things You Might Not Notice
 
-- **New Workflow**: The small "New Workflow" link at the top of the sidebar (next to Expand All / Collapse All) clears everything and starts fresh. Save or export your current workflow first if you want to keep it.
+- **New Workflow and section pins**: The small "New Workflow" link at the top of the sidebar (next to Expand All / Collapse All) clears the job (canvas, name, Requirements, Workflow Context) and resets every sidebar section that is not pinned. Each shop section header (Defaults, Repositories, Repo Context Paths, App and UI Context, MCP integrations, Memory and durable record, Run gates) carries a pin at its right: pinned sections survive New Workflow and keep what you enter; unpinned ones reset with each new workflow. Defaults and Repo Context Paths ship pinned, which reproduces the earlier behavior exactly; unpinned Defaults start each new workflow from the app defaults. The confirm dialog names what the pins keep; to reset a pinned section, unpin it and start a new workflow. Save or export your current workflow first if you want to keep it.
 - **Collapsible sidebar with a curated first boot**: every sidebar section header is a click-to-fold toggle (Expand All / Collapse All at the top), and your choices persist across visits. On a true first visit only Requirements and Presets start open - the two sections the Quick Start actually needs - and everything else waits politely behind a chevron. Programmatic reveals (like selecting a node) always re-open their section first.
 - **Empty-canvas quick start**: a blank canvas shows the two-step path inline (paste requirements or a Jira URL, pick a preset) with links that open and scroll to the right sections. It disappears the moment nodes exist.
 - **Auto-naming**: The workflow name is optional (the placeholder says so). Leave it blank and the slug derives from the first few meaningful words of your requirements - so two unnamed workflows no longer collide on `untitled.md`, and the memory and record paths update live as you type. An explicit name always wins; `untitled` only appears when you give it neither a name nor requirements, at which point it has earned it.

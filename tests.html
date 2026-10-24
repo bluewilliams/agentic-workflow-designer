@@ -253,6 +253,8 @@ function resetState() {
   win.state.verifyPaths = [];      // verification instructions default empty
   win.state.verifyNotes = '';      // notes arm hasVerifyMandates too - reset with the paths, always
   win.state.verifyFailRun = true;  // fail-the-run posture default ON (app default)
+  win.state.defaultDelivery = win.blankDelivery();   // Default Delivery blank = Leave Uncommitted (app default)
+  win.state.pins = win.defaultPins();                // Defaults and Repo Context Paths pinned, nothing else (app default)
   // Reset DOM inputs
   const wfName = win.document.getElementById('workflowName');
   if (wfName) wfName.value = '';
@@ -2048,6 +2050,433 @@ describe('Consume prior records (read side)', () => {
 
 // ─── Depth (exhaustive steps: orchestration depth inside one step) ─────────────────────
 // ─── Branching strategy (Output node): epic-level work onto branches, planned at run time ───
+describe('Default Delivery and section pins', () => {
+  const GENS = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genAgentSDK', 'genClaudePrompt'];
+  const allOut = () => GENS.map(g => win[g]());
+  const presetKeys = () => [...win.document.querySelectorAll('.preset-item[data-preset]')].map(el => el.dataset.preset);
+  const fields = () => win.document.getElementById('configFields');
+  const host = () => win.document.getElementById('defaultDeliveryFields');
+  const pinBtn = (k) => win.document.querySelector('.pin-btn[data-pin="' + k + '"]');
+  function setDefault(d) { win.state.defaultDelivery = win.normalizeDelivery(d); win.renderDefaultDelivery(); win.updateConfig(); }   // the sidebar path (onDefaultDeliveryChange) refreshes the panel the same way
+  function fillShop() {
+    win.state.repositories = [{ path: '/tmp/repo-a', branch: '' }]; win.renderRepoRows();
+    win.document.getElementById('appSourcePath').value = '/tmp/app';
+    win.state.approvePlan = true; win.document.getElementById('approvePlanToggle').checked = true;
+    win.state.mcpDatadog = true; win.document.getElementById('mcpDatadogToggle').checked = true;
+    win.state.mcpBrowser = true; win.document.getElementById('mcpBrowserToggle').checked = true;
+    win.state.memoryEnabled = false; win.document.getElementById('memoryToggle').checked = false;
+    win.state.openSpecArtifacts = true;
+    win.state.rulesPaths = ['.claude/rules']; win.renderRulesRows();
+  }
+  function resetShop() {
+    win.setDefaultModel('opus-5'); win.setEffort('');
+    win.state.defaultDelivery = win.blankDelivery(); win.state.pins = win.defaultPins(); win.renderDefaultDelivery(); win.renderPins();
+    win.state.approvePlan = false; win.state.clarifyFirst = false; win.state.mcpDatadog = false; win.state.mcpAtlassian = true; win.state.mcpCodeSearch = true; win.state.mcpBrowser = false; win.state.mcpGithub = false; win.state.openSpecArtifacts = false;
+    win.state.repositories = []; win.renderRepoRows();
+    win.state.rulesPaths = []; win.state.productDocPaths = []; win.state.verifyPaths = []; win.state.verifyNotes = ''; win.renderRulesRows(); win.renderProductDocRows(); win.renderVerifyRows();
+    ['appSourcePath', 'appSourceBranch', 'uiContextNotes', 'verifyNotesInput', 'mcpCustomNotes'].forEach(id => { const el = win.document.getElementById(id); if (el) el.value = ''; });
+    ['approvePlanToggle', 'clarifyFirstToggle', 'mcpDatadogToggle', 'mcpBrowserToggle', 'openSpecArtifactsToggle'].forEach(id => { const el = win.document.getElementById(id); if (el) el.checked = false; });
+  }
+  afterEach(() => { resetState(); clearStorage(); resetShop(); win.expandAllSections(); });
+
+  it('OFF: every code preset starts its Output node on Default; with the default blank the five formats are byte-identical to an explicit Leave Uncommitted node', () => {
+    presetKeys().forEach(k => {
+      resetState(); win.loadPreset(k);
+      const outs = win.state.nodes.filter(n => n.type === 'output');
+      outs.forEach(o => expect(['default', 'report', 'docs'].includes(o.config.format)).toBe(true));
+      const a = allOut();
+      outs.forEach(o => { if (o.config.format === 'default') o.config.format = 'code'; });
+      const b = allOut();
+      a.forEach((text, i) => expect(text === b[i]).toBe(true));
+    });
+    expect(win.NODE_DEFAULTS ? win.NODE_DEFAULTS.output.config.format : win.addNode('output').config.format).toBe('default');
+  });
+  it('the resolver: a node on Default reads the sidebar for format, branching, base, pattern, and integration; an explicit Format ignores it; Deliverable and Branch Name stay the node\'s own', () => {
+    resetState(); win.loadPreset('feature');
+    const out = win.state.nodes.find(n => n.type === 'output');
+    out.config.branchName = 'feature/mine';
+    expect(out.config.format).toBe('default');
+    expect(win.outCfg(out).format).toBe('code');
+    setDefault({ format: 'pr', branching: 'story', targetBranch: 'develop', branchPattern: 'feature/{ticket}-{slug}', integrationBranch: 'epic' });
+    const e = win.outCfg(out);
+    expect(e.format).toBe('pr'); expect(e.branching).toBe('story'); expect(e.targetBranch).toBe('develop'); expect(e.branchPattern).toBe('feature/{ticket}-{slug}'); expect(e.integrationBranch).toBe('epic');
+    expect(e.branchName).toBe('feature/mine'); expect(e.deliverable).toBe(out.config.deliverable);
+    expect(win.deliversPr()).toBe(true);
+    expect(win.workflowBranching().strategy).toBe('story');
+    expect(win.workflowBranching().target).toBe('develop');
+    out.config.format = 'code';
+    expect(win.outCfg(out).format).toBe('code'); expect(win.deliversPr()).toBe(false); expect(win.workflowBranching()).toBe(null);
+    out.config.format = 'commit';
+    expect(win.outCfg(out).format).toBe('commit'); expect(win.outCfg(out).branching).toBe(undefined); expect(win.workflowBranching()).toBe(null);
+  });
+  it('emission: a Pull Request per-story default reaches every format with no node edit, and Explain names the inheritance; a Report preset never inherits', () => {
+    resetState(); win.loadPreset('feature');
+    setDefault({ format: 'pr', branching: 'story', targetBranch: 'develop' });
+    allOut().forEach(text => expect(text).toContain('Branch plan'));
+    expect(win.genWorkflow()).toContain('### Pull Request Creation');
+    const out = win.state.nodes.find(n => n.type === 'output');
+    const row = win.explainOutputNode(out, 'prompt').find(r => r.part === 'Delivery block');
+    expect(row.reason).toContain("Format is Default, resolved by the sidebar's Default Delivery to 'pr'");
+    const nodeRows = (f) => win.explainOutputNode(out, f);
+    const byPart = (rows, p) => rows.find(r => r.part === p);
+    expect(byPart(nodeRows('prompt'), 'Default Delivery').status).toBe('skipped');   // provenance, not an emitted part: the block below is the text
+    expect(byPart(nodeRows('prompt'), 'Default Delivery').reason).toContain('follows the sidebar default (Pull Request, per story, base develop): the delivery block below is that default');
+    expect(byPart(nodeRows('prompt'), 'Deliverable').status).toBe('emitted');
+    expect(byPart(nodeRows('prompt'), 'Deliverable').probe).toContain('(format: pr)');
+    expect(win.genWorkflow()).toContain(byPart(nodeRows('prompt'), 'Deliverable').probe);
+    expect(byPart(nodeRows('subagent'), 'Deliverable').status).toBe('skipped');
+    const bpRow = byPart(nodeRows('prompt'), 'Branch plan');
+    expect(bpRow.status).toBe('emitted');
+    expect(bpRow.reason).toContain('Planner writes the plan (one row per story and repository');
+    expect(bpRow.reason).toContain('the launch repository');
+    expect(win.genWorkflow()).toContain(bpRow.probe);
+    expect(win.genSubAgents()).toContain(byPart(nodeRows('subagent'), 'Branch plan').full.split('\n')[1]);   // the unfolded row is the flavor that format emits
+    const other = win.addNode('output', 0, 0, 'Other', { format: 'pr', branchName: 'feature/x' });
+    expect(byPart(win.explainOutputNode(other, 'prompt'), 'Branch plan').reason).toContain('this node\'s Branch Name and Target Branch play no part in the delivery');
+    win.removeNode ? win.removeNode(other.id) : (win.state.nodes = win.state.nodes.filter(n => n.id !== other.id));
+    out.config.format = 'commit'; out.config.branching = 'single';
+    expect(byPart(nodeRows('prompt'), 'Default Delivery').status).toBe('skipped');
+    expect(byPart(nodeRows('prompt'), 'Default Delivery').reason).toContain("overrides the sidebar default (Pull Request, per story, base develop) with 'commit'");
+    expect(byPart(nodeRows('prompt'), 'Branches').reason).toContain('commit and push, no pull request');
+    expect(byPart(nodeRows('prompt'), 'Branch plan')).toBe(undefined);
+    out.config.format = 'default';
+    const wf = win.explainWorkflow('prompt').find(r => r.part === 'Branching');
+    expect(wf.status).toBe('emitted');
+    expect(wf.reason).toContain("inherited from the sidebar's Default Delivery");
+    const dd = win.explainWorkflow('prompt').find(r => r.part === 'Default Delivery');
+    expect(dd.status).toBe('emitted');
+    expect(dd.reason).toContain('the sidebar default is Pull Request, per story, base develop; 1 Output node follows it');
+    expect(win.EXPLAIN_SECTION_LINKS ? win.EXPLAIN_SECTION_LINKS['Default Delivery'] : 'default-model').toBe('default-model');
+    setDefault({ format: 'code' });
+    const dd0 = win.explainWorkflow('prompt').find(r => r.part === 'Default Delivery');
+    expect(dd0.status).toBe('skipped');
+    expect(dd0.reason).toContain('Leave Uncommitted emits no delivery block');
+    out.config.format = 'pr';
+    expect(win.explainWorkflow('prompt').find(r => r.part === 'Default Delivery').reason).toContain('no Output node follows the sidebar default');
+    out.config.format = 'default';
+    setDefault({ format: 'pr', branching: 'story', targetBranch: 'develop' });
+    const reportKey = presetKeys().find(k => { resetState(); win.loadPreset(k); return win.state.nodes.some(n => n.type === 'output' && n.config.format === 'report'); });
+    expect(!!reportKey).toBe(true);
+    resetState(); win.loadPreset(reportKey);
+    expect(win.deliversPr()).toBe(false);
+    allOut().forEach(text => { expect(text).toNotContain('Branch plan'); expect(text).toNotContain('Pull Request Creation'); });
+  });
+  it('the Output panel: Default shows the summary in its option label, a note that links to the sidebar, and no delivery fields; a commit-single default surfaces the per-workflow Branch Name; an override shows the fields and the adopt link; adopting lifts the delivery into the sidebar and returns the node to Default', () => {
+    resetState(); win.loadPreset('feature');
+    const out = win.state.nodes.find(n => n.type === 'output');
+    win.selectNode(out.id);
+    const opt = () => fields().querySelector('.custom-select[data-key="format"] .custom-select-option[data-value="default"]');
+    expect(opt().textContent).toBe('Default (Leave Uncommitted)');
+    expect(opt().classList.contains('selected')).toBe(true);
+    expect(fields().textContent).toContain('Follows Default Delivery in the sidebar');
+    expect(fields().querySelector('[data-key="branching"]')).toBeNull();
+    expect(fields().querySelector('input[data-key="branchName"]')).toBeNull();
+    expect(fields().querySelector('input[data-key="deliverable"]')).toBeTruthy();   // per workflow, always
+    setDefault({ format: 'commit' });
+    expect(opt().textContent).toBe('Default (Commit)');
+    expect(fields().querySelector('input[data-key="branchName"]')).toBeTruthy();
+    expect(fields().querySelector('[data-key="branching"]')).toBeNull();
+    setDefault({ format: 'pr', branching: 'story', targetBranch: 'develop' });
+    expect(opt().textContent).toBe('Default (Pull Request, per story, base develop)');
+    expect(fields().querySelector('input[data-key="branchName"]')).toBeNull();
+    setDefault({ format: 'code' });
+    fields().querySelector('.custom-select[data-key="format"] .custom-select-option[data-value="pr"]').click();
+    expect(out.config.format).toBe('pr');
+    expect(fields().querySelector('[data-key="branching"]')).toBeTruthy();
+    expect(fields().querySelector('input[data-key="branchName"]')).toBeTruthy();
+    expect(fields().textContent).toContain('Make this my default delivery');
+    fields().querySelector('.custom-select[data-key="branching"] .custom-select-option[data-value="story"]').click();
+    expect(fields().querySelector('input[data-key="branchPattern"]')).toBeTruthy();
+    win.adoptDeliveryAsDefault();
+    expect(win.state.defaultDelivery.format).toBe('pr'); expect(win.state.defaultDelivery.branching).toBe('story');
+    expect(out.config.format).toBe('default');
+    expect(fields().textContent).toNotContain('Make this my default delivery');
+    expect(opt().textContent).toBe('Default (Pull Request, per story)');
+    expect(JSON.parse(win.localStorage.getItem('awd_prefs')).defaultDelivery.branching).toBe('story');
+    // an override equal to the default offers nothing to adopt
+    out.config.format = 'pr'; out.config.branching = 'story'; win.updateConfig();
+    expect(fields().textContent).toNotContain('Make this my default delivery');
+  });
+  it('the sidebar section: the shared field builder renders the three deliveries, never a Branch Name; a select change writes the default, re-renders the dependents, and persists; typing persists on flush', () => {
+    expect(host().querySelector('.custom-select[data-key="format"]')).toBeTruthy();
+    expect(host().querySelector('.custom-select[data-key="format"] .custom-select-option[data-value="default"]')).toBeNull();
+    expect(host().querySelector('.custom-select[data-key="format"] .custom-select-option[data-value="report"]')).toBeNull();
+    expect(host().querySelector('[data-key="branching"]')).toBeNull();
+    host().querySelector('.custom-select[data-key="format"] .custom-select-option[data-value="pr"]').click();
+    expect(win.state.defaultDelivery.format).toBe('pr');
+    expect(host().querySelector('[data-key="branching"]')).toBeTruthy();
+    expect(host().querySelector('input[data-key="targetBranch"]')).toBeTruthy();
+    expect(host().querySelector('input[data-key="branchName"]')).toBeNull();
+    host().querySelector('.custom-select[data-key="branching"] .custom-select-option[data-value="chunk"]').click();
+    expect(host().querySelector('input[data-key="branchPattern"]')).toBeTruthy();
+    expect(host().querySelector('[data-key="integrationBranch"]')).toBeTruthy();
+    expect(host().querySelector('input[data-key="branchName"]')).toBeNull();
+    const tb = host().querySelector('input[data-key="targetBranch"]'); tb.value = 'develop'; tb.dispatchEvent(new win.Event('input', { bubbles: true }));
+    expect(win.state.defaultDelivery.targetBranch).toBe('develop');
+    win.flushPendingSaves();
+    const saved = JSON.parse(win.localStorage.getItem('awd_prefs')).defaultDelivery;
+    expect(saved.format).toBe('pr'); expect(saved.branching).toBe('chunk'); expect(saved.targetBranch).toBe('develop');
+    expect(win.deliverySummary(win.state.defaultDelivery)).toBe('Pull Request, per logical chunk, base develop');
+    expect(host().querySelector('.custom-select[data-key="format"] label, label[title]')).toBeTruthy();
+  });
+  it('round 1: the visible shape wins - a dependent typed under Pull Request stays stored but never leaks once the Format is Leave Uncommitted; a typed base in the summary is escaped; Explain reads the inherited integration choice', () => {
+    resetState(); win.loadPreset('feature');
+    const out = win.state.nodes.find(n => n.type === 'output');
+    setDefault({ format: 'pr', branching: 'story', targetBranch: 'develop', integrationBranch: 'epic' });
+    expect(win.explainOutputNode(out, 'prompt').find(r => r.part === 'Branches').reason).toContain('epic');
+    win.state.defaultDelivery.format = 'code'; win.renderDefaultDelivery(); win.updateConfig();   // the stored branching/base stay
+    expect(win.state.defaultDelivery.branching).toBe('story');
+    expect(win.outCfg(out).branching).toBe('single'); expect(win.outCfg(out).targetBranch).toBe('');
+    expect(win.workflowBranching()).toBe(null);
+    expect(win.validateWorkflow().some(w => /creates no branches/.test(w.msg))).toBe(false);
+    expect(win.deliverySummary(win.state.defaultDelivery)).toBe('Leave Uncommitted');
+    out.config.format = 'code'; out.config.targetBranch = 'develop';                                 // a node that reads like the default offers nothing
+    expect(win.deliveryEquals(out.config, win.state.defaultDelivery)).toBe(true);
+    setDefault({ format: 'pr', branching: 'story', targetBranch: '<b>dev</b>' });
+    out.config.format = 'default'; win.selectNode(out.id);
+    const opt = fields().querySelector('.custom-select[data-key="format"] .custom-select-option[data-value="default"]');
+    expect(opt.innerHTML).toContain('&lt;b&gt;dev&lt;/b&gt;'); expect(opt.querySelector('b')).toBeNull();
+  });
+  it('round 1: a portable copy resolves Default to the concrete delivery, the autosave keeps Default; the single-branch warning ignores an inherited base; a pinned switch section counts as held only against the shared new-workflow defaults', () => {
+    resetState(); win.loadPreset('feature');
+    const out = win.state.nodes.find(n => n.type === 'output');
+    setDefault({ format: 'pr', branching: 'story', targetBranch: 'develop' });
+    expect(win.serializeWorkflow().canvas.nodes.find(n => n.type === 'output').config.format).toBe('default');
+    const portable = win.serializeWorkflow({ portable: true }).canvas.nodes.find(n => n.type === 'output').config;
+    expect(portable.format).toBe('pr'); expect(portable.branching).toBe('story'); expect(portable.targetBranch).toBe('develop');
+    expect(win.buildOpenSpecSchema().schemaYaml).toContain('"format":"pr"');    // the awd:meta fence in the schema is portable
+    expect(out.config.format).toBe('default');                                  // the live node is untouched
+    setDefault({ format: 'pr', branching: 'single', targetBranch: 'develop' });
+    const other = win.addNode('output', 0, 0, 'Other', { format: 'pr', branching: 'story' });
+    expect(win.validateWorkflow().some(w => /names a single branch while/.test(w.msg))).toBe(false);   // the Default node names nothing itself
+    out.config.branchName = 'feature/x';
+    expect(win.validateWorkflow().some(w => /names a single branch while/.test(w.msg))).toBe(true);
+    win.state.pins.memory = true; win.state.pins.mcp = true; win.state.pins.gates = true;
+    setDefault({ format: 'code' });   // Defaults is pinned too: back to the app default so only the switches count
+    Object.assign(win.state, win.NEW_WORKFLOW_SWITCHES);
+    expect(win.pinnedSectionsWithContent().length).toBe(0);
+    win.state.mcpDatadog = !win.NEW_WORKFLOW_SWITCHES.mcpDatadog;
+    expect(win.pinnedSectionsWithContent()).toEqual(['MCP integrations']);
+    win.state.mcpDatadog = win.NEW_WORKFLOW_SWITCHES.mcpDatadog; win.state.memoryEnabled = false;
+    expect(win.pinnedSectionsWithContent()).toEqual(['Memory and durable record']);
+    win.state.memoryEnabled = true; win.state.mcpGithub = true;
+    expect(win.pinnedSectionsWithContent()).toEqual(['MCP integrations']);
+    win.state.mcpGithub = false; win.state.openSpecArtifacts = true;
+    expect(win.pinnedSectionsWithContent()).toEqual(['Memory and durable record']);
+    win.state.openSpecArtifacts = false;
+  });
+  it('round 4: a sidebar default change refreshes validation; an output node saved without a format loads as Leave Uncommitted and the panel agrees', () => {
+    resetState(); win.loadPreset('feature');
+    const out = win.state.nodes.find(n => n.type === 'output');
+    win.addNode('output', 0, 0, 'Second', { format: 'commit', branching: 'story' });
+    win.render();
+    const badgeHas = (re) => win.validateWorkflow().some(w => re.test(w.msg));
+    const badge = win.document.getElementById('validationInfo');
+    const before = win.validateWorkflow().length;
+    expect(badgeHas(/different formats/)).toBe(false);
+    host().querySelector('.custom-select[data-key="format"] .custom-select-option[data-value="pr"]').click();
+    host().querySelector('.custom-select[data-key="branching"] .custom-select-option[data-value="story"]').click();
+    expect(badgeHas(/different formats/)).toBe(true);
+    expect(win.validateWorkflow().length).toBeGreaterThan(before);
+    expect(badge.textContent).toBe('\u26A0 ' + win.validateWorkflow().length);   // the badge followed the sidebar change with no other action
+    const data = win.serializeWorkflow(); data.canvas.nodes.forEach(n => { if (n.type === 'output') delete n.config.format; });
+    expect(win.deserializeWorkflow(data)).toBe(true);
+    win.state.nodes.filter(n => n.type === 'output').forEach(n => expect(n.config.format).toBe('code'));
+    const o2 = win.state.nodes.find(n => n.type === 'output'); win.selectNode(o2.id);
+    expect(fields().querySelector('.custom-select[data-key="format"] .custom-select-trigger').textContent).toBe('Leave Uncommitted');
+    expect(win.deliversPr()).toBe(false);
+  });
+  it('the per-repository branch reads as the start branch: placeholder and tooltip on the row, the Add Repository tooltip, the section tooltip, the Explain Repositories row; empty means the tree as it is', () => {
+    win.state.repositories = [{ path: '/tmp/svc', branch: 'release/2.3' }]; win.renderRepoRows();
+    const inp = win.document.querySelectorAll('#repoList .repo-row input')[1];
+    expect(inp.getAttribute('placeholder')).toBe('start branch');
+    expect(inp.getAttribute('title')).toContain('hotfix');
+    expect(inp.getAttribute('title')).toContain('never a commit');
+    expect(inp.getAttribute('title')).toContain('no checkout, no pull, no fallback to a default branch');   // the empty case is the shipped behavior, said plainly
+    expect(win.document.querySelector('button[onclick="addRepoRow()"]').getAttribute('title')).toContain('start branch');
+    expect(win.document.querySelector('.sidebar-section[data-collapse-id="repositories"] h3').getAttribute('title')).toContain('hotfix off release/2.3');
+    win.loadPreset('feature');
+    expect(win.genWorkflow()).toContain('- Branch: `release/2.3`');
+    expect(win.explainWorkflow('prompt').find(r => r.part === 'Repositories').reason).toContain('/tmp/svc @ release/2.3 (start branch: checked out and pulled first)');
+    setDefault({ format: 'pr', branching: 'story' });
+    expect(win.explainWorkflow('prompt').find(r => r.part === 'Repositories').reason).toContain('(start branch, the base under the branch plan)');
+    setDefault({ format: 'code' });
+    win.state.repositories = [{ path: '/tmp/svc', branch: '' }]; win.renderRepoRows();
+    expect(win.genWorkflow()).toContain('2. Check out the specified branch (if provided) and pull latest');   // no branch: the tree as it is
+    expect(win.genWorkflow()).toNotContain('- Branch:');
+    win.state.repositories = []; win.renderRepoRows();
+  });
+  it('an empty Target Branch is the repository\'s default branch, detected at run time, never an assumed main; a repository with a start branch delivers back to it; an explicit target is byte-identical', () => {
+    resetState(); win.loadPreset('feature');
+    const out = win.state.nodes.find(n => n.type === 'output');
+    out.config.format = 'pr';
+    let w = win.genWorkflow();
+    expect(w).toContain("**Target branch** (PR merges into): the repository's default branch (detect it: `git symbolic-ref --short refs/remotes/origin/HEAD`");
+    expect(w).toContain('never assume `main`');
+    expect(w).toContain('gh pr create --base <target branch>');
+    expect((w.match(/`main`/g) || []).length).toBe((w.match(/never assume `main`/g) || []).length);   // main appears only in the warning not to assume it
+    expect(w).toNotContain('for every repository without its own start branch');
+    expect(win.explainOutputNode(out, 'prompt').find(r => r.part === 'Branches').reason).toContain("target: the repository's default branch, detected at run time");
+    expect(win.openSpecOutputLine(out)).toContain("targeting the repository's default branch.");
+    win.state.repositories = [{ path: '/tmp/svc', branch: 'release/2.3' }, { path: '/tmp/lib', branch: '' }]; win.renderRepoRows();
+    w = win.genWorkflow();
+    expect(w).toContain("the repository's default branch (detect it:");
+    expect(w).toContain('If on a repository\'s start branch from the Repositories list (you are, after the Repositories step) \u2192 create the feature branch from it: `git checkout -b feature/<ticket-id>-short-description <start-branch>`; the pull request targets that start branch; never commit on the start branch itself');
+    expect(w).toContain('If on the repository\'s default branch (what `origin/HEAD` names: main, develop, master, or another)');
+    expect(w).toNotContain('If on main/develop/master');
+    expect(w).toContain('for every repository without its own start branch in the Repositories list; a repository with a start branch targets that branch');
+    out.config.targetBranch = 'develop';
+    w = win.genWorkflow();
+    expect(w).toContain('**Target branch** (PR merges into): `develop` for every repository without its own start branch');
+    expect(w).toContain("gh pr create --base <that repository's start branch, else develop>");
+    expect(win.openSpecOutputLine(out)).toContain("targeting each repository's start branch where the Repositories list sets one, else develop.");
+    win.state.repositories = []; win.renderRepoRows();
+    w = win.genWorkflow();
+    expect(w).toContain('**Target branch** (PR merges into): `develop`');                       // the shipped line, byte for byte
+    expect(w).toContain('gh pr create --base develop');
+    expect(w).toNotContain('without its own start branch');
+    expect(w).toNotContain('start branch from the Repositories list');   // no start branch: the clause is absent
+    out.config.format = 'commit'; win.state.repositories = [{ path: '/tmp/svc', branch: 'release/2.3' }]; win.renderRepoRows();
+    expect(win.genWorkflow()).toContain('create the feature branch from it: `git checkout -b feature/<ticket-id>-short-description <start-branch>`; never commit on the start branch itself');
+    win.state.repositories = []; win.renderRepoRows(); out.config.format = 'pr';
+    out.config.branching = 'story'; out.config.targetBranch = '';
+    w = win.genWorkflow();
+    expect(w).toContain("**Base branch**: the repository's default branch (detect it:");
+    expect(w).toContain("every story branch forks from the repository's default branch");
+    out.config.targetBranch = 'develop';
+    expect(win.genWorkflow()).toContain('**Base branch**: `develop`');
+  });
+  it('prefs: restorePrefs restores the default and the pins and normalizes bad values; New Workflow leaves both alone', () => {
+    win.localStorage.setItem('awd_prefs', JSON.stringify({ defaultDelivery: { format: 'commit', branching: 'bogus', integrationBranch: 'nope', targetBranch: 7 }, pins: { repos: true, gates: 'yes' } }));
+    win.restorePrefs(); win.renderDefaultDelivery(); win.renderPins();
+    expect(JSON.stringify(win.state.defaultDelivery)).toBe(JSON.stringify({ format: 'commit', branching: 'single', targetBranch: '', branchPattern: '', integrationBranch: 'auto' }));
+    expect(win.state.pins.repos).toBe(true); expect(win.state.pins.gates).toBe(false); expect(win.state.pins.repoPaths).toBe(true);
+    expect(pinBtn('repos').classList.contains('pinned')).toBe(true);
+    win.loadPreset('feature'); win.clearCanvas(true);
+    expect(win.state.defaultDelivery.format).toBe('commit'); expect(win.state.pins.repos).toBe(true);
+    expect(win.state.nodes.length).toBe(0);
+  });
+  it('pins: seven glyphs, Defaults and Repo Context Paths pinned by default and nothing else; a click toggles state, class, aria, tooltip, and the stored prefs', () => {
+    ['defaults', 'repos', 'repoPaths', 'appUi', 'mcp', 'memory', 'gates'].forEach(k => expect(pinBtn(k)).toBeTruthy());
+    expect(pinBtn('defaults').classList.contains('pinned')).toBe(true);
+    expect(pinBtn('repoPaths').classList.contains('pinned')).toBe(true);
+    expect(pinBtn('repoPaths').getAttribute('aria-pressed')).toBe('true');
+    ['repos', 'appUi', 'mcp', 'memory', 'gates'].forEach(k => expect(pinBtn(k).classList.contains('pinned')).toBe(false));
+    expect(pinBtn('repos').getAttribute('title')).toContain('Pin Repositories so it survives New Workflow');
+    pinBtn('repos').click();
+    expect(win.state.pins.repos).toBe(true);
+    expect(pinBtn('repos').classList.contains('pinned')).toBe(true);
+    expect(pinBtn('repos').getAttribute('aria-pressed')).toBe('true');
+    expect(pinBtn('repos').getAttribute('title')).toContain('Pinned: Repositories survives New Workflow');
+    expect(JSON.parse(win.localStorage.getItem('awd_prefs')).pins.repos).toBe(true);
+    pinBtn('repos').click();
+    expect(win.state.pins.repos).toBe(false);
+    expect(JSON.parse(win.localStorage.getItem('awd_prefs')).pins.repos).toBe(false);
+    // a pin click never folds its section (the collapse header skips buttons)
+    const sec = win.document.querySelector('.sidebar-section[data-collapse-id="app-under-test"]');
+    win.expandAllSections();
+    pinBtn('appUi').click();
+    expect(sec.classList.contains('collapsed')).toBe(false);
+    win.state.pins.appUi = false; win.renderPins();
+  });
+  it('New Workflow: unpinned sections reset exactly as shipped, pinned sections keep their contents, an unpinned Repo Context Paths now clears', () => {
+    win.loadPreset('feature'); fillShop();
+    win.clearCanvas(true);
+    expect(win.state.nodes.length).toBe(0);
+    expect(win.state.repositories.length).toBe(0);
+    expect(win.document.getElementById('appSourcePath').value).toBe('');
+    expect(win.state.approvePlan).toBe(false); expect(win.document.getElementById('approvePlanToggle').checked).toBe(false);
+    expect(win.state.mcpDatadog).toBe(false);
+    expect(win.state.mcpBrowser).toBe(false); expect(win.document.getElementById('mcpBrowserToggle').checked).toBe(false);   // every switch in the section follows its pin
+    expect(win.state.memoryEnabled).toBe(true);
+    expect(win.state.openSpecArtifacts).toBe(false); expect(win.document.getElementById('openSpecArtifactsToggle').checked).toBe(false);
+    expect(JSON.stringify(win.state.rulesPaths)).toBe('[".claude/rules"]');   // pinned by default: kept
+    win.state.pins = { repos: true, repoPaths: true, appUi: true, mcp: true, memory: true, gates: true }; win.renderPins();
+    win.loadPreset('feature'); fillShop();
+    win.clearCanvas(true);
+    expect(win.state.nodes.length).toBe(0);
+    expect(win.state.repositories.length).toBe(1);
+    expect(win.document.getElementById('appSourcePath').value).toBe('/tmp/app');
+    expect(win.state.approvePlan).toBe(true); expect(win.document.getElementById('approvePlanToggle').checked).toBe(true);
+    expect(win.state.mcpDatadog).toBe(true);
+    expect(win.state.mcpBrowser).toBe(true);
+    expect(win.state.memoryEnabled).toBe(false);
+    expect(win.state.rulesPaths.length).toBe(1);
+    expect(win.state.artifactPath).toBe('');   // the record path belongs to one workflow, pinned or not
+    win.state.pins.repoPaths = false;
+    win.clearCanvas(true);
+    expect(win.state.rulesPaths.length).toBe(0);
+    expect(win.document.getElementById('rulesPathChips').textContent).toNotContain('.claude/rules');
+    win.state.pins.repoPaths = true;
+  });
+  it('New Workflow and the Defaults pin: pinned (shipped) keeps model, effort, and delivery; unpinned resets all three to the app defaults; the dialog never lists them', () => {
+    const appModel = win.state.defaultModel;
+    const setShop = () => { win.setDefaultModel('sonnet-5'); win.setEffort('high'); setDefault({ format: 'pr', branching: 'story' }); };
+    expect(win.pinnedSectionsWithContent()).toEqual([]);
+    setShop();
+    expect(win.pinnedSectionsWithContent()).toEqual([]);   // a changed preference is not held content
+    win.loadPreset('feature'); win.clearCanvas(true);
+    expect(win.state.defaultModel).toBe('sonnet-5'); expect(win.state.effort).toBe('high'); expect(win.state.defaultDelivery.format).toBe('pr');
+    win.state.pins.defaults = false; win.renderPins();
+    win.loadPreset('feature'); win.clearCanvas(true);
+    expect(win.state.defaultModel).toBe(appModel); expect(win.state.effort).toBe(''); expect(win.state.defaultDelivery.format).toBe('code');
+    expect(win.document.getElementById('defaultModelTrigger').textContent).toBe(win.document.querySelector('#defaultModelOptions .custom-select-option[data-value="' + appModel + '"]').textContent);
+    expect(win.document.getElementById('effortTrigger').textContent).toBe('Inherit (runner default)');
+    expect(host().querySelector('[data-key="branching"]')).toBeNull();
+    win.state.pins.defaults = true;
+  });
+  it('round 2: the boot state reads the shipped pins and the blank default from their one source, so prefs stored before pins existed boot pinned; Explain prints the inherited integration choice; adopting leaves the undo stack alone', () => {
+    const src = win.document.documentElement.outerHTML;
+    expect(src).toContain('pins: defaultPins()');
+    expect(src).toContain('defaultDelivery: blankDelivery()');
+    win.localStorage.setItem('awd_prefs', JSON.stringify({ defaultModel: 'sonnet-5' }));   // an existing director: no pins key
+    win.state.pins = win.defaultPins(); win.restorePrefs(); win.renderPins();
+    expect(win.isPinned('defaults')).toBe(true); expect(win.isPinned('repoPaths')).toBe(true); expect(win.isPinned('repos')).toBe(false);
+    win.loadPreset('feature'); win.clearCanvas(true);
+    expect(win.state.defaultModel).toBe('sonnet-5');
+    resetState(); win.loadPreset('feature');
+    const out = win.state.nodes.find(n => n.type === 'output');
+    setDefault({ format: 'pr', branching: 'story', integrationBranch: 'epic' });
+    expect(win.explainOutputNode(out, 'prompt').find(r => r.part === 'Branches').reason).toContain('integration branch: epic');
+    setDefault({ format: 'code' });
+    out.config.format = 'pr'; out.config.branching = 'story'; win.selectNode(out.id);
+    const depth = win._undoStack.length;
+    win.adoptDeliveryAsDefault();
+    expect(out.config.format).toBe('default'); expect(win.state.defaultDelivery.branching).toBe('story');
+    expect(win._undoStack.length).toBe(depth);
+  });
+  it('the New Workflow dialog: plain when nothing pinned is held; names the kept sections when one is; never opens on an empty canvas; one action, the shipped confirm contract', async () => {
+    const saved = win.__autoConfirm; delete win.__autoConfirm;
+    const overlay = win.document.getElementById('confirmOverlay'), msg = win.document.getElementById('confirmMessage');
+    const tick = () => new Promise(r => setTimeout(r, 0));
+    try {
+      resetState();
+      win.state.rulesPaths = ['.claude/rules']; win.renderRulesRows();   // Repo Context Paths: pinned by default
+      win.clearCanvas();
+      expect(overlay.classList.contains('show')).toBe(false);          // an empty canvas never asks
+      win.loadPreset('feature');
+      win.clearCanvas();
+      expect(overlay.classList.contains('show')).toBe(true);
+      expect(msg.textContent).toContain('Keeps (pinned): Repo Context Paths.');
+      expect(win.document.getElementById('confirmOkBtn').textContent).toBe('Clear');
+      expect(win.document.querySelectorAll('#confirmOverlay button').length).toBe(3);   // close, Cancel, Clear: no second action
+      win.document.getElementById('confirmCancelBtn').click(); await tick();
+      expect(win.state.nodes.length).toBeGreaterThan(0);
+      win.state.pins.repos = true; win.state.repositories = [{ path: '/tmp/a', branch: '' }]; win.renderRepoRows();
+      win.setDefaultModel('sonnet-5');                                   // a changed preference is never listed
+      win.clearCanvas();
+      expect(msg.textContent).toContain('Keeps (pinned): Repositories, Repo Context Paths.');
+      win.document.getElementById('confirmOkBtn').click(); await tick();
+      expect(win.state.nodes.length).toBe(0); expect(win.state.rulesPaths.length).toBe(1); expect(win.state.repositories.length).toBe(1);
+      win.state.rulesPaths = []; win.renderRulesRows(); win.state.repositories = []; win.renderRepoRows(); win.state.pins.repos = false;
+      win.loadPreset('feature');
+      win.clearCanvas();
+      expect(msg.textContent).toNotContain('Keeps');
+      win.document.getElementById('confirmCancelBtn').click(); await tick();
+    } finally { win.__autoConfirm = saved; }
+  });
+});
+
 describe('Branching strategy (Output node)', () => {
   const GENS = { prompt: 'genWorkflow', subagent: 'genSubAgents', teams: 'genAgentTeams', sdk: 'genAgentSDK', claude: 'genClaudePrompt' };
   const allOut = () => Object.keys(GENS).map(k => win[GENS[k]]());
@@ -2150,7 +2579,7 @@ describe('Branching strategy (Output node)', () => {
     expect(w).toContain('The director set a pattern that overrides this everywhere: `feat/{ticket}-{slug}`');
     expect(w).toContain('`feature/{ticket}-{slug}` gives `feature/PROJ-12345-some-story-title`');   // the slug follows the separator beside it; the key is whole
     expect(w).toContain('never repeat the project prefix in the pattern');
-    expect(w).toContain('one epic branch per repository, forked from `main`');
+    expect(w).toContain('one epic branch per repository, forked from the repository\'s default branch');   // an empty base is the detected default branch, never an assumed main
     expect(w).toContain('the Repositories list in this prompt (each with its path, and a base branch where one is set)');
     expect(w).toContain('a repository\'s branch in the Repositories list is that repository\'s base');
     expect(w).toContain('in your OWN memory file `@planner.md`');                          // memory on: the owner's own file, b: lines, never edited; a handoff points builders there
@@ -2164,7 +2593,7 @@ describe('Branching strategy (Output node)', () => {
     win.state.memoryEnabled = false;
     featureWith({ format: 'pr', branching: 'story', integrationBranch: 'none' });
     const w2 = win.genWorkflow();
-    expect(w2).toContain('none - every story branch forks from `main` and its PR targets it');
+    expect(w2).toContain('none - every story branch forks from the repository\'s default branch and its PR targets it');
     expect(w2).toNotContain('open the final PR from it to the base');
     expect(w2).toContain('6. If PR creation fails');                                        // no integration step: the fallback keeps its number
   });
@@ -4424,7 +4853,7 @@ describe('Auto Workflow fuzz (property-based)', () => {
       expect(conns.some(c => c.to === a.id)).toBe(true);                       // no orphan agent
       expect((win.getEffectivePrompt(a) || '').length).toBeGreaterThan(0);     // never a blank prompt
     });
-    expect(['code', 'commit', 'pr', 'report', 'docs'].includes(outputs[0].config.format)).toBe(true);
+    expect(['default', 'code', 'commit', 'pr', 'report', 'docs'].includes(outputs[0].config.format)).toBe(true);   // code shapes start on Default (the sidebar's Default Delivery)
   }
 
   const INTENTS = [
@@ -4562,7 +4991,7 @@ describe('Auto Workflow fuzz (property-based)', () => {
     it('bug-report structure wins over incidental UI words -> bugfix, not UI', () => {
       const ns = run('bugReport'); assertStructural(ns, win.state.connections);
       expect(shapeOf(ns)).toBe('bugfix');
-      expect(ns.find(n => n.type === 'output').config.format).toBe('code');
+      expect(ns.find(n => n.type === 'output').config.format).toBe('default');   // a code shape follows Default Delivery
     });
     it('infra provisioning -> DevOps (provision vocab wins; "database"/"service" repetition capped)', () => {
       const ns = run('infra'); assertStructural(ns, win.state.connections);
@@ -4624,7 +5053,7 @@ describe('Auto Workflow fuzz (property-based)', () => {
       assertStructural(ns, win.state.connections);
       const labels = ns.filter(n => n.type === 'agent').map(n => n.label);
       expect(labels.some(l => /DevOps Engineer|Migration Engineer|Synthesizer|Quality Reviewer/.test(l))).toBe(false);
-      expect(ns.find(n => n.type === 'output').config.format).toBe('code');
+      expect(ns.find(n => n.type === 'output').config.format).toBe('default');   // a code shape follows Default Delivery
     });
   });
 
@@ -16808,7 +17237,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.MONITOR_IDLE_MS = MONITOR_IDLE_MS; window.TELEMETRY_DEFAULT_SERVICE = TELEMETRY_DEFAULT_SERVICE; window.TELEMETRY_EVENTS = TELEMETRY_EVENTS; window.DEPTH_LEVELS = DEPTH_LEVELS; window.DEPTH_KEYWORD = DEPTH_KEYWORD; window.nodeDepth = nodeDepth; window.workflowHasDepth = workflowHasDepth; window.depthStepNote = depthStepNote; window.depthHint = depthHint; window.depthNodes = depthNodes; window.depthOrchestratorNote = depthOrchestratorNote; window.approvePlanHint = approvePlanHint; window.approvePlanStepHint = approvePlanStepHint; window.approvalCheckpoint = approvalCheckpoint; window.APPROVAL_PLAN_OWNER_ROLES = APPROVAL_PLAN_OWNER_ROLES; window.graphShapeSig = graphShapeSig; window.APPROVAL_BUILD_ROLES = APPROVAL_BUILD_ROLES; window.toggleApprovePlan = toggleApprovePlan; window.VERIFIER_HONESTY = VERIFIER_HONESTY; window.TASK_SIGNAL = TASK_SIGNAL; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN; window.STORY_PLACEHOLDERS = STORY_PLACEHOLDERS; window.AMEND_SCOPE_MARKERS = AMEND_SCOPE_MARKERS; window.BRANCHING_STRATEGIES = BRANCHING_STRATEGIES; window.INTEGRATION_CHOICES = INTEGRATION_CHOICES; window.cancelPendingSaves = function () { clearTimeout(_prefTimer); clearTimeout(_autoSaveTimer); _prefsDirty = false; _autoSaveDirty = false; }; window.flushPendingSaves = flushPendingSaves; window.savePrefsDebounced = savePrefsDebounced;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.MONITOR_IDLE_MS = MONITOR_IDLE_MS; window.TELEMETRY_DEFAULT_SERVICE = TELEMETRY_DEFAULT_SERVICE; window.TELEMETRY_EVENTS = TELEMETRY_EVENTS; window.DEPTH_LEVELS = DEPTH_LEVELS; window.DEPTH_KEYWORD = DEPTH_KEYWORD; window.nodeDepth = nodeDepth; window.workflowHasDepth = workflowHasDepth; window.depthStepNote = depthStepNote; window.depthHint = depthHint; window.depthNodes = depthNodes; window.depthOrchestratorNote = depthOrchestratorNote; window.approvePlanHint = approvePlanHint; window.approvePlanStepHint = approvePlanStepHint; window.approvalCheckpoint = approvalCheckpoint; window.APPROVAL_PLAN_OWNER_ROLES = APPROVAL_PLAN_OWNER_ROLES; window.graphShapeSig = graphShapeSig; window.APPROVAL_BUILD_ROLES = APPROVAL_BUILD_ROLES; window.toggleApprovePlan = toggleApprovePlan; window.VERIFIER_HONESTY = VERIFIER_HONESTY; window.TASK_SIGNAL = TASK_SIGNAL; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN; window.STORY_PLACEHOLDERS = STORY_PLACEHOLDERS; window.AMEND_SCOPE_MARKERS = AMEND_SCOPE_MARKERS; window.BRANCHING_STRATEGIES = BRANCHING_STRATEGIES; window.INTEGRATION_CHOICES = INTEGRATION_CHOICES; window.NEW_WORKFLOW_SWITCHES = NEW_WORKFLOW_SWITCHES; window._undoStack = _undoStack; window.cancelPendingSaves = function () { clearTimeout(_prefTimer); clearTimeout(_autoSaveTimer); _prefsDirty = false; _autoSaveDirty = false; }; window.flushPendingSaves = flushPendingSaves; window.savePrefsDebounced = savePrefsDebounced;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
