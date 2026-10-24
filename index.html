@@ -61,6 +61,12 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 .section-heading h3{margin-bottom:0}
 /* Collapsible sidebar sections (decorated at boot; expanded renders exactly as before) */
 .collapse-header{cursor:pointer;user-select:none}
+/* Section pins: a pinned sidebar section survives New Workflow (pinned = accent, upright). */
+.pin-btn{float:right;background:none;border:0;padding:0 0 0 6px;margin:0;cursor:pointer;color:var(--text3);opacity:.5;line-height:0;transform:rotate(45deg);transition:transform .15s,opacity .15s,color .15s}
+.pin-btn svg{width:11px;height:11px;display:block}
+.pin-btn:hover{opacity:1;color:var(--text2)}
+.pin-btn.pinned{opacity:1;color:var(--accent);transform:none}
+.sub-head{font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px}
 .collapse-chevron{display:inline-block;font-size:9px;color:var(--text3);margin-right:6px;
   transition:transform .15s;vertical-align:middle}
 .collapse-chevron::before{content:'\25BE'}
@@ -198,6 +204,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid
 /* Node Config */
 .config-panel{display:none;flex-direction:column;gap:10px}
 .config-panel.visible{display:flex}
+.config-note{font-size:10px;color:var(--text3);margin:-2px 0 8px;line-height:1.5}
+.config-note a{color:var(--accent);text-decoration:none}
+.config-note a:hover{text-decoration:underline}
+#defaultDeliveryFields .config-field{margin-top:8px}
 .config-field label{display:block;font-size:11px;color:var(--text2);margin-bottom:4px;
   text-transform:uppercase;letter-spacing:.5px}
 .config-field input,.config-field select,.config-field textarea{width:100%;
@@ -571,7 +581,8 @@ svg.canvas{width:100%;height:100%;display:block}
     <input type="text" id="workflowName" class="story-input" style="min-height:auto;padding:8px 10px;font-family:var(--font);font-weight:600;margin-bottom:8px" placeholder="optional - auto-named from your requirements" oninput="updateMemoryPath();updatePrompt();autoSaveWorkflow()"/>
     <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Auto Workflow to auto-build a workflow from keywords." oninput="validateStoryInput(true)"></textarea>
     <div id="storyHint" class="input-hint"></div>
-    <label class="run-gate-toggle" style="margin-top:8px" title="The generated workflow opens with one focused round of clarifying questions before any step runs, and folds the answers into the plan and the durable record. Built into the prompt itself - distinct from Generate Refine Prompt, which is a separate interview you run first. Non-interactive runs record the open questions as assumptions and proceed.">
+    <div class="sub-head" style="margin-top:10px" title="The two run gates: a clarifying round before any step runs, and a pause at the plan before the first step that changes files. Both are switches you set per workflow unless you pin them.">Run gates<button type="button" class="pin-btn" data-pin="gates" aria-pressed="false"></button></div>
+    <label class="run-gate-toggle" style="margin-top:4px" title="The generated workflow opens with one focused round of clarifying questions before any step runs, and folds the answers into the plan and the durable record. Built into the prompt itself - distinct from Generate Refine Prompt, which is a separate interview you run first. Non-interactive runs record the open questions as assumptions and proceed.">
       <input type="checkbox" id="clarifyFirstToggle" onchange="toggleClarifyFirst()"/>
       <span style="font-size:12px">Clarify requirements first</span>
     </label>
@@ -609,25 +620,29 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section" data-collapse-id="default-model">
-    <h3 title="The model new nodes, presets, and generated workflows start on. Unnumbered names (Opus, Sonnet) float to the newest of their family; numbered ones (Opus 4.8) pin a legacy model. Override per node any time.">Default Model</h3>
+    <h3 title="What new nodes, presets, and generated workflows start from: the model, the effort, and the delivery. Override any of them on a node for one workflow. Pinned by default, so they survive New Workflow; unpinned, each new workflow starts from the app defaults (Opus, Inherit, Leave Uncommitted).">Defaults<button type="button" class="pin-btn" data-pin="defaults" aria-pressed="false"></button></h3>
+    <div class="sub-head" title="The model new nodes, presets, and generated workflows start on. Unnumbered names (Opus, Sonnet) float to the newest of their family; numbered ones (Opus 4.8) pin a legacy model. Override per node any time.">Model</div>
     <div class="custom-select" id="defaultModelSelect">
       <div class="custom-select-trigger" id="defaultModelTrigger">Opus</div>
       <div class="custom-select-options" id="defaultModelOptions"></div>
     </div>
 
-    <h3 style="margin-top:14px" title="Reasoning depth and token spend new nodes start with. Override any step in Node Configuration. Leave on Inherit to use whatever the runner defaults to (high on the API, xhigh in Claude Code).">Default Effort</h3>
+    <div class="sub-head" style="margin-top:14px" title="Reasoning depth and token spend new nodes start with. Override any step in Node Configuration. Leave on Inherit to use whatever the runner defaults to (high on the API, xhigh in Claude Code).">Effort</div>
     <div class="custom-select" id="effortSelect">
       <div class="custom-select-trigger" id="effortTrigger">Inherit (runner default)</div>
       <div class="custom-select-options" id="effortOptions"></div>
     </div>
+
+    <div class="sub-head" style="margin-top:14px" title="What a code Output node delivers while its Format is left on Default: Leave Uncommitted, Commit, or Pull Request, with the branching strategy, base branch, pattern, and integration choice. Set it once and every new workflow and preset starts there; an Output node overrides it for one workflow by picking its own Format. Report and Documentation are chosen on the node.">Delivery</div>
+    <div id="defaultDeliveryFields"></div>
   </div>
 
   <div class="sidebar-section" data-collapse-id="repositories">
-    <h3 title="For work spanning repositories, or repos with binding rules: list every repo the workflow touches (per-repo grounding, records, and briefs) and the paths agents must read and honor. Leave the list empty when you launch inside the only repo you touch; list repos when work spans more than one, or to pin a branch (agents check it out and pull latest first).">Multi-Repo &amp; Context Paths</h3>
+    <h3 title="For work spanning repositories, or repos with binding rules: list every repo the workflow touches (per-repo grounding, records, and briefs) and the paths agents must read and honor. Leave the list empty when you launch inside the only repo you touch; list repos when work spans more than one, or to pin the start branch: agents check it out and pull first, so a hotfix off release/2.3 begins there (under a branching strategy it is that repository&#39;s base)."><button type="button" class="pin-btn" data-pin="repos" aria-pressed="false"></button>Multi-Repo &amp; Context Paths</h3>
     <div id="repoList"></div>
-    <button class="btn sm" onclick="addRepoRow()" title="Add a repository this workflow touches (path + branch). Multi-repo workflows get per-repo grounding, records, and briefs.">+ Add Repository</button>
+    <button class="btn sm" onclick="addRepoRow()" title="Add a repository this workflow touches: its path and, optionally, the start branch agents check out first (a release or hotfix branch; the base under a branching strategy). Multi-repo workflows get per-repo grounding, records, and briefs.">+ Add Repository</button>
     <div style="height:1px;background:var(--border);opacity:.5;margin:14px 0 10px"></div>
-    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px" title="Extra paths agents read and honor, relative to each listed repo. CLAUDE.md needs no entry - it auto-loads in the launch repo and the generated prompt has agents read the other repos' copies. These paths are sticky: they carry across workflows and survive New Workflow.">Repo Context Paths</div>
+    <div class="sub-head" title="Extra paths agents read and honor, relative to each listed repo. CLAUDE.md needs no entry - it auto-loads in the launch repo and the generated prompt has agents read the other repos' copies. Pinned by default: they survive New Workflow until you unpin them.">Repo Context Paths<button type="button" class="pin-btn" data-pin="repoPaths" aria-pressed="false"></button></div>
 
     <div style="margin-bottom:10px">
       <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:2px" title="Binding constraints every agent must follow while building - coding standards, architecture rules, a team constitution. Emitted as must-honor context to every step that touches the repo.">Rules / constitution paths</div>
@@ -819,8 +834,8 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section" id="appSourceSection" data-collapse-id="app-under-test">
-    <h3 title="For UI work and test automation: point agents at the app being explored and capture styling preferences - both optional, both consumed only by the steps that need them.">App &amp; UI Context <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
-    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px" title="The local path to an app agents explore: they map its structure, screens, navigation, and (for UI test work) element selectors - with a branch pin if you set one, and the Access selector keeping the repo read-only unless you deliberately grant writes. Used by App Explorer steps (and the Test Automation preset).">App Under Test</div>
+    <h3 title="For UI work and test automation: point agents at the app being explored and capture styling preferences - both optional, both consumed only by the steps that need them."><button type="button" class="pin-btn" data-pin="appUi" aria-pressed="false"></button>App &amp; UI Context <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
+    <div class="sub-head" title="The local path to an app agents explore: they map its structure, screens, navigation, and (for UI test work) element selectors - with a branch pin if you set one, and the Access selector keeping the repo read-only unless you deliberately grant writes. Used by App Explorer steps (and the Test Automation preset).">App Under Test</div>
     <input type="text" id="appSourcePath" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px" placeholder="/path/to/app/repo" oninput="updatePrompt();savePrefsDebounced()"/>
     <input type="text" id="appSourceBranch" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px" placeholder="Branch (optional, e.g. feature/PROJ-123)" oninput="updatePrompt();savePrefsDebounced()"/>
     <select id="appSourceAccess" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px;width:100%" onchange="updatePrompt();savePrefsDebounced()" title="Whether steps may modify this repo. Read-only is the safe default; Writable is a deliberate grant that applies to any step whose task genuinely requires it.">
@@ -829,7 +844,7 @@ svg.canvas{width:100%;height:100%;display:block}
     </select>
     <div style="height:1px;background:var(--border);opacity:.5;margin:14px 0 10px"></div>
     <div id="uiContextSection">
-    <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px" title="Styling preferences or migration notes for any platform - web, mobile, or desktop UI (e.g. which styling library to prefer or avoid). Leave it blank and the Design Analyzer discovers your design system from the code instead. Used by Design Analyzer and UI-building steps.">UI Context</div>
+    <div class="sub-head" title="Styling preferences or migration notes for any platform - web, mobile, or desktop UI (e.g. which styling library to prefer or avoid). Leave it blank and the Design Analyzer discovers your design system from the code instead. Used by Design Analyzer and UI-building steps.">UI Context</div>
     <textarea id="uiContextNotes" class="story-input" style="min-height:48px;padding:6px 8px;font-size:12px" placeholder="e.g. Use vanilla-extract + clsx, avoid SCSS and MUI v4; or Compose Material3 tokens only; or SwiftUI over UIKit for new screens" oninput="updatePrompt();savePrefsDebounced()"></textarea>
     </div>
   </div>
@@ -864,7 +879,7 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section memory-section" data-collapse-id="mcp-integrations">
-    <h3 title="Tell agents which MCP servers are available so they lean on them - hints only: these toggles install and connect nothing, and never restrict. The free-text field covers any server not listed.">MCP Integrations</h3>
+    <h3 title="Tell agents which MCP servers are available so they lean on them - hints only: these toggles install and connect nothing, and never restrict. The free-text field covers any server not listed."><button type="button" class="pin-btn" data-pin="mcp" aria-pressed="false"></button>MCP Integrations</h3>
   <div class="sidebar-tip" style="margin:8px 0 4px">
     <span class="tip-icon">⚡</span>
     <span><strong>Better outcomes:</strong> agents work best when an Atlassian MCP tool, Datadog MCP, and a language-appropriate LSP server are installed, authenticated, and available.
@@ -898,7 +913,7 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section memory-section" data-collapse-id="memory-durable-record">
-    <h3 title="The persistence stack: grounding reads prior records before planning, workflow memory keeps a run alive across compaction, and the durable record is the committable spec-and-state artifact. Together they form the flywheel - every run leaves the next one smarter.">Memory &amp; Durable Record</h3>
+    <h3 title="The persistence stack: grounding reads prior records before planning, workflow memory keeps a run alive across compaction, and the durable record is the committable spec-and-state artifact. Together they form the flywheel - every run leaves the next one smarter."><button type="button" class="pin-btn" data-pin="memory" aria-pressed="false"></button>Memory &amp; Durable Record</h3>
     <label class="memory-toggle" title="The read side of the flywheel: before planning, the orchestrator scans .workflow/_index.md and any openspec/ docs, opens ONLY the records matching this change, and folds their decisions and gotchas into the plan. Self-gating - a no-op on repos with neither, so it costs nothing on greenfield work.">
       <input type="checkbox" id="consumeRecordsToggle" onchange="toggleConsumeRecords()" checked/>
       <span>Ground in prior records</span>
@@ -938,7 +953,7 @@ svg.canvas{width:100%;height:100%;display:block}
       <button class="btn sm" id="tuningPromptBtn" onclick="copyTuningPrompt()" title="Copy a tuning prompt built from imported run reports: Claude analyzes the telemetry and returns an improved workflow JSON to import back.">Tuning Prompt</button>
     </div>
     <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:8px">
-      <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px" title="The generated prompt asks the orchestrator to post progress events (run start, step start and done, task confirmations, gate verdicts, verifier results, finalize) as standard OpenTelemetry log records to an OTLP/HTTP collector - fire-and-forget, never blocking the work. Works with any OTLP-compatible collector (an OpenTelemetry Collector, a relay, or an observability platform). The designer itself sends nothing.">Run Telemetry <span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0">(optional)</span></div>
+      <div class="sub-head" title="The generated prompt asks the orchestrator to post progress events (run start, step start and done, task confirmations, gate verdicts, verifier results, finalize) as standard OpenTelemetry log records to an OTLP/HTTP collector - fire-and-forget, never blocking the work. Works with any OTLP-compatible collector (an OpenTelemetry Collector, a relay, or an observability platform). The designer itself sends nothing.">Run Telemetry <span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0">(optional)</span></div>
       <label class="memory-toggle" title="When on, the orchestrator posts one OpenTelemetry log record per progress event. Off means the prompt says nothing about telemetry.">
         <input type="checkbox" id="telemetryToggle" onchange="toggleTelemetry()"/>
         <span style="font-size:12px">Send progress events <span style="color:var(--text3);font-weight:400">(OTLP logs)</span></span>
@@ -1252,7 +1267,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <h3>Multiple Repos &amp; Rules Files</h3>
 <p>Two sidebar sections give agents the right context across one or many repositories:</p>
 <ul>
-  <li><strong>Repositories</strong> - list each repo with its branch; the prompts tell agents to check out the right branch and pull before starting.</li>
+  <li><strong>Repositories</strong> - list each repo with its start branch; the prompts tell agents to check out that branch and pull before starting, so a hotfix off <code>release/2.3</code> begins there. Leave it empty and agents work on whatever branch that working tree already has checked out, as it is (no checkout, no pull, no fallback to a default branch). A repository with a start branch delivers back to it (its pull request targets it; under a branching strategy it is the base), so a hotfix needs only the start branch. The Output node's Target Branch covers repositories without one; empty, that is the repository's default branch, detected at run time and never assumed to be <code>main</code>. One repository is fine when the point is only the branch.</li>
   <li><strong>Repo Context Paths</strong> - point agents at a repo's own rules and product docs so they honor more than the per-task spec. <strong>Rules / constitution</strong> paths (e.g. <code>.claude/rules</code>, <code>CONVENTIONS.md</code>) are binding constraints on <em>how</em> to build; <strong>Product docs</strong> (e.g. <code>docs/</code>, ADRs) are goals the work must not contradict; <strong>Verification instructions</strong> (e.g. <code>VERIFY.md</code>, <code>rules/E2E.md</code>) are the checks a change must prove - the orchestrator reads them and routes them into the OWNING verification step's brief (the Verifier when the workflow has one, else the final Tester; one owner means an expensive check never runs twice, and the mandates ADD to that step's own verification method rather than replacing it). Each check is classified Required or Recommended by the file's own MUST/SHOULD wording (they say <em>what</em> to prove, never restrict which tools to use - tools stay suggestions). These files are the natural home for repo-mandated checks like mutation testing (e.g. "run npx stryker run; required: kill score stays &gt;= 80%"). No file handy? An <strong>inline notes</strong> box takes the same mandates as free text, with the same MUST/SHOULD classification and posture. Each Verifier node's configuration panel also shows its mandate status - what it owns, or where to configure some. The <strong>Unmet required verifications fail the run</strong> checkbox sets the posture: on, a blocked required check fails the run; off, it is recorded but report-only. The checkbox stays disabled until a path or an inline note is configured - the posture is a modifier on mandates, and with none configured there is nothing to enforce. All three lists are sticky - they persist across workflows in the same repo.</li>
 </ul>
 <p><strong>Multi-repo rules - handled for you.</strong> On its own, Claude Code only auto-loads <code>CLAUDE.md</code> and <code>.claude/rules/</code> for the repo the session launched in, so it would miss the others. The generated multi-repo prompt closes that gap: it tells each agent to read every in-scope repo's own <code>CLAUDE.md</code> and <code>.claude/rules/</code> before changing it, and any <strong>Rule Paths</strong> you list (e.g. <code>.claude/rules</code>) are resolved <em>within each repo</em> and scoped to it. So with three repos selected and <code>.claude/rules</code> listed once, each repo's own rules are honored for changes made in that repo - no per-repo entry needed, and no environment variable required.</p>
@@ -1284,6 +1299,8 @@ svg.canvas{width:100%;height:100%;display:block}
 </ul>
 <p>Rule of thumb: start with <strong>Workflow</strong>; switch to <strong>Sub-Agents</strong> when context size or step isolation matters; reach for <strong>Agent Teams</strong> when steps are truly independent and benefit from running at the same time. The hint bar above the prompt nudges you toward Agent Teams when your workflow has parallel agents with several steps each.</p>
 
+<h3>What New Workflow keeps (section pins)</h3>
+<p>The sidebar splits in two. The <strong>job</strong> (canvas, name, Requirements, Workflow Context) clears on New Workflow. The <strong>shop</strong> is how you work, and every shop section carries a <strong>pin</strong> at the right of its header: Defaults (Model, Effort, Delivery), Repositories, Repo Context Paths, App and UI Context, MCP integrations, Memory and durable record, Run gates. A pinned section survives New Workflow and keeps what you enter; an unpinned one resets with each new workflow. Defaults and Repo Context Paths ship pinned, everything else unpinned, which is exactly how the app behaved before pins existed. Unpinned Defaults start each new workflow from the app defaults (Opus, Inherit, Leave Uncommitted). The New Workflow dialog names what the pins keep. To reset a pinned section, unpin it and start a new workflow.</p>
 <h3>Delivery (Output node format)</h3>
 <p>Agents make code changes whether or not you add an Output node; the node's <strong>Format</strong> decides what happens to the work at the end:</p>
 <ul>
@@ -1293,7 +1310,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Report</strong> - produce a written report; leave any code uncommitted.</li>
   <li><strong>Documentation</strong> - produce docs in the project's conventions; leave any code uncommitted.</li>
 </ul>
-<p>Click the Output node to set it. No preset defaults to Pull Request - commit/push/PR is always an explicit choice.</p>
+<p>Click the Output node to set it. Every code preset's Output node starts on <strong>Default</strong>, which follows <strong>Default Delivery</strong>: the Delivery row of the sidebar's <strong>Defaults</strong> section, beside Model and Effort. It ships as Leave Uncommitted, so commit/push/PR is always a choice you made: once in the sidebar for every workflow, or on the node for one. An Output node that overrides the default offers <em>Make this my default delivery</em>, which lifts its settings into the sidebar and puts the node back on Default. Report and Documentation are chosen on the node.</p>
 <p><strong>Branching</strong> (Commit and Pull Request only): <strong>Single branch</strong> is the default and uses the Branch Name field. For epic-level work pick <strong>Per story</strong> (one branch per story, per repository) or <strong>Per logical chunk</strong> (stories grouped so each branch leaves every repository working). Names are not typed: the planning step reads the epic's child stories, maps each to the repositories it touches, and names each branch by that repository's own convention (a new repository borrows from its nearest sibling in the run); a unit that spans repositories gets the same branch name in each. An optional <strong>Branch pattern</strong> (tokens <code>{ticket}</code>, <code>{epic}</code>, <code>{story}</code>, <code>{slug}</code>, <code>{repo}</code>) overrides the convention everywhere; <strong>Integration branch</strong> is inferred per repository by default (an epic branch only where the repo already works that way), or forced to none or to an epic branch per repository. The branch plan is written down before anything exists and shown to the director (at the plan gate when Approve plan before build is on, which is the recommended pairing), so names are corrected once; in chunk mode <code>{ticket}</code> means the epic key and <code>{chunk}</code> the chunk slug; units that touch one repository run one at a time on its checkout (no branch switching under another step); a builder creates its unit's branch from its base when it starts, only the delivery step pushes, and nothing is ever pushed to a base.</p>
 
 <h3>OpenSpec export</h3>
@@ -1513,7 +1530,7 @@ const NODE_DEFAULTS = {
   input: { w: 180, h: 52, color: '#06b6d4', icon: '\u{1F4CB}', label: 'Input',
     config: { source: 'freeform', description: '' }},
   output: { w: 180, h: 52, color: '#f43f5e', icon: '\u{1F4E6}', label: 'Output',
-    config: { deliverable: '', format: 'code', targetBranch: '', branchName: '' }}
+    config: { deliverable: '', format: 'default', targetBranch: '', branchName: '' }}
 };
 
 const AGENT_TYPES = [
@@ -1713,23 +1730,181 @@ function workflowHasDepth() { return depthNodes().length > 0; }
 // gate, and created only by a delivery that commits. Absent keys read as 'single'.
 const BRANCHING_STRATEGIES = ['single', 'story', 'chunk'];
 const INTEGRATION_CHOICES = ['auto', 'none', 'epic'];
-function outputBranching(node) { const b = node && node.config ? node.config.branching : ''; return BRANCHING_STRATEGIES.includes(b) ? b : 'single'; }
+// A branch reference in emitted text. An empty target is the repository's default branch, which
+// the agent detects at run time from origin/HEAD; it is never assumed to be main (it may be Main,
+// master, or develop). The delivery block carries the detection command once (detect = true);
+// every other mention uses the short phrase.
+const DEFAULT_BRANCH_SHORT = "the repository's default branch";
+const DEFAULT_BRANCH_DETECT = DEFAULT_BRANCH_SHORT + " (detect it: `git symbolic-ref --short refs/remotes/origin/HEAD`, else `gh repo view --json defaultBranchRef -q .defaultBranchRef.name`; never assume `main`)";
+function branchRef(name, detect) { name = String(name || '').trim(); return name ? '`' + name + '`' : (detect ? DEFAULT_BRANCH_DETECT : DEFAULT_BRANCH_SHORT); }
+function outputBranching(node) { const b = node && node.config ? outCfg(node).branching : ''; return BRANCHING_STRATEGIES.includes(b) ? b : 'single'; }
+// ── Default Delivery ──────────────────────────────────────────────────────────
+// An Output node whose Format is 'default' delivers whatever the sidebar's Default Delivery says
+// (format, branching, base, pattern, integration). outCfg(n) is the effective config every
+// delivery reader consults; Deliverable and Branch Name stay the node's own (per workflow).
+// With the default left blank (Leave Uncommitted) every emission is byte-identical to a node
+// whose Format is 'code'. Report and Documentation are deliverable kinds chosen on the node, not
+// deliveries, and never flow through the default. Every preset's code Output node, Auto Workflow,
+// and a hand-added Output node start on Default; a saved workflow keeps whatever it stored.
+const DELIVERY_FORMATS = ['code', 'commit', 'pr'];
+function blankDelivery() { return { format: 'code', branching: 'single', targetBranch: '', branchPattern: '', integrationBranch: 'auto' }; }
+function normalizeDelivery(d) {
+  const b = blankDelivery(); d = d && typeof d === 'object' ? d : {};
+  return {
+    format: DELIVERY_FORMATS.includes(d.format) ? d.format : b.format,
+    branching: BRANCHING_STRATEGIES.includes(d.branching) ? d.branching : b.branching,
+    targetBranch: typeof d.targetBranch === 'string' ? d.targetBranch : '',
+    branchPattern: typeof d.branchPattern === 'string' ? d.branchPattern : '',
+    integrationBranch: INTEGRATION_CHOICES.includes(d.integrationBranch) ? d.integrationBranch : b.integrationBranch
+  };
+}
+// The visible shape of a delivery: the fields the Format and strategy hide are blank, so a stored
+// dependent (a base typed under Pull Request, then the Format set back to Leave Uncommitted) never
+// leaks into the resolver, the summary, the equality check, or the emitted prompt. The stored
+// values stay in state so switching the Format back restores them.
+function effectiveDelivery(d) {
+  d = normalizeDelivery(d);
+  if (d.format === 'code') return blankDelivery();
+  if (d.branching === 'single') { d.branchPattern = ''; d.integrationBranch = 'auto'; if (d.format === 'commit') d.targetBranch = ''; }
+  return d;
+}
+function outputOnDefault(n) { return !!(n && n.config && n.config.format === 'default'); }
+function outCfg(n) {
+  const c = (n && n.config) || {};
+  if (c.format !== 'default') return c;
+  const d = effectiveDelivery(state.defaultDelivery);
+  return Object.assign({}, c, { format: d.format, branching: d.branching, targetBranch: d.targetBranch, branchPattern: d.branchPattern, integrationBranch: d.integrationBranch });
+}
+function deliveryEquals(a, b) { a = effectiveDelivery(a); b = effectiveDelivery(b); return Object.keys(a).every(k => (a[k] || '').trim() === (b[k] || '').trim()); }
+// One phrase for a delivery: 'Leave Uncommitted' | 'Pull Request, per story, base develop' ...
+function deliverySummary(d) {
+  d = effectiveDelivery(d);
+  if (d.format === 'code') return 'Leave Uncommitted';
+  const parts = [d.format === 'pr' ? 'Pull Request' : 'Commit'];
+  if (d.branching !== 'single') parts.push('per ' + (d.branching === 'chunk' ? 'logical chunk' : 'story'));
+  if (d.targetBranch.trim() && (d.format === 'pr' || d.branching !== 'single')) parts.push((d.branching === 'single' ? 'target ' : 'base ') + d.targetBranch.trim());
+  return parts.join(', ');
+}
+// The sidebar's Default Delivery section: the same fields the Output node panel shows, written
+// to state.defaultDelivery and persisted with the prefs. Re-rendered on every select change so
+// the dependent fields (Branching, pattern, base) follow the Format, as they do on the node.
+function renderDefaultDelivery() {
+  const host = $('defaultDeliveryFields'); if (!host) return;
+  state.defaultDelivery = normalizeDelivery(state.defaultDelivery);
+  host.innerHTML = deliveryFieldsHtml(state.defaultDelivery, 'default');
+  host.querySelectorAll('input').forEach(el => el.addEventListener('input', () => { state.defaultDelivery[el.dataset.key] = el.value; onDefaultDeliveryChange(false); }));
+  host.querySelectorAll('.config-select').forEach(cs => {
+    const trigger = cs.querySelector('.custom-select-trigger'), opts = cs.querySelector('.custom-select-options');
+    trigger.addEventListener('click', (e) => { e.stopPropagation(); closeAllCustomSelects(cs); cs.classList.toggle('open'); });
+    opts.addEventListener('click', (e) => {
+      const opt = e.target.closest('.custom-select-option'); if (!opt) return;
+      state.defaultDelivery[cs.dataset.key] = opt.dataset.value;
+      cs.classList.remove('open');
+      onDefaultDeliveryChange(true);
+    });
+  });
+}
+function onDefaultDeliveryChange(rebuild) {
+  state.defaultDelivery = normalizeDelivery(state.defaultDelivery);
+  if (rebuild) { renderDefaultDelivery(); updateConfig(); }   // a select can show or hide the node's Branch Name
+  else refreshDefaultFormatOption();                           // a keystroke only re-labels the Default option
+  savePrefsDebounced();
+  updatePrompt();
+  if (typeof updateValidation === 'function') updateValidation();   // the Output-node warnings read the default
+}
+function refreshDefaultFormatOption() {
+  const opt = document.querySelector('#configFields .custom-select[data-key="format"] .custom-select-option[data-value="default"]');
+  if (!opt) return;
+  const label = 'Default (' + deliverySummary(state.defaultDelivery) + ')';
+  opt.textContent = label;
+  if (opt.classList.contains('selected')) { const trig = opt.closest('.custom-select').querySelector('.custom-select-trigger'); if (trig) trig.textContent = label; }
+}
+// ── Section pins ──────────────────────────────────────────────────────────────
+// The sidebar splits into the job (canvas, name, requirements, workflow context: cleared by New
+// Workflow) and the shop (how the director works). Every shop section carries a pin and persists
+// only while pinned; unpinned it resets with each new workflow. One rule, no exceptions. Shipped
+// pins (Defaults and Repo Context Paths) reproduce the shipped behavior exactly; unpinned Defaults
+// start each new workflow from the app defaults (NODE_DEFAULTS model, inherit, Leave Uncommitted).
+// The switch values a new workflow starts from (flipped memory + record + grounding ON on
+// 2026-07-03). clearCanvas resets to these; the dialog counts a pinned switch section as held
+// only when a switch differs from them. One object, so the two can never disagree.
+const NEW_WORKFLOW_SWITCHES = { memoryEnabled: true, durableRecord: true, consumeRecords: true, openSpecArtifacts: false, mcpAtlassian: true, mcpCodeSearch: true, mcpDatadog: false, mcpBrowser: false, mcpGithub: false, clarifyFirst: false, approvePlan: false };
+const PIN_KEYS = ['defaults', 'repos', 'repoPaths', 'appUi', 'mcp', 'memory', 'gates'];
+const PIN_LABELS = { defaults: 'Defaults', repos: 'Repositories', repoPaths: 'Repo Context Paths', appUi: 'App and UI Context', mcp: 'MCP integrations', memory: 'Memory and durable record', gates: 'Run gates' };
+function defaultPins() { return { defaults: true, repos: false, repoPaths: true, appUi: false, mcp: false, memory: false, gates: false }; }
+function normalizePins(p) { const d = defaultPins(); p = p && typeof p === 'object' ? p : {}; PIN_KEYS.forEach(k => { if (typeof p[k] === 'boolean') d[k] = p[k]; }); return d; }
+function isPinned(k) { return !!(state.pins && state.pins[k]); }
+function togglePin(k) {
+  if (!PIN_KEYS.includes(k)) return;
+  state.pins = normalizePins(state.pins);
+  state.pins[k] = !state.pins[k];
+  renderPins();
+  savePrefs();
+  showToast(state.pins[k] ? PIN_LABELS[k] + ' pinned: it now survives New Workflow' : PIN_LABELS[k] + ' unpinned: it clears with each new workflow');
+}
+const PIN_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 3l5 5-1.4 1.4-.9-.3-3.6 3.6.4 4.1-1.4 1.4L10 14.1 4.7 19.4l-1.1-1.1L8.9 13 4.8 8.9l1.4-1.4 4.1.4 3.6-3.6-.3-.9z"/></svg>';
+function renderPins() {
+  document.querySelectorAll('.pin-btn[data-pin]').forEach(b => {
+    const k = b.dataset.pin, on = isPinned(k);
+    if (!b.firstChild) { b.innerHTML = PIN_SVG; b.addEventListener('click', () => togglePin(k)); }   // decorated once, like the collapse chevron
+    b.classList.toggle('pinned', on);
+    const tip = on
+      ? 'Pinned: ' + PIN_LABELS[k] + ' survives New Workflow and keeps whatever you enter here. Click to unpin (it then clears with each new workflow).'
+      : 'Pin ' + PIN_LABELS[k] + ' so it survives New Workflow. Unpinned, it clears with each new workflow.';
+    b.setAttribute('title', tip); b.removeAttribute('data-tip');
+    b.setAttribute('aria-label', (on ? 'Unpin ' : 'Pin ') + PIN_LABELS[k]);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+// The pinned sections that currently hold something New Workflow would otherwise reset; the
+// dialog lists them. Switch sections count only when a switch differs from its new-workflow
+// default. Defaults never count: they are choices among options, not entered contents, and nearly
+// every director changes one, so the line would name them on every click.
+function pinnedSectionsWithContent() {
+  const v = (id) => { const el = $(id); return el ? String(el.value || '').trim() : ''; };
+  const has = {
+    repos: (state.repositories || []).length > 0,
+    repoPaths: (state.rulesPaths || []).length + (state.productDocPaths || []).length + (state.verifyPaths || []).length > 0 || !!String(state.verifyNotes || '').trim(),
+    appUi: !!(v('appSourcePath') || v('appSourceBranch') || v('uiContextNotes')) || (!!v('appSourceAccess') && v('appSourceAccess') !== 'readonly'),
+    mcp: ['mcpAtlassian', 'mcpCodeSearch', 'mcpDatadog', 'mcpBrowser', 'mcpGithub'].some(k => !!state[k] !== NEW_WORKFLOW_SWITCHES[k]) || !!v('mcpCustomNotes') || !!String(state.mcpCustom || '').trim(),
+    memory: ['memoryEnabled', 'durableRecord', 'consumeRecords', 'openSpecArtifacts'].some(k => !!state[k] !== NEW_WORKFLOW_SWITCHES[k]),
+    gates: ['clarifyFirst', 'approvePlan'].some(k => !!state[k] !== NEW_WORKFLOW_SWITCHES[k])
+  };
+  return PIN_KEYS.filter(k => isPinned(k) && has[k]).map(k => PIN_LABELS[k]);
+}
+// From an Output node that overrides the default: lift its delivery into the sidebar default and
+// put the node back on Default, so every new workflow and preset starts where this one is.
+function adoptDeliveryAsDefault() {
+  const node = state.nodes.find(n => n.id === state.selectedId);
+  if (!node || node.type !== 'output' || !DELIVERY_FORMATS.includes(node.config.format)) return;
+  // No undo entry: the undo stack snapshots the canvas only, and a half-reverted adopt (node back
+  // on its explicit Format, sidebar still lifted) would mislead. Reverting is two visible edits.
+  state.defaultDelivery = normalizeDelivery(node.config);
+  node.config.format = 'default';
+  renderDefaultDelivery();
+  savePrefs();
+  updateConfig();
+  render();
+  showToast('Default delivery: ' + deliverySummary(state.defaultDelivery));
+}
 // A strategy matters only on an Output node whose format creates branches; elsewhere it is inert.
 // Ordered as delivery dispatches (a Pull Request node outranks a Commit node), so the strategy
 // the prompt describes is the one the delivery block acts on.
 function branchingOutputs() {
-  return state.nodes.filter(n => n.type === 'output' && n.config && (n.config.format === 'pr' || n.config.format === 'commit') && outputBranching(n) !== 'single')
-    .sort((a, b) => (a.config.format === 'pr' ? 0 : 1) - (b.config.format === 'pr' ? 0 : 1));
+  const rows = state.nodes.filter(n => n.type === 'output' && n.config).map(n => ({ n, c: outCfg(n) }))
+    .filter(r => (r.c.format === 'pr' || r.c.format === 'commit') && BRANCHING_STRATEGIES.includes(r.c.branching) && r.c.branching !== 'single');
+  return rows.sort((a, b) => (a.c.format === 'pr' ? 0 : 1) - (b.c.format === 'pr' ? 0 : 1)).map(r => r.n);
 }
 function workflowBranching() {
   const o = branchingOutputs()[0];
   if (!o) return null;
+  const c = outCfg(o);
   return {
     node: o,
     strategy: outputBranching(o),
-    pattern: String(o.config.branchPattern || '').trim(),
-    integration: INTEGRATION_CHOICES.includes(o.config.integrationBranch) ? o.config.integrationBranch : 'auto',
-    target: String(o.config.targetBranch || '').trim() || 'main',
+    pattern: String(c.branchPattern || '').trim(),
+    integration: INTEGRATION_CHOICES.includes(c.integrationBranch) ? c.integrationBranch : 'auto',
+    target: String(c.targetBranch || '').trim(),   // '' = the repository's default branch; print it with branchRef
     pr: deliversPr()   // what the delivery block will do, which is what the plan must describe
   };
 }
@@ -1756,10 +1931,10 @@ function integrationMeaning(bp) {
   const unit = branchUnitWord(bp);
   const lands = bp.pr ? 'its PR targets it' : 'it is pushed for the director to merge';
   return bp.integration === 'epic'
-    ? 'one epic branch per repository, forked from `' + bp.target + '`; every ' + unit + ' branch forks from it and ' + lands + (bp.pr ? '; one final PR from the epic branch to `' + bp.target + '` when the last unit of that repository lands' : '; the epic branch is pushed and its merge to `' + bp.target + '` is the director\'s')
+    ? 'one epic branch per repository, forked from ' + branchRef(bp.target) + '; every ' + unit + ' branch forks from it and ' + lands + (bp.pr ? '; one final PR from the epic branch to ' + branchRef(bp.target) + ' when the last unit of that repository lands' : '; the epic branch is pushed and its merge to ' + branchRef(bp.target) + ' is the director\'s')
     : bp.integration === 'none'
-      ? 'none - every ' + unit + ' branch forks from `' + bp.target + '` and ' + lands
-      : 'decided per repository: use an epic branch only where that repository already works that way (existing `epic/`, `release/`, or long-lived integration branches); otherwise every ' + unit + ' branch forks from `' + bp.target + '` and ' + lands;
+      ? 'none - every ' + unit + ' branch forks from ' + branchRef(bp.target) + ' and ' + lands
+      : 'decided per repository: use an epic branch only where that repository already works that way (existing `epic/`, `release/`, or long-lived integration branches); otherwise every ' + unit + ' branch forks from ' + branchRef(bp.target) + ' and ' + lands;
 }
 function branchUnitWord(bp) { return bp.strategy === 'chunk' ? 'logical chunk' : 'story'; }
 function branchPlanHome(spawned) {
@@ -1790,7 +1965,7 @@ function branchPlanHint(spawned) {
   r.push('> - **Name branches by each repository\'s own convention, never by one team\'s habit.** Teams differ, so repositories differ. For each repository in scope read what it already does: the names on `git branch -r`, the subjects of `git log --merges`, CONTRIBUTING, CLAUDE.md and `.claude/rules/`, and branch protection where visible; derive the prefix, the separator, the casing, and where the ticket key goes; record the convention you found per repository and apply it per repository.'
     + (bp.pattern ? ' The director set a pattern that overrides this everywhere: `' + bp.pattern + '` (tokens: ' + tokens + ').' : ' Tokens, when you state a name as a pattern: ' + tokens + '.'));
   r.push('> - **A repository with no convention yet** (new, or too few branches to tell): borrow from the sibling repository in this run that is most like it (same organization, same language or build system, the same team by CODEOWNERS or recent commit authors), then the most common convention across the repositories in scope, then ' + fallback + '. Say which you borrowed and why; the director corrects it once when the plan is reviewed.');
-  r.push('> - **Bases:** a repository\'s branch in the Repositories list is that repository\'s base; the Output node\'s base (`' + bp.target + '`) applies to every repository without one. The Branch Name field is the Single-branch control and plays no part here.');
+  r.push('> - **Bases:** a repository\'s branch in the Repositories list is that repository\'s base; the Output node\'s base (' + branchRef(bp.target) + ') applies to every repository without one. The Branch Name field is the Single-branch control and plays no part here.');
   r.push('> - **Integration branch:** ' + integrationMeaning(bp) + '.');
   const owner = branchPlanOwner();
   r.push('> - **Who writes it:** ' + (owner ? '**' + owner.label + '** (the plan-owning step the approval gate also names), as part of its plan' : 'the orchestrator itself, before the first builder is dispatched, since this workflow has no planning step') + '. **Write the plan down before anything is created:** one row per unit and repository - unit, repository, branch, base, ' + (bp.pr ? 'PR target' : 'where it lands') + ' - ' + branchPlanHome(spawned) + (state.durableRecord ? ', and in the durable record' : '') + '. ' + branchPlanReview());
@@ -2831,7 +3006,14 @@ let state = {
   productDocPaths: [],
   verifyPaths: [],
   verifyNotes: '',
-  verifyFailRun: true
+  verifyFailRun: true,
+  // Default Delivery: what a code Output node delivers while its Format is left on Default (the
+  // sidebar section beside Default Model and Effort). Blank = Leave Uncommitted, byte-identical.
+  defaultDelivery: blankDelivery(),
+  // Section pins: a pinned sidebar section survives New Workflow and keeps persisting as it is
+  // edited. defaultPins() is the one source (Defaults and Repo Context Paths ship pinned: the
+  // long-standing behavior), so prefs stored before pins existed boot into the same state.
+  pins: defaultPins()
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -3223,7 +3405,7 @@ function buildAgentSlugMap() {
   return slugMap;
 }
 
-function setDefaultModel(value) {
+function setDefaultModel(value, quiet) {
   state.defaultModel = value;
   const trigger = $('defaultModelTrigger');
   const m = MODELS.find(m => m.value === value);
@@ -3233,6 +3415,7 @@ function setDefaultModel(value) {
   if (opts) opts.querySelectorAll('.custom-select-option').forEach(el => {
     el.classList.toggle('selected', el.dataset.value === value);
   });
+  if (quiet) return;   // the caller renders and saves once (clearCanvas)
   updatePrompt();
   savePrefs();
 }
@@ -3266,7 +3449,7 @@ function initDefaultModelSelect() {
 const EFFORT_OPTION_LABELS = { '': 'Inherit (runner default)', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
 function effortOptionLabel(v) { return EFFORT_OPTION_LABELS[v] || v; }
 
-function setEffort(value) {
+function setEffort(value, quiet) {
   state.effort = EFFORT_LEVELS.includes(value) ? value : '';
   const trigger = $('effortTrigger');
   if (trigger) trigger.textContent = state.effort ? effortOptionLabel(state.effort) : 'Inherit (runner default)';
@@ -3274,6 +3457,7 @@ function setEffort(value) {
   if (opts) opts.querySelectorAll('.custom-select-option').forEach(el => {
     el.classList.toggle('selected', el.dataset.value === state.effort);
   });
+  if (quiet) return;
   updatePrompt();
   savePrefs();
 }
@@ -3557,6 +3741,8 @@ function savePrefs() {
       verifyPaths: state.verifyPaths,
       verifyNotes: state.verifyNotes,
       verifyFailRun: state.verifyFailRun,
+      defaultDelivery: state.defaultDelivery,
+      pins: state.pins,
       plibOpen: state.plibOpen || null,
       plibFavs: state.plibFavs || null
     }));
@@ -3660,6 +3846,8 @@ function restorePrefs() {
     if (typeof p.verifyFailRun === 'boolean') { state.verifyFailRun = p.verifyFailRun; const _vft = $('verifyFailRunToggle'); if (_vft) _vft.checked = p.verifyFailRun; }
     if (Array.isArray(p.plibOpen)) state.plibOpen = p.plibOpen;
     if (Array.isArray(p.plibFavs)) state.plibFavs = p.plibFavs;
+    if (p.defaultDelivery && typeof p.defaultDelivery === 'object') state.defaultDelivery = normalizeDelivery(p.defaultDelivery);
+    if (p.pins && typeof p.pins === 'object') state.pins = normalizePins(p.pins);
   } catch(e) { /* ignore */ }
   finally { _restoring = false; }
 }
@@ -3670,7 +3858,7 @@ function addRepoRow(path, branch) {
   row.className = 'repo-row';
   row.innerHTML =
     '<input type="text" placeholder="/path/to/repo" value="' + (path || '').replace(/"/g, '&quot;') + '" oninput="onRepoChange()"/>' +
-    '<input type="text" placeholder="branch" style="max-width:120px" value="' + (branch || '').replace(/"/g, '&quot;') + '" oninput="onRepoChange()"/>' +
+    '<input type="text" placeholder="start branch" title="The branch agents check out and pull before any work in this repository: a release or hotfix branch, for example. Empty means the branch already checked out in that working tree, as it is (no checkout, no pull, no fallback to a default branch). A repository with a start branch delivers back to it (its pull request targets it; under a strategy it is the base), so a hotfix needs only this field. The Output node&#39;s Target Branch covers repositories without one; empty, that is the repository&#39;s default branch, detected at run time. A branch name only, never a commit." style="max-width:120px" value="' + (branch || '').replace(/"/g, '&quot;') + '" oninput="onRepoChange()"/>' +
     '<button class="repo-remove" onclick="removeRepoRow(this)" title="Remove">&times;</button>';
   $('repoList').appendChild(row);
   onRepoChange();
@@ -3735,7 +3923,7 @@ function renderRepoRows() {
     row.className = 'repo-row';
     row.innerHTML =
       '<input type="text" placeholder="/path/to/repo" value="' + (r.path || '').replace(/"/g, '&quot;') + '" oninput="onRepoChange()"/>' +
-      '<input type="text" placeholder="branch" style="max-width:120px" value="' + (r.branch || '').replace(/"/g, '&quot;') + '" oninput="onRepoChange()"/>' +
+      '<input type="text" placeholder="start branch" title="The branch agents check out and pull before any work in this repository: a release or hotfix branch, for example. Empty means the branch already checked out in that working tree, as it is (no checkout, no pull, no fallback to a default branch). A repository with a start branch delivers back to it (its pull request targets it; under a strategy it is the base), so a hotfix needs only this field. The Output node&#39;s Target Branch covers repositories without one; empty, that is the repository&#39;s default branch, detected at run time. A branch name only, never a commit." style="max-width:120px" value="' + (r.branch || '').replace(/"/g, '&quot;') + '" oninput="onRepoChange()"/>' +
       '<button class="repo-remove" onclick="removeRepoRow(this)" title="Remove">&times;</button>';
     list.appendChild(row);
   });
@@ -3953,7 +4141,7 @@ function setVerifyFailRun(on) {
 }
 
 // -- Workflow serialization --
-function serializeWorkflow() {
+function serializeWorkflow(opts) {
   return {
     version: 1,
     slug: effectiveNameSlug(),
@@ -3981,7 +4169,7 @@ function serializeWorkflow() {
     clarifyFirst: !!state.clarifyFirst,
     approvePlan: !!state.approvePlan,
     canvas: {
-      nodes: JSON.parse(JSON.stringify(state.nodes)),
+      nodes: serializeNodes(opts),
       connections: JSON.parse(JSON.stringify(state.connections)),
       nextId: state.nextId,
       pan: { ...state.pan },
@@ -4057,6 +4245,15 @@ function applyWorkflowContext(p, mode) {
 }
 // opts.context: 'restore' (default: a saved workflow, the autosave, a clone) or 'none' (file
 // imports, which adopt afterwards through openSpecAdoptContextPaths so the toast can count).
+// Nodes as saved. A portable copy (an exported file, the awd:meta fence in a generated prompt)
+// resolves an Output node on Default to the concrete delivery it had here, because the file is
+// the job and must not depend on the importer's sidebar. The autosave and the local saved list
+// keep 'default' so the node keeps following this browser's sidebar.
+function serializeNodes(opts) {
+  const nodes = JSON.parse(JSON.stringify(state.nodes));
+  if (opts && opts.portable) nodes.forEach(n => { if (n.type === 'output' && n.config && n.config.format === 'default') n.config = JSON.parse(JSON.stringify(outCfg(n))); });
+  return nodes;
+}
 function deserializeWorkflow(data, opts) {
   if (!data || !data.canvas) return false;
   const c = data.canvas;
@@ -4070,6 +4267,7 @@ function deserializeWorkflow(data, opts) {
     if (n.type === 'output') {
       if (n.config.targetBranch === undefined) n.config.targetBranch = '';
       if (n.config.branchName === undefined) n.config.branchName = '';
+      if (n.config.format === undefined) n.config.format = 'code';   // emitted as no-commit before; the panel must agree
       // Branching strategy: an unknown value reads as single, an unknown integration choice as
       // auto, a non-string pattern is dropped; absent keys stay absent (untouched saves keep their JSON).
       if (n.config.branching !== undefined && !BRANCHING_STRATEGIES.includes(n.config.branching)) delete n.config.branching;
@@ -4275,7 +4473,7 @@ function duplicateWorkflow() {
 }
 function exportWorkflowFile() {
   if (state.nodes.length === 0) { showToast('Add nodes before exporting'); return; }
-  const data = { format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow() };
+  const data = { format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow({ portable: true }) };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -4390,7 +4588,7 @@ function genHandoffBundle() {
   const name = getName() || 'workflow';
   const slug = slugify(name);
   const apath = getArtifactPath();
-  const data = { format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow() };
+  const data = { format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow({ portable: true }) };
   const json = JSON.stringify(data, null, 2);
   const prompt = getActivePromptText();
   const dur = state.durableRecord;
@@ -4566,7 +4764,7 @@ function genExplainReport(format) {
   p.push('Lossless: copy the JSON block below and use Import > From clipboard in the designer to reopen this exact workflow, interactive Explain included.');
   p.push('');
   p.push('```json');
-  p.push(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow() }, null, 2));
+  p.push(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow({ portable: true }) }, null, 2));
   p.push('```');
   return p.join('\n');
 }
@@ -5787,7 +5985,7 @@ function addFanOut() {
 
   // Each gets its own output
   agents.forEach((a, i) => {
-    const out = addNode('output', centerX + 280, a.y, `Output ${i + 1}`, { deliverable: '', format: 'code' });
+    const out = addNode('output', centerX + 280, a.y, `Output ${i + 1}`, { deliverable: '', format: 'default' });
     addConnection(a.id, out.id);
   });
 
@@ -6082,30 +6280,17 @@ function updateConfig() {
       [{ value:'freeform', label:'Freeform' },{ value:'story', label:'User Story' },{ value:'prd', label:'PRD' }]);
     H[H.length] = configTextarea('Description', 'description', node.config.description, 'Input details...');
   } else if (node.type === 'output') {
+    const _dd = normalizeDelivery(state.defaultDelivery), _onDef = outputOnDefault(node), _eff = outCfg(node);
     H[H.length] = configSelect('Format', 'format', node.config.format,
-      [{ value:'code', label:'Leave Uncommitted' },{ value:'commit', label:'Commit' },{ value:'pr', label:'Pull Request' },{ value:'report', label:'Report' },{ value:'docs', label:'Documentation' }]);
+      [{ value:'default', label: escHtml('Default (' + deliverySummary(_dd) + ')') },{ value:'code', label:'Leave Uncommitted' },{ value:'commit', label:'Commit' },{ value:'pr', label:'Pull Request' },{ value:'report', label:'Report' },{ value:'docs', label:'Documentation' }],
+      'What happens to the work at the end. Default follows the sidebar\'s Default Delivery (set it once; every new workflow and preset starts there). Any other choice overrides it for this workflow only. Report and Documentation produce their artifact and never commit.');
     H[H.length] = configInput('Deliverable', 'deliverable', node.config.deliverable);
-    if (node.config.format === 'pr' || node.config.format === 'commit') {
-      H[H.length] = configSelect('Branching', 'branching', outputBranching(node), [
-        { value: 'single', label: 'Single branch - one named branch (the fields below)' },
-        { value: 'story', label: 'Per story - one branch per story, planned from the epic at run time' },
-        { value: 'chunk', label: 'Per logical chunk - stories grouped so each branch leaves every repo working' }],
-        'How epic-level work maps onto branches. Single branch uses the Branch Name field. Per story and Per logical chunk never take names: the planning step reads the epic\'s stories and each repository\'s own branch convention (a new repository borrows from its nearest sibling), writes the branch plan, and the director sees it before any branch exists (at the plan gate when Approve plan before build is on). A builder creates its unit\'s branch from its base when it starts; only this delivery pushes.' + (node.config.branchName && outputBranching(node) !== 'single' ? ' The Branch Name entered for Single branch (' + node.config.branchName + ') is kept and plays no part under a strategy.' : ''));
-      if (outputBranching(node) === 'single') {
-        H[H.length] = configInput('Branch Name', 'branchName', node.config.branchName || '', 'text', 'e.g. feature/PRJ-6069-profile-redesign');
-      } else {
-        H[H.length] = configInput('Branch pattern (optional)', 'branchPattern', node.config.branchPattern || '', 'text', 'e.g. feature/{ticket}-{slug}', '',
-          'Empty follows each repository\'s own convention. A pattern overrides it everywhere. Example: feature/{ticket}-{slug} gives feature/PROJ-12345-some-story-title (hyphens are the usual choice; feature/{ticket}_{slug} gives the underscore form). Tokens: {ticket} the whole story key, prefix included, so never repeat the project prefix; {story} the same; {epic}; {slug} the story title, its words joined with the separator you place beside it; {repo}. In chunk mode {ticket} is the epic key and {chunk} the chunk slug.');
-        H[H.length] = configSelect('Integration branch', 'integrationBranch', INTEGRATION_CHOICES.includes(node.config.integrationBranch) ? node.config.integrationBranch : 'auto', [
-          { value: 'auto', label: 'Infer per repository - epic branch only where that repo already works that way' },
-          { value: 'none', label: 'None - every branch targets the base' },
-          { value: 'epic', label: 'Epic branch per repository - stories target it, one final PR to the base' }],
-          'Whether story branches target the base directly or an epic branch per repository. Infer reads each repository: an epic branch only where it already uses epic/, release/, or long-lived integration branches. Epic branch per repository forks one from the base, every story branch forks from it, and one final PR goes to the base when the last unit lands.');
-      }
-    }
-    if (node.config.format === 'pr' || (node.config.format === 'commit' && outputBranching(node) !== 'single')) {
-      H[H.length] = configInput(outputBranching(node) === 'single' ? 'Target Branch' : 'Base branch', 'targetBranch', node.config.targetBranch || '', 'text', 'e.g. main, develop (default: main)', '',
-        outputBranching(node) === 'single' ? 'The branch the pull request merges into (default main).' : 'The branch every planned branch forks from (default main). A repository with its own branch in the Repositories list uses that as its base instead.');
+    if (_onDef) {
+      H[H.length] = '<div class="config-note">Follows <a href="#" onclick="event.preventDefault();jumpToSection(\'default-model\')">Default Delivery</a> in the sidebar. Pick a Format above to override it for this workflow.</div>';
+      if ((_eff.format === 'pr' || _eff.format === 'commit') && _eff.branching === 'single') H[H.length] = configInput('Branch Name', 'branchName', node.config.branchName || '', 'text', 'e.g. feature/PRJ-6069-profile-redesign', '', 'This workflow\'s branch. Leave it empty to derive one from the ticket ID at run time.');
+    } else {
+      H[H.length] = deliveryFieldsHtml(node.config, 'node');
+      if (DELIVERY_FORMATS.includes(node.config.format) && !deliveryEquals(node.config, _dd)) H[H.length] = '<div class="config-note"><a href="#" onclick="event.preventDefault();adoptDeliveryAsDefault()">Make this my default delivery</a>: every new workflow and preset then starts here, and this node goes back to Default.</div>';
     }
   }
 
@@ -6308,6 +6493,40 @@ function updateConfig() {
   }
 }
 
+// The delivery fields, shared by the Output node panel (mode 'node': the node's own config, Branch
+// Name included) and the sidebar's Default Delivery section (mode 'default': a Format select among
+// the three deliveries, no Branch Name - a name belongs to one workflow). One builder, so the two
+// surfaces can never drift.
+function deliveryFieldsHtml(cfg, mode) {
+  const H = [];
+  const fmt = cfg.format, br = BRANCHING_STRATEGIES.includes(cfg.branching) ? cfg.branching : 'single';
+  if (mode === 'default') H[H.length] = configSelect('Format', 'format', DELIVERY_FORMATS.includes(fmt) ? fmt : 'code',
+    [{ value:'code', label:'Leave Uncommitted' },{ value:'commit', label:'Commit' },{ value:'pr', label:'Pull Request' }],
+    'What a code Output node delivers while its Format is left on Default. Every new workflow and preset starts here; an Output node overrides it for one workflow by picking its own Format. Report and Documentation are chosen on the node, never here.');
+  if (fmt === 'pr' || fmt === 'commit') {
+    H[H.length] = configSelect('Branching', 'branching', br, [
+      { value: 'single', label: 'Single branch - one named branch (the fields below)' },
+      { value: 'story', label: 'Per story - one branch per story, planned from the epic at run time' },
+      { value: 'chunk', label: 'Per logical chunk - stories grouped so each branch leaves every repo working' }],
+      'How epic-level work maps onto branches. Single branch uses the Branch Name field. Per story and Per logical chunk never take names: the planning step reads the epic\'s stories and each repository\'s own branch convention (a new repository borrows from its nearest sibling), writes the branch plan, and the director sees it before any branch exists (at the plan gate when Approve plan before build is on). A builder creates its unit\'s branch from its base when it starts; only this delivery pushes.' + (mode === 'node' && cfg.branchName && br !== 'single' ? ' The Branch Name entered for Single branch (' + cfg.branchName + ') is kept and plays no part under a strategy.' : ''));
+    if (br === 'single') {
+      if (mode === 'node') H[H.length] = configInput('Branch Name', 'branchName', cfg.branchName || '', 'text', 'e.g. feature/PRJ-6069-profile-redesign');
+    } else {
+      H[H.length] = configInput('Branch pattern (optional)', 'branchPattern', cfg.branchPattern || '', 'text', 'e.g. feature/{ticket}-{slug}', '',
+        'Empty follows each repository\'s own convention. A pattern overrides it everywhere. Example: feature/{ticket}-{slug} gives feature/PROJ-12345-some-story-title (hyphens are the usual choice; feature/{ticket}_{slug} gives the underscore form). Tokens: {ticket} the whole story key, prefix included, so never repeat the project prefix; {story} the same; {epic}; {slug} the story title, its words joined with the separator you place beside it; {repo}. In chunk mode {ticket} is the epic key and {chunk} the chunk slug.');
+      H[H.length] = configSelect('Integration branch', 'integrationBranch', INTEGRATION_CHOICES.includes(cfg.integrationBranch) ? cfg.integrationBranch : 'auto', [
+        { value: 'auto', label: 'Infer per repository - epic branch only where that repo already works that way' },
+        { value: 'none', label: 'None - every branch targets the base' },
+        { value: 'epic', label: 'Epic branch per repository - stories target it, one final PR to the base' }],
+        'Whether story branches target the base directly or an epic branch per repository. Infer reads each repository: an epic branch only where it already uses epic/, release/, or long-lived integration branches. Epic branch per repository forks one from the base, every story branch forks from it, and one final PR goes to the base when the last unit lands.');
+    }
+  }
+  if (fmt === 'pr' || (fmt === 'commit' && br !== 'single')) {
+    H[H.length] = configInput(br === 'single' ? 'Target Branch' : 'Base branch', 'targetBranch', cfg.targetBranch || '', 'text', 'e.g. develop, release/2.3 (empty: the repository\'s default branch)', '',
+      br === 'single' ? 'The branch the pull request merges into. Empty: the repository\'s default branch, detected at run time (never assumed to be main). A repository with a start branch in the Repositories list targets that branch instead.' : 'The branch every planned branch forks from. Empty: the repository\'s default branch, detected at run time (never assumed to be main). A repository with a start branch in the Repositories list uses that as its base instead.');
+  }
+  return H.join('');
+}
 // `tip` (optional) is the house tooltip on the label: the explanation lives on hover, not under the field.
 function configInput(label, key, value, type, placeholder, attrs, tip) {
   return `<div class="config-field"><label${tip ? ` title="${escHtml(tip)}"` : ''}>${label}</label>
@@ -9038,22 +9257,22 @@ function generateFromStory(_confirmed) {
 
     // Smart output node based on dominant category
     const outputMap = {
-      bugfix:      { label: 'Fix Complete',        deliverable: 'Verified bug fix with regression test',                format: 'code' },
-      refactoring: { label: 'Refactored Code',     deliverable: 'Refactored, validated code with preserved behavior',   format: 'code' },
-      devops:      { label: 'Infrastructure Ready', deliverable: 'Validated infrastructure and deployment changes',     format: 'code' },
+      bugfix:      { label: 'Fix Complete',        deliverable: 'Verified bug fix with regression test',                format: 'default' },
+      refactoring: { label: 'Refactored Code',     deliverable: 'Refactored, validated code with preserved behavior',   format: 'default' },
+      devops:      { label: 'Infrastructure Ready', deliverable: 'Validated infrastructure and deployment changes',     format: 'default' },
       performance: { label: 'Optimized',           deliverable: 'Performance-optimized code with benchmark results',    format: 'report' },
-      data:        { label: 'Migration Complete',  deliverable: 'Tested, reversible data migration',                    format: 'code' },
-      test:        { label: 'Test Suite',          deliverable: 'Comprehensive test suite with coverage report',         format: 'code' }
+      data:        { label: 'Migration Complete',  deliverable: 'Tested, reversible data migration',                    format: 'default' },
+      test:        { label: 'Test Suite',          deliverable: 'Comprehensive test suite with coverage report',         format: 'default' }
     };
     let outputConfig;
     if (outputMap[dominant]) {
       outputConfig = outputMap[dominant];
     } else if (hasUI && hasAPI) {
-      outputConfig = { label: 'Feature Ready', deliverable: 'Full stack feature with tests', format: 'code' };
+      outputConfig = { label: 'Feature Ready', deliverable: 'Full stack feature with tests', format: 'default' };
     } else if (hasUI) {
-      outputConfig = { label: 'UI Ready', deliverable: 'UI components following design system', format: 'code' };
+      outputConfig = { label: 'UI Ready', deliverable: 'UI components following design system', format: 'default' };
     } else {
-      outputConfig = { label: 'Feature Complete', deliverable: 'Tested, reviewed code changes', format: 'code' };
+      outputConfig = { label: 'Feature Complete', deliverable: 'Tested, reviewed code changes', format: 'default' };
     }
 
     const output = addNode('output', 0, 0, outputConfig.label, {
@@ -9163,7 +9382,7 @@ function loadPreset(preset, _confirmed) {
       const r = addNode('agent', 900, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, maxTurns:5 });
       const d = addNode('decision', 1180, 242, 'Review Passed?', { condition:'Code review passed with no critical issues', yesLabel:'Approved', noLabel:'Revise' });
       const t = addNode('agent', 1460, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
-      const o = addNode('output', 1740, 250, 'Feature Complete', { deliverable:'Tested feature', format:'code' });
+      const o = addNode('output', 1740, 250, 'Feature Complete', { deliverable:'Tested feature', format:'default' });
       addConnection(i.id, p.id);
       addConnection(p.id, pc.id); addConnection(pc.id, pd.id);
       addConnection(pd.id, c.id, 'Passed'); addConnection(pd.id, p.id, 'Needs revision');
@@ -9180,7 +9399,7 @@ function loadPreset(preset, _confirmed) {
       const r = addNode('agent', 900, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, maxTurns:5 });
       const d = addNode('decision', 1180, 242, 'Review Passed?', { condition:'Code review passed with no critical issues', yesLabel:'Approved', noLabel:'Revise' });
       const t = addNode('agent', 1460, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
-      const o = addNode('output', 1740, 250, 'Feature Complete', { deliverable:'Tested feature', format:'code' });
+      const o = addNode('output', 1740, 250, 'Feature Complete', { deliverable:'Tested feature', format:'default' });
       addConnection(i.id, p.id); addConnection(p.id, c.id);
       addConnection(c.id, r.id); addConnection(r.id, d.id);
       addConnection(d.id, c.id, 'Revise'); addConnection(d.id, t.id, 'Approved');
@@ -9192,7 +9411,7 @@ function loadPreset(preset, _confirmed) {
       const f = addNode('agent', 620, 250, 'Fixer', { agentType:'coder', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.fixer, maxTurns:10 });
       const t = addNode('agent', 900, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.bugTester, maxTurns:10 });
       const d = addNode('decision', 1180, 242, 'Fix Verified?', { condition:'Tests pass and bug is fixed', yesLabel:'Verified', noLabel:'Failed' });
-      const o = addNode('output', 1460, 250, 'Fix Complete', { deliverable:'Bug fix with regression test', format:'code' });
+      const o = addNode('output', 1460, 250, 'Fix Complete', { deliverable:'Bug fix with regression test', format:'default' });
       addConnection(i.id, inv.id); addConnection(inv.id, f.id); addConnection(f.id, t.id);
       addConnection(t.id, d.id); addConnection(d.id, f.id, 'Failed');
       addConnection(d.id, o.id, 'Verified');
@@ -9206,7 +9425,7 @@ function loadPreset(preset, _confirmed) {
       const r = addNode('agent', 1200, 280, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.fullstackReviewer, maxTurns:5 });
       const d = addNode('decision', 1480, 280, 'Review passed?', { condition:'Full-stack review passed: integration is sound and no critical issues remain', yesLabel:'Approved', noLabel:'Revise', maxRevisions:3 });
       const t = addNode('agent', 1760, 280, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.e2eTester, maxTurns:10 });
-      const o = addNode('output', 2040, 280, 'Feature Ready', { deliverable:'Full stack feature', format:'code' });
+      const o = addNode('output', 2040, 280, 'Feature Ready', { deliverable:'Full stack feature', format:'default' });
       addConnection(i.id, arch.id); addConnection(arch.id, fork.id);
       addConnection(fork.id, be.id); addConnection(fork.id, fe.id);
       addConnection(be.id, r.id); addConnection(fe.id, r.id);
@@ -9225,7 +9444,7 @@ function loadPreset(preset, _confirmed) {
       const r = addNode('agent', 900, 250, 'Delta Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Bash','Grep','Glob','LSP'], prompt:PROMPTS.touchupReviewer, maxTurns:5 });
       const d = addNode('decision', 1180, 242, 'Delta sound?', { condition:'The delta is correct and minimal, the Must Not Move behaviors are intact, and only Critical or High findings gate', yesLabel:'Approved', noLabel:'Revise', maxRevisions:3 });
       const st = addNode('agent', 1460, 250, 'Artifact Steward', { agentType:'writer', writingStyle:'technical', model:state.defaultModel, tools:WRITER_TOOL_DEFAULTS.technical, prompt:PROMPTS.artifactSteward, maxTurns:8 });
-      const o = addNode('output', 1740, 250, 'Touch-Up Complete', { deliverable:'Amended change with durable artifacts updated to match', format:'code' });
+      const o = addNode('output', 1740, 250, 'Touch-Up Complete', { deliverable:'Amended change with durable artifacts updated to match', format:'default' });
       addConnection(i.id, s.id); addConnection(s.id, a.id); addConnection(a.id, r.id);
       addConnection(r.id, d.id); addConnection(d.id, a.id, 'Revise');
       addConnection(d.id, st.id, 'Approved'); addConnection(st.id, o.id);
@@ -9256,7 +9475,7 @@ function loadPreset(preset, _confirmed) {
       const im = addNode('agent', 900, 250, 'Improver', { agentType:'coder', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.improver, maxTurns:8 });
       const v = addNode('agent', 1180, 250, 'Validator', { agentType:'tester', model:state.defaultModel, tools:['Read','Bash','Grep','Glob','LSP'], prompt:PROMPTS.validator, maxTurns:5 });
       const d = addNode('decision', 1460, 250, 'Validation passed?', { condition:'All improvements verified: tests pass and no regressions introduced', yesLabel:'Pass', noLabel:'Revise', maxRevisions:3 });
-      const o = addNode('output', 1740, 250, 'Improved Code', { deliverable:'Reviewed and improved code', format:'code' });
+      const o = addNode('output', 1740, 250, 'Improved Code', { deliverable:'Reviewed and improved code', format:'default' });
       addConnection(i.id, r.id);
       addConnection(r.id, sk.id); addConnection(sk.id, sd.id);
       addConnection(sd.id, im.id, 'Passed'); addConnection(sd.id, r.id, 'Needs revision');
@@ -9338,7 +9557,7 @@ function loadPreset(preset, _confirmed) {
       const rev = addNode('agent', 2500, 320, 'Code Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, notes:'', maxTurns:5 });
       const rd = addNode('decision', 2760, 312, 'Review passed?', { condition:'Code review passed with no critical issues', yesLabel:'Approved', noLabel:'Revise' });
       const test = addNode('agent', 3000, 320, 'Test Engineer', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, notes:'', maxTurns:10 });
-      const o = addNode('output', 3260, 320, 'Feature Delivered', { deliverable:'Integrated, verified, reviewed, and tested feature', format:'code' });
+      const o = addNode('output', 3260, 320, 'Feature Delivered', { deliverable:'Integrated, verified, reviewed, and tested feature', format:'default' });
 
       addConnection(i.id, fork1.id);
       addConnection(fork1.id, d1.id); addConnection(fork1.id, d2.id); addConnection(fork1.id, d3.id);
@@ -9369,7 +9588,7 @@ function loadPreset(preset, _confirmed) {
       const authJoin = addNode('parallel', 1680, 286, 'Collect', { strategy:'all' });
       const rev = addNode('agent', 1960, 290, 'Test Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.testReviewer, maxTurns:10 });
       const d = addNode('decision', 2240, 282, 'Tests Ready?', { condition:'All acceptance criteria covered, both platforms implemented, DI registered', yesLabel:'Approved', noLabel:'Revise' });
-      const o = addNode('output', 2520, 290, 'Test Suite', { deliverable:'Complete test automation: feature file, screen objects, step definitions', format:'code' });
+      const o = addNode('output', 2520, 290, 'Test Suite', { deliverable:'Complete test automation: feature file, screen objects, step definitions', format:'default' });
       addConnection(i.id, planFork.id); addConnection(appIn.id, planFork.id);
       addConnection(planFork.id, plan.id); addConnection(planFork.id, appExp.id);
       addConnection(plan.id, planJoin.id); addConnection(appExp.id, planJoin.id);
@@ -9412,7 +9631,7 @@ function loadPreset(preset, _confirmed) {
         condition: 'Design-system compliant with no critical issues', yesLabel: 'Approved', noLabel: 'Revise', maxRevisions: 3
       });
       const o = addNode('output', 1900, 280, 'Component Ready', {
-        deliverable: 'UI component following project design system', format: 'code'
+        deliverable: 'UI component following project design system', format: 'default'
       });
       addConnection(i.id, dsa.id);
       addConnection(dsa.id, impl.id);
@@ -9429,7 +9648,7 @@ function loadPreset(preset, _confirmed) {
       const r = addNode('agent', 1180, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, maxTurns:5 });
       const d = addNode('decision', 1460, 242, 'Review OK?', { condition:'All review checks pass', yesLabel:'Pass', noLabel:'Revise' });
       const t = addNode('agent', 1740, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
-      const o = addNode('output', 2020, 250, 'Refactored Code', { deliverable:'Refactored, validated code with preserved behavior', format:'code' });
+      const o = addNode('output', 2020, 250, 'Refactored Code', { deliverable:'Refactored, validated code with preserved behavior', format:'default' });
       addConnection(i.id, p.id); addConnection(p.id, a.id); addConnection(a.id, rf.id);
       addConnection(rf.id, r.id); addConnection(r.id, d.id); addConnection(d.id, rf.id, 'Revise');
       addConnection(d.id, t.id, 'Pass'); addConnection(t.id, o.id);
@@ -9478,7 +9697,7 @@ function loadPreset(preset, _confirmed) {
       const r = addNode('agent', 900, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, maxTurns:5 });
       const d = addNode('decision', 1180, 242, 'Review OK?', { condition:'All review checks pass', yesLabel:'Pass', noLabel:'Revise' });
       const t = addNode('agent', 1460, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
-      const o = addNode('output', 1740, 250, 'Infrastructure Ready', { deliverable:'Validated infrastructure and deployment changes', format:'code' });
+      const o = addNode('output', 1740, 250, 'Infrastructure Ready', { deliverable:'Validated infrastructure and deployment changes', format:'default' });
       addConnection(i.id, p.id); addConnection(p.id, dev.id); addConnection(dev.id, r.id);
       addConnection(r.id, d.id); addConnection(d.id, dev.id, 'Revise');
       addConnection(d.id, t.id, 'Pass'); addConnection(t.id, o.id);
@@ -9499,7 +9718,7 @@ function loadPreset(preset, _confirmed) {
       const rd = addNode('decision', 1740, 242, 'Review OK?', { condition:'Review passed: no speculative structure, one pattern per cross-cutting concern, no generator residue, the toolchain runs as documented, and no file in the tree carries a secret', yesLabel:'Approved', noLabel:'Revise', maxRevisions:3 });
       const v = addNode('agent', 2020, 250, 'Fresh-Copy Verifier', { agentType:'verifier', model:state.defaultModel, tools:['Read','Grep','Glob','Bash','LSP','WebFetch'], prompt:PROMPTS.freshCopyVerifier, maxTurns:12 });
       const vd = addNode('decision', 2300, 242, 'Project proven?', { condition:'From a fresh copy of what version control will carry, every README quickstart step and every slice behavior is verified with evidence, with an exact human check named for anything tooling could not reach', yesLabel:'Proven', noLabel:'Not verified', maxRevisions:3 });
-      const o = addNode('output', 2580, 250, 'Project Ready', { deliverable:'A new project with a pinned toolchain, a proven first slice, a literal README quickstart, and conventions future runs ground on', format:'code' });
+      const o = addNode('output', 2580, 250, 'Project Ready', { deliverable:'A new project with a pinned toolchain, a proven first slice, a literal README quickstart, and conventions future runs ground on', format:'default' });
       addConnection(i.id, sc.id); addConnection(sc.id, fa.id);
       addConnection(fa.id, sk.id); addConnection(sk.id, sd.id);
       addConnection(sd.id, sf.id, 'Passed'); addConnection(sd.id, fa.id, 'Needs revision');
@@ -9524,7 +9743,7 @@ function loadPreset(preset, _confirmed) {
       const rd = addNode('decision', 1460, 242, 'Conventions hold?', { condition:'Every artifact matches the estate conventions and pinned versions, the name cascade and contract literals are applied without deviation, the environment matrix is complete, and no committed file carries a secret', yesLabel:'Approved', noLabel:'Revise', maxRevisions:3 });
       const v = addNode('agent', 1740, 250, 'Deploy Verifier', { agentType:'verifier', model:state.defaultModel, tools:['Read','Grep','Glob','Bash','LSP','WebFetch'], prompt:PROMPTS.deployVerifier, maxTurns:12 });
       const vd = addNode('decision', 2020, 242, 'Provision proven?', { condition:'Every deliverable is verified in every planned environment - builds green, deployments healthy, gates hold, packages install - with an exact human check named for anything tooling could not reach', yesLabel:'Proven', noLabel:'Not verified', maxRevisions:3 });
-      const o = addNode('output', 2300, 250, 'Platform Ready', { deliverable:'Provisioned repos, infrastructure, and pipelines proven per environment', format:'code' });
+      const o = addNode('output', 2300, 250, 'Platform Ready', { deliverable:'Provisioned repos, infrastructure, and pipelines proven per environment', format:'default' });
       addConnection(i.id, sv.id); addConnection(sv.id, p.id);
       addConnection(p.id, sk.id); addConnection(sk.id, sd.id);
       addConnection(sd.id, pr.id, 'Passed'); addConnection(sd.id, p.id, 'Needs revision');
@@ -9551,7 +9770,7 @@ function loadPreset(preset, _confirmed) {
       const vd = addNode('decision', 2020, 242, 'Seam proven?', { condition:'Every contract item is proven across the seam - producer emits it, each consumer accepts it, shared literals match - and the compatibility window holds, with an exact human check named for anything tooling could not reach', yesLabel:'Proven', noLabel:'Not verified', maxRevisions:3 });
       const r = addNode('agent', 2300, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Bash','Grep','Glob','LSP'], prompt:PROMPTS.crossRepoReviewer, maxTurns:6 });
       const rd = addNode('decision', 2580, 242, 'Review OK?', { condition:'Review passed: every contract item lands as contracted in every repository, no lane edited outside its repository, and each lane follows its own repository conventions', yesLabel:'Pass', noLabel:'Revise', maxRevisions:3 });
-      const o = addNode('output', 2860, 250, 'Change Delivered', { deliverable:'Coordinated change across repositories with the seam proven end to end', format:'code' });
+      const o = addNode('output', 2860, 250, 'Change Delivered', { deliverable:'Coordinated change across repositories with the seam proven end to end', format:'default' });
       addConnection(i.id, ca.id);
       addConnection(ca.id, sk.id); addConnection(sk.id, sd.id);
       addConnection(sd.id, fork.id, 'Passed'); addConnection(sd.id, ca.id, 'Needs revision');
@@ -9581,7 +9800,7 @@ function loadPreset(preset, _confirmed) {
       const r = addNode('agent', 1180, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Grep','Glob','LSP'], prompt:PROMPTS.reviewer, maxTurns:5 });
       const d = addNode('decision', 1460, 242, 'Review OK?', { condition:'All review checks pass', yesLabel:'Pass', noLabel:'Revise' });
       const t = addNode('agent', 1740, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.tester, maxTurns:10 });
-      const o = addNode('output', 2020, 250, 'Test Suite', { deliverable:'Comprehensive test suite with coverage report', format:'code' });
+      const o = addNode('output', 2020, 250, 'Test Suite', { deliverable:'Comprehensive test suite with coverage report', format:'default' });
       addConnection(i.id, p.id); addConnection(p.id, a.id); addConnection(a.id, tw.id);
       addConnection(tw.id, r.id); addConnection(r.id, d.id); addConnection(d.id, tw.id, 'Revise');
       addConnection(d.id, t.id, 'Pass'); addConnection(t.id, o.id);
@@ -9600,7 +9819,7 @@ function loadPreset(preset, _confirmed) {
       const r = addNode('agent', 1180, 250, 'Reviewer', { agentType:'reviewer', model:state.defaultModel, tools:['Read','Bash','Grep','Glob','LSP'], prompt:PROMPTS.migrationReviewer, maxTurns:6 });
       const d = addNode('decision', 1460, 242, 'Review OK?', { condition:'Review passed: the migrations match the plan, every key or constraint window is bracketed with its guard and re-validation per the risk register, and no unplanned destructive operation slipped in', yesLabel:'Pass', noLabel:'Revise' });
       const t = addNode('agent', 1740, 250, 'Tester', { agentType:'tester', model:state.defaultModel, tools:['Read','Write','Edit','Bash','Grep','Glob','LSP'], prompt:PROMPTS.migrationVerifier, maxTurns:12 });
-      const o = addNode('output', 2020, 250, 'Migration Complete', { deliverable:'Tested, reversible data migration with reconciliation proof and runbook', format:'code' });
+      const o = addNode('output', 2020, 250, 'Migration Complete', { deliverable:'Tested, reversible data migration with reconciliation proof and runbook', format:'default' });
       addConnection(i.id, res.id); addConnection(res.id, p.id);
       addConnection(p.id, sk.id); addConnection(sk.id, sd.id);
       addConnection(sd.id, mig.id, 'Passed'); addConnection(sd.id, p.id, 'Needs revision');
@@ -9665,8 +9884,16 @@ function updateStoryPlaceholder(preset) {
   }
 }
 
+// New Workflow clears the job (canvas, name, requirements, workflow context) and resets every shop
+// section that is not pinned. A pinned section keeps its contents; to reset one, unpin it first.
+// The dialog names what the pins keep so the policy is visible at the moment it applies.
 function clearCanvas(skipConfirm) {
-  if (!skipConfirm && state.nodes.length > 0) { withConfirm('Start a new workflow? This clears all nodes, connections, and inputs.', { confirmLabel: 'Clear' }, () => clearCanvas(true)); return; }
+  if (!skipConfirm && state.nodes.length > 0) {
+    const kept = pinnedSectionsWithContent();
+    withConfirm('Start a new workflow? This clears all nodes, connections, and inputs.' + (kept.length ? '\nKeeps (pinned): ' + kept.join(', ') + '.' : ''), { confirmLabel: 'Clear' }, () => clearCanvas(true));
+    return;
+  }
+  const keep = (k) => isPinned(k);
   if (state.nodes.length > 0) pushUndo();
   state.nodes = [];
   state.connections = [];
@@ -9675,41 +9902,63 @@ function clearCanvas(skipConfirm) {
   state.activePreset = null;
   $('workflowName').value = '';
   if ($('storyInput')) { $('storyInput').value = ''; $('storyInput').placeholder = 'Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.\n\nJira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.\n\nRequirements: paste full text and click Auto Workflow to auto-build a workflow from keywords.'; }
-  state.repositories = [];
+  if (!keep('repos')) state.repositories = [];
   renderRepoRows();
-  if ($('appSourcePath')) $('appSourcePath').value = '';
-  if ($('appSourceBranch')) $('appSourceBranch').value = '';
-  if ($('appSourceAccess')) { $('appSourceAccess').value = 'readonly'; refreshEnhancedSelect($('appSourceAccess')); }
-  if ($('uiContextNotes')) $('uiContextNotes').value = '';
+  if (!keep('appUi')) {
+    if ($('appSourcePath')) $('appSourcePath').value = '';
+    if ($('appSourceBranch')) $('appSourceBranch').value = '';
+    if ($('appSourceAccess')) { $('appSourceAccess').value = 'readonly'; refreshEnhancedSelect($('appSourceAccess')); }
+    if ($('uiContextNotes')) $('uiContextNotes').value = '';
+  }
   if ($('urlPresetPicker')) $('urlPresetPicker').style.display = 'none';
-  // New-workflow defaults: memory + durable record ON (flipped 2026-07-03; grounding was already on).
-  state.memoryEnabled = true;
-  const _mcb = $('memoryToggle');
-  if (_mcb) { _mcb.checked = true; $('memoryPathField').style.display = 'block'; }
-  state.durableRecord = true;
-  state.artifactPath = '';
+  const sw = NEW_WORKFLOW_SWITCHES;
+  if (!keep('memory')) {
+    state.memoryEnabled = sw.memoryEnabled;
+    const _mcb = $('memoryToggle');
+    if (_mcb) { _mcb.checked = sw.memoryEnabled; $('memoryPathField').style.display = sw.memoryEnabled ? 'block' : 'none'; }
+    state.durableRecord = sw.durableRecord;
+    state.openSpecArtifacts = sw.openSpecArtifacts;   // syncDurableUI below mirrors it
+    state.consumeRecords = sw.consumeRecords;
+    const _crt = $('consumeRecordsToggle'); if (_crt) _crt.checked = sw.consumeRecords;
+  }
+  state.artifactPath = '';   // the record path belongs to one workflow
   syncDurableUI();
   if ($('planInput')) $('planInput').value = '';
-  state.mcpAtlassian = true;
-  state.mcpCodeSearch = true;
-  state.mcpDatadog = false;
-  state.consumeRecords = true;
-  state.clarifyFirst = false;
-  state.approvePlan = false;
-  state.mcpCustom = '';
-  const _matl = $('mcpAtlassianToggle'); if (_matl) _matl.checked = true;
-  const _msb = $('mcpCodeSearchToggle'); if (_msb) _msb.checked = true;
-  const _mdd = $('mcpDatadogToggle'); if (_mdd) _mdd.checked = false;
-  const _crt = $('consumeRecordsToggle'); if (_crt) _crt.checked = true;
-  const _clt = $('clarifyFirstToggle'); if (_clt) _clt.checked = false;
-  const _apt = $('approvePlanToggle'); if (_apt) _apt.checked = false;
-  const _mcn = $('mcpCustomNotes'); if (_mcn) _mcn.value = '';
-  // state.rulesPaths, state.productDocPaths, and state.verifyPaths are intentionally NOT reset
-  // here: they are sticky repo-level context that carries across workflows in the same repo. The
-  // Clear-all controls (clearRulesPaths / clearProductDocPaths / clearVerifyPaths) empty them, and
-  // a saved workflow carrying a non-empty list replaces them on load (applyWorkflowContext).
-  // state.verifyFailRun (the fail-the-run posture) is likewise left untouched here; a saved
-  // workflow carries its own copy that wins on load.
+  if (!keep('mcp')) {
+    state.mcpAtlassian = sw.mcpAtlassian;
+    state.mcpCodeSearch = sw.mcpCodeSearch;
+    state.mcpDatadog = sw.mcpDatadog;
+    state.mcpBrowser = sw.mcpBrowser;
+    state.mcpGithub = sw.mcpGithub;
+    state.mcpCustom = '';
+    const _matl = $('mcpAtlassianToggle'); if (_matl) _matl.checked = sw.mcpAtlassian;
+    const _msb = $('mcpCodeSearchToggle'); if (_msb) _msb.checked = sw.mcpCodeSearch;
+    const _mdd = $('mcpDatadogToggle'); if (_mdd) _mdd.checked = sw.mcpDatadog;
+    const _mbr = $('mcpBrowserToggle'); if (_mbr) _mbr.checked = sw.mcpBrowser;
+    const _mgh = $('mcpGithubToggle'); if (_mgh) _mgh.checked = sw.mcpGithub;
+    const _mcn = $('mcpCustomNotes'); if (_mcn) _mcn.value = '';
+  }
+  if (!keep('gates')) {
+    state.clarifyFirst = sw.clarifyFirst;
+    state.approvePlan = sw.approvePlan;
+    const _clt = $('clarifyFirstToggle'); if (_clt) _clt.checked = sw.clarifyFirst;
+    const _apt = $('approvePlanToggle'); if (_apt) _apt.checked = sw.approvePlan;
+  }
+  // Defaults ship pinned; unpinned, a new workflow starts from the app defaults.
+  if (!keep('defaults')) {
+    setDefaultModel(NODE_DEFAULTS.agent.config.model, true);
+    setEffort('', true);
+    state.defaultDelivery = blankDelivery();
+    renderDefaultDelivery();
+  }
+  // Repo Context Paths ship pinned (sticky repo-level context); unpinned they clear here like the
+  // other sections. state.verifyFailRun (the fail-the-run posture) is a preference and stays.
+  if (!keep('repoPaths')) {
+    state.rulesPaths = []; state.productDocPaths = []; state.verifyPaths = []; state.verifyNotes = '';
+    renderRulesRows(); renderProductDocRows(); renderVerifyRows();
+    const _vn = $('verifyNotesInput'); if (_vn) _vn.value = '';
+    if (typeof syncVerifyFailRunUI === 'function') syncVerifyFailRunUI();
+  }
   render();
   updateConfig();
   updateMemoryPath();
@@ -9849,12 +10098,12 @@ function validateWorkflow() {
   // A branching strategy with no approval gate creates branches from names nobody reviewed at a gate.
   const _bpV = workflowBranching();
   if (_bpV && branchingOutputs().length > 1) warnings.push({ type: 'warn', msg: 'Two Output nodes set a branching strategy: only "' + _bpV.node.label + '" drives the plan and the other is ignored - keep one strategy node' });
-  if (_bpV && new Set(state.nodes.filter(n => n.type === 'output' && (n.config.format === 'pr' || n.config.format === 'commit')).map(n => n.config.format)).size > 1) warnings.push({ type: 'warn', msg: 'Two Output nodes create branches with different formats (Commit and Pull Request) while a branching strategy is set: the Pull Request delivery wins and the plan follows it - remove one Output node or give both the same format' });
-  if (_bpV) state.nodes.filter(n => n.type === 'output' && (n.config.format === 'pr' || n.config.format === 'commit') && outputBranching(n) === 'single' && (n.config.branchName || n.config.targetBranch)).forEach(n => {
+  if (_bpV && new Set(state.nodes.filter(n => n.type === 'output' && (outCfg(n).format === 'pr' || outCfg(n).format === 'commit')).map(n => outCfg(n).format)).size > 1) warnings.push({ type: 'warn', msg: 'Two Output nodes create branches with different formats (Commit and Pull Request) while a branching strategy is set: the Pull Request delivery wins and the plan follows it - remove one Output node or give both the same format' });
+  if (_bpV) state.nodes.filter(n => n.type === 'output' && (outCfg(n).format === 'pr' || outCfg(n).format === 'commit') && outputBranching(n) === 'single' && (n.config.branchName || (!outputOnDefault(n) && n.config.targetBranch))).forEach(n => {
     warnings.push({ type: 'warn', msg: '"' + n.label + '" names a single branch while "' + _bpV.node.label + '" sets a branching strategy: the strategy drives the delivery and this node\'s Branch Name and Target Branch are ignored - remove one Output node or align them' });
   });
   // A branching strategy on an Output node whose format never creates branches is inert; say so.
-  state.nodes.filter(n => n.type === 'output' && outputBranching(n) !== 'single' && n.config.format !== 'pr' && n.config.format !== 'commit').forEach(n => {
+  state.nodes.filter(n => n.type === 'output' && outputBranching(n) !== 'single' && outCfg(n).format !== 'pr' && outCfg(n).format !== 'commit').forEach(n => {
     warnings.push({ type: 'warn', msg: '"' + n.label + '" sets Branching to per ' + (outputBranching(n) === 'chunk' ? 'logical chunk' : 'story') + ' but its Format creates no branches - set the Format to Commit or Pull Request, or set Branching back to Single' });
   });
   // Parallel siblings with a dependency path between them cannot truly run simultaneously.
@@ -10043,9 +10292,9 @@ function adviseWorkflow() {
   });
 
   // (c) One agent carrying the whole workflow into a code delivery.
-  const codeOut = outputs.find(o => o.config && (o.config.format === 'pr' || o.config.format === 'commit'));
+  const codeOut = outputs.find(o => o.config && (outCfg(o).format === 'pr' || outCfg(o).format === 'commit'));
   if (agents.length === 1 && codeOut) {
-    s.push({ msg: 'One agent carries the whole workflow into a ' + (codeOut.config.format === 'pr' ? 'pull request' : 'commit') + ' - consider splitting the work (plan / build / test) or adding a review step before delivery.' });
+    s.push({ msg: 'One agent carries the whole workflow into a ' + (outCfg(codeOut).format === 'pr' ? 'pull request' : 'commit') + ' - consider splitting the work (plan / build / test) or adding a review step before delivery.' });
   }
 
   // (d) A read-and-analyze role holding write tools while still on its default template.
@@ -10320,7 +10569,8 @@ const EXPLAIN_SECTION_LINKS = {
   'Datadog step hint': 'mcp-integrations',
   'Browser step hint': 'mcp-integrations',
   'Code-search step hint': 'mcp-integrations',
-  'Verification-instructions step hint': 'repositories'
+  'Verification-instructions step hint': 'repositories',
+  'Default Delivery': 'default-model'
 };
 function jumpToSection(id) {
   // From the Explain modal to the lever itself. Smooth for humans; instant when the test
@@ -10621,20 +10871,46 @@ function explainOutputNode(node, format) {
   const rows = [];
   const fmts = deliveryFormats();
   const winner = fmts.includes('pr') ? 'pr' : fmts.includes('commit') ? 'commit' : fmts.includes('report') ? 'report' : fmts.includes('docs') ? 'docs' : 'none';
-  const mine = node.config.format;
+  const _oc = outCfg(node), mine = _oc.format, onDef = outputOnDefault(node);
+  const _dd = effectiveDelivery(state.defaultDelivery);
+  const _exH = explainHeadingLevel(format);
+  // Where this node's delivery comes from: the sidebar default, or its own Format for this workflow.
+  rows.push(exRow('Default Delivery', onDef && mine !== 'code',
+    onDef
+      ? 'follows the sidebar default (' + deliverySummary(_dd) + ')' + (mine === 'code' ? ': Leave Uncommitted emits no delivery block' : '') + ' - pick a Format on this node to override it for this workflow'
+      : (deliveryEquals(node.config, _dd) && DELIVERY_FORMATS.includes(mine) ? 'this node picks its own Format, which happens to match the sidebar default (' + deliverySummary(_dd) + ')' : 'this node overrides the sidebar default (' + deliverySummary(_dd) + ") with '" + mine + "' for this workflow"),
+    onDef && mine !== 'code' ? deliveryBlock(_exH) : ''));
   rows.push(exRow('Delivery block', true,
-    "this output's format is '" + mine + "'; the delivery block is driven by priority pr > commit > report > docs across all output nodes ('" + winner + "' wins)" ,
-    mine === winner || (winner === 'none' && mine === 'code') ? deliveryBlock(explainHeadingLevel(format)) : ''));
-  if (mine === 'pr' || (mine === 'commit' && outputBranching(node) !== 'single')) {
+    (onDef ? "Format is Default, resolved by the sidebar's Default Delivery to '" : "this output's format is '") + mine + "'; the delivery block is driven by priority pr > commit > report > docs across all output nodes ('" + winner + "' wins)" ,
+    mine === winner || (winner === 'none' && mine === 'code') ? deliveryBlock(_exH) : ''));
+  // The Deliverable text: listed by name in the formats that enumerate outputs (Workflow, Agent
+  // Teams, Claude.ai); the others carry it through the delivery block alone.
+  const _delFallback = format === 'prompt' ? 'Deliverable' : 'Complete deliverable';
+  const _delLine = ['prompt', 'teams', 'claude'].includes(format) ? '- **' + node.label + '**: ' + (node.config.deliverable || _delFallback) + ' (format: ' + mine + ')' : '';
+  rows.push(exRow('Deliverable', !!_delLine,
+    _delLine ? "listed in this format's deliverables section" + (node.config.deliverable ? '' : ' with the fallback text (the Deliverable field is empty)') + " - the wording comes from the node's Deliverable field"
+             : 'this format does not enumerate deliverables; the Deliverable field is not emitted here (the delivery block still says what to do with the work)', _delLine));
+  if (mine === 'pr' || mine === 'commit') {
     const _ob = outputBranching(node);
     rows.push(exRow('Branches', true,
       _ob !== 'single'
-        ? 'one branch per ' + (_ob === 'chunk' ? 'logical chunk' : 'story') + ', per repository, planned at run time from the epic\'s stories and each repository\'s convention' + (node.config.branchPattern ? ' (pattern: ' + node.config.branchPattern + ')' : '') + '; integration branch: ' + (INTEGRATION_CHOICES.includes(node.config.integrationBranch) ? node.config.integrationBranch : 'auto') + (mine === 'pr' ? '; base: ' + (node.config.targetBranch || 'main (default)') : '')
-        : (node.config.branchName ? 'feature branch: ' + node.config.branchName : 'feature branch derived from the ticket ID at run time') + (mine === 'pr' ? '; target: ' + (node.config.targetBranch || 'main (default)') : ''), ''));
+        ? 'one branch per ' + (_ob === 'chunk' ? 'logical chunk' : 'story') + ', per repository, planned at run time from the epic\'s stories and each repository\'s convention' + (_oc.branchPattern ? ' (pattern: ' + _oc.branchPattern + ')' : '') + '; integration branch: ' + (INTEGRATION_CHOICES.includes(_oc.integrationBranch) ? _oc.integrationBranch : 'auto') + (mine === 'pr' ? '; base: ' + (_oc.targetBranch || DEFAULT_BRANCH_SHORT + ', detected at run time') : '; base: ' + (_oc.targetBranch || DEFAULT_BRANCH_SHORT + ', detected at run time'))
+        : (node.config.branchName ? 'feature branch: ' + node.config.branchName : 'feature branch derived from the ticket ID at run time') + (mine === 'pr' ? '; target: ' + (_oc.targetBranch || DEFAULT_BRANCH_SHORT + ', detected at run time') : '; commit and push, no pull request'), ''));
+    // The branch plan this node's strategy configures: who writes it, what it covers, where it is reviewed.
+    const _bp = workflowBranching();
+    if (_ob !== 'single' || _bp) {
+      const drives = !!(_bp && _bp.node.id === node.id);
+      const owner = drives ? branchPlanOwner() : null;
+      const repos = getRepositories();
+      rows.push(exRow('Branch plan', drives,
+        drives
+          ? (owner ? owner.label : 'the orchestrator') + ' writes the plan (one row per ' + branchUnitWord(_bp) + ' and repository: unit, repository, branch, base' + (_bp.pr ? ', PR target' : '') + ') for ' + (repos.length ? repos.length + ' listed repositor' + (repos.length === 1 ? 'y' : 'ies') : 'the launch repository') + '; integration: ' + _bp.integration + '; ' + branchPlanReview()
+          : _bp ? 'another Output node ("' + _bp.node.label + '") drives the plan - this node\'s strategy is ignored (validation says so)' : 'this node sets a strategy but its format creates no branches, so no plan is written',
+        drives ? branchPlanHint() : ''));
+    }
   }
   return rows;
 }
-
 function explainNode(node, format) {
   format = format || state.exportFormat;
   if (!node) return [];
@@ -10802,9 +11078,15 @@ function explainWorkflow(format) {
   rows.push(exRow('UI Context', !!uiN, uiN ? 'UI/styling constraints set' : 'no UI context set - add notes in the App & UI Context sidebar section (UI Context area); Design Analyzer and UI-building steps consume it', uiN));
   const dfmts = deliveryFormats();
   const dwinner = dfmts.includes('pr') ? 'Pull Request Creation' : dfmts.includes('commit') ? 'Commit' : dfmts.includes('report') ? 'Report' : dfmts.includes('docs') ? 'Documentation' : 'no-commit discipline';
+  const _ddOuts = state.nodes.filter(n => n.type === 'output' && outputOnDefault(n));
+  const _ddEff = effectiveDelivery(state.defaultDelivery);
+  rows.push(exRow('Default Delivery', _ddOuts.length > 0 && _ddEff.format !== 'code',
+    _ddOuts.length === 0 ? 'no Output node follows the sidebar default - every Output node picks its own Format'
+      : 'the sidebar default is ' + deliverySummary(_ddEff) + '; ' + _ddOuts.length + ' Output node' + (_ddOuts.length === 1 ? ' follows' : 's follow') + ' it' + (_ddEff.format === 'code' ? ' (Leave Uncommitted emits no delivery block)' : ' (lever: the Defaults section in the sidebar, or the node\'s own Format for one workflow)'),
+    _ddOuts.length > 0 && _ddEff.format !== 'code' ? deliveryBlock(_exH) : ''));
   rows.push(exRow('Delivery block', true, 'orchestrator-owned, emitted once; driver by priority pr > commit > report > docs: ' + dwinner, deliveryBlock(_exH)));
   const _exRepos = getRepositories();
-  rows.push(exRow('Repositories', _exRepos.length > 0, _exRepos.length > 0 ? _exRepos.length + ' repositor' + (_exRepos.length === 1 ? 'y' : 'ies') + ' listed:' + _exRepos.map(r => '\n- ' + r.path + (r.branch ? ' @ ' + r.branch : '')).join('') : 'no repositories listed - only needed for multi-repo work or pinned branches; add them in the Multi-Repo & Context Paths sidebar section', _exRepos.length > 0 ? repoBlock(_exH + ' Repositories') : ''));
+  rows.push(exRow('Repositories', _exRepos.length > 0, _exRepos.length > 0 ? _exRepos.length + ' repositor' + (_exRepos.length === 1 ? 'y' : 'ies') + ' listed:' + _exRepos.map(r => '\n- ' + r.path + (r.branch ? ' @ ' + r.branch + (workflowBranching() ? ' (start branch, the base under the branch plan)' : ' (start branch: checked out and pulled first)') : '')).join('') : 'no repositories listed - only needed for multi-repo work or pinned branches; add them in the Multi-Repo & Context Paths sidebar section', _exRepos.length > 0 ? repoBlock(_exH + ' Repositories') : ''));
   const atlT = atlassianTicketFetchHint(getWorkflowAtlassianUrls());
   rows.push(exRow('Atlassian ticket fetch', !!atlT, atlT ? 'ticket URL(s) found in the requirements/nodes - toggle-independent, orchestrator fetches once' : 'no Atlassian URLs found in the workflow - paste a ticket URL into Requirements to include one', atlT));
   const atlG = atlassianGeneralHint();
@@ -10846,7 +11128,7 @@ function explainWorkflow(format) {
   const _bpW = workflowBranching();
   const _bpOff = state.nodes.some(n => n.type === 'output' && outputBranching(n) !== 'single');
   rows.push(exRow('Branching', !!_bpW, _bpW
-    ? 'an Output node delivering by ' + (_bpW.pr ? 'Pull Request' : 'Commit') + ' is set to one branch per ' + branchUnitWord(_bpW) + ' (lever: Branching on the Output node) - ' + (branchPlanOwner() ? branchPlanOwner().label : 'the orchestrator') + ' writes the branch plan from the epic and each repository\'s convention, ' + (state.approvePlan ? 'the director approves it at the plan gate' : 'the director sees it before any branch exists (Approve plan before build is off)') + ', every builder works on its row'
+    ? 'an Output node delivering by ' + (_bpW.pr ? 'Pull Request' : 'Commit') + ' is set to one branch per ' + branchUnitWord(_bpW) + ' (lever: Branching on the Output node' + (outputOnDefault(_bpW.node) ? ', inherited from the sidebar\'s Default Delivery' : '') + ') - ' + (branchPlanOwner() ? branchPlanOwner().label : 'the orchestrator') + ' writes the branch plan from the epic and each repository\'s convention, ' + (state.approvePlan ? 'the director approves it at the plan gate' : 'the director sees it before any branch exists (Approve plan before build is off)') + ', every builder works on its row'
     : _bpOff ? 'an Output node sets a branching strategy but its format creates no branches - switch it to Commit or Pull Request, or set Branching to Single'
     : 'no Output node sets a branching strategy - a Commit or Pull Request delivery uses its one named branch (set Branching on the Output node for epic-level work)', _bpW ? branchPlanHint() : ''));
   const cr = consumeRecordsHint(format);
@@ -11115,7 +11397,7 @@ function uiContextBlock(heading) {
 // and Documentation produce their artifact and never commit; code (and no output node)
 // leave changes uncommitted for the director to review.
 function deliveryFormats() {
-  return state.nodes.filter(n => n.type === 'output').map(n => n.config.format);
+  return state.nodes.filter(n => n.type === 'output').map(n => outCfg(n).format);
 }
 function deliversPr() {
   return deliveryFormats().includes('pr');
@@ -11158,7 +11440,7 @@ function branchPlanDeliveryLines(bp, pr) {
   const lines = [];
   lines.push('**Branches**: per the Branch plan (one per ' + unit + ' and repository, written ' + branchPlanHome() + ' and ' + (state.approvePlan ? 'approved by the director at the plan gate' : 'shown to the director before any branch exists') + '). Each row names the branch, its base, and ' + (pr ? 'its PR target' : 'where it lands') + '; nothing here is derived from the ticket id alone.');
   lines.push('');
-  lines.push('**Base branch**: `' + bp.target + '`' + (getRepositories().length ? ' for every repository without its own base in the Repositories list' : '') + (bp.integration === 'epic' ? ' (' + unit + ' branches fork from each repository\'s epic branch, which forks from the base)' : bp.integration === 'auto' ? ' (or that repository\'s epic branch where the plan found one)' : ''));
+  lines.push('**Base branch**: ' + branchRef(bp.target, true) + (getRepositories().length ? ' for every repository without its own base in the Repositories list' : '') + (bp.integration === 'epic' ? ' (' + unit + ' branches fork from each repository\'s epic branch, which forks from the base)' : bp.integration === 'auto' ? ' (or that repository\'s epic branch where the plan found one)' : ''));
   lines.push('');
   lines.push('**Steps, for EACH row of the plan:**');
   lines.push('1. Check out the row\'s branch: `git checkout <branch>`, or `git checkout -b <branch> <base>` when it does not exist yet; confirm with `git branch --show-current` before every commit');
@@ -11179,7 +11461,7 @@ function branchPlanDeliveryLines(bp, pr) {
   return lines;
 }
 function prBlock(heading) {
-  const outputs = state.nodes.filter(n => n.type === 'output' && n.config.format === 'pr');
+  const outputs = state.nodes.filter(n => n.type === 'output' && outCfg(n).format === 'pr');
   if (outputs.length === 0) return [];
   const h = heading || '### Pull Request Creation';
   const lines = [h, ''];
@@ -11194,8 +11476,8 @@ function prBlock(heading) {
     lines.push('**Feature branch**: Derive from the ticket ID in the requirements (e.g. `PRJ-6069` \u2192 `feature/PRJ-6069-short-description`). If no ticket ID, generate a descriptive branch name like `feature/short-description-of-changes`.');
   }
   lines.push('');
-  const targets = outputs.map(o => o.config.targetBranch).filter(Boolean);
-  lines.push('**Target branch** (PR merges into): `' + (targets[0] || 'main') + '`');
+  const targets = outputs.map(o => outCfg(o).targetBranch).filter(Boolean);
+  lines.push('**Target branch** (PR merges into): ' + branchRef(targets[0], true) + (getRepositories().some(r => r.branch) ? ' for every repository without its own start branch in the Repositories list; a repository with a start branch targets that branch' : ''));
   lines.push('');
   lines.push('**Steps:**');
   lines.push('1. **Check the current branch** with `git branch --show-current`:');
@@ -11210,7 +11492,7 @@ function prBlock(heading) {
   lines.push('2. Make all changes and commit on the feature branch');
   lines.push('3. Push the feature branch: `git push -u origin <feature-branch>`');
   lines.push('4. Detect the git provider from `git remote -v`:');
-  lines.push('   - `github.com` \u2192 use `gh pr create --base ' + (targets[0] || 'main') + '`');
+  lines.push('   - `github.com` \u2192 use `gh pr create --base ' + (targets[0] || '<target branch>') + '`');
   lines.push('   - `bitbucket.org` \u2192 use the Atlassian MCP `create_pull_request` tool if available, or `curl -X POST` the Bitbucket REST API');
   lines.push('   - `gitlab.com` \u2192 use `glab mr create` if available, or the GitLab API');
   lines.push('5. PR title: concise summary of changes');
@@ -11224,7 +11506,7 @@ function noCommitBlock(heading) {
   return [ h, '', 'Do not commit, push, or open a PR. Leave all changes uncommitted on the current branch for the director to review and commit.', '' ];
 }
 function commitBlock(heading) {
-  const outputs = state.nodes.filter(n => n.type === 'output' && n.config.format === 'commit');
+  const outputs = state.nodes.filter(n => n.type === 'output' && outCfg(n).format === 'commit');
   const h = heading || '### Commit';
   const lines = [h, ''];
   lines.push('**CRITICAL: NEVER commit or push directly to the target branch.** Always work on a feature branch.');
@@ -11254,7 +11536,7 @@ function commitBlock(heading) {
   return lines;
 }
 function reportBlock(heading) {
-  const outputs = state.nodes.filter(n => n.type === 'output' && n.config.format === 'report');
+  const outputs = state.nodes.filter(n => n.type === 'output' && outCfg(n).format === 'report');
   const h = heading || '### Report';
   const deliverable = outputs.map(o => o.config.deliverable).filter(Boolean)[0];
   const lines = [h, ''];
@@ -11270,7 +11552,7 @@ function reportBlock(heading) {
   return lines;
 }
 function docsBlock(heading) {
-  const outputs = state.nodes.filter(n => n.type === 'output' && n.config.format === 'docs');
+  const outputs = state.nodes.filter(n => n.type === 'output' && outCfg(n).format === 'docs');
   const h = heading || '### Documentation';
   const deliverable = outputs.map(o => o.config.deliverable).filter(Boolean)[0];
   const lines = [h, ''];
@@ -11753,7 +12035,7 @@ function genWorkflow() {
 
   if (outputs.length > 0) {
     p.push('### Expected Deliverables');
-    outputs.forEach(o => p.push(`- **${o.label}**: ${o.config.deliverable || 'Deliverable'} (format: ${o.config.format})`));
+    outputs.forEach(o => p.push(`- **${o.label}**: ${o.config.deliverable || 'Deliverable'} (format: ${outCfg(o).format})`));
     p.push('');
   }
 
@@ -12274,7 +12556,7 @@ function genAgentTeams() {
     p.push('## Expected Deliverables');
     p.push('');
     outputs.forEach(o => {
-      p.push(`- **${o.label}**: ${o.config.deliverable || 'Complete deliverable'} (format: ${o.config.format})`);
+      p.push(`- **${o.label}**: ${o.config.deliverable || 'Complete deliverable'} (format: ${outCfg(o).format})`);
     });
     p.push('');
   }
@@ -13021,7 +13303,7 @@ function genClaudePrompt() {
     p.push('## Expected Deliverables');
     p.push('');
     outputs.forEach(o => {
-      p.push(`- **${o.label}**: ${o.config.deliverable || 'Complete deliverable'} (format: ${o.config.format})`);
+      p.push(`- **${o.label}**: ${o.config.deliverable || 'Complete deliverable'} (format: ${outCfg(o).format})`);
     });
     p.push('');
   }
@@ -13187,10 +13469,10 @@ function openSpecInstruction(node) {
 function openSpecOutputLine(node) {
   // One readable deliverable line for an output node, reflecting its format + branch config, so the
   // final intent (PR/commit/report/docs + branch/target) survives into the apply step.
-  const c = node.config || {};
+  const c = outCfg(node);
   const what = (c.deliverable && c.deliverable.trim()) ? c.deliverable.trim() : (node.label || 'Deliverable');
   const branch = (c.branchName && c.branchName.trim()) ? c.branchName.trim() : '';
-  const target = (c.targetBranch && c.targetBranch.trim()) ? c.targetBranch.trim() : 'main';
+  const target = (c.targetBranch && c.targetBranch.trim()) ? c.targetBranch.trim() : DEFAULT_BRANCH_SHORT;
   switch (c.format) {
     case 'pr': return what + ': open a pull request' + (branch ? ' from branch ' + branch : '') + ' targeting ' + target + '.';
     case 'commit': return what + ': commit the changes' + (branch ? ' on branch ' + branch : '') + '.';
@@ -13477,7 +13759,7 @@ function buildOpenSpecSchema() {
   L.push('');
   L.push('# Round-trip metadata for the Agentic Workflow Designer (ignored by openspec validate).');
   L.push('# Re-import this file into the designer to edit the workflow visually.');
-  L.push('# awd:meta ' + JSON.stringify({ format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow() }));   // the serializer carries the repo context paths and verification posture
+  L.push('# awd:meta ' + JSON.stringify({ format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow({ portable: true }) }));   // the serializer carries the repo context paths and verification posture
 
   // Graph position for each artifact's record (task-inclusive, straight off the requires we built).
   const idLabel = {};
@@ -13742,7 +14024,7 @@ function openSpecSchemaToWorkflow(parsed) {
     const outId = 'n' + (seq++);
     const applyInstr = typeof apply.instruction === 'string' ? apply.instruction : '';
     nodes.push({ id: outId, type: 'output', label: 'Apply', x: X0 + (maxD + 1) * COLW, y: Y0 + row * ROWH, w: 180, h: 52,
-      config: { deliverable: applyInstr ? applyInstr.split('\n')[0].slice(0, 120) : 'Apply the change', format: 'code', targetBranch: '', branchName: '' } });
+      config: { deliverable: applyInstr ? applyInstr.split('\n')[0].slice(0, 120) : 'Apply the change', format: 'default', targetBranch: '', branchName: '' } });
     const applyReqs = (Array.isArray(apply.requires) ? apply.requires : []).filter(r => idMap[r]);
     const feeders = applyReqs.length ? applyReqs
       : arts.filter(a => !arts.some(b => (Array.isArray(b.requires) ? b.requires : []).includes(a.id))).map(a => a.id); // leaves
@@ -14006,7 +14288,7 @@ function genTuningPrompt() {
   L.push('## Current workflow definition (awd JSON)');
   L.push('');
   L.push('```json');
-  L.push(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow() }, null, 2));
+  L.push(JSON.stringify({ format: 'agentic-workflow-designer', version: 1, ...serializeWorkflow({ portable: true }) }, null, 2));
   L.push('```');
   L.push('');
   L.push('If you can write files, ALSO save your improved workflow JSON to `~/.awd/outbox/tuning-' + slugify(name) + '.json` (create the directories; skip silently if not permitted) - the Workflow Designer watches that spot and offers one-click import.');
@@ -15652,6 +15934,8 @@ initDefaultModelSelect();
 initEffortSelect();
 initSidebarCollapse();
 restorePrefs();
+renderDefaultDelivery();
+renderPins();
 syncVerifyFailRunUI();
 const _autoRestored = restoreAutoSave();
 if (!_autoRestored) { updateTransform(); render(); }
