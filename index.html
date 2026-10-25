@@ -11453,7 +11453,7 @@ function branchPlanDeliveryLines(bp, pr) {
     lines.push('   - `github.com` \u2192 use `gh pr create --base <PR target>`');
     lines.push('   - `bitbucket.org` \u2192 use the Atlassian MCP `create_pull_request` tool if available, or `curl -X POST` the Bitbucket REST API');
     lines.push('   - `gitlab.com` \u2192 use `glab mr create` if available, or the GitLab API');
-    lines.push('5. Open ONE pull request per branch into the row\'s PR target; title: the unit\'s key and a concise summary; description: what changed, why, how to test, and every story key the branch carries');
+    lines.push('5. Open ONE pull request per branch into the row\'s PR target. Title: the unit\'s key and a short summary. Description: fill the repository\'s PR template if it has one; otherwise what changed, why, how to test, what you ran with the result, and every story key the branch carries. Brief and human: no em dashes, no filler');
     if (bp.integration !== 'none') lines.push('6. Where a repository has an epic branch, open the final PR from it to the base when that repository\'s last unit lands');
     lines.push((bp.integration !== 'none' ? '7' : '6') + '. If PR creation fails (auth, missing tool), push the branch and provide the user a URL to create the PR manually');
   } else {
@@ -11498,8 +11498,8 @@ function prBlock(heading) {
   lines.push('   - `github.com` \u2192 use `gh pr create --base ' + (getRepositories().some(r => r.branch) ? '<that repository\'s start branch, else ' + (targets[0] || 'its default branch') + '>' : (targets[0] || '<target branch>')) + '`');
   lines.push('   - `bitbucket.org` \u2192 use the Atlassian MCP `create_pull_request` tool if available, or `curl -X POST` the Bitbucket REST API');
   lines.push('   - `gitlab.com` \u2192 use `glab mr create` if available, or the GitLab API');
-  lines.push('5. PR title: concise summary of changes');
-  lines.push('6. PR description: what changed, why, and how to test');
+  lines.push('5. PR title: the ticket key and a short summary of the change, in plain words');
+  lines.push('6. PR description: if the repository has a PR template (`.github/PULL_REQUEST_TEMPLATE.md` or the provider\'s equivalent), fill its sections; otherwise write what changed, why, how to test, and what you ran with the result. Reference the ticket key. Keep it brief and human: no em dashes, no filler');
   lines.push('7. If PR creation fails (auth, missing tool), push the branch and provide the user a URL to create the PR manually');
   lines.push('');
   return lines;

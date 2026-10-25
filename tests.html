@@ -2335,6 +2335,8 @@ describe('Default Delivery and section pins', () => {
     expect(w).toContain('**Target branch** (PR merges into): `develop`');                       // the shipped line, byte for byte
     expect(w).toContain('gh pr create --base develop');
     expect(w).toNotContain('without its own start branch');
+    expect(w).toContain('5. PR title: the ticket key and a short summary of the change, in plain words');
+    expect(w).toContain('fill its sections; otherwise write what changed, why, how to test, and what you ran with the result. Reference the ticket key. Keep it brief and human: no em dashes, no filler');
     expect(w).toNotContain('start branch from the Repositories list');   // no start branch: the clause is absent
     out.config.format = 'commit'; win.state.repositories = [{ path: '/tmp/svc', branch: 'release/2.3' }]; win.renderRepoRows();
     expect(win.genWorkflow()).toContain('create the feature branch from it: `git checkout -b feature/<ticket-id>-short-description <start-branch>`; never commit on the start branch itself');
@@ -2342,6 +2344,7 @@ describe('Default Delivery and section pins', () => {
     out.config.branching = 'story'; out.config.targetBranch = '';
     w = win.genWorkflow();
     expect(w).toContain("**Base branch**: the repository's default branch (detect it:");
+    expect(w).toContain("Description: fill the repository's PR template if it has one; otherwise what changed, why, how to test, what you ran with the result, and every story key the branch carries. Brief and human: no em dashes, no filler");
     expect(w).toContain("every story branch forks from the repository's default branch");
     out.config.targetBranch = 'develop';
     expect(win.genWorkflow()).toContain('**Base branch**: `develop`');
