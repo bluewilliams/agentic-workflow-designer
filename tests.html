@@ -2321,14 +2321,14 @@ describe('Default Delivery and section pins', () => {
     const nodeRows = (f) => win.explainOutputNode(out, f);
     const byPart = (rows, p) => rows.find(r => r.part === p);
     expect(byPart(nodeRows('prompt'), 'Default Delivery').status).toBe('skipped');   // provenance, not an emitted part: the block below is the text
-    expect(byPart(nodeRows('prompt'), 'Default Delivery').reason).toContain('follows the sidebar default (Pull Request, per story, base develop): the delivery block below is that default');
+    expect(byPart(nodeRows('prompt'), 'Default Delivery').reason).toContain('follows the sidebar default (Pull Request, per work item, base develop): the delivery block below is that default');
     expect(byPart(nodeRows('prompt'), 'Deliverable').status).toBe('emitted');
     expect(byPart(nodeRows('prompt'), 'Deliverable').probe).toContain('(format: pr)');
     expect(win.genWorkflow()).toContain(byPart(nodeRows('prompt'), 'Deliverable').probe);
     expect(byPart(nodeRows('subagent'), 'Deliverable').status).toBe('skipped');
     const bpRow = byPart(nodeRows('prompt'), 'Branch plan');
     expect(bpRow.status).toBe('emitted');
-    expect(bpRow.reason).toContain('Planner writes the plan (one row per story and repository');
+    expect(bpRow.reason).toContain('Planner writes the plan (one row per work item and repository');
     expect(bpRow.reason).toContain('the launch repository');
     expect(win.genWorkflow()).toContain(bpRow.probe);
     expect(win.genSubAgents()).toContain(byPart(nodeRows('subagent'), 'Branch plan').full.split('\n')[1]);   // the unfolded row is the flavor that format emits
@@ -2337,7 +2337,7 @@ describe('Default Delivery and section pins', () => {
     win.removeNode ? win.removeNode(other.id) : (win.state.nodes = win.state.nodes.filter(n => n.id !== other.id));
     out.config.format = 'commit'; out.config.branching = 'single';
     expect(byPart(nodeRows('prompt'), 'Default Delivery').status).toBe('skipped');
-    expect(byPart(nodeRows('prompt'), 'Default Delivery').reason).toContain("overrides the sidebar default (Pull Request, per story, base develop) with 'commit'");
+    expect(byPart(nodeRows('prompt'), 'Default Delivery').reason).toContain("overrides the sidebar default (Pull Request, per work item, base develop) with 'commit'");
     expect(byPart(nodeRows('prompt'), 'Branches').reason).toContain('commit and push, no pull request');
     expect(byPart(nodeRows('prompt'), 'Branch plan')).toBe(undefined);
     out.config.format = 'default';
@@ -2346,7 +2346,7 @@ describe('Default Delivery and section pins', () => {
     expect(wf.reason).toContain("inherited from the sidebar's Default Delivery");
     const dd = win.explainWorkflow('prompt').find(r => r.part === 'Default Delivery');
     expect(dd.status).toBe('emitted');
-    expect(dd.reason).toContain('the sidebar default is Pull Request, per story, base develop; 1 Output node follows it');
+    expect(dd.reason).toContain('the sidebar default is Pull Request, per work item, base develop; 1 Output node follows it');
     expect(win.EXPLAIN_SECTION_LINKS ? win.EXPLAIN_SECTION_LINKS['Default Delivery'] : 'default-model').toBe('default-model');
     setDefault({ format: 'code' });
     const dd0 = win.explainWorkflow('prompt').find(r => r.part === 'Default Delivery');
@@ -2378,7 +2378,7 @@ describe('Default Delivery and section pins', () => {
     expect(fields().querySelector('input[data-key="branchName"]')).toBeTruthy();
     expect(fields().querySelector('[data-key="branching"]')).toBeNull();
     setDefault({ format: 'pr', branching: 'story', targetBranch: 'develop' });
-    expect(opt().textContent).toBe('Default (Pull Request, per story, base develop)');
+    expect(opt().textContent).toBe('Default (Pull Request, per work item, base develop)');
     expect(fields().querySelector('input[data-key="branchName"]')).toBeNull();
     setDefault({ format: 'code' });
     fields().querySelector('.custom-select[data-key="format"] .custom-select-option[data-value="pr"]').click();
@@ -2392,7 +2392,7 @@ describe('Default Delivery and section pins', () => {
     expect(win.state.defaultDelivery.format).toBe('pr'); expect(win.state.defaultDelivery.branching).toBe('story');
     expect(out.config.format).toBe('default');
     expect(fields().textContent).toNotContain('Make this my default delivery');
-    expect(opt().textContent).toBe('Default (Pull Request, per story)');
+    expect(opt().textContent).toBe('Default (Pull Request, per work item)');
     expect(JSON.parse(win.localStorage.getItem('awd_prefs')).defaultDelivery.branching).toBe('story');
     // an override equal to the default offers nothing to adopt
     out.config.format = 'pr'; out.config.branching = 'story'; win.updateConfig();
@@ -2402,6 +2402,9 @@ describe('Default Delivery and section pins', () => {
     expect(host().querySelector('.custom-select[data-key="format"]')).toBeTruthy();
     expect(host().querySelector('.custom-select[data-key="format"] .custom-select-option[data-value="default"]')).toBeNull();
     expect(host().querySelector('.custom-select[data-key="format"] .custom-select-option[data-value="report"]')).toBeNull();
+    host().querySelector('.custom-select[data-key="format"] .custom-select-option[data-value="commit"]').click();
+    expect(host().querySelector('.custom-select[data-key="branching"] .custom-select-option[data-value="single"]').textContent).toBe('Single branch - one branch per workflow, named on the Output node');   // no Branch Name field lives in the sidebar
+    host().querySelector('.custom-select[data-key="format"] .custom-select-option[data-value="code"]').click();
     expect(host().querySelector('[data-key="branching"]')).toBeNull();
     host().querySelector('.custom-select[data-key="format"] .custom-select-option[data-value="pr"]').click();
     expect(win.state.defaultDelivery.format).toBe('pr');
@@ -2545,8 +2548,8 @@ describe('Default Delivery and section pins', () => {
     out.config.branching = 'story'; out.config.targetBranch = '';
     w = win.genWorkflow();
     expect(w).toContain("**Base branch**: the repository's default branch (detect it:");
-    expect(w).toContain("Description: fill the repository's PR template if it has one; otherwise what changed, why, how to test, what you ran with the result, and every story key the branch carries. Brief and human: no em dashes, no filler");
-    expect(w).toContain("every story branch forks from the repository's default branch");
+    expect(w).toContain("Description: fill the repository's PR template if it has one; otherwise what changed, why, how to test, what you ran with the result, and every work item key or title the branch carries. Brief and human: no em dashes, no filler");
+    expect(w).toContain("every work item branch forks from the repository's default branch");
     out.config.targetBranch = 'develop';
     expect(win.genWorkflow()).toContain('**Base branch**: `develop`');
   });
@@ -2739,7 +2742,7 @@ describe('Branching strategy (Output node)', () => {
     const brLabel = win.document.querySelector('#configFields .custom-select[data-key="branching"]').parentElement.querySelector('label');
     expect(brLabel.getAttribute('title')).toContain('is kept and plays no part under a strategy');   // the explanation is a tooltip on the label, not prose under the field
     const patLabel = win.document.querySelector('#configFields input[data-key="branchPattern"]').parentElement.querySelector('label');
-    expect(patLabel.getAttribute('title')).toContain('feature/{ticket}-{slug} gives feature/PROJ-12345-some-story-title');
+    expect(patLabel.getAttribute('title')).toContain('feature/{ticket}-{slug} gives feature/PROJ-12345-some-work-item-title');
     expect(win.document.getElementById('configFields').textContent).toNotContain('Names are not typed here');   // no paragraph under the fields
   });
   it('emission: per story on a Pull Request delivery reaches every format, the planner writes the plan, builders work their rows, reviewers nothing', () => {
@@ -2747,23 +2750,23 @@ describe('Branching strategy (Output node)', () => {
     win.state.memoryEnabled = false;                                                      // loadPreset turns memory on for a gated preset; this case is the memory-off text
     const outs = allOut();
     outs.forEach((o, i) => {
-      expect(o).toContain(i === 3 ? '# branching: one branch per story per repository' : '**Branch plan (configured): one branch per story, per repository.**');
+      expect(o).toContain(i === 3 ? '# branching: one branch per work item per repository' : '**Branch plan (configured): one branch per work item, per repository.**');
     });
     const w = win.genWorkflow();
-    expect(w).toContain('One branch per story.');
+    expect(w).toContain('One branch per work item.');
     expect(w).toContain('the repository this session was launched in');                     // no Repositories list: the launch repo is the scope
     expect(w).toContain('never guessed into a repository outside it');
     expect(w).toContain('borrow from the sibling repository in this run that is most like it');   // a new repo with no convention
     expect(w).toContain('then `feature/{ticket}-{slug}`');
     expect(w).toContain('decided per repository: use an epic branch only where that repository already works that way');   // integration: auto
-    expect(w).toContain('every story branch forks from `develop` and its PR targets it');
+    expect(w).toContain('every work item branch forks from `develop` and its PR targets it');
     expect(w).toContain('in the plan output');                                              // memory off, single session
     expect(w).toContain('(the same session runs every step and reads it there)');          // single-session: no copying into inputs
     expect(w).toNotContain('copies each builder');
     expect(w).toContain('**Branch plan**: produce the branch plan');                        // the Planner's note
     expect(w).toContain('**Branch**: before changing files, check out the branch the Branch plan assigns');   // the Implementer's note
     expect(w.split('**Branch**: before changing files').length - 1).toBe(2);                // Implementer and Tester build; Skeptic and Reviewer do not
-    expect(w).toContain('**Branches**: per the Branch plan (one per story and repository');
+    expect(w).toContain('**Branches**: per the Branch plan (one per work item and repository');
     expect(w).toContain('Open ONE pull request per branch into the row\'s PR target');
     expect(w).toNotContain('Derive from the ticket ID in the requirements');                // the one-branch lines are replaced, not stacked
     expect(w).toContain('**Base branch**: `develop`');
@@ -2779,9 +2782,9 @@ describe('Branching strategy (Output node)', () => {
     win.state.repositories = [{ path: '/work/alpha', branch: 'release/2026.4' }, { path: '/work/beta', branch: '' }];
     const w = win.genWorkflow();
     expect(w).toContain('one branch per logical chunk, per repository');
-    expect(w).toContain('Group them into logical chunks: a chunk is the smallest set of stories that must land together');
+    expect(w).toContain('Group them into logical chunks: a chunk is the smallest set of work items that must land together');
     expect(w).toContain('The director set a pattern that overrides this everywhere: `feat/{ticket}-{slug}`');
-    expect(w).toContain('`feature/{ticket}-{slug}` gives `feature/PROJ-12345-some-story-title`');   // the slug follows the separator beside it; the key is whole
+    expect(w).toContain('`feature/{ticket}-{slug}` gives `feature/PROJ-12345-some-work-item-title`');   // the slug follows the separator beside it; the key is whole
     expect(w).toContain('never repeat the project prefix in the pattern');
     expect(w).toContain('one epic branch per repository, forked from the repository\'s default branch');   // an empty base is the detected default branch, never an assumed main
     expect(w).toContain('the Repositories list in this prompt (each with its path, and a base branch where one is set)');
@@ -2797,7 +2800,7 @@ describe('Branching strategy (Output node)', () => {
     win.state.memoryEnabled = false;
     featureWith({ format: 'pr', branching: 'story', integrationBranch: 'none' });
     const w2 = win.genWorkflow();
-    expect(w2).toContain('none - every story branch forks from the repository\'s default branch and its PR targets it');
+    expect(w2).toContain('none - every work item branch forks from the repository\'s default branch and its PR targets it');
     expect(w2).toNotContain('open the final PR from it to the base');
     expect(w2).toContain('6. If PR creation fails');                                        // no integration step: the fallback keeps its number
   });
@@ -2813,7 +2816,7 @@ describe('Branching strategy (Output node)', () => {
     out.config.branching = 'story'; out.config.format = 'code';
     expect(win.workflowBranching()).toBe(null);                                             // inert without a branch-creating delivery...
     expect(win.genWorkflow()).toNotContain('Branch plan');
-    const warn = win.validateWorkflow().find(x => x.msg.indexOf('sets Branching to per story but its Format creates no branches') !== -1);
+    const warn = win.validateWorkflow().find(x => x.msg.indexOf('sets Branching to per work item but its Format creates no branches') !== -1);
     expect(!!warn).toBe(true);                                                              // ...and validation says so
     out.config.format = 'pr';
     expect(win.validateWorkflow().some(x => x.msg.indexOf('creates no branches') !== -1)).toBe(false);
@@ -2915,7 +2918,7 @@ describe('Branching strategy (Output node)', () => {
     // chunk mode: tokens mean the epic and the chunk, and the fallback names say so
     const out = win.state.nodes.find(n => n.type === 'output'); out.config.branching = 'chunk';
     w = win.genWorkflow();
-    expect(w).toContain('{ticket} means the epic key here, since a chunk carries several stories');
+    expect(w).toContain('{ticket} means the epic key here, since a chunk carries several work items');
     expect(w).toContain('then `feature/{epic}-{chunk}`');
     // a per-repository lane owns every row for its repository
     resetState(); win.state.repositories = [{ path: '/work/alpha', branch: '' }, { path: '/work/beta', branch: '' }];
@@ -2930,7 +2933,7 @@ describe('Branching strategy (Output node)', () => {
     featureWith({ format: 'pr', branching: 'story', branchPattern: 'feature/{ticket}-{slug}' });
     const wf = win.explainWorkflow('prompt').find(r => r.part === 'Branching');
     expect(wf.status).toBe('emitted');
-    expect(wf.reason).toContain('one branch per story');
+    expect(wf.reason).toContain('one branch per work item');
     const planner = win.state.nodes.find(n => n.config && n.config.agentType === 'planner');
     const reviewer = win.state.nodes.find(n => n.config && n.config.agentType === 'reviewer');
     const coder = win.state.nodes.find(n => n.config && n.config.agentType === 'coder');
@@ -2941,7 +2944,7 @@ describe('Branching strategy (Output node)', () => {
     expect(rv.reason).toContain('reviewers and verifiers read branches, they do not create them');
     const outNode = win.state.nodes.find(n => n.type === 'output');
     const br = win.explainNode(outNode, 'prompt').find(r => r.part === 'Branches');
-    expect(br.reason).toContain('one branch per story, per repository, planned at run time');
+    expect(br.reason).toContain('one branch per work item, per repository, planned at run time');
     expect(br.reason).toContain('pattern: feature/{ticket}-{slug}');
     outNode.config.branching = 'single';
     expect(win.explainWorkflow('prompt').find(r => r.part === 'Branching').status).toBe('skipped');
@@ -13582,6 +13585,111 @@ describe('Narrow windows: the canvas column shrinks instead of clipping, and too
     expect('toolbar.getBoundingClientRect().height < 60 => ' + (toolbar.getBoundingClientRect().height < 60)).toBe('toolbar.getBoundingClientRect().height < 60 => true');                      // ...still on one row
     expect(doc.querySelectorAll('.toolbar .btn .lbl').length).toBe(7);                   // Select, Connect, Delete, Auto Layout, Prompts, Agents, Monitor
     doc.querySelectorAll('.toolbar .btn .lbl').forEach(sp => { expect(sp.closest('button').getAttribute('aria-label')).toBe(sp.textContent); });   // a durable name survives the hidden label and the stripped title
+  });
+});
+
+describe('Sidebar rail (the whole sidebar folds to a thin rail)', () => {
+  const frame = document.getElementById('app');
+  const body = () => win.document.body;
+  const sb = () => win.document.querySelector('.sidebar');
+  const main = () => win.document.querySelector('.main-area');
+  let savedBorder;
+  beforeEach(() => { savedBorder = frame.style.border; frame.style.display = 'block'; frame.style.border = '0'; });
+  afterEach(() => { win.setSidebarRail(false, { instant: true }); win.localStorage.removeItem('awd_sidebar_rail'); resetState(); win.expandAllSections(); win.localStorage.removeItem('awd_sidebarCollapsed'); frame.style.display = 'none'; frame.style.border = savedBorder; });
+
+  it('should start expanded: 320px sidebar, no rail bar, the title toggle says the sidebar is shown', () => {
+    expect(body().classList.contains('sidebar-rail')).toBe(false);
+    expect(Math.round(sb().getBoundingClientRect().width)).toBe(320);
+    expect(win.getComputedStyle(win.document.querySelector('.sidebar-rail-bar')).display).toBe('none');
+    expect(win.document.querySelector('.sidebar-title .rail-toggle').getAttribute('aria-expanded')).toBe('true');
+  });
+  it('should fold to a 36px rail and give the width to the canvas column, hide the sections, show the rail bar, and persist', () => {
+    win.setSidebarRail(true, { instant: true });
+    expect(body().classList.contains('sidebar-rail')).toBe(true); expect(body().classList.contains('sidebar-rail-settled')).toBe(true);
+    expect(Math.round(sb().getBoundingClientRect().width)).toBe(36);
+    expect(Math.round(main().getBoundingClientRect().left)).toBe(36);
+    expect(win.getComputedStyle(win.document.querySelector('.sidebar-title')).display).toBe('none');
+    expect(win.getComputedStyle(win.document.querySelector('.sidebar-section[data-collapse-id="requirements"]')).display).toBe('none');
+    expect(win.getComputedStyle(win.document.querySelector('.sidebar-rail-bar')).display).toBe('flex');
+    expect(win.document.querySelector('.sidebar-rail-bar .rail-toggle').getAttribute('aria-expanded')).toBe('false');
+    expect(win.localStorage.getItem('awd_sidebar_rail')).toBe('1');
+    win.toggleSidebarRail();                                             // animated: the classes flip now, the track eases over 240ms
+    expect(body().classList.contains('sidebar-rail')).toBe(false); expect(body().classList.contains('sidebar-rail-settled')).toBe(false);
+    win.setSidebarRail(true, { instant: true }); win.setSidebarRail(false, { instant: true });
+    expect(Math.round(sb().getBoundingClientRect().width)).toBe(320);
+    expect(win.localStorage.getItem('awd_sidebar_rail')).toBe('0');
+  });
+  it('should restore the rail at boot from storage, and never animate that first paint', () => {
+    win.localStorage.setItem('awd_sidebar_rail', '1');
+    win.initSidebarRail();
+    expect(body().classList.contains('sidebar-rail')).toBe(true); expect(body().classList.contains('sidebar-rail-settled')).toBe(true);
+    expect(body().classList.contains('no-anim')).toBe(false);   // the guard is removed again once applied
+    expect(Math.round(sb().getBoundingClientRect().width)).toBe(36);
+  });
+  it('should open the rail for explicit reveals (an Explain deep link, the quick start, the save-name nudge) and leave it alone when a node is selected', () => {
+    win.setSidebarRail(true, { instant: true });
+    win.jumpToSection('default-model');
+    expect(body().classList.contains('sidebar-rail')).toBe(false);
+    win.setSidebarRail(true, { instant: true });
+    resetState(); win.loadPreset('feature');
+    win.selectNode(win.state.nodes.find(n => n.type === 'agent').id);
+    expect(body().classList.contains('sidebar-rail')).toBe(true);   // dragging on a wide canvas never pops the sidebar open
+    win.document.getElementById('workflowName').value = '';
+    win.collapseAllSections();
+    win.saveWorkflow();                                                // the name nudge needs the field visible: rail open and its section expanded
+    expect(body().classList.contains('sidebar-rail')).toBe(false);
+    expect(win.document.querySelector('.sidebar-section[data-collapse-id="requirements"]').classList.contains('collapsed')).toBe(false);
+    sb().scrollTop = 0;
+  });
+  it('should ignore [ with a modifier (Cmd+[ stays Back), hand focus to the counterpart toggle, and keep the contents at full width while the track grows', () => {
+    win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: '[', metaKey: true, bubbles: true }));
+    expect(body().classList.contains('sidebar-rail')).toBe(false);
+    const titleBtn = win.document.querySelector('.sidebar-title .rail-toggle'), railBtn = win.document.querySelector('.sidebar-rail-bar .rail-toggle');
+    expect(titleBtn.getAttribute('aria-controls')).toBe('sidebar'); expect(railBtn.getAttribute('aria-controls')).toBe('sidebar');
+    expect(win.document.querySelector('.sidebar-rail-bar').querySelectorAll('button, [role="button"]').length).toBe(1);   // one control on the rail
+    expect(railBtn.querySelector('.rail-label').getAttribute('aria-hidden')).toBe('true');
+    const contentW = sb().clientWidth;                                               // the width beside the scrollbar
+    titleBtn.focus(); titleBtn.click();
+    expect(win.document.activeElement).toBe(railBtn);
+    expect(body().classList.contains('sidebar-rail')).toBe(true);
+    expect(body().style.getPropertyValue('--sidebar-content-w')).toBe(contentW + 'px');
+    railBtn.click();
+    expect(win.document.activeElement).toBe(titleBtn);
+    expect(body().classList.contains('sidebar-rail-opening')).toBe(true);          // the contents keep their measured width during the slide
+    expect(win.getComputedStyle(win.document.querySelector('.sidebar-section[data-collapse-id="requirements"]')).width).toBe(contentW + 'px');
+    win.setSidebarRail(false, { instant: true });                                   // a same-state reset clears the in-flight class
+    expect(body().classList.contains('sidebar-rail-opening')).toBe(false);
+    win.expandAllSections(); win.document.querySelector('.sidebar-section[data-collapse-id="presets"] h3').focus();
+    win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: '[', bubbles: true }));
+    expect(win.document.activeElement).toBe(railBtn);                               // any sidebar focus re-homes to the visible toggle
+    win.setSidebarRail(false, { instant: true });
+    win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: '[', ctrlKey: true, altKey: true, bubbles: true }));
+    expect(body().classList.contains('sidebar-rail')).toBe(true);                   // AltGr layouts reach it
+  });
+  it('should list the [ key with the other shortcuts and reveal the quick-start sections through jumpToSection', () => {
+    expect(win.document.body.innerHTML).toContain('<kbd>[</kbd>: Fold the sidebar to a thin rail, or bring it back');
+    expect(win.document.body.innerHTML).toContain('<kbd>[</kbd> Sidebar');
+    expect(win.document.querySelectorAll('a[onclick*="jumpToSection(\'requirements\', \'#storyInput\')"]').length).toBeGreaterThan(0);   // one scroll, aimed at the field
+    expect(win.document.body.innerHTML).toNotContain("jumpToSection('requirements');document.getElementById");
+    expect(win.document.querySelectorAll('a[onclick*="setSidebarRail(false);expandSection("]').length).toBe(0);
+  });
+  it('should keep the sidebar scroll position across a fold', () => {
+    win.expandAllSections();
+    sb().scrollTop = 150; const was = sb().scrollTop;
+    expect(was).toBeGreaterThan(0);
+    win.setSidebarRail(true, { instant: true });
+    win.setSidebarRail(false, { instant: true });
+    expect(sb().scrollTop).toBe(was);
+    sb().scrollTop = 0;
+  });
+  it('should toggle on the [ key outside inputs and ignore it while typing', () => {
+    win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: '[', bubbles: true }));
+    expect(body().classList.contains('sidebar-rail')).toBe(true);
+    win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: '[', bubbles: true }));
+    expect(body().classList.contains('sidebar-rail')).toBe(false);
+    const input = win.document.getElementById('workflowName');
+    input.dispatchEvent(new win.KeyboardEvent('keydown', { key: '[', bubbles: true }));
+    expect(body().classList.contains('sidebar-rail')).toBe(false);
   });
 });
 

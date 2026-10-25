@@ -24,12 +24,34 @@
 }
 html,body{height:100%;overflow:hidden}
 body{font-family:var(--font);background:var(--bg);color:var(--text);display:grid;
-  grid-template-columns:320px 1fr;grid-template-rows:1fr auto auto;grid-auto-rows:0;height:100vh;height:100dvh}
+  --sidebar-w:320px;--rail-w:36px;--rail-ms:240ms;
+  grid-template-columns:var(--sidebar-w) 1fr;grid-template-rows:1fr auto auto;grid-auto-rows:0;height:100vh;height:100dvh}
 /* The four panels are pinned to their cells: an element a browser extension injects into <body>
    (a stray in-flow child) must never take a cell and shove the prompt panel into the sidebar column. */
 /* Sidebar */
 .sidebar{grid-column:1;grid-row:1/4;background:var(--surface);border-right:1px solid var(--border);
   display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+/* Sidebar rail: body.sidebar-rail swaps the first grid track to a 36px rail. The track animates; the
+   sidebar's children keep their width (clipped) and fade, then leave the layout once the track has
+   settled (body.sidebar-rail-settled). The rail bar is the sidebar's first child and shows only then. */
+body{transition:grid-template-columns var(--rail-ms) cubic-bezier(.4,0,.2,1)}
+body.no-anim, body.no-anim .sidebar > *{transition:none !important}
+body.sidebar-rail{grid-template-columns:var(--rail-w) 1fr}
+.sidebar > :not(.sidebar-rail-bar){transition:opacity .16s ease}
+.sidebar-rail .sidebar, .sidebar-rail-opening .sidebar{overflow:hidden}
+.sidebar-rail .sidebar > :not(.sidebar-rail-bar), .sidebar-rail-opening .sidebar > :not(.sidebar-rail-bar){width:var(--sidebar-content-w, 313px);min-width:var(--sidebar-content-w, 313px);flex:0 0 auto}
+.sidebar-rail .sidebar > :not(.sidebar-rail-bar){opacity:0;pointer-events:none}
+.sidebar-rail-settled .sidebar > :not(.sidebar-rail-bar){display:none}
+@media (prefers-reduced-motion: reduce){body{transition:none}.sidebar > :not(.sidebar-rail-bar){transition:none}}
+.sidebar-rail-bar{display:none}
+.sidebar-rail .sidebar-rail-bar{display:flex;flex-direction:column;align-items:center;gap:12px;padding:10px 0;height:100%;min-width:0;opacity:1;pointer-events:auto}
+.rail-toggle{background:none;border:0;color:var(--text3);cursor:pointer;padding:5px;border-radius:6px;line-height:0;flex:0 0 auto}
+.rail-toggle:hover{color:var(--text);background:var(--surface2)}
+.rail-toggle svg{width:14px;height:14px;display:block}
+.sidebar-title .rail-toggle{margin-left:auto}
+.sidebar-rail-bar .rail-toggle{display:flex;flex-direction:column;align-items:center;gap:12px;padding:6px 5px}
+.rail-label{writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);user-select:none;line-height:1}
+.rail-toggle:hover .rail-label{color:var(--text2)}
 .sidebar::-webkit-scrollbar{width:6px}
 .sidebar::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px}
 .sidebar-section{padding:16px;border-bottom:1px solid var(--border)}
@@ -562,11 +584,13 @@ svg.canvas{width:100%;height:100%;display:block}
 <body>
 
 <!-- Sidebar -->
-<div class="sidebar">
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-rail-bar"><button type="button" class="rail-toggle" onclick="toggleSidebarRail()" aria-expanded="false" aria-controls="sidebar" aria-label="Show sidebar" title="Show the sidebar ([ toggles it)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span class="rail-label" aria-hidden="true">Designer</span></button></div>
   <div class="sidebar-title">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
     <h2>Workflow Designer</h2>
     <span class="badge">AI</span>
+    <button type="button" class="rail-toggle" onclick="toggleSidebarRail()" aria-expanded="true" aria-controls="sidebar" aria-label="Hide sidebar" title="Hide the sidebar to a thin rail; the canvas and the prompt take the width ([ toggles it; Explain links and the quick start bring it back)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
   </div>
 
   <div class="sidebar-collapse-controls">
@@ -1060,9 +1084,9 @@ svg.canvas{width:100%;height:100%;display:block}
     <div class="empty-state" id="emptyState">
       <div class="icon">&#x1F3D7;</div>
       <p><strong>Two steps to your first prompt</strong></p>
-      <p style="margin-top:8px"><strong>1.</strong> <a href="#" onclick="event.preventDefault();expandSection('requirements');document.getElementById('storyInput').scrollIntoView({behavior:'smooth',block:'center'})" style="color:var(--accent);pointer-events:auto;text-decoration:underline">Paste your requirements</a> or a Jira URL, then <strong>2.</strong> <a href="#" onclick="event.preventDefault();expandSection('presets');document.querySelector('.preset-list').scrollIntoView({behavior:'smooth',block:'center'})" style="color:var(--accent);pointer-events:auto;text-decoration:underline">choose a preset</a>. Then copy your prompt.</p>
+      <p style="margin-top:8px"><strong>1.</strong> <a href="#" onclick="event.preventDefault();jumpToSection('requirements', '#storyInput')" style="color:var(--accent);pointer-events:auto;text-decoration:underline">Paste your requirements</a> or a Jira URL, then <strong>2.</strong> <a href="#" onclick="event.preventDefault();jumpToSection('presets', '.preset-list')" style="color:var(--accent);pointer-events:auto;text-decoration:underline">choose a preset</a>. Then copy your prompt.</p>
       <p style="margin-top:12px;font-size:11px;opacity:.7">
-        <kbd>1</kbd> Select &nbsp; <kbd>2</kbd> Connect &nbsp; <kbd>3</kbd> Delete &nbsp; <kbd>Alt+Drag</kbd> Pan &nbsp; <kbd>Scroll</kbd> Zoom
+        <kbd>1</kbd> Select &nbsp; <kbd>2</kbd> Connect &nbsp; <kbd>3</kbd> Delete &nbsp; <kbd>[</kbd> Sidebar &nbsp; <kbd>Alt+Drag</kbd> Pan &nbsp; <kbd>Scroll</kbd> Zoom
       </p>
     </div>
   </div>
@@ -1239,6 +1263,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><kbd>Ctrl+Z</kbd> / <kbd>Cmd+Z</kbd>: Undo (also available as toolbar buttons)</li>
   <li><kbd>Ctrl+Shift+Z</kbd> / <kbd>Cmd+Shift+Z</kbd>: Redo</li>
   <li><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>: Switch between Select, Connect, and Delete modes</li>
+  <li><kbd>[</kbd>: Fold the sidebar to a thin rail, or bring it back</li>
   <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>: Delete selected node or connection</li>
   <li><kbd>Alt+Drag</kbd>: Pan the canvas</li>
   <li><kbd>Scroll</kbd>: Zoom in/out</li>
@@ -1248,7 +1273,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Fit</strong> zooms to show all nodes</li>
   <li><strong>Quick Patterns</strong> in the palette (Fork 2/3/4, Fan-Out) scaffold a parallel agent group in one click</li>
   <li>You are not limited to presets - add any nodes from the palette and wire them up however you like; the generators handle the scaffolding</li>
-  <li><strong>Collapsible sidebar</strong>: click any section header (or use <strong>Expand All</strong> / <strong>Collapse All</strong> at the sidebar top) to fold sections you are not using. Your choices persist across visits; selecting a node always re-opens Node Configuration. A true first visit starts with only Requirements and Presets open - the two the Quick Start needs - and the empty canvas shows the same two-step path inline until nodes exist.</li>
+  <li><strong>Collapsible sidebar</strong>: click any section header (or use <strong>Expand All</strong> / <strong>Collapse All</strong> at the sidebar top) to fold sections you are not using. The chevron beside the title (or <kbd>[</kbd>) folds the whole sidebar to a thin rail so the canvas and the prompt take the width; click the rail, press <kbd>[</kbd>, or follow an Explain link to bring it back. The rail persists across visits. Your choices persist across visits; selecting a node always re-opens Node Configuration. A true first visit starts with only Requirements and Presets open - the two the Quick Start needs - and the empty canvas shows the same two-step path inline until nodes exist.</li>
   <li><strong>Optional names, derived slugs</strong>: leave the workflow name blank and the slug derives from the first words of your requirements (the memory and record paths update live as you type); an explicit name always wins, and <code>untitled</code> is reserved for the truly blank.</li>
 </ul>
 
@@ -1312,7 +1337,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Documentation</strong> - produce docs in the project's conventions; leave any code uncommitted.</li>
 </ul>
 <p>Click the Output node to set it. Every code preset's Output node starts on <strong>Default</strong>, which follows <strong>Default Delivery</strong>: the Delivery row of the sidebar's <strong>Defaults</strong> section, beside Model and Effort. It ships as Leave Uncommitted, so commit/push/PR is always a choice you made: once in the sidebar for every workflow, or on the node for one. An Output node that overrides the default offers <em>Make this my default delivery</em>, which lifts its settings into the sidebar and puts the node back on Default. Report and Documentation are chosen on the node.</p>
-<p><strong>Branching</strong> (Commit and Pull Request only): <strong>Single branch</strong> is the default and uses the Branch Name field. For epic-level work pick <strong>Per story</strong> (one branch per story, per repository) or <strong>Per logical chunk</strong> (stories grouped so each branch leaves every repository working). Names are not typed: the planning step reads the epic's child stories, maps each to the repositories it touches, and names each branch by that repository's own convention (a new repository borrows from its nearest sibling in the run); a unit that spans repositories gets the same branch name in each. An optional <strong>Branch pattern</strong> (tokens <code>{ticket}</code>, <code>{epic}</code>, <code>{story}</code>, <code>{slug}</code>, <code>{repo}</code>) overrides the convention everywhere; <strong>Integration branch</strong> is inferred per repository by default (an epic branch only where the repo already works that way), or forced to none or to an epic branch per repository. The branch plan is written down before anything exists and shown to the director (at the plan gate when Approve plan before build is on, which is the recommended pairing), so names are corrected once; in chunk mode <code>{ticket}</code> means the epic key and <code>{chunk}</code> the chunk slug; units that touch one repository run one at a time on its checkout (no branch switching under another step); a builder creates its unit's branch from its base when it starts, only the delivery step pushes, and nothing is ever pushed to a base.</p>
+<p><strong>Branching</strong> (Commit and Pull Request only): <strong>Single branch</strong> is the default and uses the Branch Name field. For large work, an epic or a long requirements document, pick <strong>Per work item</strong> (one branch per story, task, or requirement slice, per repository) or <strong>Per logical chunk</strong> (work items grouped so each branch leaves every repository working). Names are not typed: the planning step discovers the work items (an epic's stories through the Atlassian MCP, or the pieces of the requirements, split into self-contained slices when it lists none), maps each to the repositories it touches, and names each branch by that repository's own convention (a new repository borrows from its nearest sibling in the run); a unit that spans repositories gets the same branch name in each. An optional <strong>Branch pattern</strong> (tokens <code>{ticket}</code>, <code>{epic}</code>, <code>{story}</code>, <code>{slug}</code>, <code>{repo}</code>) overrides the convention everywhere; <strong>Integration branch</strong> is inferred per repository by default (an epic branch only where the repo already works that way), or forced to none or to an epic branch per repository. The branch plan is written down before anything exists and shown to the director (at the plan gate when Approve plan before build is on, which is the recommended pairing), so names are corrected once; in chunk mode <code>{ticket}</code> means the epic key and <code>{chunk}</code> the chunk slug; units that touch one repository run one at a time on its checkout (no branch switching under another step); a builder creates its unit's branch from its base when it starts, only the delivery step pushes, and nothing is ever pushed to a base.</p>
 
 <h3>OpenSpec export</h3>
 <p>The <strong>Export</strong> menu (under Workflow Management) offers an <strong>OpenSpec schema</strong> option that downloads your workflow as an OpenSpec custom schema for the <code>openspec</code> CLI - a <code>.zip</code> holding <code>schema.yaml</code> plus one template per step. Unzip it at your repo root (it lands under <code>openspec/schemas/&lt;name&gt;/</code>) and run <code>openspec schema validate &lt;name&gt;</code> to use it in an OpenSpec run.</p>
@@ -1726,11 +1751,13 @@ function nodeDepth(node) { const d = node && node.config ? node.config.depth : '
 // The exhaustive steps, in canvas order - the ONE selector every emitter and guardrail uses.
 function depthNodes() { return state.nodes.filter(n => n.type === 'agent' && nodeDepth(n)); }
 function workflowHasDepth() { return depthNodes().length > 0; }
-// ── Branching strategy (Output node): how an epic's work maps onto branches ──
-// 'single' is the shipped behavior (the Branch Name and Target Branch fields). 'story' and
-// 'chunk' are for epic-level work: the names are not typed, they are planned at run time from
-// the epic's child stories and each repository's own convention, approved once at the plan
-// gate, and created only by a delivery that commits. Absent keys read as 'single'.
+// ── Branching strategy (Output node): how a large body of work maps onto branches ──
+// 'single' is the shipped behavior (the Branch Name and Target Branch fields). 'story' (one
+// branch per work item: a story, a task, or a slice of a requirements document) and 'chunk'
+// are for large work: the names are not typed, they are planned at run time from the work
+// items and each repository's own convention, approved once at the plan gate, and created only
+// by a delivery that commits. The stored value stays 'story' for compatibility with saved files;
+// the words the director sees say work item. Absent keys read as 'single'.
 const BRANCHING_STRATEGIES = ['single', 'story', 'chunk'];
 const INTEGRATION_CHOICES = ['auto', 'none', 'epic'];
 // A branch reference in emitted text. An empty target is the repository's default branch, which
@@ -1779,12 +1806,12 @@ function outCfg(n) {
   return Object.assign({}, c, { format: d.format, branching: d.branching, targetBranch: d.targetBranch, branchPattern: d.branchPattern, integrationBranch: d.integrationBranch });
 }
 function deliveryEquals(a, b) { a = effectiveDelivery(a); b = effectiveDelivery(b); return Object.keys(a).every(k => (a[k] || '').trim() === (b[k] || '').trim()); }
-// One phrase for a delivery: 'Leave Uncommitted' | 'Pull Request, per story, base develop' ...
+// One phrase for a delivery: 'Leave Uncommitted' | 'Pull Request, per work item, base develop' ...
 function deliverySummary(d) {
   d = effectiveDelivery(d);
   if (d.format === 'code') return 'Leave Uncommitted';
   const parts = [d.format === 'pr' ? 'Pull Request' : 'Commit'];
-  if (d.branching !== 'single') parts.push('per ' + (d.branching === 'chunk' ? 'logical chunk' : 'story'));
+  if (d.branching !== 'single') parts.push('per ' + (d.branching === 'chunk' ? 'logical chunk' : 'work item'));
   if (d.targetBranch.trim() && (d.format === 'pr' || d.branching !== 'single')) parts.push((d.branching === 'single' ? 'target ' : 'base ') + d.targetBranch.trim());
   return parts.join(', ');
 }
@@ -1939,7 +1966,7 @@ function integrationMeaning(bp) {
       ? 'none - every ' + unit + ' branch forks from ' + branchRef(bp.target) + ' and ' + lands
       : 'decided per repository: use an epic branch only where that repository already works that way (existing `epic/`, `release/`, or long-lived integration branches); otherwise every ' + unit + ' branch forks from ' + branchRef(bp.target) + ' and ' + lands;
 }
-function branchUnitWord(bp) { return bp.strategy === 'chunk' ? 'logical chunk' : 'story'; }
+function branchUnitWord(bp) { return bp.strategy === 'chunk' ? 'logical chunk' : 'work item'; }
 function branchPlanHome(spawned) {
   if (state.memoryEnabled) {
     const owner = branchPlanOwner();
@@ -1955,15 +1982,15 @@ function branchPlanHint(spawned) {
   const unit = branchUnitWord(bp);
   const r = [];
   r.push('> **Branch plan (configured): one branch per ' + unit + ', per repository.** Branches exist because the delivery is ' + (bp.pr ? 'Pull Request' : 'Commit') + ': the step that starts a unit creates that unit\'s branch from its base, ' + (state.approvePlan ? 'after the director approves the plan at the gate' : 'after the director has seen the plan') + '; only the delivery step pushes; nothing is ever committed or pushed to a base or integration branch directly.');
-  r.push('> - **Discover the units of work.** When the Requirements name an epic (a Jira epic URL or key), fetch its child stories (keys, titles, status, components, labels, linked repositories) through the Atlassian MCP when it is available, and treat the open ones as the units; requirements that already list the stories are the same list. '
+  r.push('> - **Discover the work items.** From an epic (a Jira epic URL or key in the Requirements): fetch its child stories (keys, titles, status, components, labels, linked repositories) through the Atlassian MCP when it is available, and treat the open ones as the work items. From requirements, a PRD, or a spec: the pieces it lists are the work items; when it lists none, split it into self-contained slices, each deliverable on its own, and give each a short title. Show the list in the plan for the director to correct. '
     + (bp.strategy === 'chunk'
-      ? 'Group them into logical chunks: a chunk is the smallest set of stories that must land together to leave every repository working, and a story that stands alone is its own chunk. One branch per chunk, named by the epic and the chunk, with every story key it carries in the PR body.'
-      : 'One branch per story.'));
-  r.push('> - **Repositories in scope** are ' + (getRepositories().length ? 'the Repositories list in this prompt (each with its path' + (getRepositories().some(x => x.branch) ? ', and a base branch where one is set' : '') + ')' : 'the repository this session was launched in') + '. **Map each unit to its repositories** from the story\'s components, labels, and the files and services it names, confirmed against the code: a unit touches a repository only where the tree shows the work lands. A unit that maps to no repository in scope is flagged in the plan as out of scope, never guessed into a repository outside it. A unit that spans repositories gets the SAME branch name in each of them, so its pull requests find each other by the key.');
-  const slugRule = ' - a slug is the title lowercased with its words joined by the separator the pattern places next to it (`feature/{ticket}-{slug}` gives `feature/PROJ-12345-some-story-title`, `feature/{ticket}_{slug}` gives `feature/PROJ-12345_some_story_title`); a key token is the whole key, prefix included, so never repeat the project prefix in the pattern';
+      ? 'Group them into logical chunks: a chunk is the smallest set of work items that must land together to leave every repository working, and a work item that stands alone is its own chunk. One branch per chunk, named by the epic (or the requirements title) and the chunk, with every work item it carries in the PR body.'
+      : 'One branch per work item.'));
+  r.push('> - **Repositories in scope** are ' + (getRepositories().length ? 'the Repositories list in this prompt (each with its path' + (getRepositories().some(x => x.branch) ? ', and a base branch where one is set' : '') + ')' : 'the repository this session was launched in') + '. **Map each unit to its repositories** from the work item\'s components and labels (when it comes from a tracker) and the files and services it names, confirmed against the code: a unit touches a repository only where the tree shows the work lands. A unit that maps to no repository in scope is flagged in the plan as out of scope, never guessed into a repository outside it. A unit that spans repositories gets the SAME branch name in each of them, so its pull requests find each other by the key.');
+  const slugRule = ' - a slug is the title lowercased with its words joined by the separator the pattern places next to it (`feature/{ticket}-{slug}` gives `feature/PROJ-12345-some-work-item-title`, `feature/{ticket}_{slug}` gives `feature/PROJ-12345_some_work_item_title`); a key token is the whole key, prefix included, so never repeat the project prefix in the pattern';
   const tokens = bp.strategy === 'chunk'
-    ? '{epic}, {chunk} (the chunk slug), {slug} (the same), {repo}; {ticket} means the epic key here, since a chunk carries several stories' + slugRule
-    : '{ticket} (the whole story key, e.g. PROJ-12345), {story} (the same), {epic}, {slug} (the story title), {repo}' + slugRule;
+    ? '{epic} (the epic key, or the requirements title made file-safe), {chunk} (the chunk slug), {slug} (the same), {repo}; {ticket} means the epic key here, since a chunk carries several work items' + slugRule
+    : '{ticket} (the work item\'s whole key, e.g. PROJ-12345; its short title made file-safe when it has no key), {story} (the same), {epic} (the epic key, or the requirements title made file-safe), {slug} (the work item title), {repo}' + slugRule;
   const fallback = bp.strategy === 'chunk' ? '`feature/{epic}-{chunk}`' : '`feature/{ticket}-{slug}`';
   r.push('> - **Name branches by each repository\'s own convention, never by one team\'s habit.** Teams differ, so repositories differ. For each repository in scope read what it already does: the names on `git branch -r`, the subjects of `git log --merges`, CONTRIBUTING, CLAUDE.md and `.claude/rules/`, and branch protection where visible; derive the prefix, the separator, the casing, and where the ticket key goes; record the convention you found per repository and apply it per repository.'
     + (bp.pattern ? ' The director set a pattern that overrides this everywhere: `' + bp.pattern + '` (tokens: ' + tokens + ').' : ' Tokens, when you state a name as a pattern: ' + tokens + '.'));
@@ -1972,7 +1999,7 @@ function branchPlanHint(spawned) {
   r.push('> - **Integration branch:** ' + integrationMeaning(bp) + '.');
   const owner = branchPlanOwner();
   r.push('> - **Who writes it:** ' + (owner ? '**' + owner.label + '** (the plan-owning step the approval gate also names), as part of its plan' : 'the orchestrator itself, before the first builder is dispatched, since this workflow has no planning step') + '. **Write the plan down before anything is created:** one row per unit and repository - unit, repository, branch, base, ' + (bp.pr ? 'PR target' : 'where it lands') + ' - ' + branchPlanHome(spawned) + (state.durableRecord ? ', and in the durable record' : '') + '. ' + branchPlanReview());
-  r.push('> - **In every lane:** work only on the branch the plan assigns to that repository and unit; create it from its base when it does not exist; never commit to a base or an integration branch. One working tree per repository: units that touch the same repository run one at a time on its checkout (the orchestrator sequences them), and no step switches branches in a tree another step is using; a separate clone per branch is allowed only when the director prepared one, and the durable record and the memory files always stay in the launch checkout. The delivery step opens one ' + (bp.pr ? 'pull request' : 'commit series') + ' per branch with the unit\'s story keys recorded.');
+  r.push('> - **In every lane:** work only on the branch the plan assigns to that repository and unit; create it from its base when it does not exist; never commit to a base or an integration branch. One working tree per repository: units that touch the same repository run one at a time on its checkout (the orchestrator sequences them), and no step switches branches in a tree another step is using; a separate clone per branch is allowed only when the director prepared one, and the durable record and the memory files always stay in the launch checkout. The delivery step opens one ' + (bp.pr ? 'pull request' : 'commit series') + ' per branch with the unit\'s work item keys or titles recorded.');
   return r.join('\n');
 }
 // Per-step: the plan owner writes the plan, every builder works on its row, everyone else nothing.
@@ -1985,7 +2012,7 @@ function branchStepNote(node, spawned) {
   const t = node.config && node.config.agentType;
   const owner = branchPlanOwner();
   if (owner && owner.id === node.id) {
-    const lead = '**Branch plan**: produce the branch plan ' + (spawned ? 'the rules below describe' : 'the Branch plan beat describes') + ' (units of work, the repositories each touches, one branch per unit and repository named by that repository\'s own convention or the director\'s pattern, its base, ' + (bp.pr ? 'its PR target' : 'where it lands') + ') and include it in your plan output' + (state.approvePlan ? ' and in the brief the director approves' : ', presented to the director before any branch exists') + '. Write it ' + branchPlanHome(spawned ? true : false) + ' before any branch exists.';
+    const lead = '**Branch plan**: produce the branch plan ' + (spawned ? 'the rules below describe' : 'the Branch plan beat describes') + ' (the work items, the repositories each touches, one branch per unit and repository named by that repository\'s own convention or the director\'s pattern, its base, ' + (bp.pr ? 'its PR target' : 'where it lands') + ') and include it in your plan output' + (state.approvePlan ? ' and in the brief the director approves' : ', presented to the director before any branch exists') + '. Write it ' + branchPlanHome(spawned ? true : false) + ' before any branch exists.';
     return spawned ? lead + '\n\n' + branchPlanHint(true) : lead;
   }
   if (APPROVAL_BUILD_ROLES.has(t)) {
@@ -4388,6 +4415,7 @@ function saveWorkflow() {
   const name = getName();
   if (!name) {
     const field = $('workflowName');
+    setSidebarRail(false); expandSection('requirements');
     field.focus();
     field.classList.add('field-highlight');
     setTimeout(() => field.classList.remove('field-highlight'), 2000);
@@ -5222,6 +5250,59 @@ function loadCollapsedState() {
 }
 function saveCollapsedState(obj) {
   try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, JSON.stringify(obj)); } catch (e) {}
+}
+// ── Sidebar rail (removable) ──────────────────────────────────────────────────
+// The whole sidebar folds to a 36px rail so the canvas and the prompt take the width: one body
+// class swaps the grid track (the page grid already pins every panel to its cell), persisted like
+// the fold state. Section folding is unchanged underneath. Explicit reveals (an Explain deep
+// link, the quick start) open the rail; selecting a node does not, so dragging on a wide canvas
+// never pops the sidebar back open.
+const SIDEBAR_RAIL_KEY = 'awd_sidebar_rail';
+let _railTimer = null;
+function sidebarRailed() { return document.body.classList.contains('sidebar-rail'); }
+let _railScrollTop = 0;
+function railMs() { const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rail-ms')); return isNaN(v) ? 240 : v; }
+function setSidebarRail(on, opts) {
+  on = !!on;
+  const body = document.body, sb = document.querySelector('.sidebar');
+  if (!sb) return;
+  const instant = !!(opts && opts.instant);
+  clearTimeout(_railTimer); _railTimer = null;                 // a pending settle never outlives a newer call, even a same-state reset
+  if (sidebarRailed() === on) {                                // a same-state reset also lands any slide still in flight
+    if (instant) { body.classList.remove('sidebar-rail-opening'); body.classList.add('no-anim'); void body.offsetWidth; body.classList.remove('no-anim'); }
+    return;
+  }
+  if (instant) body.classList.add('no-anim');
+  const reduced = !instant && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const settleMs = (instant || reduced) ? 0 : railMs() + 20;
+  body.classList.remove('sidebar-rail-opening');
+  const focused = document.activeElement;
+  const focusInSidebar = !!(focused && focused.closest && focused.closest('.sidebar'));
+  if (on) {
+    _railScrollTop = sb.scrollTop;                              // restored on expand, so the director lands where they were
+    body.style.setProperty('--sidebar-content-w', sb.clientWidth + 'px');   // the width beside the scrollbar, measured, so nothing rewraps
+    body.classList.add('sidebar-rail');                        // the track shrinks; the contents fade, clipped
+    if (!settleMs) body.classList.add('sidebar-rail-settled');
+    else _railTimer = setTimeout(() => body.classList.add('sidebar-rail-settled'), settleMs);
+  } else {
+    body.classList.remove('sidebar-rail-settled');             // the contents re-enter the layout at their measured width
+    body.classList.add('sidebar-rail-opening');                // and keep it while the track grows
+    body.classList.remove('sidebar-rail');
+    const restore = () => { void sb.offsetHeight; sb.scrollTop = _railScrollTop; };   // after layout has the children back
+    const done = () => { body.classList.remove('sidebar-rail-opening'); restore(); };
+    if (!settleMs) done(); else { restore(); _railTimer = setTimeout(done, settleMs); }
+  }
+  if (instant) { void body.offsetWidth; body.classList.remove('no-anim'); if (!on) sb.scrollTop = _railScrollTop; }
+  document.querySelectorAll('.rail-toggle').forEach(b => b.setAttribute('aria-expanded', on ? 'false' : 'true'));
+  // Whatever sidebar control had focus leaves the layout; keyboard focus moves to the visible toggle.
+  if (focusInSidebar) { const next = document.querySelector(on ? '.sidebar-rail-bar .rail-toggle' : '.sidebar-title .rail-toggle'); if (next) next.focus({ preventScroll: true }); }   // focus must not scroll the sidebar back to the top
+  try { localStorage.setItem(SIDEBAR_RAIL_KEY, on ? '1' : '0'); } catch (e) {}
+}
+function toggleSidebarRail() { setSidebarRail(!sidebarRailed()); }
+function initSidebarRail() {
+  let on = false;
+  try { on = localStorage.getItem(SIDEBAR_RAIL_KEY) === '1'; } catch (e) {}
+  if (on) setSidebarRail(true, { instant: true });
 }
 function sectionEl(id) { return document.querySelector('.sidebar-section[data-collapse-id="' + id + '"]'); }
 function setSectionCollapsed(id, collapsed) {
@@ -6700,20 +6781,20 @@ function deliveryFieldsHtml(cfg, mode) {
     'What a code Output node delivers while its Format is left on Default. Every new workflow and preset starts here; an Output node overrides it for one workflow by picking its own Format. Report and Documentation are chosen on the node, never here.');
   if (fmt === 'pr' || fmt === 'commit') {
     H[H.length] = configSelect('Branching', 'branching', br, [
-      { value: 'single', label: 'Single branch - one named branch (the fields below)' },
-      { value: 'story', label: 'Per story - one branch per story, planned from the epic at run time' },
-      { value: 'chunk', label: 'Per logical chunk - stories grouped so each branch leaves every repo working' }],
-      'How epic-level work maps onto branches. Single branch uses the Branch Name field. Per story and Per logical chunk never take names: the planning step reads the epic\'s stories and each repository\'s own branch convention (a new repository borrows from its nearest sibling), writes the branch plan, and the director sees it before any branch exists (at the plan gate when Approve plan before build is on). A builder creates its unit\'s branch from its base when it starts; only this delivery pushes.' + (mode === 'node' && cfg.branchName && br !== 'single' ? ' The Branch Name entered for Single branch (' + cfg.branchName + ') is kept and plays no part under a strategy.' : ''));
+      { value: 'single', label: mode === 'default' ? 'Single branch - one branch per workflow, named on the Output node' : 'Single branch - one branch, named in the Branch Name field' },
+      { value: 'story', label: 'Per work item - one branch per story, task, or requirement slice, planned at run time' },
+      { value: 'chunk', label: 'Per logical chunk - work items grouped so each branch leaves every repo working' }],
+      'How large work maps onto branches: an epic, or a long requirements document. Single branch uses the Branch Name field. Per work item and Per logical chunk never take names: the planning step discovers the work items (an epic\'s stories through the Atlassian MCP, or the pieces of the requirements) and each repository\'s own branch convention (a new repository borrows from its nearest sibling), writes the branch plan, and the director sees it before any branch exists (at the plan gate when Approve plan before build is on). A builder creates its unit\'s branch from its base when it starts; only this delivery pushes.' + (mode === 'node' && cfg.branchName && br !== 'single' ? ' The Branch Name entered for Single branch (' + cfg.branchName + ') is kept and plays no part under a strategy.' : ''));
     if (br === 'single') {
       if (mode === 'node') H[H.length] = configInput('Branch Name', 'branchName', cfg.branchName || '', 'text', 'e.g. feature/PRJ-6069-profile-redesign');
     } else {
       H[H.length] = configInput('Branch pattern (optional)', 'branchPattern', cfg.branchPattern || '', 'text', 'e.g. feature/{ticket}-{slug}', '',
-        'Empty follows each repository\'s own convention. A pattern overrides it everywhere. Example: feature/{ticket}-{slug} gives feature/PROJ-12345-some-story-title (hyphens are the usual choice; feature/{ticket}_{slug} gives the underscore form). Tokens: {ticket} the whole story key, prefix included, so never repeat the project prefix; {story} the same; {epic}; {slug} the story title, its words joined with the separator you place beside it; {repo}. In chunk mode {ticket} is the epic key and {chunk} the chunk slug.');
+        'Empty follows each repository\'s own convention. A pattern overrides it everywhere. Example: feature/{ticket}-{slug} gives feature/PROJ-12345-some-work-item-title (hyphens are the usual choice; feature/{ticket}_{slug} gives the underscore form). Tokens: {ticket} the work item\'s whole key, prefix included, so never repeat the project prefix (its short title made file-safe when it has no key); {story} the same; {epic} the epic key, or the requirements title made file-safe; {slug} the work item title, its words joined with the separator you place beside it; {repo}. In chunk mode {ticket} is the epic key and {chunk} the chunk slug.');
       H[H.length] = configSelect('Integration branch', 'integrationBranch', INTEGRATION_CHOICES.includes(cfg.integrationBranch) ? cfg.integrationBranch : 'auto', [
         { value: 'auto', label: 'Infer per repository - epic branch only where that repo already works that way' },
         { value: 'none', label: 'None - every branch targets the base' },
-        { value: 'epic', label: 'Epic branch per repository - stories target it, one final PR to the base' }],
-        'Whether story branches target the base directly or an epic branch per repository. Infer reads each repository: an epic branch only where it already uses epic/, release/, or long-lived integration branches. Epic branch per repository forks one from the base, every story branch forks from it, and one final PR goes to the base when the last unit lands.');
+        { value: 'epic', label: 'Epic branch per repository - work items target it, one final PR to the base' }],
+        'Whether work item branches target the base directly or an epic branch per repository (one integration branch for the whole body of work). Infer reads each repository: an epic branch only where it already uses epic/, release/, or long-lived integration branches. Epic branch per repository forks one from the base, every work item branch forks from it, and one final PR goes to the base when the last unit lands.');
     }
   }
   if (fmt === 'pr' || (fmt === 'commit' && br !== 'single')) {
@@ -6971,6 +7052,7 @@ document.addEventListener('keydown', e => {
   if (e.key === '?') { toggleHelp(); e.preventDefault(); }
   if (e.key === '1') setMode('select');
   if (e.key === '2') setMode('connect');
+  if (e.key === '[' && !e.metaKey) { toggleSidebarRail(); e.preventDefault(); }   // Cmd+[ stays Back; AltGr layouts type [ with Ctrl+Alt
   if (e.key === '3') setMode('delete');
 });
 
@@ -10299,7 +10381,7 @@ function validateWorkflow() {
   });
   // A branching strategy on an Output node whose format never creates branches is inert; say so.
   state.nodes.filter(n => n.type === 'output' && outputBranching(n) !== 'single' && outCfg(n).format !== 'pr' && outCfg(n).format !== 'commit').forEach(n => {
-    warnings.push({ type: 'warn', msg: '"' + n.label + '" sets Branching to per ' + (outputBranching(n) === 'chunk' ? 'logical chunk' : 'story') + ' but its Format creates no branches - set the Format to Commit or Pull Request, or set Branching back to Single' });
+    warnings.push({ type: 'warn', msg: '"' + n.label + '" sets Branching to per ' + (outputBranching(n) === 'chunk' ? 'logical chunk' : 'work item') + ' but its Format creates no branches - set the Format to Commit or Pull Request, or set Branching back to Single' });
   });
   // Parallel siblings with a dependency path between them cannot truly run simultaneously.
   // Revision paths never count as dependencies - shared predicate with topologicalSort.
@@ -10767,15 +10849,18 @@ const EXPLAIN_SECTION_LINKS = {
   'Verification-instructions step hint': 'repositories',
   'Default Delivery': 'default-model'
 };
-function jumpToSection(id) {
-  // From the Explain modal to the lever itself. Smooth for humans; instant when the test
-  // rig asks (__instantScroll) or the user prefers reduced motion - the selectNode precedent.
+function jumpToSection(id, innerSelector) {
+  // From the Explain modal (or the quick start) to the lever itself. Smooth for humans; instant
+  // when the test rig asks (__instantScroll) or the user prefers reduced motion - the selectNode
+  // precedent. innerSelector aims the one scroll at an element inside the section instead.
   closeExplain();
+  setSidebarRail(false);
   expandSection(id);
   const sec = document.querySelector('.sidebar-section[data-collapse-id="' + id + '"]');
-  if (sec && sec.scrollIntoView) {
+  const target = (innerSelector && document.querySelector(innerSelector)) || sec;
+  if (target && target.scrollIntoView) {
     const _smoothOk = !window.__instantScroll && !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-    sec.scrollIntoView({ block: 'start', behavior: _smoothOk ? 'smooth' : 'auto' });
+    target.scrollIntoView({ block: innerSelector ? 'center' : 'start', behavior: _smoothOk ? 'smooth' : 'auto' });
   }
 }
 // Explain evidence must match the emitted heading level: the prompt format (and SDK) uses
@@ -11090,7 +11175,7 @@ function explainOutputNode(node, format) {
     const _ob = outputBranching(node);
     rows.push(exRow('Branches', true,
       _ob !== 'single'
-        ? 'one branch per ' + (_ob === 'chunk' ? 'logical chunk' : 'story') + ', per repository, planned at run time from the epic\'s stories and each repository\'s convention' + (_oc.branchPattern ? ' (pattern: ' + _oc.branchPattern + ')' : '') + '; integration branch: ' + (INTEGRATION_CHOICES.includes(_oc.integrationBranch) ? _oc.integrationBranch : 'auto') + '; base: ' + (_oc.targetBranch || DEFAULT_BRANCH_SHORT + ', detected at run time')
+        ? 'one branch per ' + (_ob === 'chunk' ? 'logical chunk' : 'work item') + ', per repository, planned at run time from the work items (an epic\'s stories, or the pieces of the requirements) and each repository\'s convention' + (_oc.branchPattern ? ' (pattern: ' + _oc.branchPattern + ')' : '') + '; integration branch: ' + (INTEGRATION_CHOICES.includes(_oc.integrationBranch) ? _oc.integrationBranch : 'auto') + '; base: ' + (_oc.targetBranch || DEFAULT_BRANCH_SHORT + ', detected at run time')
         : (node.config.branchName ? 'feature branch: ' + node.config.branchName : 'feature branch derived from the ticket ID at run time') + (mine === 'pr' ? '; target: ' + (_oc.targetBranch || DEFAULT_BRANCH_SHORT + ', detected at run time') : '; commit and push, no pull request'), ''));
     // The branch plan this node's strategy configures: who writes it, what it covers, where it is reviewed.
     const _bp = workflowBranching();
@@ -11325,9 +11410,9 @@ function explainWorkflow(format) {
   const _bpW = workflowBranching();
   const _bpOff = state.nodes.some(n => n.type === 'output' && outputBranching(n) !== 'single');
   rows.push(exRow('Branching', !!_bpW, _bpW
-    ? 'an Output node delivering by ' + (_bpW.pr ? 'Pull Request' : 'Commit') + ' is set to one branch per ' + branchUnitWord(_bpW) + ' (lever: Branching on the Output node' + (outputOnDefault(_bpW.node) ? ', inherited from the sidebar\'s Default Delivery' : '') + ') - ' + (branchPlanOwner() ? branchPlanOwner().label : 'the orchestrator') + ' writes the branch plan from the epic and each repository\'s convention, ' + (state.approvePlan ? 'the director approves it at the plan gate' : 'the director sees it before any branch exists (Approve plan before build is off)') + ', every builder works on its row'
+    ? 'an Output node delivering by ' + (_bpW.pr ? 'Pull Request' : 'Commit') + ' is set to one branch per ' + branchUnitWord(_bpW) + ' (lever: Branching on the Output node' + (outputOnDefault(_bpW.node) ? ', inherited from the sidebar\'s Default Delivery' : '') + ') - ' + (branchPlanOwner() ? branchPlanOwner().label : 'the orchestrator') + ' writes the branch plan from the work items and each repository\'s convention, ' + (state.approvePlan ? 'the director approves it at the plan gate' : 'the director sees it before any branch exists (Approve plan before build is off)') + ', every builder works on its row'
     : _bpOff ? 'an Output node sets a branching strategy but its format creates no branches - switch it to Commit or Pull Request, or set Branching to Single'
-    : 'no Output node sets a branching strategy - a Commit or Pull Request delivery uses its one named branch (set Branching on the Output node for epic-level work)', _bpW ? branchPlanHint() : ''));
+    : 'no Output node sets a branching strategy - a Commit or Pull Request delivery uses its one named branch (set Branching on the Output node for large work: an epic, or a long requirements document)', _bpW ? branchPlanHint() : ''));
   const cr = consumeRecordsHint(format);
   rows.push(exRow('Grounding in prior records', !!cr, cr ? 'Ground-in-prior-records toggle on - three-tier lookup, Current behavior first; also scans any openspec/ docs found (bounded: names first, grep to narrow, few files opened)' : 'Ground-in-prior-records toggle off', cr));
   const cl = clarifyFirstHint();
@@ -11648,7 +11733,7 @@ function branchPlanDeliveryLines(bp, pr) {
     lines.push('   - `github.com` \u2192 use `gh pr create --base <PR target>`');
     lines.push('   - `bitbucket.org` \u2192 use the Atlassian MCP `create_pull_request` tool if available, or `curl -X POST` the Bitbucket REST API');
     lines.push('   - `gitlab.com` \u2192 use `glab mr create` if available, or the GitLab API');
-    lines.push('5. Open ONE pull request per branch into the row\'s PR target. Title: the unit\'s key and a short summary. Description: fill the repository\'s PR template if it has one; otherwise what changed, why, how to test, what you ran with the result, and every story key the branch carries. Brief and human: no em dashes, no filler');
+    lines.push('5. Open ONE pull request per branch into the row\'s PR target. Title: the unit\'s key and a short summary. Description: fill the repository\'s PR template if it has one; otherwise what changed, why, how to test, what you ran with the result, and every work item key or title the branch carries. Brief and human: no em dashes, no filler');
     if (bp.integration !== 'none') lines.push('6. Where a repository has an epic branch, open the final PR from it to the base when that repository\'s last unit lands');
     lines.push((bp.integration !== 'none' ? '7' : '6') + '. If PR creation fails (auth, missing tool), push the branch and provide the user a URL to create the PR manually');
   } else {
@@ -13158,7 +13243,7 @@ function genAgentSDK() {
   }
   const _sdkBp = workflowBranching();
   if (_sdkBp) {
-    p.push('    # branching: one branch per ' + branchUnitWord(_sdkBp) + ' per repository, planned at run time from the epic and each repository\'s convention' + (_sdkBp.pattern ? ' (pattern ' + _sdkBp.pattern + ')' : '') + '; integration branch: ' + (_sdkBp.integration === 'auto' ? 'inferred per repository' : _sdkBp.integration === 'epic' ? 'an epic branch per repository' : 'none') + '. The skeleton has no git mechanism - the harness owner wires branch creation and PRs from the plan the planning step returns.');
+    p.push('    # branching: one branch per ' + branchUnitWord(_sdkBp) + ' per repository, planned at run time from the work items and each repository\'s convention' + (_sdkBp.pattern ? ' (pattern ' + _sdkBp.pattern + ')' : '') + '; integration branch: ' + (_sdkBp.integration === 'auto' ? 'inferred per repository' : _sdkBp.integration === 'epic' ? 'an epic branch per repository' : 'none') + '. The skeleton has no git mechanism - the harness owner wires branch creation and PRs from the plan the planning step returns.');
     p.push('');
   }
   const _sdkRepos = getRepositories();
@@ -16132,6 +16217,7 @@ function copyPrompt() {
 initDefaultModelSelect();
 initEffortSelect();
 initSidebarCollapse();
+initSidebarRail();
 restorePrefs();
 renderDefaultDelivery();
 renderPins();
