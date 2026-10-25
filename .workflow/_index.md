@@ -9,6 +9,13 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - files: index.html (PROMPTS.designSystemAnalyzer, PROMPTS.uiImplementer, PROMPTS.uiReviewer, help modal, agent-type description), tests.html (UI Design craft tests in the craft batch), README.md
 - status: current | date: 2026-10-07 | note: created after an honest assessment; two review rounds; a Design Explorer step for net-new surfaces is a deferred design discussion. 1806 -> 1810.
 
+## team-settings
+
+- record: .workflow/team-settings.md
+- intent: one shareable file for a team: the shop (Defaults, pins, repo context paths, switches, MCP hints, telemetry collector) plus saved workflows, agent presets (as org), and custom prompts; Export menu item + Import routing; adopt-only import (a setting only while at the app default, a workflow only when new, an agent in the org namespace, a prompt only when its title is new) with a confirm that names the effect; machine-local paths and the telemetry user never travel.
+- files: index.html (team settings block, importWorkflowText routing, two menu items, help), tests.html (Team settings suite), README.md
+- status: current | date: 2026-10-24 | note: built for the organization fork; three review rounds; 1846 -> 1856.
+
 ## default-delivery-and-pins
 
 - record: .workflow/default-delivery-and-pins.md

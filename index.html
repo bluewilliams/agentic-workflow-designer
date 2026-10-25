@@ -855,18 +855,19 @@ svg.canvas{width:100%;height:100%;display:block}
       <button class="btn sm primary" onclick="saveWorkflow()" title="Save this workflow by name in your browser (localStorage) - nothing leaves your machine. The save keeps the canvas, the requirements, the repositories, and the sidebar context this workflow was built with (app and UI context, verification, rules and doc paths, the clarify and approve switches), so it loads back with that context: a saved field that has something wins, an empty one leaves yours in place. Use Export for a shareable file.">Save</button>
       <button class="btn sm" onclick="duplicateWorkflow()" title="Save a copy: renames the current workflow to &quot;(copy)&quot; so your next Save creates a new workflow, leaving the original untouched. Handy for spinning off a variant.">Clone</button>
       <div class="export-dd" style="position:relative;display:inline-flex">
-        <button class="btn sm" id="exportMenuBtn" aria-haspopup="true" aria-expanded="false" onclick="toggleExportMenu(event)" title="Download the workflow as a file - Workflow JSON, OpenSpec schema, or a Handoff package.">Export &#9662;</button>
+        <button class="btn sm" id="exportMenuBtn" aria-haspopup="true" aria-expanded="false" onclick="toggleExportMenu(event)" title="Download the workflow as a file - Workflow JSON, OpenSpec schema, a Handoff package, the Explain report - or the Team settings file that shares your shop with teammates.">Export &#9662;</button>
         <div class="export-menu" id="exportMenu" role="menu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:60;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,0.4);min-width:210px;padding:4px">
           <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportWorkflowFile();closeExportMenu()" title="Download just the workflow definition (.json) to reuse or share. Re-open it with Import.">Workflow JSON</button>
           <button class="btn sm" id="openspecExportBtn" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportOpenSpecSchema();closeExportMenu()" title="Download as an OpenSpec custom schema (.zip of schema.yaml + templates). Unzip at your repo root and run: openspec schema validate &lt;name&gt;. Re-import the schema.yaml here to edit it visually.">OpenSpec schema</button>
           <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportHandoffFile();closeExportMenu()" title="Download a resume package (.md) to hand in-progress work to another engineer: how to resume, the durable record path, the ready-to-run prompt, and the workflow definition. The live state travels with your git branch, not this file.">Handoff Package</button>
           <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportExplainReport();closeExportMenu()" title="Download the Explain content as a committable audit document (.md): every lever per node with its state, reason, and emitted evidence, plus the workflow definition embedded for lossless re-import. Commit it beside the durable record so a future colleague can diagnose why a run behaved as it did.">Explain Report</button>
+          <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="exportTeamSettings();closeExportMenu()" title="Download the shop as one file: Defaults, pins, repo context paths, switches, MCP hints, and the telemetry collector, plus saved workflows, agent presets, and custom prompts. Machine-local paths and the telemetry user stay out. A teammate imports it through Import, From file, and adopts only what they have not set.">Team Settings</button>
         </div>
       </div>
       <div class="export-dd" style="position:relative;display:inline-block">
         <button class="btn sm" id="importMenuBtn" aria-haspopup="true" aria-expanded="false" onclick="toggleImportMenu(event)" title="Bring a workflow, schema, or run report into the designer - from a file or straight from your clipboard.">Import &#9662;</button>
         <div class="export-menu" id="importMenu" role="menu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:60;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,0.4);min-width:210px;padding:4px">
-          <label class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" title="Import a saved .json workflow, an OpenSpec schema.yaml, or a fence-bearing .md file.">From file
+          <label class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" title="Import a saved .json workflow, an OpenSpec schema.yaml, a fence-bearing .md file, or a team settings .json (adopts only what you have not set, adds only what you do not have).">From file
             <input type="file" accept=".json,.yaml,.yml,.md" style="display:none" onchange="importWorkflowFile(event);closeImportMenu()">
           </label>
           <button class="btn sm" role="menuitem" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="pasteImportWorkflow();closeImportMenu()" title="Import whatever is on your clipboard - Claude's returned tuning JSON, a run report, any importable text. Fenced code blocks are extracted automatically; no file needed.">From clipboard</button>
@@ -1372,6 +1373,8 @@ svg.canvas{width:100%;height:100%;display:block}
 <p>Prompts that benefit from cross-repo search or Jira/Confluence context include guidance for using those tools when available.</p>
 <p>The <strong>Live Monitors</strong> category contains prompts that watch things for you over time: CI builds, PR reviews, deploys, incidents. They run on a recurring interval, track changes across iterations, and self-terminate when done (build goes green, PR merges, service recovers).</p>
 
+<h3>Team settings (share the shop)</h3>
+<p><strong>Export, Team settings</strong> writes one file with everything a team agrees on: the Defaults (Model, Effort, Delivery), the section pins, the repo context paths, the memory and MCP switches, the telemetry collector (endpoint, service, tags), plus every saved workflow, agent preset, and custom prompt. Machine-local values never travel: repository and app paths, and the telemetry user. A teammate brings it in through <strong>Import, From file</strong>. The import is adopt-only: a setting is taken only while it still sits at the app default, a workflow only when no saved workflow shares its slug (the saved name made file-safe), an agent as an org preset that can never replace a personal one, a prompt only when its title is new. The confirm names exactly what will be adopted and added, and nothing already set is changed. Commit the file to the team's fork, and every new install starts from the same place.</p>
 <h3>Agent Library</h3>
 <p>Click the <strong>Agents</strong> button in the toolbar to open the Agent Library - reusable <em>agent presets</em>. Where the Prompt Library holds copy-paste text, an agent preset is a saved snapshot of an agent node's whole config (role, model, tools, prompt, and Agent Context) that you drop onto the canvas pre-wired. Build an agent that knows your API conventions once, reuse it in every workflow.</p>
 <p>Select an agent node on the canvas and click <strong>+ Save selected agent</strong> to save it (give it a name and an optional <em>version</em> you control). Saved agents are grouped by source - <strong>My Agents</strong> (yours, with Edit/Delete) and <strong>Org</strong> packs (shared, Add-only). Click <strong>Add to canvas</strong> to instantiate one as a normal agent node. Use the search box to filter by name once your library grows. <strong>Star</strong> an agent (the pin icon on its card) to add it to a <strong>Custom Agents</strong> group in the sidebar's <strong>Node &amp; Agent Palette</strong>, so your go-to agents are one click away while you build - works for your own agents and org ones alike, and the pin is your own preference (it survives org pack re-imports).</p>
@@ -4509,6 +4512,13 @@ function pasteImportWorkflow() {
 // branch heuristics exactly as the file path always has.
 function importWorkflowText(text, fileName) {
   {
+    // A team settings file is plain JSON whose prompts may themselves contain code fences or run
+    // fences, so it is recognized from the raw text before any fence extraction runs.
+    if (String(text || '').indexOf(TEAM_SETTINGS_FORMAT) !== -1) {   // a cheap sniff keeps every other import on its old path
+      let rawJson = null; try { rawJson = JSON.parse(text); } catch (e) { rawJson = null; }
+      if (!rawJson) { try { rawJson = JSON.parse(extractFencedPayload(text)); } catch (e) { rawJson = null; } }   // pasted inside a code fence
+      if (rawJson && rawJson.format === TEAM_SETTINGS_FORMAT) { importTeamSettings(rawJson, fileName); return; }
+    }
     // OpenSpec round-trip import: a schema.yaml or our .md bundle carrying the
     // awd:meta side-channel rehydrates losslessly through the existing deserializeWorkflow.
     const meta = openSpecExtractMeta(text);
@@ -4517,7 +4527,7 @@ function importWorkflowText(text, fileName) {
       if (!meta.canvas.nodes.every(n => vt.includes(n.type))) { showToast('Unknown node types in embedded workflow'); return; }
       if (deserializeWorkflow(meta, { context: 'none' })) {
         const adopted = openSpecAdoptContextPaths(meta);
-        showToast('Imported from OpenSpec schema: ' + (meta.name || 'workflow') + (adopted ? ' (+' + adopted + ' context item' + (adopted !== 1 ? 's' : '') + ' adopted where yours were empty)' : ''));
+        showToast('Imported from OpenSpec schema: ' + (meta.name || 'workflow') + (adopted ? ' (+' + plural(adopted, 'context item') + ' adopted where yours were empty)' : ''));
         zoomFit();  // fit the freshly-imported workflow into view (like presets do)
       } else { showToast('Failed to import workflow'); }
       return;
@@ -4540,7 +4550,7 @@ function importWorkflowText(text, fileName) {
       const wf = (typeof openSpecImportForeign === 'function') ? openSpecImportForeign(text) : null;
       if (wf && deserializeWorkflow(wf, { context: 'none' })) {   // a foreign schema carries no sidebar context
         const n = wf.canvas.nodes.length;
-        showToast('Imported foreign OpenSpec schema: ' + (wf.name || 'workflow') + ' (' + n + ' node' + (n !== 1 ? 's' : '') + ') - best-effort view; agent roles, models, and positions are defaults you can adjust');
+        showToast('Imported foreign OpenSpec schema: ' + (wf.name || 'workflow') + ' (' + plural(n, 'node') + ') - best-effort view; agent roles, models, and positions are defaults you can adjust');
         zoomFit();  // fit the freshly-imported workflow into view (like presets do)
       } else {
         showToast('Could not read this as an OpenSpec schema (no embedded designer metadata, and the YAML had no artifacts to import).');
@@ -4555,7 +4565,7 @@ function importWorkflowText(text, fileName) {
       if (!data.canvas.nodes.every(n => validTypes.includes(n.type))) { showToast('Unknown node types in file'); return; }
       if (deserializeWorkflow(data, { context: 'none' })) {
         const adopted = openSpecAdoptContextPaths(data);
-        showToast('Imported: ' + (data.name || 'workflow') + (adopted ? ' (+' + adopted + ' context item' + (adopted !== 1 ? 's' : '') + ' adopted where yours were empty)' : ''));
+        showToast('Imported: ' + (data.name || 'workflow') + (adopted ? ' (+' + plural(adopted, 'context item') + ' adopted where yours were empty)' : ''));
         zoomFit();  // fit the freshly-imported workflow into view (like presets do)
       } else {
         showToast('Failed to import workflow');
@@ -4679,6 +4689,191 @@ document.addEventListener('click', function(e) {
   if (!(e.target.closest && e.target.closest('.export-dd'))) { closeExportMenu(); closeImportMenu(); if (typeof closeMonitorRunMenu === 'function') closeMonitorRunMenu(); }
 });
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeExportMenu(); closeImportMenu(); if (typeof closeMonitorRunMenu === 'function') closeMonitorRunMenu(); } });
+// === Team settings (shareable shop) - REMOVABLE ===
+// One file carries what a team agrees on: the shop (Defaults, pins, repo context paths, switches,
+// MCP hints, telemetry collector) plus the saved workflows, agent presets, and custom prompts.
+// Export writes it; Import adopts it without overwriting anything the importer already set: a
+// setting is adopted only while it still sits at the app default, a workflow only when its slug is
+// new, an agent as an org-namespaced preset (never over a user agent), a prompt only when its title
+// is new. Machine-local values (repository and app paths, the telemetry user) never travel.
+// To remove: delete this block, the two menu items, and the one routing line in importWorkflowText.
+const TEAM_SETTINGS_FORMAT = 'awd-team-settings';
+const TEAM_SETTING_KEYS = ['defaultModel', 'effort', 'defaultDelivery', 'pins', 'rulesPaths', 'productDocPaths', 'verifyPaths', 'verifyNotes', 'verifyFailRun',
+  'memoryEnabled', 'durableRecord', 'consumeRecords', 'openSpecArtifacts', 'mcpAtlassian', 'mcpCodeSearch', 'mcpDatadog', 'mcpBrowser', 'mcpGithub', 'mcpCustom',
+  'clarifyFirst', 'approvePlan', 'telemetryEnabled', 'telemetryEndpoint', 'telemetryService', 'telemetryTags'];
+const TEAM_SETTING_LABELS = { defaultModel: 'Default Model', effort: 'Default Effort', defaultDelivery: 'Default Delivery', pins: 'Section pins', rulesPaths: 'Rules paths', productDocPaths: 'Product doc paths', verifyPaths: 'Verification paths', verifyNotes: 'Verification notes', verifyFailRun: 'Fail the run on unmet verifications', memoryEnabled: 'Workflow memory', durableRecord: 'Durable record', consumeRecords: 'Ground in prior records', openSpecArtifacts: 'OpenSpec artifacts', mcpAtlassian: 'Atlassian MCP', mcpCodeSearch: 'Code search MCP', mcpDatadog: 'Datadog MCP', mcpBrowser: 'Browser MCP', mcpGithub: 'GitHub MCP', mcpCustom: 'Custom MCP notes', clarifyFirst: 'Clarify first', approvePlan: 'Approve plan', telemetryEnabled: 'Run telemetry', telemetryEndpoint: 'Telemetry endpoint', telemetryService: 'Telemetry service', telemetryTags: 'Telemetry tags' };
+const TEAM_SWITCH_IDS = { memoryEnabled: 'memoryToggle', durableRecord: 'durableRecordToggle', consumeRecords: 'consumeRecordsToggle', openSpecArtifacts: 'openSpecArtifactsToggle', mcpAtlassian: 'mcpAtlassianToggle', mcpCodeSearch: 'mcpCodeSearchToggle', mcpDatadog: 'mcpDatadogToggle', mcpBrowser: 'mcpBrowserToggle', mcpGithub: 'mcpGithubToggle', clarifyFirst: 'clarifyFirstToggle', approvePlan: 'approvePlanToggle' };
+const TEAM_LOCAL_WORKFLOW_KEYS = ['repositories', 'appSourcePath', 'appSourceBranch', 'appSourceAccess', 'uiContextNotes', 'artifactPath'];
+function teamSettingValue(k) {
+  if (k === 'mcpCustom') { const el = $('mcpCustomNotes'); return el ? el.value : (state.mcpCustom || ''); }
+  if (k === 'defaultDelivery') return normalizeDelivery(state.defaultDelivery);
+  if (k === 'pins') return normalizePins(state.pins);
+  if (['rulesPaths', 'productDocPaths', 'verifyPaths'].includes(k)) return (state[k] || []).slice();
+  return state[k];
+}
+// A value that equals the app default: the importer's own state when it is still untouched, or an
+// incoming value that has nothing to say.
+function teamValueIsDefault(k, v) {
+  if (k === 'defaultModel') return v === NODE_DEFAULTS.agent.config.model;
+  if (k === 'effort') return !v;
+  if (k === 'defaultDelivery') return deliveryEquals(v, blankDelivery());
+  if (k === 'pins') return JSON.stringify(normalizePins(v)) === JSON.stringify(defaultPins());
+  if (['rulesPaths', 'productDocPaths', 'verifyPaths'].includes(k)) return normalizePathList(v).length === 0;
+  if (k in NEW_WORKFLOW_SWITCHES) return typeof v !== 'boolean' || v === NEW_WORKFLOW_SWITCHES[k];
+  if (k === 'verifyFailRun') return typeof v !== 'boolean' || v === true;
+  if (k === 'telemetryEnabled') return !v;
+  return !String(v || '').trim();
+}
+// An incoming value the app can actually hold; the confirm never names a setting that apply
+// would drop. The memory dependencies read the plan so far (a record needs memory on, OpenSpec
+// needs the record), whether that state is local or arrives in the same file.
+function teamValueAcceptable(k, v, adoptSoFar, sIn) {
+  if (k === 'defaultModel') return !!MODELS.find(m => m.value === v);
+  if (k === 'effort') return EFFORT_LEVELS.includes(v);
+  if (k === 'defaultDelivery' || k === 'pins') return !!v && typeof v === 'object';
+  if (['rulesPaths', 'productDocPaths', 'verifyPaths'].includes(k)) return Array.isArray(v);
+  if (k in NEW_WORKFLOW_SWITCHES || k === 'verifyFailRun' || k === 'telemetryEnabled') {
+    if (typeof v !== 'boolean') return false;
+    const willBe = (key) => adoptSoFar.includes(key) ? !!sIn[key] : !!state[key];
+    if (k === 'durableRecord' && v) return willBe('memoryEnabled');
+    if (k === 'openSpecArtifacts' && v) return willBe('memoryEnabled') && willBe('durableRecord');
+    // Turning memory or the record off would cascade onto OpenSpec, which the user set (it is off by default).
+    if ((k === 'memoryEnabled' || k === 'durableRecord') && !v && state.openSpecArtifacts) return false;
+    return true;
+  }
+  return typeof v === 'string';
+}
+function buildTeamSettings() {
+  const settings = {};
+  TEAM_SETTING_KEYS.forEach(k => { settings[k] = teamSettingValue(k); });
+  const eff = effectiveDelivery(state.defaultDelivery);
+  const workflows = getWorkflowIndex().map(e => { try { return JSON.parse(localStorage.getItem('awd_wf_' + e.slug)); } catch (err) { return null; } })
+    .filter(w => w && w.canvas && Array.isArray(w.canvas.nodes)).map(w => {
+      const c = Object.assign({}, w); TEAM_LOCAL_WORKFLOW_KEYS.forEach(k => { delete c[k]; });
+      // A portable copy, like every other export: an Output node on Default carries the delivery it had here.
+      c.canvas = Object.assign({}, w.canvas, { nodes: w.canvas.nodes.map(n => (n && n.type === 'output' && n.config && n.config.format === 'default')
+        ? Object.assign({}, n, { config: Object.assign({}, n.config, { format: eff.format, branching: eff.branching, targetBranch: eff.targetBranch, branchPattern: eff.branchPattern, integrationBranch: eff.integrationBranch }) }) : n) });
+      return c;
+    });
+  const seen = new Set();
+  const agents = getCustomAgents().filter(a => a.source === 'user' || a.source === 'org')
+    .sort((a, b) => (a.source === 'user' ? 0 : 1) - (b.source === 'user' ? 0 : 1))   // a user's own copy wins a name collision
+    .map(a => ({ name: a.name, pack: a.pack || 'team', version: a.version || '', updated: a.updated || '', config: a.config }))
+    .filter(a => { const id = newAgentId('org', a.name, a.pack); if (seen.has(id)) return false; seen.add(id); return true; });
+  return { format: TEAM_SETTINGS_FORMAT, version: 1, exportedAt: new Date().toISOString(), settings: settings, workflows: workflows, agents: agents, prompts: getCustomPrompts() };
+}
+function exportTeamSettings() {
+  const data = buildTeamSettings();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'awd-team-settings.json'; a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Exported team settings: ' + teamCounts(data.workflows.length, data.agents.length, data.prompts.length));
+}
+function plural(c, word) { return c + ' ' + word + (c !== 1 ? 's' : ''); }
+function teamCounts(w, a, p) { return plural(w, 'workflow') + ', ' + plural(a, 'agent') + ', ' + plural(p, 'prompt'); }
+// What an import would do, computed before anything is written; the confirm names it.
+function planTeamSettingsImport(data) {
+  const sIn = (data && data.settings && typeof data.settings === 'object') ? data.settings : {};
+  const adopt = [], values = {};
+  TEAM_SETTING_KEYS.forEach(k => {
+    if (k in sIn && teamValueIsDefault(k, teamSettingValue(k)) && !teamValueIsDefault(k, sIn[k]) && teamValueAcceptable(k, sIn[k], adopt, sIn)) { adopt.push(k); values[k] = sIn[k]; }
+  });
+  // Memory off takes the record (and OpenSpec) with it; the confirm names that rather than letting a
+  // guard do it silently. Both are at their defaults here (a user choice on top was refused above).
+  if (adopt.includes('memoryEnabled') && !values.memoryEnabled) {
+    ['durableRecord', 'openSpecArtifacts'].forEach(k => { if (!adopt.includes(k) && state[k]) { adopt.push(k); values[k] = false; } });
+  } else if (adopt.includes('durableRecord') && !values.durableRecord && !adopt.includes('openSpecArtifacts') && state.openSpecArtifacts) { adopt.push('openSpecArtifacts'); values.openSpecArtifacts = false; }
+  // Sets start from what is already here and grow as the file is read, so a duplicate inside one
+  // file counts once; a workflow must be loadable (known node types, every node an object).
+  const validTypes = Object.keys(NODE_DEFAULTS);
+  const have = new Set(getWorkflowIndex().map(e => e.slug));
+  const workflows = [];
+  (Array.isArray(data.workflows) ? data.workflows : []).forEach(w => {
+    if (!(w && w.canvas && Array.isArray(w.canvas.nodes) && w.canvas.nodes.length && typeof w.slug === 'string')) return;
+    const slug = slugify(w.slug);                        // the same shape saveWorkflow writes; never raw text into a key or the list markup
+    if (!slug || have.has(slug)) return;
+    if (!w.canvas.nodes.every(n => n && typeof n === 'object' && validTypes.includes(n.type) && n.config && typeof n.config === 'object')) return;
+    const name = (typeof w.name === 'string' && w.name.trim()) ? w.name.trim() : slug;   // the saved list renders it
+    const copy = Object.assign({}, w, { slug: slug, name: name }); TEAM_LOCAL_WORKFLOW_KEYS.forEach(k => { delete copy[k]; });
+    have.add(slug); workflows.push(copy);
+  });
+  // Agents travel as name, pack, version, config only: the merge derives the org id from those, so a
+  // file cannot aim an entry at a personal agent or at another org pack through a carried id or source.
+  const ids = new Set(getCustomAgents().map(a => a.id));
+  const agents = [];
+  (Array.isArray(data.agents) ? data.agents : []).forEach(a => {
+    if (!(a && typeof a.name === 'string' && a.name.trim() && a.config && typeof a.config === 'object')) return;
+    const pack = (typeof a.pack === 'string' && a.pack.trim()) ? a.pack.trim() : 'team';
+    const id = newAgentId('org', a.name, pack);
+    if (ids.has(id)) return;
+    ids.add(id); agents.push({ name: a.name.trim(), pack: pack, version: typeof a.version === 'string' ? a.version : '', updated: (typeof a.updated === 'string' && a.updated) ? a.updated : new Date().toISOString(), config: a.config });
+  });
+  const titles = new Set(getCustomPrompts().map(x => x.title));
+  const prompts = (Array.isArray(data.prompts) ? data.prompts : []).filter(x => {
+    if (!(x && typeof x.title === 'string' && x.title.trim() && typeof x.prompt === 'string' && x.prompt.trim())) return false;
+    const title = x.title.trim();
+    if (titles.has(title)) return false;
+    titles.add(title); return true;
+  });
+  return { adopt: adopt, values: values, workflows: workflows, agents: agents, prompts: prompts };
+}
+function applyTeamSetting(k, v) {
+  switch (k) {
+    case 'defaultModel': if (MODELS.find(m => m.value === v)) setDefaultModel(v, true); break;
+    case 'effort': setEffort(EFFORT_LEVELS.includes(v) ? v : '', true); break;
+    case 'defaultDelivery': state.defaultDelivery = normalizeDelivery(v); renderDefaultDelivery(); break;
+    case 'pins': state.pins = normalizePins(v); renderPins(); break;
+    case 'rulesPaths': state.rulesPaths = normalizePathList(v); renderRulesRows(); break;
+    case 'productDocPaths': state.productDocPaths = normalizePathList(v); renderProductDocRows(); break;
+    case 'verifyPaths': state.verifyPaths = normalizePathList(v); renderVerifyRows(); break;
+    case 'verifyNotes': { state.verifyNotes = String(v); const el = $('verifyNotesInput'); if (el) el.value = state.verifyNotes; break; }
+    case 'verifyFailRun': { state.verifyFailRun = !!v; const el = $('verifyFailRunToggle'); if (el) el.checked = state.verifyFailRun; break; }
+    case 'mcpCustom': { state.mcpCustom = String(v); const el = $('mcpCustomNotes'); if (el) el.value = state.mcpCustom; break; }
+    case 'telemetryEndpoint': case 'telemetryService': case 'telemetryTags': { state[k] = telemetryClean(String(v)); const el = $(k); if (el) el.value = state[k]; break; }
+    case 'telemetryEnabled': { state.telemetryEnabled = !!v; const el = $('telemetryToggle'); if (el) el.checked = state.telemetryEnabled; renderTelemetryFields(); break; }
+    default: {
+      if (!(k in TEAM_SWITCH_IDS)) return;
+      state[k] = !!v;
+      const el = $(TEAM_SWITCH_IDS[k]); if (el) el.checked = state[k];
+      if (k === 'memoryEnabled') { const f = $('memoryPathField'); if (f) f.style.display = state.memoryEnabled ? 'block' : 'none'; }
+    }
+  }
+}
+function importTeamSettings(data, fileName) {
+  if (typeof data.version === 'number' && data.version > 1) { showToast('This team settings file is from a newer version of the designer (format ' + data.version + '); update before importing it'); return; }
+  const plan = planTeamSettingsImport(data);
+  const total = plan.adopt.length + plan.workflows.length + plan.agents.length + plan.prompts.length;
+  if (!total) { showToast('Team settings: nothing new to adopt, everything in the file is already set here'); return; }
+  const parts = [];
+  if (plan.adopt.length) parts.push('Adopts ' + plural(plan.adopt.length, 'setting') + ' you have not set: ' + plan.adopt.map(k => TEAM_SETTING_LABELS[k] || k).join(', ') + '.');
+  if (plan.workflows.length + plan.agents.length + plan.prompts.length) parts.push('Adds ' + teamCounts(plan.workflows.length, plan.agents.length, plan.prompts.length) + '.');
+  withConfirm('Import team settings' + (fileName ? ' from ' + fileName : '') + '?\n' + parts.join('\n') + '\nNothing you already set is changed.', { confirmLabel: 'Import' }, () => applyTeamSettingsImport(data, plan));
+}
+function applyTeamSettingsImport(data, plan) {
+  plan.adopt.forEach(k => applyTeamSetting(k, plan.values[k]));
+  state.durableRecord = state.durableRecord && state.memoryEnabled;        // the record needs memory on
+  state.openSpecArtifacts = state.openSpecArtifacts && state.durableRecord;
+  syncDurableUI();
+  if (typeof syncVerifyFailRunUI === 'function') syncVerifyFailRunUI();
+  if (typeof refreshVerifyStatusLine === 'function') refreshVerifyStatusLine();
+  if (plan.workflows.length) {
+    const index = getWorkflowIndex();
+    plan.workflows.forEach(w => {                        // already normalized and stripped by the plan
+      try { localStorage.setItem('awd_wf_' + w.slug, JSON.stringify(w)); } catch (e) { return; }
+      index.unshift({ slug: w.slug, name: w.name, savedAt: w.savedAt || new Date().toISOString(), nodeCount: w.canvas.nodes.length, agentCount: w.canvas.nodes.filter(n => n.type === 'agent').length });
+    });
+    setWorkflowIndex(index); renderSavedWorkflowList();
+  }
+  if (plan.agents.length) { mergeImportedAgents({ source: 'org', pack: 'team', agents: plan.agents }); rerenderAgentLib(); renderAgentPalette(); }
+  if (plan.prompts.length) { mergeImportedPrompts({ prompts: plan.prompts }); rerenderPromptLib(); }
+  updateMemoryPath(); updatePrompt(); updateConfig();
+  if (typeof updateValidation === 'function') updateValidation();
+  savePrefs();
+  showToast('Team settings imported: ' + plural(plan.adopt.length, 'setting') + ', ' + teamCounts(plan.workflows.length, plan.agents.length, plan.prompts.length));
+}
+// === end Team settings ===
+
 function exportHandoffFile() {
   if (state.nodes.length === 0) { showToast('Add nodes before exporting a handoff'); return; }
   const md = genHandoffBundle();
@@ -7376,7 +7571,7 @@ function exportCustomPrompts() {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = 'awd-custom-prompts.json'; a.click();
   URL.revokeObjectURL(a.href);
-  showToast('Exported ' + arr.length + ' prompt' + (arr.length !== 1 ? 's' : ''));
+  showToast('Exported ' + plural(arr.length, 'prompt'));
 }
 // Merge imported prompts into storage (dedupe by title - same title updates in place). Accepts either a
 // bare array or an { prompts: [...] } envelope. Returns the count merged, or -1 on unrecognized data.
@@ -7408,7 +7603,7 @@ function importCustomPromptsFile(event) {
     const n = mergeImportedPrompts(data);
     if (n < 0) { showToast('Not a custom-prompts file'); return; }
     rerenderPromptLib();
-    showToast('Imported ' + n + ' prompt' + (n !== 1 ? 's' : ''));
+    showToast('Imported ' + plural(n, 'prompt'));
   };
   reader.readAsText(file);
 }
@@ -7617,7 +7812,7 @@ function exportAgentPack(source) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = 'awd-agent-pack-' + src + '.json'; a.click();
   URL.revokeObjectURL(a.href);
-  showToast('Exported ' + arr.length + ' agent' + (arr.length !== 1 ? 's' : ''));
+  showToast('Exported ' + plural(arr.length, 'agent'));
 }
 // Merge an imported agent pack. Source-partitioned + version-aware + non-clobbering: an incoming id is
 // forced to its resolved source's namespace, so an org pack can NEVER overwrite a user agent. Within the

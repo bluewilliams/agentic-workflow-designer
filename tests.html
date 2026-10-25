@@ -2050,6 +2050,207 @@ describe('Consume prior records (read side)', () => {
 
 // ─── Depth (exhaustive steps: orchestration depth inside one step) ─────────────────────
 // ─── Branching strategy (Output node): epic-level work onto branches, planned at run time ───
+describe('Team settings (shareable shop)', () => {
+  const prefs = () => JSON.parse(win.localStorage.getItem('awd_prefs') || '{}');
+  function resetShop() {
+    win.setDefaultModel('opus-5'); win.setEffort('');
+    win.state.defaultDelivery = win.blankDelivery(); win.state.pins = win.defaultPins(); win.renderDefaultDelivery(); win.renderPins();
+    Object.assign(win.state, win.NEW_WORKFLOW_SWITCHES);
+    win.state.rulesPaths = []; win.state.productDocPaths = []; win.state.verifyPaths = []; win.state.verifyNotes = ''; win.renderRulesRows(); win.renderProductDocRows(); win.renderVerifyRows();
+    win.state.telemetryEnabled = false; win.state.telemetryEndpoint = ''; win.state.telemetryService = ''; win.state.telemetryTags = ''; win.state.telemetryUser = '';
+    win.state.mcpCustom = ''; win.state.repositories = []; win.renderRepoRows();
+    ['appSourcePath', 'appSourceBranch', 'uiContextNotes', 'verifyNotesInput', 'mcpCustomNotes', 'telemetryEndpoint', 'telemetryService', 'telemetryTags', 'telemetryUser'].forEach(id => { const el = win.document.getElementById(id); if (el) el.value = ''; });
+    win.localStorage.removeItem('awd_custom_agents'); win.localStorage.removeItem('awd_custom_prompts');
+    win.getWorkflowIndex().forEach(e => win.localStorage.removeItem('awd_wf_' + e.slug)); win.localStorage.removeItem('awd_workflows');
+  }
+  function teamFile() {
+    return { format: 'awd-team-settings', version: 1, settings: { defaultDelivery: { format: 'pr', branching: 'story', targetBranch: 'develop' }, effort: 'high', mcpDatadog: true, approvePlan: true, telemetryEnabled: true, telemetryEndpoint: 'https://otel.example.test/v1/logs', telemetryService: 'designer-runs', rulesPaths: ['.claude/rules'], pins: { defaults: true, repoPaths: true, mcp: true } },
+      workflows: [{ version: 1, slug: 'team-feature', name: 'Team Feature', savedAt: '2026-10-24T00:00:00.000Z', canvas: { nodes: [{ id: 'n1', type: 'input', label: 'Requirements', x: 0, y: 0, w: 180, h: 52, config: { source: 'freeform', description: '' } }], connections: [] } }],
+      agents: [{ name: 'Team Reviewer', source: 'org', pack: 'team', version: '1.0', config: { agentType: 'reviewer', model: 'opus-5', tools: ['Read'], prompt: 'Review it.', maxTurns: 5 } }],
+      prompts: [{ title: 'Team Release Notes', desc: 'd', prompt: 'Write release notes.' }] };
+  }
+  afterEach(() => { resetState(); clearStorage(); resetShop(); win.expandAllSections(); });
+
+  it('should export the shop without machine-local values, agents as org presets, and workflows stripped of local paths', () => {
+    resetShop();
+    win.state.defaultDelivery = win.normalizeDelivery({ format: 'pr', branching: 'story' }); win.renderDefaultDelivery();
+    win.state.telemetryEndpoint = 'https://otel.example.test'; win.state.telemetryUser = 'me@example.test';
+    win.state.repositories = [{ path: '/Users/me/repo', branch: '' }]; win.document.getElementById('appSourcePath').value = '/Users/me/app';
+    win.saveCustomPrompts([{ id: 'cp_1', title: 'Mine', desc: '', prompt: 'p' }]);
+    win.saveCustomAgents([{ id: 'user:my-agent', name: 'My Agent', source: 'user', pack: '', version: '', updated: '', config: { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 3 } }]);
+    win.loadPreset('feature'); win.document.getElementById('workflowName').value = 'Shared Flow'; win.saveWorkflow();
+    const d = win.buildTeamSettings();
+    expect(d.format).toBe('awd-team-settings');
+    expect(d.settings.defaultDelivery.format).toBe('pr');
+    expect(d.settings.telemetryEndpoint).toBe('https://otel.example.test');
+    expect('telemetryUser' in d.settings).toBe(false);
+    expect('repositories' in d.settings).toBe(false);
+    expect('appSourcePath' in d.settings).toBe(false);
+    expect(d.agents.length).toBe(1); expect(d.agents[0].name).toBe('My Agent'); expect(d.agents[0].pack).toBe('team');
+    expect('id' in d.agents[0]).toBe(false); expect('source' in d.agents[0]).toBe(false);   // the import derives the org id itself
+    expect(d.prompts.length).toBe(1);
+    expect(d.workflows.length).toBe(1); expect(d.workflows[0].slug).toBe('shared-flow');
+    expect('appSourcePath' in d.workflows[0]).toBe(false); expect('repositories' in d.workflows[0]).toBe(false);
+    expect(d.workflows[0].canvas.nodes.length).toBeGreaterThan(0);
+  });
+  it('should adopt only settings still at the app default, add only new workflows, agents, and prompts, and leave everything the user set alone', () => {
+    resetShop(); resetState();
+    win.setEffort('low');                                                           // the user chose this
+    win.state.telemetryEndpoint = 'https://mine.example.test'; win.document.getElementById('telemetryEndpoint').value = win.state.telemetryEndpoint;
+    win.saveCustomPrompts([{ id: 'cp_9', title: 'Team Release Notes', desc: 'mine', prompt: 'My own text.' }]);   // same title as the file
+    win.saveCustomAgents([{ id: 'user:team-reviewer', name: 'Team Reviewer', source: 'user', pack: '', version: '', updated: '', config: { agentType: 'reviewer', model: 'opus-5', tools: ['Read'], prompt: 'MINE', maxTurns: 5 } }]);
+    win.loadPreset('bugfix'); win.document.getElementById('workflowName').value = 'Team Feature'; win.saveWorkflow();   // same slug as the file
+    const mineBefore = win.localStorage.getItem('awd_wf_team-feature');
+    const plan = win.planTeamSettingsImport(teamFile());
+    expect(plan.adopt).toEqual(['defaultDelivery', 'pins', 'rulesPaths', 'mcpDatadog', 'approvePlan', 'telemetryEnabled', 'telemetryService']);   // effort and endpoint are the user's; order follows the key list
+    expect(plan.workflows.length).toBe(0); expect(plan.prompts.length).toBe(0); expect(plan.agents.length).toBe(1);   // the org namespace never collides with the user agent
+    win.importTeamSettings(teamFile(), 'awd-team-settings.json');                                                    // __autoConfirm proceeds
+    expect(win.state.effort).toBe('low');
+    expect(win.state.telemetryEndpoint).toBe('https://mine.example.test');
+    expect(win.state.defaultDelivery.format).toBe('pr'); expect(win.state.defaultDelivery.branching).toBe('story');
+    expect(win.state.pins.mcp).toBe(true); expect(win.state.pins.repos).toBe(false);
+    expect(JSON.stringify(win.state.rulesPaths)).toBe('[".claude/rules"]');
+    expect(win.state.mcpDatadog).toBe(true); expect(win.document.getElementById('mcpDatadogToggle').checked).toBe(true);
+    expect(win.state.approvePlan).toBe(true); expect(win.document.getElementById('approvePlanToggle').checked).toBe(true);
+    expect(win.state.telemetryEnabled).toBe(true); expect(win.state.telemetryService).toBe('designer-runs');
+    expect(win.localStorage.getItem('awd_wf_team-feature')).toBe(mineBefore);                 // the user's workflow is byte-identical
+    expect(win.getCustomPrompts().find(x => x.title === 'Team Release Notes').prompt).toBe('My own text.');
+    expect(win.getCustomAgents().find(a => a.id === 'user:team-reviewer').config.prompt).toBe('MINE');
+    expect(win.getCustomAgents().find(a => a.id === 'org:team/team-reviewer').source).toBe('org');
+    expect(prefs().defaultDelivery.format).toBe('pr'); expect(prefs().effort).toBe('low');
+    expect(win.planTeamSettingsImport(teamFile()).adopt.length).toBe(0);                  // a second import has nothing left to adopt
+  });
+  it('should add workflows, agents, and prompts the user does not have, route a team file through the normal import, and do nothing when the file matches', () => {
+    resetShop(); resetState();
+    win.importWorkflowText(JSON.stringify(teamFile()), 'awd-team-settings.json');
+    expect(win.getWorkflowIndex().some(e => e.slug === 'team-feature')).toBe(true);
+    expect(JSON.parse(win.localStorage.getItem('awd_wf_team-feature')).name).toBe('Team Feature');
+    expect(win.getCustomAgents().some(a => a.id === 'org:team/team-reviewer')).toBe(true);
+    expect(win.getCustomPrompts().some(x => x.title === 'Team Release Notes')).toBe(true);
+    expect(win.state.nodes.length).toBe(0);                                                 // the canvas is not touched by a settings file
+    const before = JSON.stringify(prefs());
+    const same = win.buildTeamSettings();
+    const plan = win.planTeamSettingsImport(same);
+    expect(plan.adopt.length + plan.workflows.length + plan.agents.length + plan.prompts.length).toBe(0);
+    win.importTeamSettings(same, 'again.json');
+    expect(JSON.stringify(prefs())).toBe(before);
+  });
+  it('should name what the import will adopt and add in the confirm, and change nothing on Cancel', async () => {
+    resetShop(); resetState();
+    const saved = win.__autoConfirm; delete win.__autoConfirm;
+    const overlay = win.document.getElementById('confirmOverlay'), msg = win.document.getElementById('confirmMessage');
+    try {
+      win.importTeamSettings(teamFile(), 'awd-team-settings.json');
+      expect(overlay.classList.contains('show')).toBe(true);
+      expect(msg.textContent).toContain('Import team settings from awd-team-settings.json?');
+      expect(msg.textContent).toContain('Adopts 9 settings you have not set: Default Effort, Default Delivery, Section pins, Rules paths, Datadog MCP, Approve plan, Run telemetry, Telemetry endpoint, Telemetry service.');
+      expect(msg.textContent).toContain('Adds 1 workflow, 1 agent, 1 prompt.');
+      expect(msg.textContent).toContain('Nothing you already set is changed.');
+      expect(win.document.getElementById('confirmOkBtn').textContent).toBe('Import');
+      win.document.getElementById('confirmCancelBtn').click(); await new Promise(r => setTimeout(r, 0));
+      expect(win.state.effort).toBe(''); expect(win.state.defaultDelivery.format).toBe('code');
+      expect(win.getWorkflowIndex().some(e => e.slug === 'team-feature')).toBe(false);
+    } finally { win.__autoConfirm = saved; }
+  });
+  it('should name only what it can hold: a record without memory, an unknown model or effort, a workflow with an unknown node, and duplicates inside one file are left out of the plan', () => {
+    resetShop(); resetState();
+    win.state.memoryEnabled = false; win.state.durableRecord = false;
+    let plan = win.planTeamSettingsImport({ format: 'awd-team-settings', version: 1, settings: { durableRecord: true, openSpecArtifacts: true, defaultModel: 'gpt-9', effort: 'ultra', verifyFailRun: false },
+      workflows: [{ slug: 'bad', name: 'Bad', canvas: { nodes: [null], connections: [] } }, { slug: 'odd', name: 'Odd', canvas: { nodes: [{ id: 'n1', type: 'alien', config: {} }], connections: [] } }, { slug: 'dup', name: 'Dup', canvas: { nodes: [{ id: 'n1', type: 'input', config: {} }], connections: [] } }, { slug: 'dup', name: 'Dup again', canvas: { nodes: [{ id: 'n1', type: 'input', config: {} }], connections: [] } }, { slug: 'empty', name: 'Empty', canvas: { nodes: [], connections: [] } }],
+      prompts: [{ title: 'Twice', prompt: 'a' }, { title: 'Twice', prompt: 'b' }], agents: [{ name: 'Same', config: {} }, { name: 'Same', config: {} }] });
+    expect(plan.adopt).toEqual(['verifyFailRun']);
+    expect(plan.workflows.map(w => w.slug)).toEqual(['dup']);
+    expect(plan.prompts.length).toBe(1); expect(plan.agents.length).toBe(1);
+    win.importTeamSettings({ format: 'awd-team-settings', version: 1, settings: { durableRecord: true, openSpecArtifacts: true } }, 'x.json');
+    expect(win.state.memoryEnabled).toBe(false); expect(win.state.durableRecord).toBe(false); expect(win.state.openSpecArtifacts).toBe(false);
+    win.state.memoryEnabled = true; win.state.durableRecord = true;                   // at the app defaults again: OpenSpec may arrive because the record is on
+    plan = win.planTeamSettingsImport({ format: 'awd-team-settings', version: 1, settings: { memoryEnabled: true, durableRecord: true, openSpecArtifacts: true } });
+    expect(plan.adopt).toEqual(['openSpecArtifacts']);
+    win.state.memoryEnabled = false; win.state.durableRecord = true;                  // a record the user left on while memory is off never admits OpenSpec
+    expect(win.planTeamSettingsImport({ format: 'awd-team-settings', version: 1, settings: { openSpecArtifacts: true } }).adopt).toEqual([]);
+  });
+  it('should re-import its own export when prompts contain code fences, and strip machine-local keys from workflows in a hand-edited file', () => {
+    resetShop(); resetState();
+    win.saveCustomPrompts([{ id: 'cp_a', title: 'Fence A', desc: '', prompt: 'Run:\n```bash\nnpm test\n```\n' }, { id: 'cp_b', title: 'Fence B', desc: '', prompt: 'Then:\n```bash\nnpm run build\n```\n' }]);
+    const file = JSON.stringify(win.buildTeamSettings(), null, 2);
+    win.localStorage.removeItem('awd_custom_prompts');
+    win.importWorkflowText(file, 'awd-team-settings.json');
+    expect(win.getCustomPrompts().map(x => x.title).sort()).toEqual(['Fence A', 'Fence B']);
+    const edited = teamFile(); edited.workflows[0].repositories = [{ path: '/Users/someone/repo', branch: '' }]; edited.workflows[0].appSourcePath = '/Users/someone/app';
+    win.importWorkflowText(JSON.stringify(edited), 'edited.json');
+    const stored = JSON.parse(win.localStorage.getItem('awd_wf_team-feature'));
+    expect('repositories' in stored).toBe(false); expect('appSourcePath' in stored).toBe(false);
+  });
+  it('should never let a file aim at a personal agent or another org pack, never let a crafted slug reach storage or markup, never flip a user choice through the memory cascade, and still read a fenced paste', () => {
+    resetShop(); resetState();
+    win.saveCustomAgents([
+      { id: 'user:team-reviewer', name: 'Team Reviewer', source: 'user', pack: '', version: '', updated: '', config: { agentType: 'reviewer', model: 'opus-5', tools: ['Read'], prompt: 'MINE', maxTurns: 5 } },
+      { id: 'org:acme/reviewer', name: 'Reviewer', source: 'org', pack: 'acme', version: '1.0', updated: '', config: { agentType: 'reviewer', model: 'opus-5', tools: ['Read'], prompt: 'ACME', maxTurns: 5 } }]);
+    const hostile = { format: 'awd-team-settings', version: 1, settings: {},
+      agents: [{ name: 'Team Reviewer', source: 'user', id: 'user:team-reviewer', version: '9.0', config: { agentType: 'reviewer', model: 'opus-5', tools: ['Read'], prompt: 'THEIRS', maxTurns: 5 } },
+               { name: 'Reviewer', pack: 'team', id: 'org:acme/reviewer', version: '2.0', config: { agentType: 'reviewer', model: 'opus-5', tools: ['Read'], prompt: 'OTHER', maxTurns: 5 } }],
+      workflows: [{ slug: "x');alert(1);//", name: 'X', canvas: { nodes: [{ id: 'n1', type: 'input', config: {} }], connections: [] } }] };
+    const plan = win.planTeamSettingsImport(hostile);
+    expect(plan.agents.length).toBe(2); expect(plan.agents.every(a => !('id' in a) && !('source' in a))).toBe(true);
+    expect(plan.workflows[0].slug).toBe('x-alert-1');
+    win.importTeamSettings(hostile, 'hostile.json');
+    expect(win.getCustomAgents().find(a => a.id === 'user:team-reviewer').config.prompt).toBe('MINE');
+    expect(win.getCustomAgents().find(a => a.id === 'org:acme/reviewer').config.prompt).toBe('ACME');
+    expect(win.getCustomAgents().find(a => a.id === 'org:team/team-reviewer').config.prompt).toBe('THEIRS');
+    expect(win.getCustomAgents().find(a => a.id === 'org:team/reviewer').config.prompt).toBe('OTHER');
+    expect(win.localStorage.getItem("awd_wf_x');alert(1);//")).toBeNull();
+    expect(win.localStorage.getItem('awd_wf_x-alert-1')).toBeTruthy();
+    expect(win.document.getElementById('savedWorkflowList').innerHTML).toNotContain('alert(1)');
+    win.state.openSpecArtifacts = true;                                                    // the user's choice on top of memory and the record
+    expect(win.planTeamSettingsImport({ format: 'awd-team-settings', version: 1, settings: { memoryEnabled: false } }).adopt).toEqual([]);
+    expect(win.planTeamSettingsImport({ format: 'awd-team-settings', version: 1, settings: { durableRecord: false } }).adopt).toEqual([]);
+    win.state.openSpecArtifacts = false; win.state.memoryEnabled = true;                   // memory at its default again: a file may turn it off
+    expect(win.planTeamSettingsImport({ format: 'awd-team-settings', version: 1, settings: { memoryEnabled: false } }).adopt).toEqual(['memoryEnabled']);
+    win.importWorkflowText('```json\n' + JSON.stringify(teamFile()) + '\n```', '');            // pasted from a chat message
+    expect(win.getWorkflowIndex().some(e => e.slug === 'team-feature')).toBe(true);
+  });
+  it('should export one entry per derived id, the user\'s own copy winning a name collision, with no id or source carried', () => {
+    resetShop(); resetState();
+    win.saveCustomAgents([
+      { id: 'org:team/reviewer', name: 'Reviewer', source: 'org', pack: 'team', version: '1.0', updated: '', config: { agentType: 'reviewer', model: 'opus-5', tools: ['Read'], prompt: 'ORG', maxTurns: 5 } },
+      { id: 'user:reviewer', name: 'Reviewer', source: 'user', pack: '', version: '', updated: '', config: { agentType: 'reviewer', model: 'opus-5', tools: ['Read'], prompt: 'USER', maxTurns: 5 } }]);
+    const d = win.buildTeamSettings();
+    expect(d.agents.length).toBe(1); expect(d.agents[0].config.prompt).toBe('USER'); expect(d.agents[0].pack).toBe('team');
+    expect('id' in d.agents[0]).toBe(false); expect('source' in d.agents[0]).toBe(false);
+  });
+  it('should refuse what the loader cannot hold, name the memory cascade, carry Default as the exporter\'s delivery, strip the record path, stamp imported agents, and refuse a newer format', () => {
+    resetShop(); resetState();
+    let plan = win.planTeamSettingsImport({ format: 'awd-team-settings', version: 1, settings: {}, workflows: [
+      { slug: 'num', name: 42, canvas: { nodes: [{ id: 'n1', type: 'input', config: {} }], connections: [] } },
+      { slug: 'noconf', name: 'No config', canvas: { nodes: [{ id: 'n1', type: 'output' }], connections: [] } }] });
+    expect(plan.workflows.map(w => w.slug + ':' + w.name)).toEqual(['num:num']);          // a non-string name falls back to the slug; a node without config is refused
+    win.state.memoryEnabled = true; win.state.durableRecord = true;                     // the app defaults (the harness baseline is off)
+    plan = win.planTeamSettingsImport({ format: 'awd-team-settings', version: 1, settings: { memoryEnabled: false } });
+    expect(plan.adopt).toEqual(['memoryEnabled', 'durableRecord']);                       // the cascade is named, not hidden in a guard
+    expect(plan.values.durableRecord).toBe(false);
+    win.setDefaultModel('opus-5');
+    win.state.defaultDelivery = win.normalizeDelivery({ format: 'pr', branching: 'story', targetBranch: 'develop' }); win.renderDefaultDelivery();
+    win.loadPreset('feature'); win.state.artifactPath = '/Users/me/records/x.md'; win.document.getElementById('workflowName').value = 'Portable'; win.saveWorkflow();
+    const d = win.buildTeamSettings();
+    const out = d.workflows[0].canvas.nodes.find(n => n.type === 'output');
+    expect(out.config.format).toBe('pr'); expect(out.config.branching).toBe('story'); expect(out.config.targetBranch).toBe('develop');   // resolved, like every other export
+    expect('artifactPath' in d.workflows[0]).toBe(false);
+    expect(JSON.parse(win.localStorage.getItem('awd_wf_portable')).canvas.nodes.find(n => n.type === 'output').config.format).toBe('default');   // the stored copy is untouched
+    resetShop(); resetState();
+    win.importTeamSettings({ format: 'awd-team-settings', version: 1, settings: {}, agents: [{ name: 'Stamped', config: { agentType: 'reviewer', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 5 } }] }, 'a.json');
+    expect(win.getCustomAgents().find(a => a.id === 'org:team/stamped').updated).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    const before = JSON.stringify(prefs());
+    win.importTeamSettings({ format: 'awd-team-settings', version: 2, settings: { effort: 'high' } }, 'future.json');
+    expect(win.state.effort).toBe(''); expect(JSON.stringify(prefs())).toBe(before);
+  });
+  it('should show the Team settings item in the Export menu and name team files in the Import tooltip', () => {
+    const item = [...win.document.querySelectorAll('#exportMenu button')].find(b => b.textContent.trim() === 'Team Settings');   // Title Case, like its siblings
+    expect(item).toBeTruthy();
+    expect(item.getAttribute('title')).toContain('adopts only what they have not set');
+    expect(win.document.querySelector('#importMenu label').getAttribute('title')).toContain('team settings .json');
+  });
+});
+
 describe('Default Delivery and section pins', () => {
   const GENS = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genAgentSDK', 'genClaudePrompt'];
   const allOut = () => GENS.map(g => win[g]());
@@ -16390,7 +16591,7 @@ describe('Themed confirm modal (replaces native confirm)', () => {
     // Seventh site added 2026-07-03: loadSavedWorkflow replace guard.
     const src = win.document.documentElement.outerHTML;
     expect((src.match(/!confirm\(/g) || []).length).toBe(2);
-    expect((src.match(/withConfirm\('/g) || []).length).toBe(10);
+    expect((src.match(/withConfirm\('/g) || []).length).toBe(11);   // 2026-10-24: + the Team settings import confirm
   });
 });
 
