@@ -317,7 +317,7 @@ svg.canvas{width:100%;height:100%;display:block}
   pointer-events:none;text-anchor:middle;dominant-baseline:central}
 .node-sublabel{fill:var(--text2);font-size:10px;font-family:var(--font);
   pointer-events:none;text-anchor:middle;dominant-baseline:central}
-.node-badge{font-size:14px;pointer-events:none;text-anchor:middle;dominant-baseline:central}
+.node-badge{fill:var(--text2);font-size:14px;pointer-events:none;text-anchor:middle;dominant-baseline:central}
 /* Ports */
 .port{fill:var(--surface);stroke:var(--text3);stroke-width:1.5;r:5;cursor:crosshair;
   transition:all .15s}
@@ -5591,13 +5591,16 @@ function renderNodes() {
     shape.setAttribute('class', 'node-shape');
     g.appendChild(shape);
 
-    // Icon
-    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    icon.setAttribute('x', node.type === 'decision' ? w / 2 - 40 : 16);
-    icon.setAttribute('y', h / 2);
-    icon.setAttribute('class', 'node-badge');
-    icon.textContent = defaults.icon;
-    g.appendChild(icon);
+    // Icon. Decision nodes carry none: the diamond is the icon, and a badge at the
+    // left vertex collides with any label longer than a few characters.
+    if (node.type !== 'decision') {
+      const icon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      icon.setAttribute('x', 16);
+      icon.setAttribute('y', h / 2);
+      icon.setAttribute('class', 'node-badge');
+      icon.textContent = defaults.icon;
+      g.appendChild(icon);
+    }
 
     // Label
     const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');

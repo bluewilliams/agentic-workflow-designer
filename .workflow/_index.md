@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## node-badge-fill
+
+- record: .workflow/node-badge-fill.md
+- intent: decision diamonds draw no icon badge (it collided with the label and rendered black on the dark theme); the other node badges get an explicit fill so the plain-glyph ones read on both themes.
+- files: index.html (renderNode icon block, .node-badge CSS), tests.html (Node badges suite)
+- status: current | date: 2026-10-25 | note: director screenshot on the light theme; one small suite. 1864 -> 1866.
+
 ## ui-design-craft
 
 - record: .workflow/ui-design-craft.md

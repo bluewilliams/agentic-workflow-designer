@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-10-25 - node-badge-fill - decision diamonds lose their icon badge (label collision, black on dark); the remaining badges get an explicit fill. 1864 -> 1866 - .workflow/node-badge-fill.md
 2026-10-25 - sidebar-rail - the whole sidebar folds to a thin animated rail so the canvas and the prompt take the width; persisted; a chevron, the [ key, and explicit reveals open it; node selection does not; two review rounds. 1856 -> 1864 - .workflow/sidebar-rail.md
 2026-10-24 - branching-strategy (update) - wording generalized from Jira stories to work items so the strategy reads as relevant to a pasted PRD or requirements document: Per work item, three discovery sources, title fallbacks for the name tokens. No logic change - .workflow/branching-strategy.md
 2026-10-24 - team-settings - one shareable file for a team: the shop plus saved workflows, agent presets, and custom prompts; adopt-only import that names its effect before writing; machine-local values never travel; three review rounds. 1846 -> 1856 - .workflow/team-settings.md

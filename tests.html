@@ -17540,6 +17540,24 @@ describe('Unified dropdowns (enhanceSelect: the custom-select skin over native s
   });
 });
 
+describe('Node badges: decision nodes carry none, the rest read on both themes', () => {
+  it('should draw no icon badge on a decision node', () => {
+    resetState();
+    const d = win.addNode('decision', 200, 200, 'Plan sound?');
+    const el = win.document.querySelector('.node-group[data-id="' + d.id + '"]');
+    expect(el.querySelector('.node-badge')).toBe(null);
+    expect(el.querySelector('.node-label').textContent).toBe('Plan sound?');
+  });
+  it('should give a task badge an explicit fill so it is visible on the dark canvas', () => {
+    resetState();
+    const t = win.addNode('task', 200, 200, 'Check');
+    const badge = win.document.querySelector('.node-group[data-id="' + t.id + '"] .node-badge');
+    expect(badge.textContent).toBe(win.NODE_DEFAULTS.task.icon);
+    const fill = win.getComputedStyle(badge).fill;
+    expect(fill === 'rgb(0, 0, 0)' || fill === 'black' || fill === '').toBe(false);
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
