@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## run-badge-legibility
+
+- record: .workflow/run-badge-legibility.md
+- intent: run-telemetry badges become a readable pill above the node, toned by health with a three-run sample before any tone but gray (gray healthy, amber worth a look: cap hits, a gate averaging a revision cycle or more, or a lone failure, red struggling: failures with a sample or a gate at its Max Revisions), with a house tooltip that names the badge, its state in words, the numbers, and what they feed. One helper (`runBadgeFor`) serves the canvas and the config panel line. The Run Reports status line names reported steps that match no node on the canvas. The self-improvement loop is untouched.
+- files: index.html (runBadgeFor, RUN_BADGE_STATE, renderNode badge block, run-badge CSS, config Run history line, updateRunReportSection, help modal), tests.html (Run telemetry badges suite), README.md
+- status: current | date: 2026-10-27 | note: director asked for the badges to explain themselves; real-browser check done; one review round, five fixes, one decline; unmatched-step notice added; wording softened and a sample rule added after director feedback. 1866 -> 1879.
+
 ## node-badge-fill
 
 - record: .workflow/node-badge-fill.md

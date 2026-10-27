@@ -2,6 +2,8 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-10-27 - run-badge-legibility (update) - one run is not a trend: a tone other than gray needs three runs, a lone failure amber; state words healthy / worth a look / struggling; a send-back is the loop working as designed; the Tuning Prompt line no longer nudges. 1878 -> 1879 - .workflow/run-badge-legibility.md
+2026-10-27 - run-badge-legibility - run-telemetry badges become a health-toned pill above the node with a tooltip that names the badge, its state, and the numbers; config line carries the state word; unmatched reported steps named on the status line; one review round. 1866 -> 1878 - .workflow/run-badge-legibility.md
 2026-10-25 - node-badge-fill - decision diamonds lose their icon badge (label collision, black on dark); the remaining badges get an explicit fill. 1864 -> 1866 - .workflow/node-badge-fill.md
 2026-10-25 - sidebar-rail - the whole sidebar folds to a thin animated rail so the canvas and the prompt take the width; persisted; a chevron, the [ key, and explicit reveals open it; node selection does not; two review rounds. 1856 -> 1864 - .workflow/sidebar-rail.md
 2026-10-24 - branching-strategy (update) - wording generalized from Jira stories to work items so the strategy reads as relevant to a pasted PRD or requirements document: Per work item, three discovery sources, title fallbacks for the name tokens. No logic change - .workflow/branching-strategy.md

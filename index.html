@@ -318,6 +318,16 @@ svg.canvas{width:100%;height:100%;display:block}
 .node-sublabel{fill:var(--text2);font-size:10px;font-family:var(--font);
   pointer-events:none;text-anchor:middle;dominant-baseline:central}
 .node-badge{fill:var(--text2);font-size:14px;pointer-events:none;text-anchor:middle;dominant-baseline:central}
+/* Run-telemetry badge: a pill above the node's top-left corner, toned by health (see runBadgeFor) */
+.run-stats-badge{cursor:default}
+.run-stats-badge rect{stroke-width:1}
+.run-stats-badge text{font-size:9px;font-weight:600;font-family:var(--font);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.run-badge-ok rect{fill:var(--surface2);stroke:var(--border2)}
+.run-badge-ok text{fill:var(--text2)}
+.run-badge-warn rect{fill:#3a2f14;stroke:#f59e0b}
+.run-badge-warn text{fill:#f59e0b}
+.run-badge-bad rect{fill:#3b1a1a;stroke:#ef4444}
+.run-badge-bad text{fill:#f87171}
 /* Ports */
 .port{fill:var(--surface);stroke:var(--text3);stroke-width:1.5;r:5;cursor:crosshair;
   transition:all .15s}
@@ -1376,7 +1386,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <h2 id="hg-more">More</h2>
 
 <h3>Run Reports: Self-Improvement &amp; Connect Repo</h3>
-<p>Generated workflows end with a small <code>awd:run</code> fence summarizing the run (steps, turn caps, gate cycles). Drop a run's final response or durable record onto <strong>Import</strong> (or use <strong>Connect Folder</strong> so <code>~/.awd</code> feeds in automatically - the same connection powers the <strong>Session Bridge</strong>: refine, plan, and tuning outputs your sessions drop into <code>~/.awd/outbox/</code> appear as one-click Apply offers, matched strictly to the current workflow's name so parallel workflows never cross) and the designer badges your nodes with that telemetry. The full tuning loop, start to finish:</p>
+<p>Generated workflows end with a small <code>awd:run</code> fence summarizing the run (steps, turn caps, gate cycles). Drop a run's final response or durable record onto <strong>Import</strong> (or use <strong>Connect Folder</strong> so <code>~/.awd</code> feeds in automatically - the same connection powers the <strong>Session Bridge</strong>: refine, plan, and tuning outputs your sessions drop into <code>~/.awd/outbox/</code> appear as one-click Apply offers, matched strictly to the current workflow's name so parallel workflows never cross) and the designer badges your nodes with that telemetry: a gray badge is a healthy step or gate; once three or more runs show it, amber means a turn cap being hit or a gate averaging a revision cycle or more, red means a step failed or a gate runs at its revision limit; one run is never a trend, except that a single reported failure is amber because failures are rare (hover any badge for the state in words). The full tuning loop, start to finish:</p>
 <ol>
 <li><strong>Run your workflow a few times.</strong> Each run reports back via its <code>awd:run</code> fence; the Workflow Review suggests tuning once three runs have reported.</li>
 <li><strong>Click Tuning Prompt</strong> (Run Reports section). It copies a prompt built from your real stats plus the workflow itself.</li>
@@ -5553,6 +5563,7 @@ function renderNodes() {
   const layer = nodesLayer();
   const _prLaneMap = perRepoLaneMap();   // once per render, not once per node
   const _prSlugs = Object.keys(_prLaneMap).length ? perRepoRepoSlugs() : [];
+  const _runWf = typeof loadRunReports === 'function' ? (loadRunReports()[getName() || 'workflow'] || null) : null;   // the telemetry bucket, parsed once per render
   layer.innerHTML = '';
   state.nodes.forEach(node => {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -5670,29 +5681,27 @@ function renderNodes() {
       g.appendChild(badgeIcon);
     }
 
-    // Run-telemetry badge (top-left): shown when imported run reports carry stats for
-    // this node, matched by label slug (guarded - removable with the run-report block).
-    if ((node.type === 'agent' || node.type === 'task' || node.type === 'decision') && typeof runReportStatsFor === 'function') {
-      const rs = runReportStatsFor(node);
-      if (rs && (rs.runs > 0 || rs.cycleRuns > 0)) {
-        const rbx = 8, rby = -4;
-        const rBadge = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        rBadge.setAttribute('cx', rbx); rBadge.setAttribute('cy', rby); rBadge.setAttribute('r', 8);
-        rBadge.setAttribute('class', 'run-stats-badge');
-        rBadge.setAttribute('fill', '#3a2f14'); rBadge.setAttribute('stroke', '#f59e0b'); rBadge.setAttribute('stroke-width', '1');
-        const rTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-        rTitle.textContent = 'Run history: ' + runStatsSummary(rs);
-        rBadge.appendChild(rTitle);
-        g.appendChild(rBadge);
+    // Run-telemetry badge: a pill above the node's top-left corner, shown when imported run
+    // reports carry stats for this node, matched by label slug (guarded - removable with the
+    // run-report block). Tone, glyph, and the state tooltip come from runBadgeFor; the title
+    // attribute rides the house tooltip delegate like every other hint in the app.
+    if ((node.type === 'agent' || node.type === 'task' || node.type === 'decision') && _runWf && _runWf.nodes && typeof runBadgeFor === 'function') {
+      const rb = runBadgeFor(node, _runWf.nodes[slugify(node.label)] || null, _runWf.reports || 1);
+      if (rb) {
+        const bh = 14, bw = Math.max(18, rb.text.length * 7 + 8), byt = -(bh + 4);
+        const bxl = node.type === 'decision' ? w / 2 - bw / 2 : 6;   // a diamond's corner is empty space: sit over its top vertex
+        const rg = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        rg.setAttribute('class', 'run-stats-badge run-badge-' + rb.tone);
+        rg.setAttribute('title', rb.tip);
+        const rRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rRect.setAttribute('x', bxl); rRect.setAttribute('y', byt);
+        rRect.setAttribute('width', bw); rRect.setAttribute('height', bh); rRect.setAttribute('rx', bh / 2);
+        rg.appendChild(rRect);
         const rText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        rText.setAttribute('x', rbx); rText.setAttribute('y', rby + 1);
-        rText.setAttribute('font-size', '8'); rText.setAttribute('text-anchor', 'middle');
-        rText.setAttribute('dominant-baseline', 'central');
-        rText.setAttribute('fill', '#f59e0b'); rText.setAttribute('pointer-events', 'none');
-        rText.textContent = node.type === 'decision'
-          ? (rs.cycleRuns ? (rs.cycleSum / rs.cycleRuns).toFixed(1) + 'x' : '\u25B8')
-          : (rs.capHits > 0 ? '\u26A0' + rs.capHits : '\u25B8' + rs.runs);
-        g.appendChild(rText);
+        rText.setAttribute('x', bxl + bw / 2); rText.setAttribute('y', byt + bh / 2 + 0.5);
+        rText.textContent = rb.text;
+        rg.appendChild(rText);
+        g.appendChild(rg);
       }
     }
 
@@ -6577,7 +6586,8 @@ function updateConfig() {
   if (typeof runReportStatsFor === 'function' && node) {
     const _rs = runReportStatsFor(node);
     if (_rs && (_rs.runs > 0 || _rs.cycleRuns > 0)) {
-      H[H.length] = '<div class="config-run-history" style="font-size:11px;color:var(--text-dim,#8b95a7);margin-top:6px">Run history: ' + escHtml(runStatsSummary(_rs)) + '</div>';
+      const _rb = typeof runBadgeFor === 'function' ? runBadgeFor(node, _rs) : null;
+      H[H.length] = '<div class="config-run-history" style="font-size:11px;color:var(--text-dim,#8b95a7);margin-top:6px">Run history' + (_rb ? ' (' + escHtml(_rb.state) + ')' : '') + ': ' + escHtml(runStatsSummary(_rs)) + '</div>';
     }
   }
 
@@ -14502,8 +14512,19 @@ function updateRunReportSection() {
   const wf = loadRunReports()[name];
   const has = !!(wf && wf.nodes && Object.keys(wf.nodes).length > 0);
   if (status) {
+    // Telemetry is keyed by label slug, so a renamed or removed node silently loses its
+    // history and the Tuning Prompt reasons from a partial picture. Computed live against
+    // the canvas (not the ingestion-time list) so a rename shows up at once and a node added
+    // later with the reported name clears it.
+    let orphanNote = '';
+    if (has) {
+      const onCanvas = {};
+      state.nodes.forEach(n => { if (n.type === 'agent' || n.type === 'task' || n.type === 'decision') onCanvas[slugify(n.label)] = true; });
+      const orphans = Object.keys(wf.nodes).filter(sl => !onCanvas[sl]).sort();
+      if (orphans.length) orphanNote = ' ' + orphans.length + ' reported step' + (orphans.length !== 1 ? 's match' : ' matches') + ' no node on the canvas (renamed or removed; that history is not shown): ' + orphans.slice(0, 5).join(', ') + (orphans.length > 5 ? ', ...' : '') + '.';
+    }
     status.textContent = has
-      ? (wf.reports || 1) + ' run report' + ((wf.reports || 1) !== 1 ? 's' : '') + ' ingested for "' + name + '"' + (wf.lastDate ? ' - last ' + wf.lastDate : '') + '. Node badges and the tuning prompt are live.'
+      ? (wf.reports || 1) + ' run report' + ((wf.reports || 1) !== 1 ? 's' : '') + ' ingested for "' + name + '"' + (wf.lastDate ? ' - last ' + wf.lastDate : '') + '. Node badges and the tuning prompt are live.' + orphanNote
       : 'No run reports yet - connect ~/.awd once to catch every workflow\'s reports automatically (or a repo\'s .workflow folder for just that repo\'s; paste into Import works everywhere).';
   }
   if (tb) {
@@ -14522,6 +14543,71 @@ function runStatsSummary(rs) {
   if (rs.failures) parts.push('failures ' + rs.failures);
   if (avg !== null) parts.push('avg gate cycles ' + avg.toFixed(1));
   return parts.join(' \u00B7 ');
+}
+// The canvas badge for one node's run telemetry: what to draw and what to say. Tone follows
+// health, and health needs evidence: one run is not a trend, so a badge stays gray ('healthy')
+// until a step or gate has RUN_BADGE_SAMPLE runs behind it, whatever the numbers say (the
+// glyph still carries the honest figure). A reported failure is the one event rare enough
+// to be worth a look even once: 'warn' under the sample, 'bad' with it. With a sample a step
+// is also 'warn' once it has hit its turn cap; a gate is 'warn' at one or
+// more revision cycles per run and 'bad' when the average reaches its Max Revisions (the
+// generators' default of 3 when the field is blank). A send-back is the loop working as
+// designed, so the wording never scolds: amber says 'worth a look', red says 'struggling'.
+// Thresholds compare the one-decimal value the pill shows, so '1.0x' is never gray. A node
+// reported as both a step and a gate carries both stories and the worse tone. The tip says
+// what the badge is, the state in words, the numbers, and that the Tuning Prompt can act on
+// them if the director chooses. Returns null when nothing has run. rs and reports may be
+// passed by a caller that already holds the bucket (the renderer parses it once per render).
+const RUN_BADGE_STATE = { ok: 'healthy', warn: 'worth a look', bad: 'struggling' };
+const RUN_BADGE_RANK = { ok: 0, warn: 1, bad: 2 };
+const RUN_BADGE_SAMPLE = 3;   // runs before a trend earns a tone
+function runBadgeFor(node, rs, reports) {
+  if (!node) return null;
+  if (rs === undefined) rs = typeof runReportStatsFor === 'function' ? runReportStatsFor(node) : null;
+  if (!rs || !(rs.runs > 0 || rs.cycleRuns > 0)) return null;
+  if (!(reports > 0)) { const wf = loadRunReports()[getName() || 'workflow']; reports = (wf && wf.reports) || 1; }
+  const runsWord = n => n + ' run' + (n !== 1 ? 's' : '');
+  const worse = (a, b) => RUN_BADGE_RANK[b] > RUN_BADGE_RANK[a] ? b : a;
+  let tone = 'ok', text = null, stepDetail = '', gateDetail = '';
+  if (rs.runs > 0) {
+    const sample = rs.runs >= RUN_BADGE_SAMPLE;
+    if (rs.failures > 0) {
+      text = '\u2715' + rs.failures;
+      stepDetail = 'failed in ' + rs.failures + ' of ' + runsWord(rs.runs) + (rs.capHits > 0 ? '; hit its turn cap in ' + rs.capHits : '') + '.';
+      if (sample) tone = 'bad'; else { tone = 'warn'; stepDetail += ' A failure is rare and worth a look even once; a trend needs more runs.'; }
+    }
+    else if (rs.capHits > 0) {
+      text = '\u26A0' + rs.capHits;
+      stepDetail = 'hit its turn cap in ' + rs.capHits + ' of ' + runsWord(rs.runs) + '.';
+      if (sample) { tone = 'warn'; stepDetail += ' A capped step was cut short; more turns or a split may help.'; }
+      else stepDetail += ' A trend needs more runs.';
+    }
+    else { text = String(rs.runs); stepDetail = runsWord(rs.runs) + ', no turn-cap hits, no failures.'; }
+  }
+  if (rs.cycleRuns > 0) {
+    const avg = rs.cycleSum / rs.cycleRuns, shown = Number(avg.toFixed(1));
+    const limit = parseInt(node.config && node.config.maxRevisions, 10) || 3;
+    const sample = rs.cycleRuns >= RUN_BADGE_SAMPLE;
+    let gateTone = 'ok', gateText;
+    if (avg === 0) { gateText = '\u2713'; gateDetail = 'passed first time in ' + (rs.cycleRuns === 1 ? 'its one run' : 'all ' + runsWord(rs.cycleRuns)) + '.'; }
+    else {
+      gateText = shown.toFixed(1) + 'x';
+      gateDetail = 'averaged ' + shown.toFixed(1) + ' revision cycle' + (shown === 1 ? '' : 's') + ' over ' + runsWord(rs.cycleRuns);
+      if (!sample) gateDetail += '. A revision cycle is the loop working as designed; a trend needs more runs.';
+      else if (shown >= limit) { gateTone = 'bad'; gateDetail += ', at its limit of ' + limit + '. The revision budget runs out most runs.'; }
+      else if (shown >= 1) { gateTone = 'warn'; gateDetail += '. More send-backs than a clean pass; the loop is doing its job, and the budget may be worth a look.'; }
+      else gateDetail += '.';
+    }
+    tone = worse(tone, gateTone);
+    if (text === null || node.type === 'decision') text = gateText;   // a decision shows its gate figure; a step keeps its run figure
+  }
+  const state = RUN_BADGE_STATE[tone];
+  const asGate = node.type === 'decision' || rs.runs === 0;
+  const details = (asGate ? [gateDetail, stepDetail] : [stepDetail, gateDetail]).filter(Boolean);
+  const tip = (asGate ? 'Gate telemetry' : 'Run telemetry') + ' for ' + node.label + ' (' + reports + ' imported run report' + (reports !== 1 ? 's' : '') + ')\n'
+    + state.charAt(0).toUpperCase() + state.slice(1) + ': ' + details.join(' As a gate: ') + '\n'
+    + 'The Tuning Prompt in Run Reports can act on these if you choose' + (reports < RUN_BADGE_SAMPLE ? '; three reports make a real sample.' : '.');
+  return { tone, text, state, tip };
 }
 function genTuningPrompt() {
   const name = getName() || 'workflow';

@@ -17558,6 +17558,183 @@ describe('Node badges: decision nodes carry none, the rest read on both themes',
   });
 });
 
+describe('Run telemetry badges: tone by health, a readable pill above the node, the state in the tooltip', () => {
+  function seedStats(nodes, reports) {
+    const st = {}; st[win.getName() || 'workflow'] = { nodes: nodes, unmatched: [], reports: reports || 1 };
+    win.saveRunReports(st);
+  }
+  function badgeOf(node) { return win.document.querySelector('.node-group[data-id="' + node.id + '"] .run-stats-badge'); }
+  afterEach(() => { try { win.localStorage.removeItem('awd_run_reports'); } catch (e) {} });
+  it('should show a neutral badge with the run count and a healthy tooltip for a clean step', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Reviewer', { agentType:'reviewer', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    seedStats({ reviewer: { runs: 3, capHits: 0, failures: 0, cycleSum: 0, cycleRuns: 0 } }, 3);
+    win.render();
+    const b = badgeOf(a);
+    expect(b.classList.contains('run-badge-ok')).toBe(true);
+    expect(b.querySelector('text').textContent).toBe('3');
+    const tip = b.getAttribute('title');
+    expect(tip).toContain('Run telemetry for Reviewer (3 imported run reports)');
+    expect(tip).toContain('Healthy: 3 runs, no turn-cap hits, no failures.');
+    expect(tip).toContain('The Tuning Prompt in Run Reports can act on these if you choose.');
+    expect(b.querySelector('title')).toBe(null);   // the house tooltip, not the native SVG title
+  });
+  it('should turn amber with the cap-hit count when a step hits its turn cap', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    seedStats({ builder: { runs: 3, capHits: 2, failures: 0, cycleSum: 0, cycleRuns: 0 } }, 2);
+    win.render();
+    const b = badgeOf(a);
+    expect(b.classList.contains('run-badge-warn')).toBe(true);
+    expect(b.querySelector('text').textContent).toBe('\u26A02');
+    expect(b.getAttribute('title')).toContain('Worth a look: hit its turn cap in 2 of 3 runs. A capped step was cut short; more turns or a split may help.');
+    expect(b.getAttribute('title')).toContain('The Tuning Prompt in Run Reports can act on these if you choose; three reports make a real sample.');
+  });
+  it('should turn red with the failure count when a step failed, failures winning over cap hits', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    seedStats({ builder: { runs: 3, capHits: 2, failures: 1, cycleSum: 0, cycleRuns: 0 } }, 2);
+    win.render();
+    const b = badgeOf(a);
+    expect(b.classList.contains('run-badge-bad')).toBe(true);
+    expect(b.querySelector('text').textContent).toBe('\u27151');
+    expect(b.getAttribute('title')).toContain('Struggling: failed in 1 of 3 runs; hit its turn cap in 2.');
+  });
+  it('should show a check mark for a gate that passed first time in every run', () => {
+    resetState();
+    const d = win.addNode('decision', 0, 0, 'Review OK?', { condition:'ok', yesLabel:'Yes', noLabel:'No', maxRevisions:3 });
+    seedStats({ 'review-ok': { runs: 0, capHits: 0, failures: 0, cycleSum: 0, cycleRuns: 3 } }, 3);
+    win.render();
+    const b = badgeOf(d);
+    expect(b.classList.contains('run-badge-ok')).toBe(true);
+    expect(b.querySelector('text').textContent).toBe('\u2713');
+    expect(b.getAttribute('title')).toContain('Gate telemetry for Review OK?');
+    expect(b.getAttribute('title')).toContain('Healthy: passed first time in all 3 runs.');
+  });
+  it('should turn amber for a gate averaging one revision cycle or more and red at its Max Revisions', () => {
+    resetState();
+    const d = win.addNode('decision', 0, 0, 'Review OK?', { condition:'ok', yesLabel:'Yes', noLabel:'No', maxRevisions:3 });
+    seedStats({ 'review-ok': { runs: 0, capHits: 0, failures: 0, cycleSum: 6, cycleRuns: 4 } });
+    win.render();
+    let b = badgeOf(d);
+    expect(b.classList.contains('run-badge-warn')).toBe(true);
+    expect(b.querySelector('text').textContent).toBe('1.5x');
+    expect(b.getAttribute('title')).toContain('Worth a look: averaged 1.5 revision cycles over 4 runs. More send-backs than a clean pass; the loop is doing its job, and the budget may be worth a look.');
+    seedStats({ 'review-ok': { runs: 0, capHits: 0, failures: 0, cycleSum: 9, cycleRuns: 3 } });
+    win.render();
+    b = badgeOf(d);
+    expect(b.classList.contains('run-badge-bad')).toBe(true);
+    expect(b.querySelector('text').textContent).toBe('3.0x');
+    expect(b.getAttribute('title')).toContain('Struggling: averaged 3.0 revision cycles over 3 runs, at its limit of 3. The revision budget runs out most runs.');
+    seedStats({ 'review-ok': { runs: 0, capHits: 0, failures: 0, cycleSum: 2, cycleRuns: 4 } });
+    win.render();
+    b = badgeOf(d);
+    expect(b.classList.contains('run-badge-ok')).toBe(true);
+    expect(b.querySelector('text').textContent).toBe('0.5x');
+  });
+  it('should sit fully above the node outline and grow with its text', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const d = win.addNode('decision', 300, 0, 'Review OK?', { condition:'ok', yesLabel:'Yes', noLabel:'No', maxRevisions:3 });
+    seedStats({ builder: { runs: 1, capHits: 0, failures: 0, cycleSum: 0, cycleRuns: 0 }, 'review-ok': { runs: 0, capHits: 0, failures: 0, cycleSum: 6, cycleRuns: 4 } });
+    win.render();
+    const r1 = badgeOf(a).querySelector('rect'), r2 = badgeOf(d).querySelector('rect');
+    [r1, r2].forEach(r => expect(parseFloat(r.getAttribute('y')) + parseFloat(r.getAttribute('height')) <= 0).toBe(true));
+    expect(parseFloat(r2.getAttribute('width')) > parseFloat(r1.getAttribute('width'))).toBe(true);   // '1.5x' is wider than '1'
+    expect(parseFloat(r1.getAttribute('x'))).toBe(6);   // a box node: the badge hugs the top-left corner
+    expect(Math.abs(parseFloat(r2.getAttribute('x')) + parseFloat(r2.getAttribute('width')) / 2 - d.w / 2) < 0.01).toBe(true);   // a diamond: centered over the top vertex
+  });
+  it('should draw no badge for a node with no telemetry and none for an input node', () => {
+    resetState();
+    const i = win.addNode('input', 0, 0, 'Story', {});
+    const a = win.addNode('agent', 200, 0, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    seedStats({ story: { runs: 2, capHits: 0, failures: 0, cycleSum: 0, cycleRuns: 0 } });
+    win.render();
+    expect(badgeOf(i)).toBe(null);
+    expect(badgeOf(a)).toBe(null);
+    expect(win.runBadgeFor(a)).toBe(null);
+  });
+  it('should compare thresholds on the one-decimal value the pill shows and default a blank Max Revisions to 3', () => {
+    resetState();
+    const d = win.addNode('decision', 0, 0, 'Review OK?', { condition:'ok', yesLabel:'Yes', noLabel:'No', maxRevisions:'' });
+    seedStats({ 'review-ok': { runs: 0, capHits: 0, failures: 0, cycleSum: 24, cycleRuns: 25 } });   // 0.96 shows as 1.0x: amber, not gray
+    win.render();
+    let b = badgeOf(d);
+    expect(b.querySelector('text').textContent).toBe('1.0x');
+    expect(b.classList.contains('run-badge-warn')).toBe(true);
+    seedStats({ 'review-ok': { runs: 0, capHits: 0, failures: 0, cycleSum: 59, cycleRuns: 20 } });   // 2.95 shows as 3.0x: at the default limit of 3
+    win.render();
+    b = badgeOf(d);
+    expect(b.querySelector('text').textContent).toBe('3.0x');
+    expect(b.classList.contains('run-badge-bad')).toBe(true);
+    expect(b.getAttribute('title')).toContain('at its limit of 3');
+  });
+  it('should stay gray on fewer than three runs because one run is not a trend, with a lone failure amber', () => {
+    resetState();
+    const d = win.addNode('decision', 0, 0, 'Seam proven?', { condition:'ok', yesLabel:'Yes', noLabel:'No', maxRevisions:3 });
+    const a = win.addNode('agent', 300, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const f = win.addNode('agent', 600, 0, 'Tester', { agentType:'tester', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    seedStats({ 'seam-proven': { runs: 0, capHits: 0, failures: 0, cycleSum: 3, cycleRuns: 1 }, builder: { runs: 2, capHits: 2, failures: 0, cycleSum: 0, cycleRuns: 0 }, tester: { runs: 1, capHits: 0, failures: 1, cycleSum: 0, cycleRuns: 0 } });
+    win.render();
+    let b = badgeOf(d);
+    expect(b.classList.contains('run-badge-ok')).toBe(true);
+    expect(b.querySelector('text').textContent).toBe('3.0x');   // the figure is honest, the tone waits for a sample
+    expect(b.getAttribute('title')).toContain('Healthy: averaged 3.0 revision cycles over 1 run. A revision cycle is the loop working as designed; a trend needs more runs.');
+    b = badgeOf(a);
+    expect(b.classList.contains('run-badge-ok')).toBe(true);
+    expect(b.querySelector('text').textContent).toBe('\u26A02');
+    expect(b.getAttribute('title')).toContain('Healthy: hit its turn cap in 2 of 2 runs. A trend needs more runs.');
+    b = badgeOf(f);
+    expect(b.classList.contains('run-badge-warn')).toBe(true);   // rare enough to be worth a look even once, not red
+    expect(b.querySelector('text').textContent).toBe('\u27151');
+    expect(b.getAttribute('title')).toContain('Worth a look: failed in 1 of 1 run. A failure is rare and worth a look even once; a trend needs more runs.');
+  });
+  it('should tell both stories for a step that also reports as a gate and take the worse tone', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Reviewer', { agentType:'reviewer', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    seedStats({ reviewer: { runs: 3, capHits: 0, failures: 0, cycleSum: 9, cycleRuns: 3 } });
+    win.render();
+    const b = badgeOf(a);
+    expect(b.querySelector('text').textContent).toBe('3');   // a step keeps its run figure
+    expect(b.classList.contains('run-badge-bad')).toBe(true);
+    const tip = b.getAttribute('title');
+    expect(tip).toContain('Run telemetry for Reviewer');
+    expect(tip).toContain('Struggling: 3 runs, no turn-cap hits, no failures. As a gate: averaged 3.0 revision cycles over 3 runs, at its limit of 3.');
+  });
+  it('should parse the telemetry store once per render, not once per node', () => {
+    resetState();
+    for (let i = 0; i < 4; i++) win.addNode('agent', i * 200, 0, 'Step ' + i, { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    seedStats({ 'step-0': { runs: 1, capHits: 0, failures: 0, cycleSum: 0, cycleRuns: 0 }, 'step-3': { runs: 2, capHits: 0, failures: 0, cycleSum: 0, cycleRuns: 0 } });
+    const orig = win.localStorage.getItem.bind(win.localStorage); let reads = 0;
+    win.localStorage.getItem = k => { if (k === 'awd_run_reports') reads++; return orig(k); };
+    try { win.renderNodes(); } finally { win.localStorage.getItem = orig; }   // the node pass alone: render() has other readers of the store
+    expect(reads).toBe(1);
+    expect(win.document.querySelectorAll('.run-stats-badge').length).toBe(2);
+  });
+  it('should name reported steps that match no node on the canvas, live across a rename', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Reviewer', { agentType:'reviewer', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    seedStats({ reviewer: { runs: 2, capHits: 0, failures: 0, cycleSum: 0, cycleRuns: 0 }, 'ghost-step': { runs: 2, capHits: 0, failures: 0, cycleSum: 0, cycleRuns: 0 } });
+    win.updateRunReportSection();
+    const status = win.document.getElementById('runReportStatus');
+    expect(status.textContent).toContain('1 reported step matches no node on the canvas (renamed or removed; that history is not shown): ghost-step.');
+    a.label = 'Code Reviewer'; win.updatePrompt();
+    expect(status.textContent).toContain('2 reported steps match no node on the canvas');
+    expect(status.textContent).toContain('ghost-step, reviewer.');
+    a.label = 'Reviewer'; win.addNode('task', 200, 0, 'Ghost Step', { description:'', acceptance:'' }); win.updatePrompt();
+    expect(status.textContent.indexOf('no node on the canvas')).toBe(-1);   // a node added with the reported name clears the notice
+  });
+  it('should carry the state word on the config panel Run history line', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    seedStats({ builder: { runs: 3, capHits: 2, failures: 0, cycleSum: 0, cycleRuns: 0 } });
+    win.selectNode(a.id); win.updateConfig();
+    const line = win.document.querySelector('.config-run-history');
+    expect(line.textContent).toContain('Run history (worth a look): 3 runs');
+    expect(line.textContent).toContain('cap hits 2');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
