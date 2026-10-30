@@ -1753,7 +1753,7 @@ function effortHint() {
 // the team, depth is how hard one member works. Unset emits nothing at all - a workflow with
 // no exhaustive step emits byte-identical output to before this lever existed.
 const DEPTH_LEVELS = ['exhaustive'];
-const DEPTH_OPTION_LABELS = { exhaustive: 'Exhaustive - orchestrated fan-out inside this step (Claude Code; costly; still one handoff)' };
+const DEPTH_OPTION_LABELS = { exhaustive: 'Exhaustive - orchestrated fan-out inside this step (costly; still one handoff)' };
 // Claude Code's opt-in word for its orchestration tool. A pasted prompt IS the user's message,
 // so carrying the word is a real opt-in, and the step block's explicit ask is the other one.
 const DEPTH_KEYWORD = 'ultracode';
@@ -6494,8 +6494,9 @@ function updateConfig() {
     // Depth rides beside Effort: reasoning depth above, orchestration depth here. Standard is
     // the shipped behavior; exhaustive is a deliberate, costly choice for one step.
     H[H.length] = configSelect('Depth', 'depth', node.config.depth || '',
-      [{ value: '', label: 'Standard (default) - one pass, as today' }]
-        .concat(DEPTH_LEVELS.map(l => ({ value: l, label: DEPTH_OPTION_LABELS[l] || l }))));
+      [{ value: '', label: 'Standard (default) - one pass' }]
+        .concat(DEPTH_LEVELS.map(l => ({ value: l, label: DEPTH_OPTION_LABELS[l] || l }))),
+      'How much orchestration one step may do. Standard runs the step as one pass. Exhaustive asks the runner to fan the step out into coordinated sub-tasks before handing back: costlier, and it only takes effect in Claude Code (the prompt carries its opt-in word); elsewhere the step runs as Standard.');
     // Defect posture: two knobs, two homes. The coder family tunes fix-vs-record; the
     // reviewer tunes flag-back intensity (spot-and-report to the orchestrator, never fix,
     // never gate-failing). Testers/verifiers carry the balanced protocol without a knob.
