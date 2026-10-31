@@ -6022,11 +6022,13 @@ describe('Agent Prompt Visibility', () => {
       toggle.click();
       expect(preview.classList.contains('open')).toBe(true);
       expect(toggle.getAttribute('aria-expanded')).toBe('true');
-      // shows the effective prompt read-only (in a <pre>, not a textarea)
-      const pre = preview.querySelector('pre');
-      expect(!!pre).toBe(true);
+      // shows the effective prompt read-only, rendered through the same markdown renderer as
+      // the prompt area (not a textarea, not raw text)
+      const body = preview.querySelector('.agent-prompt-preview-body.md-rendered');
+      expect(!!body).toBe(true);
       expect(preview.querySelector('textarea')).toBeNull();
-      expect(pre.textContent).toBe(win.getEffectivePrompt(node));
+      expect(body.innerHTML).toBe(win.renderMarkdown(win.getEffectivePrompt(node)));
+      expect(body.textContent.length > 0).toBe(true);
       // editable textarea value unchanged by toggling
       expect(textarea.value).toBe(beforeVal);
     });
@@ -17732,6 +17734,207 @@ describe('Run telemetry badges: tone by health, a readable pill above the node, 
     const line = win.document.querySelector('.config-run-history');
     expect(line.textContent).toContain('Run history (worth a look): 3 runs');
     expect(line.textContent).toContain('cap hits 2');
+  });
+});
+
+describe('Rendered markdown over idle textareas: click-to-edit, the textarea stays the value', () => {
+  const frame = document.getElementById('app');
+  function agentWithPrompt(prompt) {
+    resetState();
+    const a = win.addNode('agent', 100, 100, 'Writer', { agentType:'coder', model:'opus-5', tools:['Read'], prompt: prompt, maxTurns:10 });
+    win.selectNode(a.id); win.updateConfig();
+    const ta = win.document.querySelector('#configFields textarea[data-key="prompt"]');
+    return { a, ta, wrap: ta.parentElement };
+  }
+  afterEach(() => { frame.style.display = 'none'; try { win.closeTextExpand(); } catch (e) {} });
+  it('should paint a rendered view over an idle textarea, built by the prompt area renderer', () => {
+    const { ta, wrap } = agentWithPrompt('Plan it.\n\n1. **Strategy**: expand-contract.\n2. Risk register.');
+    expect(wrap.classList.contains('md-shown')).toBe(true);
+    const view = wrap.querySelector(':scope > .md-view');
+    expect(view.classList.contains('md-rendered')).toBe(true);
+    expect(view.innerHTML).toBe(win.renderMarkdown(ta.value));
+    expect(!!view.querySelector('strong')).toBe(true);
+    expect(view.textContent).toContain('Strategy: expand-contract.');
+    expect(view.textContent.indexOf('**')).toBe(-1);
+    expect(ta.value).toContain('**Strategy**');   // the textarea still holds the raw markdown
+    expect(ta.parentElement.querySelector('.ta-expand') !== null).toBe(true);   // the expand button survives
+  });
+  it('should show the raw markdown while the field has focus and render again when focus leaves, with the edited text', () => {
+    frame.style.display = 'block';
+    const { a, ta, wrap } = agentWithPrompt('Plan it.\n\n1. **Strategy**: expand-contract.');
+    ta.focus();
+    expect(win.document.activeElement === ta).toBe(true);
+    expect(wrap.classList.contains('md-shown')).toBe(false);
+    ta.value = 'Plan it.\n\n1. **Strategy**: expand-contract.\n2. **Backfill**: batched.';
+    ta.dispatchEvent(new win.Event('input', { bubbles: true }));
+    expect(a.config.prompt).toContain('**Backfill**');   // the input path is untouched
+    expect(wrap.classList.contains('md-shown')).toBe(false);   // typing never swaps the view in
+    ta.blur();
+    expect(wrap.classList.contains('md-shown')).toBe(true);
+    expect(wrap.querySelector(':scope > .md-view').textContent).toContain('Backfill: batched.');
+  });
+  it('should give the field focus with the caret at the top when the rendered view is clicked', () => {
+    frame.style.display = 'block';
+    const { ta, wrap } = agentWithPrompt(Array.from({ length: 40 }, (_, i) => 'line ' + i).join('\n'));
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    const view = wrap.querySelector(':scope > .md-view');
+    view.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    expect(win.document.activeElement === ta).toBe(true);
+    expect(ta.selectionStart + ',' + ta.selectionEnd).toBe('0,0');
+    expect(wrap.classList.contains('md-shown')).toBe(false);
+  });
+  it('should leave the field and render again on a canvas press whose default is prevented (a pan), not only on a plain click', () => {
+    frame.style.display = 'block';
+    const { ta, wrap } = agentWithPrompt('Plan it.\n\n1. **Strategy**: expand-contract.');
+    ta.focus();
+    expect(wrap.classList.contains('md-shown')).toBe(false);
+    const canvas = win.document.getElementById('canvasWrap');
+    canvas.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, altKey: true, clientX: 600, clientY: 300 }));   // alt+press starts a pan and prevents the default
+    canvas.dispatchEvent(new win.MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, clientX: 600, clientY: 300 }));
+    win.state.isPanning = false; canvas.classList.remove('panning');
+    expect(win.document.activeElement === ta).toBe(false);
+    expect(wrap.classList.contains('md-shown')).toBe(true);
+    // the corner expand button prevents default too, but it is inside the field's own wrap: focus stays
+    const { ta: ta2, wrap: wrap2 } = agentWithPrompt('Plan it again.');
+    ta2.focus();
+    wrap2.querySelector('.ta-expand').dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    expect(win.document.activeElement === ta2).toBe(true);
+    expect(wrap2.classList.contains('md-shown')).toBe(false);
+  });
+  it('should show no view for an empty field so the placeholder stays visible', () => {
+    const { ta, wrap } = agentWithPrompt('');
+    expect(wrap.classList.contains('md-shown')).toBe(false);
+    ta.value = '   \n  ';
+    win.updatePrompt();
+    expect(wrap.classList.contains('md-shown')).toBe(false);
+  });
+  it('should escape HTML in the rendered view', () => {
+    const { wrap } = agentWithPrompt('Hello <img src=x onerror="window.__pwned=1"> and <scr' + 'ipt>window.__pwned=2</scr' + 'ipt>');   // split so the page's own script block is not closed
+    const view = wrap.querySelector(':scope > .md-view');
+    expect(view.querySelector('img')).toBe(null);
+    expect(view.querySelector('script')).toBe(null);
+    expect(view.textContent).toContain('<img src=x');
+    expect(win.__pwned).toBe(undefined);
+  });
+  it('should refresh the sidebar views on the universal re-render seam after a programmatic value change', () => {
+    resetState();
+    const story = win.document.getElementById('storyInput');
+    const wrap = story.parentElement;
+    expect(wrap.classList.contains('ta-wrap')).toBe(true);
+    story.value = '';
+    win.updatePrompt();
+    expect(wrap.classList.contains('md-shown')).toBe(false);
+    story.value = '# Requirements\n\n- one\n- two';   // a load or an import writes the value directly
+    win.updatePrompt();
+    expect(wrap.classList.contains('md-shown')).toBe(true);
+    expect(!!wrap.querySelector(':scope > .md-view h1, :scope > .md-view h2')).toBe(true);   // the renderer's own heading mapping
+    expect(wrap.querySelectorAll(':scope > .md-view li').length).toBe(2);
+    story.value = '';
+    win.updatePrompt();
+  });
+  it('should rebuild a view only when its text changed', () => {
+    const { ta, wrap } = agentWithPrompt('Plan it.');
+    const view = wrap.querySelector(':scope > .md-view');
+    const marker = win.document.createElement('i'); marker.className = 'probe'; view.appendChild(marker);
+    win.updatePrompt();
+    expect(!!view.querySelector('.probe')).toBe(true);   // same text: untouched
+    ta.value = 'Plan it twice.';
+    win.updatePrompt();
+    expect(!!view.querySelector('.probe')).toBe(false);  // new text: redrawn
+    expect(view.textContent).toContain('Plan it twice.');
+  });
+  it('should open the expand modal rendered for a field that is not being edited, and straight into the editor mid-edit or when empty', () => {
+    frame.style.display = 'block';
+    const { ta } = agentWithPrompt('Plan it.\n\n1. **Strategy**: expand-contract.');
+    const modalTa = win.document.getElementById('textExpandArea');
+    const modalWrap = modalTa.parentElement;
+    expect(modalWrap.classList.contains('ta-wrap')).toBe(true);
+    win.document.body.focus();
+    win.openTextExpand(ta, 'Agent Prompt');
+    expect(modalWrap.classList.contains('md-shown')).toBe(true);
+    expect(win.document.activeElement === modalTa).toBe(false);
+    expect(!!modalWrap.querySelector(':scope > .md-view strong')).toBe(true);
+    modalWrap.querySelector(':scope > .md-view').dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    expect(win.document.activeElement === modalTa).toBe(true);
+    expect(modalWrap.classList.contains('md-shown')).toBe(false);
+    modalTa.value = 'Plan it well.'; modalTa.dispatchEvent(new win.Event('input', { bubbles: true }));
+    expect(ta.value).toBe('Plan it well.');   // the sync path is untouched
+    win.closeTextExpand();
+    ta.focus(); ta.setSelectionRange(2, 2);
+    win.openTextExpand(ta, 'Agent Prompt');   // mid-edit: keep editing, caret carried
+    expect(win.document.activeElement === modalTa).toBe(true);
+    expect(modalWrap.classList.contains('md-shown')).toBe(false);
+    expect(modalTa.selectionStart).toBe(2);
+    win.closeTextExpand();
+    ta.value = ''; ta.dispatchEvent(new win.Event('input', { bubbles: true })); ta.blur();
+    win.openTextExpand(ta, 'Agent Prompt');   // empty: nothing to render, edit at once
+    expect(win.document.activeElement === modalTa).toBe(true);
+    win.closeTextExpand();
+  });
+  it('should keep the prompt area on the shared rendered class so one stylesheet serves every rendered surface', () => {
+    agentWithPrompt('Plan it.');
+    const out = win.document.getElementById('promptOutput');
+    expect(out.classList.contains('md-rendered')).toBe(true);
+    const css = Array.from(win.document.styleSheets).flatMap(sh => { try { return Array.from(sh.cssRules).map(r => r.selectorText || ''); } catch (e) { return []; } });
+    ['h1', 'h2', 'h3', 'code', 'blockquote', 'strong', 'table', 'th'].forEach(tag => expect(css.some(sel => sel.split(',').map(x => x.trim()).includes('.md-rendered ' + tag))).toBe(true));
+    expect(css.filter(sel => sel.indexOf('.prompt-content.rendered ') !== -1)).toEqual([]);   // no descendant rule left behind on the old scope
+    expect(css.some(sel => sel === '.agent-prompt-preview pre')).toBe(false);                   // the dead rule is gone
+  });
+  it('should keep the canvas shortcuts out of a dialog opened rendered, with keyboard focus inside the dialog', () => {
+    frame.style.display = 'block';
+    const { a, ta } = agentWithPrompt('Plan it.\n\n1. **Strategy**: expand-contract.');
+    const before = win.state.nodes.length;
+    win.document.body.focus();
+    win.openTextExpand(ta, 'Agent Prompt');
+    const dialog = win.document.querySelector('.text-expand-modal');
+    expect(dialog.contains(win.document.activeElement)).toBe(true);
+    win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
+    expect(win.state.nodes.length).toBe(before);
+    expect(win.state.nodes.some(n => n.id === a.id)).toBe(true);
+    win.closeTextExpand();
+    expect(win.document.activeElement === ta).toBe(false);   // a reader closed a rendered view: the field comes back rendered
+    expect(ta.parentElement.classList.contains('md-shown')).toBe(true);
+    ta.focus(); win.openTextExpand(ta, 'Agent Prompt');     // an editor closes: focus returns to the field
+    win.closeTextExpand();
+    expect(win.document.activeElement === ta).toBe(true);
+  });
+  it('should paint a fresh view in the custom prompt form for the prompt being opened, never a stale one', () => {
+    resetState();
+    win.saveCustomPrompts([{ id: 'cp-a', title: 'A', desc: '', prompt: '**Alpha** prompt' }, { id: 'cp-b', title: 'B', desc: '', prompt: '**Beta** prompt' }]);
+    const body = win.document.getElementById('customPromptBody');
+    const wrap = body.parentElement;
+    win.openCustomPromptForm('cp-a'); win.updatePrompt();
+    expect(wrap.querySelector(':scope > .md-view').textContent).toContain('Alpha');
+    win.closeCustomPromptForm();
+    win.openCustomPromptForm('cp-b');
+    expect(wrap.classList.contains('md-shown')).toBe(true);
+    expect(wrap.querySelector(':scope > .md-view').textContent).toContain('Beta');
+    expect(wrap.querySelector(':scope > .md-view').textContent.indexOf('Alpha')).toBe(-1);
+    win.closeCustomPromptForm();
+    win.openCustomPromptForm(null);
+    expect(wrap.classList.contains('md-shown')).toBe(false);   // a new prompt starts empty: placeholder, no view
+    win.closeCustomPromptForm();
+    win.saveCustomPrompts([]);
+  });
+  it('should render numbered steps as an ordered list so step order survives in every rendered surface', () => {
+    const html = win.renderMarkdown('1. Research\n2. Plan\n3. Implement\n\n- a\n- b');
+    expect(html).toContain('<ol><li>Research</li><li>Plan</li><li>Implement</li></ol>');
+    expect(html).toContain('<ul><li>a</li><li>b</li></ul>');
+    expect(win.renderMarkdown('- a\n1. b')).toBe('<ul><li>a</li></ul><ol><li>b</li></ol>');
+  });
+  it('should copy the box of the textarea it covers and leave the resize grip corner uncovered', () => {
+    frame.style.display = 'block';
+    const { ta, wrap } = agentWithPrompt('Plan it.');
+    const view = wrap.querySelector(':scope > .md-view');
+    const tcs = win.getComputedStyle(ta), vcs = win.getComputedStyle(view);
+    expect(vcs.padding).toBe(tcs.padding);
+    expect(vcs.borderRadius).toBe(tcs.borderRadius);
+    expect(vcs.backgroundColor).toBe(tcs.backgroundColor);
+    expect(vcs.clipPath !== 'none').toBe(true);
+    const modalWrap = win.document.getElementById('textExpandArea').parentElement;
+    win.document.body.focus(); win.openTextExpand(ta, 'Agent Prompt');
+    expect(win.getComputedStyle(modalWrap.querySelector(':scope > .md-view')).clipPath).toBe('none');
+    win.closeTextExpand();
   });
 });
 

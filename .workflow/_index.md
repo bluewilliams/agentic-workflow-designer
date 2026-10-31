@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## rendered-text-fields
+
+- record: .workflow/rendered-text-fields.md
+- intent: every text field shows its markdown rendered while idle and the raw markdown while focused (click-to-edit); the textarea stays the only source of truth; the expand modal opens rendered unless mid-edit; Preview full prompt renders too; one `.md-rendered` stylesheet serves the prompt area, the views, and the preview.
+- files: index.html (refreshMdView, refreshMdViews, focus delegates, updatePrompt and updateConfig hooks, openTextExpand, agentPromptStatusBlock, .md-view and .md-rendered CSS, modal markup), tests.html (Rendered markdown suite; one preview test migrated), README.md
+- status: current | date: 2026-10-30 | note: director asked for the normal convention; real-browser check on every surface. 1879 -> 1893; one review round, twelve findings acted on.
+
 ## run-badge-legibility
 
 - record: .workflow/run-badge-legibility.md

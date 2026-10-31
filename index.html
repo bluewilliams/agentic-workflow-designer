@@ -186,10 +186,24 @@ body.sidebar-rail{grid-template-columns:var(--rail-w) 1fr}
 .text-expand-modal .teh-count{font-size:11px;color:var(--text3)}
 /* the discreet expand affordance shown in a textarea's top-right corner */
 .ta-wrap{position:relative;display:block}
-.ta-wrap > textarea{padding-right:30px}
+.ta-wrap > textarea{padding-right:30px;display:block}   /* block, so the wrapper is exactly the textarea box and the idle view matches it */
 .ta-expand{position:absolute;top:6px;right:6px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;padding:0;background:var(--surface);border:1px solid var(--border);border-radius:5px;color:var(--text3);cursor:pointer;opacity:.4;transition:opacity .15s,color .15s,border-color .15s;z-index:2}
 .ta-wrap:hover .ta-expand,.ta-expand:hover,.ta-expand:focus{opacity:1;color:var(--text);border-color:var(--accent)}
 .ta-expand svg{width:12px;height:12px;pointer-events:none}
+/* Rendered markdown over an idle textarea (click-to-edit, the Jira/Trello convention): the
+   textarea stays the value and keeps its box; the view is a sibling painted over it. */
+.md-view{position:absolute;inset:0;z-index:1;display:none;overflow:auto;box-sizing:border-box;cursor:text;
+  background:var(--bg);color:var(--text);font-family:var(--font);font-size:12px;line-height:1.5;white-space:normal;
+  clip-path:polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%)}   /* the resize grip stays reachable */
+.md-view > :first-child{margin-top:0}
+.md-view > :last-child{margin-bottom:0}
+.ta-wrap.md-shown > .md-view{display:block}
+.text-expand-modal .ta-wrap{flex:1;display:flex;min-height:0}
+.text-expand-modal .ta-wrap > textarea{padding-right:16px}
+.text-expand-modal .md-view{font-size:14px;line-height:1.6;clip-path:none}   /* resize:none there, nothing to reach */
+.agent-prompt-preview-body{margin:0;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:8px 10px;max-height:380px;overflow:auto;
+  font-family:var(--font);font-size:11px;line-height:1.45;color:var(--text2);word-break:break-word}
 .ca-label{display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.3px;margin:8px 0 3px}
 .ca-input{width:100%;box-sizing:border-box;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px}
 .ca-input:focus{outline:none;border-color:var(--accent)}
@@ -264,10 +278,6 @@ body.sidebar-rail{grid-template-columns:var(--rail-w) 1fr}
 .agent-prompt-preview-toggle[aria-expanded="true"] .caret{transform:rotate(90deg)}
 .agent-prompt-preview{max-height:0;overflow:hidden;transition:max-height .22s ease;margin-top:0}
 .agent-prompt-preview.open{max-height:420px;margin-top:6px}
-.agent-prompt-preview pre{margin:0;background:var(--surface);border:1px solid var(--border);
-  border-radius:var(--radius-sm);padding:8px 10px;max-height:380px;overflow:auto;
-  font-family:var(--mono);font-size:11px;line-height:1.45;color:var(--text2);
-  white-space:pre-wrap;word-break:break-word}
 /* Custom Select */
 .custom-select{position:relative;width:100%}
 .custom-select-trigger{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
@@ -370,21 +380,21 @@ svg.canvas{width:100%;height:100%;display:block}
 .prompt-content{flex:1;overflow-y:auto;padding:12px 16px;font-family:var(--mono);
   font-size:11px;line-height:1.6;color:var(--text2);white-space:pre-wrap;word-break:break-word}
 .prompt-content.rendered{font-family:var(--font);white-space:normal}
-.prompt-content.rendered h1{font-size:14px;font-weight:700;color:var(--text);margin:16px 0 6px;padding-bottom:3px;border-bottom:1px solid var(--border)}
-.prompt-content.rendered h2{font-size:13px;font-weight:700;color:var(--text);margin:16px 0 6px;padding-bottom:3px;border-bottom:1px solid var(--border)}
-.prompt-content.rendered h3{font-size:12px;font-weight:600;color:var(--text);margin:12px 0 4px}
-.prompt-content.rendered h4{font-size:12px;font-weight:600;color:var(--text2);margin:10px 0 4px}
-.prompt-content.rendered p{margin:4px 0}
-.prompt-content.rendered ul,.prompt-content.rendered ol{margin:4px 0 4px 20px;padding:0}
-.prompt-content.rendered li{margin:2px 0}
-.prompt-content.rendered code{background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px;font-family:var(--mono);font-size:10px}
-.prompt-content.rendered pre{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:6px 0;overflow-x:auto;white-space:pre-wrap}
-.prompt-content.rendered pre code{background:none;padding:0}
-.prompt-content.rendered blockquote{border-left:3px solid var(--accent);padding-left:10px;margin:6px 0;color:var(--text3)}
-.prompt-content.rendered strong{color:var(--text);font-weight:600}
-.prompt-content.rendered table{border-collapse:collapse;margin:6px 0;font-size:10px;width:100%}
-.prompt-content.rendered th,.prompt-content.rendered td{border:1px solid var(--border);padding:3px 6px;text-align:left}
-.prompt-content.rendered th{background:var(--surface2);font-weight:600;color:var(--text)}
+.md-rendered h1{font-size:1.27em;font-weight:700;color:var(--text);margin:16px 0 6px;padding-bottom:3px;border-bottom:1px solid var(--border)}
+.md-rendered h2{font-size:1.18em;font-weight:700;color:var(--text);margin:16px 0 6px;padding-bottom:3px;border-bottom:1px solid var(--border)}
+.md-rendered h3{font-size:1.09em;font-weight:600;color:var(--text);margin:12px 0 4px}
+.md-rendered h4{font-size:1.09em;font-weight:600;color:var(--text2);margin:10px 0 4px}
+.md-rendered p{margin:4px 0}
+.md-rendered ul,.md-rendered ol{margin:4px 0 4px 20px;padding:0}
+.md-rendered li{margin:2px 0}
+.md-rendered code{background:rgba(0,0,0,.2);padding:1px 4px;border-radius:3px;font-family:var(--mono);font-size:.9em}
+.md-rendered pre{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:6px 0;overflow-x:auto;white-space:pre-wrap}
+.md-rendered pre code{background:none;padding:0}
+.md-rendered blockquote{border-left:3px solid var(--accent);padding-left:10px;margin:6px 0;color:var(--text3)}
+.md-rendered strong{color:var(--text);font-weight:600}
+.md-rendered table{border-collapse:collapse;margin:6px 0;font-size:.9em;width:100%}
+.md-rendered th,.md-rendered td{border:1px solid var(--border);padding:3px 6px;text-align:left}
+.md-rendered th{background:var(--surface2);font-weight:600;color:var(--text)}
 .prompt-content::-webkit-scrollbar{width:6px}
 .prompt-content::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px}
 .copied-toast{position:fixed;bottom:24px;right:24px;background:var(--accent);color:#fff;
@@ -1514,12 +1524,12 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <!-- Expand-to-modal text editor (large editing surface for any textarea) - REMOVABLE -->
 <div class="text-expand-overlay" id="textExpandOverlay" onclick="if(event.target===this)closeTextExpand()">
-  <div class="text-expand-modal">
+  <div class="text-expand-modal" tabindex="-1">
     <div class="teh-head">
       <div class="teh-title" id="textExpandTitle">Edit text</div>
       <button class="teh-close" title="Close (Esc)" aria-label="Close" onclick="closeTextExpand()">&times;</button>
     </div>
-    <textarea id="textExpandArea" spellcheck="true" oninput="syncTextExpand()"></textarea>
+    <div class="ta-wrap"><textarea id="textExpandArea" spellcheck="true" oninput="syncTextExpand()"></textarea></div>
     <div class="teh-foot">
       <span class="teh-count" id="textExpandCount"></span>
       <span style="display:flex;gap:10px;align-items:center">
@@ -6629,6 +6639,8 @@ function updateConfig() {
     el.addEventListener('input', handler);
   });
 
+  if (typeof refreshMdViews === 'function') refreshMdViews(fields);   // the panel was rebuilt: paint the idle views (guarded - removable)
+
   // Bind events for custom select dropdowns
   fields.querySelectorAll('.config-select').forEach(cs => {
     const trigger = cs.querySelector('.custom-select-trigger');
@@ -6862,12 +6874,12 @@ function agentPromptStatusBlock(node) {
   const resetBtn = (info.state === 'custom' || info.state === 'foreign-template')
     ? `<button type="button" class="agent-prompt-reset" data-role="${escHtml(info.role)}">Reset to ${escHtml(info.role)} template</button>`
     : '';
-  return `<div class="config-field agent-prompt-field" style="margin-top:-6px">
+  return `<div class="config-field agent-prompt-field" style="margin-top:0">
     <div class="agent-prompt-status">${escHtml(status)}</div>
     <button type="button" class="agent-prompt-preview-toggle" aria-expanded="false">
       <span class="caret">&#9656;</span><span>Preview full prompt</span>
     </button>
-    <div class="agent-prompt-preview"><pre>${escHtml(info.text)}</pre></div>
+    <div class="agent-prompt-preview"><div class="agent-prompt-preview-body md-rendered">${renderMarkdown(info.text)}</div></div>
     ${resetBtn}
     <div class="agent-prompt-hint">${escHtml(hint)}</div>
   </div>`;
@@ -7047,6 +7059,7 @@ wrap.addEventListener('contextmenu', e => e.preventDefault());
 // Keyboard
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || (e.target.closest && e.target.closest('.custom-select'))) return;
+  if (typeof textExpandIsOpen === 'function' && textExpandIsOpen()) return;   // the expand dialog owns the keyboard while open (its own listener handles Escape)
   // Undo/redo for canvas operations (not active when typing in fields)
   if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
   if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) { e.preventDefault(); redo(); return; }
@@ -7106,7 +7119,17 @@ function openTextExpand(source, title) {
   ta.value = source.value;
   ta.placeholder = source.placeholder || '';
   $('textExpandOverlay').classList.add('show');
-  ta.focus();
+  // Mid-edit (Cmd/Ctrl+E, the corner button from a focused field): keep editing, caret carried.
+  // Otherwise the modal opens as a reader would expect: rendered, click to edit (click-to-edit
+  // convention, same as every idle field); an empty field opens straight into the editor.
+  if (editing || !ta.value.trim()) {
+    ta.focus();
+  } else {
+    // Keyboard focus stays inside the dialog (its container is focusable), so Tab reaches its
+    // controls and the canvas shortcuts (Backspace deletes the selected node) stay out of it.
+    const dialog = ta.closest('.text-expand-modal'); if (dialog) dialog.focus();
+    if (typeof refreshMdView === 'function') refreshMdView(ta.parentElement, false);
+  }
   const s = editing && source.selectionStart != null ? source.selectionStart : 0;
   const e = editing && source.selectionEnd != null ? source.selectionEnd : 0;
   try { ta.setSelectionRange(s, e); } catch (_) {}
@@ -7136,9 +7159,13 @@ function updateTextExpandCount() {
 }
 
 function closeTextExpand() {
+  const wasEditing = document.activeElement === $('textExpandArea');
   $('textExpandOverlay').classList.remove('show');
   const src = _textExpandSource; _textExpandSource = null;
-  if (src && document.body.contains(src)) src.focus();
+  // Focus returns to the field only when the user was editing in the dialog; a reader who
+  // closed a rendered view gets the field back rendered, not raw.
+  if (src && document.body.contains(src)) { if (wasEditing) src.focus(); else if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); }
+  if (typeof refreshMdViews === 'function') refreshMdViews();
 }
 
 function expandFromButton(btn) {
@@ -7186,10 +7213,81 @@ function enhanceExpandableTextarea(el) {
   wrap.appendChild(el);
   wrap.insertAdjacentHTML('beforeend', taExpandButton());
 }
+// === Rendered markdown over idle textareas (click-to-edit) - REMOVABLE ===
+// Convention (Jira, Trello, Confluence inline fields): a field shows its markdown rendered while
+// idle and raw while it has focus; focus leaving renders it again. The textarea stays the single
+// source of truth and keeps its id, value, events, resize, and the expand button; the view is a
+// sibling painted over it, built by the same renderMarkdown the prompt area uses (HTML escaped
+// there). An empty field shows its placeholder. Views refresh on focus changes and on the
+// universal re-render seam (updatePrompt), so programmatic value changes (a load, a template
+// reset) show up without each writer knowing about the view. A view is rebuilt only when the
+// text changed since it was last drawn.
+function refreshMdView(wrap, focused) {
+  if (!wrap) return;
+  const ta = wrap.querySelector(':scope > textarea');
+  if (!ta) return;
+  let view = wrap.querySelector(':scope > .md-view');
+  const hasFocus = focused === undefined ? document.activeElement === ta : focused;
+  const text = ta.value;
+  if (hasFocus || !text.trim()) { wrap.classList.remove('md-shown'); return; }
+  if (!view) {
+    view = document.createElement('div');
+    view.className = 'md-view md-rendered';
+    view.setAttribute('aria-hidden', 'true');
+    // Click to edit: the field takes focus (which hides the view) with the caret at the top,
+    // where a reader of the rendered text was looking. mousedown is prevented so the click
+    // never first blurs whatever was focused.
+    view.addEventListener('mousedown', e => {
+      e.preventDefault();
+      ta.focus();
+      try { ta.setSelectionRange(0, 0); } catch (_) {}
+      ta.scrollTop = 0;
+    });
+    wrap.appendChild(view);
+  }
+  if (view._mdSrc !== text) { view.innerHTML = renderMarkdown(text); view._mdSrc = text; }
+  // The box is the textarea's own (some fields style theirs inline), copied so the swap on
+  // click never shifts the text or changes the frame.
+  const cs = getComputedStyle(ta);
+  view.style.padding = cs.padding;
+  view.style.backgroundColor = cs.backgroundColor;
+  view.style.borderWidth = cs.borderWidth; view.style.borderStyle = cs.borderStyle; view.style.borderColor = cs.borderColor;
+  view.style.borderRadius = cs.borderRadius;
+  wrap.classList.add('md-shown');
+}
+function refreshMdViews(root) {
+  if (!root && typeof textExpandIsOpen === 'function' && textExpandIsOpen()) {   // the modal is the only visible field: skip the thirteen behind the overlay
+    const ta = $('textExpandArea'); if (ta && ta.parentElement) refreshMdView(ta.parentElement);
+    return;
+  }
+  (root || document).querySelectorAll('.ta-wrap').forEach(w => refreshMdView(w));
+}
+document.addEventListener('focusin', e => {
+  const t = e.target;
+  if (t && t.tagName === 'TEXTAREA' && t.parentElement && t.parentElement.classList.contains('ta-wrap')) refreshMdView(t.parentElement, true);
+});
+document.addEventListener('focusout', e => {
+  const t = e.target;
+  if (t && t.tagName === 'TEXTAREA' && t.parentElement && t.parentElement.classList.contains('ta-wrap')) refreshMdView(t.parentElement, false);
+});
+// A press elsewhere must leave the field even when its default is prevented (the canvas does
+// that for a pan, a right click, and connect mode), because otherwise the browser keeps focus
+// in the field and it stays raw after the user has visibly moved on. Runs after
+// the canvas handler (bubble order), so defaultPrevented is already decided; clicks inside the
+// field's own wrap (the expand button prevents default on purpose, to carry the caret) are left alone.
+document.addEventListener('mousedown', e => {
+  const ta = document.activeElement;
+  if (!ta || ta.tagName !== 'TEXTAREA' || !ta.parentElement || !ta.parentElement.classList.contains('ta-wrap')) return;
+  if (ta.parentElement.contains(e.target)) return;
+  if (e.defaultPrevented) ta.blur();
+});
+// === end Rendered markdown over idle textareas ===
+
 (function initExpandableTextareas() {
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initExpandableTextareas); return; }
   ['storyInput', 'planInput', 'customPromptBody', 'customAgentPrompt', 'customAgentNotes', 'uiContextNotes', 'verifyNotesInput', 'mcpCustomNotes']
     .forEach(function(id) { enhanceExpandableTextarea($(id)); });
+  refreshMdViews();
 })();
 // === end Expand-to-modal text editing ===
 
@@ -7629,6 +7727,7 @@ function openCustomPromptForm(id) {
   $('customPromptTitle').value = existing ? existing.title : '';
   $('customPromptDesc').value = existing ? (existing.desc || '') : '';
   $('customPromptBody').value = existing ? existing.prompt : '';
+  if (typeof refreshMdViews === 'function') refreshMdViews($('customPromptOverlay'));
   $('customPromptOverlay').classList.add('show');
   setTimeout(() => $('customPromptTitle').focus(), 50);
 }
@@ -7823,6 +7922,7 @@ function openAgentForm(id, node) {
   renderAgentFormTools(base.tools);
   $('customAgentPrompt').value = base.prompt || '';
   $('customAgentNotes').value = base.notes || '';
+  if (typeof refreshMdViews === 'function') refreshMdViews($('customAgentOverlay'));
   $('customAgentOverlay').classList.add('show');
   setTimeout(() => $('customAgentName').focus(), 50);
 }
@@ -7844,6 +7944,7 @@ function onAgentFormTypeChange() {
   };
   applyAgentTypeChange(cfg, newType, $('customAgentPrompt').value, $('customAgentName').value.trim());
   $('customAgentPrompt').value = cfg.prompt || '';
+  if (typeof refreshMdViews === 'function') refreshMdViews($('customAgentOverlay'));
   renderAgentFormTools(cfg.tools);
   // preserve any derived writingStyle so Save keeps it (Save spreads over baseConfig)
   if (_agentFormCtx) _agentFormCtx.baseConfig = Object.assign({}, _agentFormCtx.baseConfig, { writingStyle: cfg.writingStyle });
@@ -11521,7 +11622,7 @@ function renderMarkdown(md) {
   if (!md || !md.trim()) return '';
   let html = '';
   const lines = md.split('\n');
-  let inCode = false, inList = false, inTable = false;
+  let inCode = false, inList = false, inTable = false, listTag = 'ul';
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.startsWith('```')) { if (inCode) { html += '</code></pre>'; } else { html += '<pre><code>'; } inCode = !inCode; continue; }
@@ -11535,7 +11636,7 @@ function renderMarkdown(md) {
       html += (/^#{1,6} /.test(line) ? '<strong>' + inlineFmt(line) + '</strong>' : inlineFmt(line)) + '\n';
       continue;
     }
-    if (inList && !/^\s*[-*]\s/.test(line) && !/^\s*\d+\.\s/.test(line) && line.trim() !== '') { html += '</ul>'; inList = false; }
+    if (inList && !/^\s*[-*]\s/.test(line) && !/^\s*\d+\.\s/.test(line) && line.trim() !== '') { html += '</' + listTag + '>'; inList = false; }
     if (inTable && !line.startsWith('|')) { html += '</tbody></table>'; inTable = false; }
     if (line.startsWith('# ') && !line.startsWith('## ')) { html += '<h2>' + inlineFmt(line.slice(2)) + '</h2>'; continue; }
     if (line.startsWith('## ')) { html += '<h2>' + inlineFmt(line.slice(3)) + '</h2>'; continue; }
@@ -11549,13 +11650,18 @@ function renderMarkdown(md) {
       continue;
     }
     if (line.startsWith('> ')) { html += '<blockquote>' + inlineFmt(line.slice(2)) + '</blockquote>'; continue; }
-    if (/^\s*[-*]\s/.test(line)) { if (!inList) { html += '<ul>'; inList = true; } html += '<li>' + inlineFmt(line.replace(/^\s*[-*]\s/, '')) + '</li>'; continue; }
-    if (/^\s*\d+\.\s/.test(line)) { if (!inList) { html += '<ul>'; inList = true; } html += '<li>' + inlineFmt(line.replace(/^\s*\d+\.\s/, '')) + '</li>'; continue; }
-    if (line.trim() === '') { if (inList) { html += '</ul>'; inList = false; } html += '<br>'; continue; }
+    const bullet = /^\s*[-*]\s/.test(line), numbered = /^\s*\d+\.\s/.test(line);
+    if (bullet || numbered) {   // a numbered item is an ordered list, so step order survives rendering
+      const tag = numbered ? 'ol' : 'ul';
+      if (inList && listTag !== tag) { html += '</' + listTag + '>'; inList = false; }
+      if (!inList) { html += '<' + tag + '>'; inList = true; listTag = tag; }
+      html += '<li>' + inlineFmt(line.replace(numbered ? /^\s*\d+\.\s/ : /^\s*[-*]\s/, '')) + '</li>'; continue;
+    }
+    if (line.trim() === '') { if (inList) { html += '</' + listTag + '>'; inList = false; } html += '<br>'; continue; }
     html += '<p>' + inlineFmt(line) + '</p>';
   }
   if (inCode) html += '</code></pre>';
-  if (inList) html += '</ul>';
+  if (inList) html += '</' + listTag + '>';
   if (inTable) html += '</tbody></table>';
   return html;
 }
@@ -11597,6 +11703,7 @@ function updatePrompt() {
   // Run Reports section rides the universal re-render seam (covers workflow-name
   // changes, imports, boot) - guarded so removing the run-report block is safe.
   if (typeof updateRunReportSection === 'function') updateRunReportSection();
+  if (typeof refreshMdViews === 'function') refreshMdViews();   // idle textareas show their current text rendered (guarded - removable)
   if (state.nodes.length === 0) {
     const hints = {
       prompt: 'Add nodes to see a structured workflow overview...',
@@ -11615,10 +11722,10 @@ function updatePrompt() {
   _rawPrompt = (generators[state.exportFormat] || genWorkflow)();
   if (state.exportFormat === 'sdk') {
     out.textContent = _rawPrompt;
-    out.classList.remove('rendered');
+    out.classList.remove('rendered', 'md-rendered');
   } else {
     out.innerHTML = renderMarkdown(_rawPrompt);
-    out.classList.add('rendered');
+    out.classList.add('rendered', 'md-rendered');
   }
   updateTokenEstimate();
 }
