@@ -152,7 +152,7 @@ Scan-then-open: read this index first, match an entry against the files or capab
 ## house-tooltips
 
 - record: .workflow/house-tooltips.md
-- intent: one document-level delegate restyles every title-attribute tooltip to the house aesthetic (title moved to data-tip on hover - native box suppressed - then a styled, positioned, viewport-clamped #appTip after 350ms; aria-label preserved for icon-only elements). Zero per-element changes; hundreds of existing hints inherit it; SVG title children stay native by design.
+- intent: one document-level delegate restyles every title-attribute tooltip to the house aesthetic (title moved to data-tip on hover - native box suppressed - then a styled, positioned, viewport-clamped #appTip after 350ms; aria-label preserved for icon-only elements). Zero per-element changes; hundreds of existing hints inherit it; SVG title children stay native by design. Every dropdown option in Node Configuration carries a tooltip (role, model, effort, depth, strategy, source, output format, writing style), as do the palette node types and the review-loop menu items.
 - files: index.html (CSS rule + delegate block + config field tips + sidebar copy diet), tests.html (Suite 12m + sidebar title pins)
 - status: current | date: 2026-10-24 | note: 1740 -> 1742; 2026-10-24 second sidebar declutter, suite steady at 1830.
 

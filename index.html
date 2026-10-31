@@ -574,7 +574,7 @@ svg.canvas{width:100%;height:100%;display:block}
 @media (prefers-reduced-motion: reduce){.monitor-live .beacon,.monitor-agent .dot.pulse,.monitor-task.just-changed,.monitor-task.inflight .tick,.monitor-dot-live{animation:none}.monitor-node-live{animation:none;stroke-width:2;stroke-opacity:1}}
 .monitor-tabs{display:flex;gap:4px;margin:12px 0 2px;border-bottom:1px solid var(--border);padding-bottom:6px}
 /* House-styled tooltip (replaces the native title box app-wide via one delegate) */
-#appTip{position:fixed;z-index:400;max-width:340px;background:var(--surface);border:1px solid var(--border);
+#appTip{position:fixed;z-index:400;pointer-events:none;max-width:340px;background:var(--surface);border:1px solid var(--border);
   border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);padding:8px 11px;font-size:11.5px;line-height:1.55;
   color:var(--text2);pointer-events:none;white-space:pre-line;overflow-wrap:break-word}
 #bridgeBanner{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:70;display:flex;flex-direction:column;gap:6px}
@@ -744,22 +744,22 @@ svg.canvas{width:100%;height:100%;display:block}
   <div class="sidebar-section" data-collapse-id="add-nodes">
     <h3 title="Drag building blocks onto the canvas: agents (each a role with its own craft template), decision gates, parallel forks, tasks, inputs, and outputs. Presets are these same blocks pre-wired.">Node &amp; Agent Palette</h3>
     <div class="palette-grid">
-      <div class="palette-item" onclick="addNode('agent')">
+      <div class="palette-item" onclick="addNode('agent')" title="A step run by an agent: a role template, a model, effort, tools, and a prompt. Most of a workflow is agents.">
         <span class="palette-dot" style="background:var(--agent)"></span>Agent
       </div>
-      <div class="palette-item" onclick="addNode('task')">
+      <div class="palette-item" onclick="addNode('task')" title="A plain unit of work with a description and acceptance criteria; it becomes a Tasks section for the step that owns it. An empty Task stays out of the prompt.">
         <span class="palette-dot" style="background:var(--task)"></span>Task
       </div>
-      <div class="palette-item" onclick="addNode('decision')">
+      <div class="palette-item" onclick="addNode('decision')" title="A gate: a condition judged after the previous step, with a Yes edge, a No edge that loops back, and a Max Revisions budget for the loop.">
         <span class="palette-dot" style="background:var(--decision)"></span>Decision
       </div>
-      <div class="palette-item" onclick="addNode('parallel')">
+      <div class="palette-item" onclick="addNode('parallel')" title="A fork: the branches between it and its join run concurrently; its Strategy sets how the join waits (all, first, race, or one lane per repository).">
         <span class="palette-dot" style="background:var(--parallel)"></span>Parallel
       </div>
-      <div class="palette-item" onclick="addNode('input')">
+      <div class="palette-item" onclick="addNode('input')" title="Where the requirements enter the workflow: the Requirements text, optionally framed as a user story or a PRD, feeds the first steps.">
         <span class="palette-dot" style="background:var(--input)"></span>Input
       </div>
-      <div class="palette-item" onclick="addNode('output')">
+      <div class="palette-item" onclick="addNode('output')" title="What the work becomes at the end: left uncommitted, a commit, a pull request, a report, or documentation, with its branch and target settings.">
         <span class="palette-dot" style="background:var(--output)"></span>Output
       </div>
     </div>
@@ -1137,9 +1137,9 @@ svg.canvas{width:100%;height:100%;display:block}
 <!-- Context Menu -->
 <div class="context-menu" id="contextMenu">
   <div class="context-menu-item" onclick="duplicateNode()">Duplicate</div>
-  <div class="context-menu-item" id="ctxAddBranch" style="display:none" onclick="addBranchToFork()">Add Branch</div>
-  <div class="context-menu-item" id="ctxSkeptic" style="display:none" onclick="toggleReviewLoop('adversary')">Add skeptic review</div>
-  <div class="context-menu-item" id="ctxVerifier" style="display:none" onclick="toggleReviewLoop('verifier')">Add verification</div>
+  <div class="context-menu-item" id="ctxAddBranch" style="display:none" onclick="addBranchToFork()" title="Add another concurrent branch to this fork.">Add Branch</div>
+  <div class="context-menu-item" id="ctxSkeptic" style="display:none" onclick="toggleReviewLoop('adversary')" title="Attach a Skeptic: a refute-first critic (read-only tools) that reviews this step's output and loops back only material defects.">Add skeptic review</div>
+  <div class="context-menu-item" id="ctxVerifier" style="display:none" onclick="toggleReviewLoop('verifier')" title="Attach a Verifier: exercises the real outcome (browser, API, CLI, data) and proves it meets the objective; loops back what is not verified.">Add verification</div>
   <div class="context-menu-item" onclick="disconnectNode()">Disconnect All</div>
   <div class="context-menu-item danger" onclick="deleteSelected()">Delete</div>
 </div>
@@ -1595,8 +1595,8 @@ const AGENT_TYPES = [
   { id: 'researcher', name: 'Researcher', desc: 'Explores codebase, gathers context' },
   { id: 'reviewer', name: 'Reviewer', desc: 'Reviews code quality, security, and patterns' },
   { id: 'adversary', name: 'Skeptic', desc: 'Refute-first critic; reviews any step and loops back only material defects' },
-  { id: 'tester', name: 'Tester', desc: 'Writes and runs tests' },
-  { id: 'verifier', name: 'Verifier', desc: 'Proves the outcome meets the objective with evidence; loops back what is not verified' },
+  { id: 'tester', name: 'Tester', desc: 'Writes and runs automated tests: unit, integration, regression, boundary cases' },
+  { id: 'verifier', name: 'Verifier', desc: 'Exercises the real system (browser, API, CLI, data) and proves the outcome with evidence; loops back what is not verified' },
   { id: 'writer', name: 'Writer', desc: 'Documentation and content creation specialist' }
 ];
 
@@ -1764,6 +1764,10 @@ function effortHint() {
 // no exhaustive step emits byte-identical output to before this lever existed.
 const DEPTH_LEVELS = ['exhaustive'];
 const DEPTH_OPTION_LABELS = { exhaustive: 'Exhaustive - orchestrated fan-out inside this step (costly; still one handoff)' };
+const DEPTH_OPTION_TIPS = {
+  '': 'One pass: the step runs as a single agent and hands back once. The shipped behavior.',
+  exhaustive: 'The runner fans this one step out into coordinated sub-tasks (decompose, fan out, verify adversarially) before handing back once. Costly. Takes effect only in Claude Code, where the prompt carries its opt-in word; elsewhere the step runs as Standard.'
+};
 // Claude Code's opt-in word for its orchestration tool. A pasted prompt IS the user's message,
 // so carrying the word is a real opt-in, and the step block's explicit ask is the other one.
 const DEPTH_KEYWORD = 'ultracode';
@@ -3477,7 +3481,7 @@ function initDefaultModelSelect() {
   if (!container || !trigger || !opts) return;
 
   opts.innerHTML = MODELS.map(m =>
-    `<div class="custom-select-option${m.value === state.defaultModel ? ' selected' : ''}" data-value="${m.value}">${m.label}</div>`
+    `<div class="custom-select-option${m.value === state.defaultModel ? ' selected' : ''}" data-value="${m.value}" title="${escHtml(modelOptionTip(m))}">${m.label}</div>`
   ).join('');
 
   trigger.addEventListener('click', (e) => {
@@ -3498,6 +3502,53 @@ function initDefaultModelSelect() {
 
 const EFFORT_OPTION_LABELS = { '': 'Inherit (runner default)', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
 function effortOptionLabel(v) { return EFFORT_OPTION_LABELS[v] || v; }
+// What each choice means, at the moment of choosing: option tooltips for the Model, Effort,
+// Strategy, and Source dropdowns (configSelect tips and the sidebar skins). The model tip is
+// built from the MODELS row and the effort support tables, so it cannot drift from them.
+const MODEL_FAMILY_TIPS = {
+  fable: 'Fable: the most capable family, for the hardest reasoning, at the highest cost.',
+  opus: 'Opus: deep reasoning for planning, review, and hard builds.',
+  sonnet: 'Sonnet: fast and cheaper; mechanical steps, straightforward implementation, documentation.',
+  haiku: 'Haiku: the fastest and cheapest; simple transforms and classification.'
+};
+function modelOptionTip(m) {
+  const fam = String(m.family || '').split('-')[0];
+  const parts = [MODEL_FAMILY_TIPS[fam] || m.label + '.'];
+  const pinned = /\d/.test(m.label.replace(/\s*\[1M\]/, ''));   // the [1M] suffix is not a version number
+  parts.push(pinned ? 'Numbered: pinned to this release; it stays put when a successor ships.' : 'Unnumbered: floats to the newest of its family, so the prompt never goes stale.');
+  if (/\[1M\]/.test(m.label)) parts.push('[1M]: the extended one-million-token context variant for huge repositories or very long sessions; costlier, and the prompt tells the runner how to select it.');
+  if (EFFORT_UNSUPPORTED_FAMILIES.includes(m.family)) parts.push('Takes no effort level.');
+  else if (EFFORT_NO_XHIGH_FAMILIES.includes(m.family)) parts.push('Offers no Extra high effort.');
+  return parts.join(' ');
+}
+const EFFORT_OPTION_TIPS = {
+  '': 'No level set: the runner decides (high on the API, Extra high in Claude Code).',
+  low: 'The least reasoning: fastest and cheapest; trivial, mechanical steps.',
+  medium: 'Light reasoning for routine work.',
+  high: 'Solid reasoning for most steps; the API default.',
+  xhigh: 'Deeper reasoning for hard problems; the Claude Code default; more tokens and time.',
+  max: 'The most reasoning the model offers: the hardest planning or review steps only; slowest and costliest.'
+};
+function effortOptionTip(v) { return EFFORT_OPTION_TIPS[v] || ''; }
+const STRATEGY_TIPS = {
+  all: 'The join waits for all branches to finish before the workflow continues.',
+  any: 'The workflow proceeds as soon as the first branch finishes and does not wait for the rest.',
+  race: 'The first useful result wins and the others stop.',
+  'per-repo': 'The lane between this fork and its join runs once per repository listed under Repositories, lanes in parallel, and the join waits for every lane.'
+};
+const FORMAT_TIPS = {
+  default: 'Follows the sidebar Default Delivery, so this node changes when that setting changes. Pick any other format to override it for this workflow only.',
+  code: 'The work stays in the working tree: nothing is committed or pushed. You review and commit yourself.',
+  commit: 'The run commits on a branch and leaves it local or pushed per the branch settings; no pull request is opened.',
+  pr: 'The run commits on a branch, pushes it, and opens a pull request against the target branch with a filled description.',
+  report: 'The deliverable is a written report (findings, analysis, recommendations with evidence); nothing is committed.',
+  docs: 'The deliverable is documentation for the change, written so the next reader can use and maintain it; nothing is committed.'
+};
+const SOURCE_TIPS = {
+  freeform: 'Taken as written: no framing is added to the prompt.',
+  story: 'Framed as a user story: the prompt tells the agents to derive concrete, testable requirements and acceptance criteria before building.',
+  prd: 'Framed as a product requirements document: the prompt tells the agents to extract the engineering work it implies and flag anything ambiguous as an open question.'
+};
 
 function setEffort(value, quiet) {
   state.effort = EFFORT_LEVELS.includes(value) ? value : '';
@@ -3519,7 +3570,7 @@ function initEffortSelect() {
   if (!container || !trigger || !opts) return;
 
   opts.innerHTML = [''].concat(EFFORT_LEVELS).map(v =>
-    `<div class="custom-select-option${v === state.effort ? ' selected' : ''}" data-value="${v}">${effortOptionLabel(v)}</div>`
+    `<div class="custom-select-option${v === state.effort ? ' selected' : ''}" data-value="${v}" title="${escHtml(effortOptionTip(v))}">${effortOptionLabel(v)}</div>`
   ).join('');
   trigger.textContent = effortOptionLabel(state.effort);
 
@@ -6489,23 +6540,26 @@ function updateConfig() {
 
   if (node.type === 'agent') {
     H[H.length] = configSelect('Agent Type', 'agentType', node.config.agentType,
-      AGENT_TYPES.map(a => ({ value: a.id, label: a.name })));
+      AGENT_TYPES.map(a => ({ value: a.id, label: a.name, tip: a.desc })),
+      'The role template this step runs. Hover a role for what it does; Preview full prompt below shows the whole template.');
     if (node.config.agentType === 'writer') {
       H[H.length] = configSelect('Writing Style', 'writingStyle', node.config.writingStyle || 'technical',
-        WRITING_STYLES.map(s => ({ value: s.id, label: s.name })));
+        WRITING_STYLES.map(s => ({ value: s.id, label: s.name, tip: s.desc })));
     }
     H[H.length] = configSelect('Model', 'model', node.config.model,
-      MODELS.map(m => ({ value: m.value, label: m.label })));
+      MODELS.map(m => ({ value: m.value, label: m.label, tip: modelOptionTip(m) })),
+      'The model this step runs on. Hover a model for what it is for; unnumbered names float to the newest of their family, numbered ones pin a release, [1M] is the extended-context variant.');
     // Effort rides beside Model: same seam, same skin. Options are filtered to what THIS
     // step's model accepts, so the panel cannot offer a level that would be silently dropped.
     H[H.length] = configSelect('Effort', 'effort', node.config.effort || '',
-      [{ value: '', label: effortInheritLabel() }]
-        .concat(modelEffortLevels(node.config.model).map(l => ({ value: l, label: effortOptionLabel(l) }))));
+      [{ value: '', label: effortInheritLabel(), tip: effortOptionTip('') }]
+        .concat(modelEffortLevels(node.config.model).map(l => ({ value: l, label: effortOptionLabel(l), tip: effortOptionTip(l) }))),
+      'How much reasoning this step may spend. Hover a level for when to pick it; the list shows only the levels this model accepts.');
     // Depth rides beside Effort: reasoning depth above, orchestration depth here. Standard is
     // the shipped behavior; exhaustive is a deliberate, costly choice for one step.
     H[H.length] = configSelect('Depth', 'depth', node.config.depth || '',
-      [{ value: '', label: 'Standard (default) - one pass' }]
-        .concat(DEPTH_LEVELS.map(l => ({ value: l, label: DEPTH_OPTION_LABELS[l] || l }))),
+      [{ value: '', label: 'Standard (default) - one pass', tip: DEPTH_OPTION_TIPS[''] }]
+        .concat(DEPTH_LEVELS.map(l => ({ value: l, label: DEPTH_OPTION_LABELS[l] || l, tip: DEPTH_OPTION_TIPS[l] || '' }))),
       'How much orchestration one step may do. Standard runs the step as one pass. Exhaustive asks the runner to fan the step out into coordinated sub-tasks before handing back: costlier, and it only takes effect in Claude Code (the prompt carries its opt-in word); elsewhere the step runs as Standard.');
     // Defect posture: two knobs, two homes. The coder family tunes fix-vs-record; the
     // reviewer tunes flag-back intensity (spot-and-report to the orchestrator, never fix,
@@ -6562,7 +6616,8 @@ function updateConfig() {
     }
   } else if (node.type === 'parallel') {
     H[H.length] = configSelect('Strategy', 'strategy', node.config.strategy,
-      [{ value:'all', label:'Wait for All' },{ value:'any', label:'First Complete' },{ value:'race', label:'Race' },{ value:'per-repo', label:'Per Repository (one lane per repo)' }]);
+      [{ value:'all', label:'Wait for All', tip: STRATEGY_TIPS.all },{ value:'any', label:'First Complete', tip: STRATEGY_TIPS.any },{ value:'race', label:'Race', tip: STRATEGY_TIPS.race },{ value:'per-repo', label:'Per Repository (one lane per repo)', tip: STRATEGY_TIPS['per-repo'] }],
+      'How the join after this fork waits for the branches. Hover a strategy for the instruction the prompt emits.');
     H[H.length] = configTextarea('Description', 'description', node.config.description, 'Parallel execution context...');
     // Research fork: mode + anti-anchoring option slot + evaluation bias.
     if (node.config.researchMode) {
@@ -6576,12 +6631,13 @@ function updateConfig() {
     }
   } else if (node.type === 'input') {
     H[H.length] = configSelect('Source', 'source', node.config.source,
-      [{ value:'freeform', label:'Freeform' },{ value:'story', label:'User Story' },{ value:'prd', label:'PRD' }]);
+      [{ value:'freeform', label:'Freeform', tip: SOURCE_TIPS.freeform },{ value:'story', label:'User Story', tip: SOURCE_TIPS.story },{ value:'prd', label:'PRD', tip: SOURCE_TIPS.prd }],
+      'What kind of text the Requirements field holds. Hover a source for the framing the prompt adds; Freeform adds none.');
     H[H.length] = configTextarea('Description', 'description', node.config.description, 'Input details...');
   } else if (node.type === 'output') {
     const _dd = normalizeDelivery(state.defaultDelivery), _onDef = outputOnDefault(node), _eff = outCfg(node);
     H[H.length] = configSelect('Format', 'format', node.config.format,
-      [{ value:'default', label: escHtml('Default (' + deliverySummary(_dd) + ')') },{ value:'code', label:'Leave Uncommitted' },{ value:'commit', label:'Commit' },{ value:'pr', label:'Pull Request' },{ value:'report', label:'Report' },{ value:'docs', label:'Documentation' }],
+      [{ value:'default', label: escHtml('Default (' + deliverySummary(_dd) + ')'), tip: FORMAT_TIPS.default },{ value:'code', label:'Leave Uncommitted', tip: FORMAT_TIPS.code },{ value:'commit', label:'Commit', tip: FORMAT_TIPS.commit },{ value:'pr', label:'Pull Request', tip: FORMAT_TIPS.pr },{ value:'report', label:'Report', tip: FORMAT_TIPS.report },{ value:'docs', label:'Documentation', tip: FORMAT_TIPS.docs }],
       'What happens to the work at the end. Default follows the sidebar\'s Default Delivery (set it once; every new workflow and preset starts there). Any other choice overrides it for this workflow only. Report and Documentation produce their artifact and never commit.');
     H[H.length] = configInput('Deliverable', 'deliverable', node.config.deliverable);
     if (_onDef) {
@@ -6656,6 +6712,8 @@ function updateConfig() {
       const key = cs.dataset.key;
       const val = opt.dataset.value;
       trigger.textContent = opt.textContent;
+      const optTip = opt.getAttribute('title') || opt.getAttribute('data-tip');   // the tooltip delegate may have moved it
+      if (optTip) { trigger.setAttribute('title', optTip); trigger.removeAttribute('data-tip'); } else { trigger.removeAttribute('title'); trigger.removeAttribute('data-tip'); }
       optsContainer.querySelectorAll('.custom-select-option').forEach(o => o.classList.toggle('selected', o === opt));
       cs.classList.remove('open');
 
@@ -6803,7 +6861,7 @@ function deliveryFieldsHtml(cfg, mode) {
   const H = [];
   const fmt = cfg.format, br = BRANCHING_STRATEGIES.includes(cfg.branching) ? cfg.branching : 'single';
   if (mode === 'default') H[H.length] = configSelect('Format', 'format', DELIVERY_FORMATS.includes(fmt) ? fmt : 'code',
-    [{ value:'code', label:'Leave Uncommitted' },{ value:'commit', label:'Commit' },{ value:'pr', label:'Pull Request' }],
+    [{ value:'code', label:'Leave Uncommitted', tip: FORMAT_TIPS.code },{ value:'commit', label:'Commit', tip: FORMAT_TIPS.commit },{ value:'pr', label:'Pull Request', tip: FORMAT_TIPS.pr }],
     'What a code Output node delivers while its Format is left on Default. Every new workflow and preset starts here; an Output node overrides it for one workflow by picking its own Format. Report and Documentation are chosen on the node, never here.');
   if (fmt === 'pr' || fmt === 'commit') {
     H[H.length] = configSelect('Branching', 'branching', br, [
@@ -6843,12 +6901,15 @@ function configSelect(label, key, value, options, tip) {
   // workflow JSON someone shared) into innerHTML - escape it. Known options are trusted
   // constants (the one dynamic caller, reviewLoopBackTo, escapes its own labels).
   const selected = known || (value ? { value: value, label: escHtml(String(value)) } : options[0]);
+  // An option may carry a tip: it rides the house tooltip on the option while the list is open,
+  // and on the trigger for the selected option while it is closed (what each role does, at the
+  // moment of choosing, without a visible paragraph per option).
   const optHtml = options.map(o =>
-    `<div class="custom-select-option${o.value === value ? ' selected' : ''}" data-value="${o.value}">${o.label}</div>`
+    `<div class="custom-select-option${o.value === value ? ' selected' : ''}" data-value="${o.value}"${o.tip ? ` title="${escHtml(o.tip)}"` : ''}>${o.label}</div>`
   ).join('');
   return `<div class="config-field"><label${tip ? ` title="${escHtml(tip)}"` : ''}>${label}</label>
     <div class="custom-select config-select" data-key="${key}">
-      <div class="custom-select-trigger">${selected ? selected.label : ''}</div>
+      <div class="custom-select-trigger"${selected && selected.tip ? ` title="${escHtml(selected.tip)}"` : ''}>${selected ? selected.label : ''}</div>
       <div class="custom-select-options">${optHtml}</div>
     </div></div>`;
 }
@@ -7310,7 +7371,7 @@ function refreshEnhancedSelect(sel) {
   const cur = sel.options[sel.selectedIndex];
   trigger.textContent = cur ? cur.textContent : '';
   opts.innerHTML = Array.from(sel.options).map((o, i) =>
-    '<div class="custom-select-option' + (o.value === sel.value ? ' selected' : '') + '" role="option" id="' + sel.id + '-opt-' + i + '" aria-selected="' + (o.value === sel.value) + '" data-value="' + escHtml(o.value) + '">' + escHtml(o.textContent) + '</div>'
+    '<div class="custom-select-option' + (o.value === sel.value ? ' selected' : '') + '" role="option" id="' + sel.id + '-opt-' + i + '" aria-selected="' + (o.value === sel.value) + '" data-value="' + escHtml(o.value) + '"' + (o.title ? ' title="' + escHtml(o.title) + '"' : '') + '>' + escHtml(o.textContent) + '</div>'
   ).join('');
   wrap.classList.remove('open');
   trigger.setAttribute('aria-expanded', 'false');
@@ -7914,8 +7975,8 @@ function openAgentForm(id, node) {
   $('customAgentFormTitle').textContent = existing ? 'Edit agent' : 'Save agent preset';
   $('customAgentName').value = existing ? existing.name : (node ? (node.label || '') : '');
   $('customAgentVersion').value = existing ? (existing.version || '') : '1.0.0';
-  $('customAgentType').innerHTML = AGENT_TYPES.map(a => '<option value="' + a.id + '"' + (a.id === base.agentType ? ' selected' : '') + '>' + a.name + '</option>').join('');
-  $('customAgentModel').innerHTML = MODELS.map(m => '<option value="' + m.value + '"' + (m.value === base.model ? ' selected' : '') + '>' + m.label + '</option>').join('');
+  $('customAgentType').innerHTML = AGENT_TYPES.map(a => '<option value="' + a.id + '"' + (a.id === base.agentType ? ' selected' : '') + ' title="' + escHtml(a.desc) + '">' + a.name + '</option>').join('');
+  $('customAgentModel').innerHTML = MODELS.map(m => '<option value="' + m.value + '"' + (m.value === base.model ? ' selected' : '') + ' title="' + escHtml(modelOptionTip(m)) + '">' + m.label + '</option>').join('');
   refreshEnhancedSelect($('customAgentType'));
   refreshEnhancedSelect($('customAgentModel'));
   $('customAgentMaxTurns').value = base.maxTurns || 10;
