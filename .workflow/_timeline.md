@@ -2,7 +2,8 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
-2026-10-30 - house-tooltips (update) - every dropdown option in Node Configuration explains itself on hover (model, effort, depth, strategy, source, output format, writing style), plus the palette node types and the review-loop menu items; the tooltip ignores the mouse. 1897 -> 1904 - .workflow/house-tooltips.md
+2026-10-30 - house-tooltips (fix) - Generate Refine and Generate Plan keep their tooltips once requirements exist (the validator was wiping them). 1906 -> 1907 - .workflow/house-tooltips.md
+2026-10-30 - house-tooltips (update) - every dropdown option in Node Configuration explains itself on hover (model, effort, depth, strategy, source, output format, writing style), plus the tool chips, the branching options, the palette node types, and the review-loop menu items; the tooltip ignores the mouse. 1897 -> 1906 - .workflow/house-tooltips.md
 2026-10-30 - house-tooltips (update) - every role in the Agent Type dropdowns explains itself on hover (option tips, trigger tip follows the choice, agent preset form too); Tester and Verifier descriptions sharpened. 1893 -> 1897 - .workflow/house-tooltips.md
 2026-10-30 - rendered-text-fields - text fields show rendered markdown while idle and raw markdown while focused (click-to-edit); the textarea stays the value; the expand modal and Preview full prompt render the same way. 1879 -> 1893 - .workflow/rendered-text-fields.md
 2026-10-29 - step-depth (update) - the Standard depth label drops 'as today', the Exhaustive label drops its runner parenthetical, and the Depth label gains a tooltip carrying the runner fact. No logic change - .workflow/step-depth.md

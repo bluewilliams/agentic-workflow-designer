@@ -671,7 +671,7 @@ svg.canvas{width:100%;height:100%;display:block}
       <div class="custom-select-options" id="defaultModelOptions"></div>
     </div>
 
-    <div class="sub-head" style="margin-top:14px" title="Reasoning depth and token spend new nodes start with. Override any step in Node Configuration. Leave on Inherit to use whatever the runner defaults to (high on the API, xhigh in Claude Code).">Effort</div>
+    <div class="sub-head" style="margin-top:14px" title="Reasoning depth and token spend new nodes start with. Override any step in Node Configuration. Leave on Inherit to use the runner's default (High through the API, Extra high in an interactive coding session).">Effort</div>
     <div class="custom-select" id="effortSelect">
       <div class="custom-select-trigger" id="effortTrigger">Inherit (runner default)</div>
       <div class="custom-select-options" id="effortOptions"></div>
@@ -1766,7 +1766,7 @@ const DEPTH_LEVELS = ['exhaustive'];
 const DEPTH_OPTION_LABELS = { exhaustive: 'Exhaustive - orchestrated fan-out inside this step (costly; still one handoff)' };
 const DEPTH_OPTION_TIPS = {
   '': 'One pass: the step runs as a single agent and hands back once. The shipped behavior.',
-  exhaustive: 'The runner fans this one step out into coordinated sub-tasks (decompose, fan out, verify adversarially) before handing back once. Costly. Takes effect only in Claude Code, where the prompt carries its opt-in word; elsewhere the step runs as Standard.'
+  exhaustive: 'The runner fans this one step out into coordinated sub-tasks (decompose, fan out, verify adversarially) before handing back once. Costly. Takes effect only in a runner with an orchestration tool, where the prompt carries its opt-in word; elsewhere the step runs as Standard.'
 };
 // Claude Code's opt-in word for its orchestration tool. A pasted prompt IS the user's message,
 // so carrying the word is a real opt-in, and the step block's explicit ask is the other one.
@@ -3522,11 +3522,11 @@ function modelOptionTip(m) {
   return parts.join(' ');
 }
 const EFFORT_OPTION_TIPS = {
-  '': 'No level set: the runner decides (high on the API, Extra high in Claude Code).',
+  '': 'No level set: the runner\'s default applies (High through the API, Extra high in an interactive coding session).',
   low: 'The least reasoning: fastest and cheapest; trivial, mechanical steps.',
   medium: 'Light reasoning for routine work.',
   high: 'Solid reasoning for most steps; the API default.',
-  xhigh: 'Deeper reasoning for hard problems; the Claude Code default; more tokens and time.',
+  xhigh: 'Deeper reasoning for hard problems; the interactive coding session default; more tokens and time.',
   max: 'The most reasoning the model offers: the hardest planning or review steps only; slowest and costliest.'
 };
 function effortOptionTip(v) { return EFFORT_OPTION_TIPS[v] || ''; }
@@ -3543,6 +3543,20 @@ const FORMAT_TIPS = {
   pr: 'The run commits on a branch, pushes it, and opens a pull request against the target branch with a filled description.',
   report: 'The deliverable is a written report (findings, analysis, recommendations with evidence); nothing is committed.',
   docs: 'The deliverable is documentation for the change, written so the next reader can use and maintain it; nothing is committed.'
+};
+// What each tool is, plus the doctrine every chip carries: a selection is a suggestion, never a restriction.
+const TOOL_DOCTRINE = 'Suggestion only: selecting signals intent, and leaving it out never forbids it.';
+const TOOL_TIPS = {
+  Read: 'Read files.', Write: 'Create or overwrite files.', Edit: 'Make exact in-place edits to a file.',
+  Bash: 'Run shell commands: tests, builds, git, scripts.', Grep: 'Search file contents by pattern.', Glob: 'Find files by name pattern.',
+  WebSearch: 'Search the web.', WebFetch: 'Fetch and read a URL.', Task: 'Spawn sub-agents for delegated work.',
+  LSP: 'Ask the language server: symbols, definitions, references, call hierarchy.'
+};
+function toolTip(t) { return (TOOL_TIPS[t] ? TOOL_TIPS[t] + ' ' : '') + TOOL_DOCTRINE; }
+const BRANCHING_TIPS = {
+  single: 'One branch for the whole workflow, named in the Branch Name field, delivered as one commit set or one pull request against the target.',
+  story: 'The planning step discovers the work items at run time (an epic\'s child stories through the Atlassian MCP, the pieces a requirements document lists, or self-contained slices it derives and shows for correction) and opens one branch and one pull request per item, named from the branch pattern.',
+  chunk: 'Work items grouped so that each branch leaves every repository working; one branch and one pull request per chunk, fewer and larger than per work item.'
 };
 const SOURCE_TIPS = {
   freeform: 'Taken as written: no framing is added to the prompt.',
@@ -6560,7 +6574,7 @@ function updateConfig() {
     H[H.length] = configSelect('Depth', 'depth', node.config.depth || '',
       [{ value: '', label: 'Standard (default) - one pass', tip: DEPTH_OPTION_TIPS[''] }]
         .concat(DEPTH_LEVELS.map(l => ({ value: l, label: DEPTH_OPTION_LABELS[l] || l, tip: DEPTH_OPTION_TIPS[l] || '' }))),
-      'How much orchestration one step may do. Standard runs the step as one pass. Exhaustive asks the runner to fan the step out into coordinated sub-tasks before handing back: costlier, and it only takes effect in Claude Code (the prompt carries its opt-in word); elsewhere the step runs as Standard.');
+      'How much orchestration one step may do. Standard runs the step as one pass. Exhaustive asks the runner to fan the step out into coordinated sub-tasks before handing back: costlier, and it only takes effect in a runner with an orchestration tool (the prompt carries its opt-in word); elsewhere the step runs as Standard.');
     // Defect posture: two knobs, two homes. The coder family tunes fix-vs-record; the
     // reviewer tunes flag-back intensity (spot-and-report to the orchestrator, never fix,
     // never gate-failing). Testers/verifiers carry the balanced protocol without a knob.
@@ -6840,6 +6854,7 @@ function updateConfig() {
         const tag = document.createElement('span');
         tag.className = 'tool-tag' + (node.config.tools.includes(tool) ? ' active' : '');
         tag.textContent = tool;
+        tag.title = toolTip(tool);
         tag.onclick = () => {
           const idx = node.config.tools.indexOf(tool);
           if (idx >= 0) node.config.tools.splice(idx, 1);
@@ -6865,9 +6880,9 @@ function deliveryFieldsHtml(cfg, mode) {
     'What a code Output node delivers while its Format is left on Default. Every new workflow and preset starts here; an Output node overrides it for one workflow by picking its own Format. Report and Documentation are chosen on the node, never here.');
   if (fmt === 'pr' || fmt === 'commit') {
     H[H.length] = configSelect('Branching', 'branching', br, [
-      { value: 'single', label: mode === 'default' ? 'Single branch - one branch per workflow, named on the Output node' : 'Single branch - one branch, named in the Branch Name field' },
-      { value: 'story', label: 'Per work item - one branch per story, task, or requirement slice, planned at run time' },
-      { value: 'chunk', label: 'Per logical chunk - work items grouped so each branch leaves every repo working' }],
+      { value: 'single', label: mode === 'default' ? 'Single branch - one branch per workflow, named on the Output node' : 'Single branch - one branch, named in the Branch Name field', tip: BRANCHING_TIPS.single },
+      { value: 'story', label: 'Per work item - one branch per story, task, or requirement slice, planned at run time', tip: BRANCHING_TIPS.story },
+      { value: 'chunk', label: 'Per logical chunk - work items grouped so each branch leaves every repo working', tip: BRANCHING_TIPS.chunk }],
       'How large work maps onto branches: an epic, or a long requirements document. Single branch uses the Branch Name field. Per work item and Per logical chunk never take names: the planning step discovers the work items (an epic\'s stories through the Atlassian MCP, or the pieces of the requirements) and each repository\'s own branch convention (a new repository borrows from its nearest sibling), writes the branch plan, and the director sees it before any branch exists (at the plan gate when Approve plan before build is on). A builder creates its unit\'s branch from its base when it starts; only this delivery pushes.' + (mode === 'node' && cfg.branchName && br !== 'single' ? ' The Branch Name entered for Single branch (' + cfg.branchName + ') is kept and plays no part under a strategy.' : ''));
     if (br === 'single') {
       if (mode === 'node') H[H.length] = configInput('Branch Name', 'branchName', cfg.branchName || '', 'text', 'e.g. feature/PRJ-6069-profile-redesign');
@@ -7990,7 +8005,7 @@ function openAgentForm(id, node) {
 // Render the tool toggle-chips into the form (shared by openAgentForm and the type-change handler).
 function renderAgentFormTools(tools) {
   const el = $('customAgentTools'); if (!el) return;
-  el.innerHTML = ALL_TOOLS.map(t => '<button type="button" class="tool-tag' + ((tools || []).includes(t) ? ' active' : '') + '" title="Suggests this tool to the agent - suggestions only: selecting signals intent, and leaving one out never forbids it" onclick="this.classList.toggle(\'active\')">' + t + '</button>').join('');
+  el.innerHTML = ALL_TOOLS.map(t => '<button type="button" class="tool-tag' + ((tools || []).includes(t) ? ' active' : '') + '" title="' + escHtml(toolTip(t)) + '" onclick="this.classList.toggle(\'active\')">' + t + '</button>').join('');
 }
 // Form Agent Type change: mirror the node panel - fill a blank prompt from the role template, and for
 // 'writer' swap the tools to that style's defaults. Operates on the LIVE form state so typed edits stick.
@@ -8804,10 +8819,17 @@ function validateStoryInput(fromUser) {
   }
   // Refine and Plan both just need SOME requirements (they work with a Jira URL too, unlike Auto Workflow
   // which keyword-picks and needs prose). Gate both on empty only, with a why-disabled tooltip.
-  const ref = $('refineBtn');
-  if (ref) { ref.disabled = empty; ref.title = empty ? 'Paste requirements or a Jira URL first' : ''; }
-  const plan = $('planBtn');
-  if (plan) { plan.disabled = empty; plan.title = empty ? 'Paste requirements or a Jira URL first' : ''; }
+  // The button keeps its own tooltip (what the prompt does) while enabled; the why-disabled line
+  // replaces it only while empty. The markup title is remembered on first run because the house
+  // tooltip delegate moves a hovered title into data-tip.
+  const gate = (btn) => {
+    if (!btn) return;
+    if (btn.dataset.readyTip === undefined) btn.dataset.readyTip = btn.getAttribute('title') || btn.getAttribute('data-tip') || '';
+    btn.disabled = empty;
+    btn.setAttribute('title', empty ? 'Paste requirements or a Jira URL first' : btn.dataset.readyTip);
+    btn.removeAttribute('data-tip');
+  };
+  gate($('refineBtn')); gate($('planBtn'));
   // For a bare ticket URL, surface the workflow-type picker immediately (Generate is the wrong tool here).
   // Show only on a real input event (fromUser): the picker reacts to the ACT of pasting a URL, not the
   // state of the text - the startup revalidate of a restored session must never reopen it.
