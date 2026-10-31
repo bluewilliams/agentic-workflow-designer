@@ -18167,6 +18167,42 @@ describe('Route back to: every gate with a No edge offers it, however the gate w
     });
     expect(gates > 15).toBe(true);
   });
+  it('should relabel a gate\'s edges when its Yes or No label is renamed in the panel, so the branch keeps its meaning', () => {
+    resetState();
+    win.loadPreset('feature');
+    const gate = win.state.nodes.find(n => n.type === 'decision' && /review passed/i.test(n.label));
+    win.selectNode(gate.id); win.updateConfig();
+    const noEdgeBefore = win.state.connections.find(c => c.from === gate.id && c.label === gate.config.noLabel);
+    const yesEdgeBefore = win.state.connections.find(c => c.from === gate.id && c.label === gate.config.yesLabel);
+    const before = win.genWorkflow();
+    const noInput = win.document.querySelector('#configFields input[data-key="noLabel"]');
+    noInput.value = 'Retry'; noInput.dispatchEvent(new win.Event('input', { bubbles: true }));
+    expect(gate.config.noLabel).toBe('Retry');
+    expect(noEdgeBefore.label).toBe('Retry');                       // the edge followed the rename
+    expect(yesEdgeBefore.label).toBe(gate.config.yesLabel);         // the other branch untouched
+    expect(!!routeSelect()).toBe(true);                             // the dropdown is still there
+    expect(win.document.querySelector('#configFields .config-select[data-key="reviewLoopBackTo"]').closest('.config-field').querySelector('label').textContent).toContain('"Retry"');
+    const after = win.genWorkflow();
+    expect(after.indexOf('Retry') !== -1).toBe(true);
+    expect(after.replace(/Retry/g, 'Revise')).toBe(before);         // the only difference in the prompt is the word itself: the branch structure survived
+    const yesInput = win.document.querySelector('#configFields input[data-key="yesLabel"]');
+    yesInput.value = 'Ship it'; yesInput.dispatchEvent(new win.Event('input', { bubbles: true }));
+    expect(yesEdgeBefore.label).toBe('Ship it');
+  });
+  it('should describe each route-back option by what kind of step it is', () => {
+    resetState();
+    win.loadPreset('feature');
+    const gate = win.state.nodes.find(n => n.type === 'decision' && /review passed/i.test(n.label));
+    win.selectNode(gate.id); win.updateConfig();
+    const opts = Array.from(routeSelect().querySelectorAll('.custom-select-option'));
+    opts.forEach(o => {
+      const n = win.state.nodes.find(x => x.id === o.dataset.value);
+      const tip = o.getAttribute('title');
+      if (n.type === 'parallel') expect(tip).toContain('re-runs the whole section');
+      else if (n.type === 'task') expect(tip).toContain('Task step');
+      else expect(tip).toContain('Agent step (' + win.getAgentTypeName(n.config.agentType) + ')');
+    });
+  });
   it('should offer nothing on a decision that has no No edge yet', () => {
     resetState();
     win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });

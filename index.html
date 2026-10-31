@@ -6627,7 +6627,10 @@ function updateConfig() {
       if (currentTarget !== undefined) {
         const candidates = state.nodes   // a fork is a valid target too: looping back to it re-runs the whole parallel section
           .filter(n => (n.type === 'agent' || n.type === 'task' || n.type === 'parallel') && !(n.config && isReviewRole(n.config.agentType)))
-          .map(n => ({ value: n.id, label: escHtml(n.label || '') }));
+          .map(n => ({ value: n.id, label: escHtml(n.label || ''), tip:
+            n.type === 'parallel' ? 'Parallel fork: looping back here re-runs the whole section between the fork and its join.'
+            : n.type === 'task' ? 'Task step: the work returns here with the gate\'s findings.'
+            : 'Agent step (' + getAgentTypeName(n.config && n.config.agentType) + '): the work returns here with the gate\'s findings.' }));
         if (candidates.length) {
           H[H.length] = configSelect(`On "${escHtml(noLabel)}", route back to`, 'reviewLoopBackTo', currentTarget, candidates,
             'The step that receives the work when this gate says no. Re-points the gate\'s No edge; only non-review steps are offered, so a loop never sends work to another reviewer.');
@@ -6705,7 +6708,21 @@ function updateConfig() {
       const key = el.dataset.key;
       const val = el.type === 'number' ? parseInt(el.value) || 0 : el.value;
       if (key === 'label') node.label = val;
-      else node.config[key] = val;
+      else {
+        // A gate's branches are found by their edge labels, so renaming the Yes or No label
+        // relabels the edges that carried the old name; otherwise the edge keeps the old word,
+        // the emitter stops seeing the branch, and the route-back dropdown disappears.
+        if (node.type === 'decision' && (key === 'yesLabel' || key === 'noLabel')) {
+          const oldLabel = node.config[key];
+          if (oldLabel && val && oldLabel !== val) state.connections.forEach(c => { if (c.from === node.id && c.label === oldLabel) c.label = val; });
+          if (key === 'noLabel') {   // the route-back caption quotes the No label; the panel is not rebuilt per keystroke, so refresh it in place
+            const routeField = fields.querySelector('.config-select[data-key="reviewLoopBackTo"]');
+            const caption = routeField && routeField.closest('.config-field') && routeField.closest('.config-field').querySelector('label');
+            if (caption) caption.textContent = 'On "' + (val || 'No') + '", route back to';
+          }
+        }
+        node.config[key] = val;
+      }
       // Re-bake research agent prompts when the option slot or bias changes.
       if ((key === 'options' || key === 'evaluationBias') && node.type === 'parallel' && node.config.researchMode) {
         applyResearchMode(node, node.config.researchMode);
