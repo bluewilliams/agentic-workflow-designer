@@ -93,3 +93,7 @@ Workflow: direct implementation by the orchestrator (mostly assembly onto the ex
 ## Links
 
 Work item: .workflow/_backlog.md item 7 (follow-on). Branch: TBD. PR: TBD.
+
+## History
+
+- 2026-10-30: the route-back dropdown keys on the gate's No edge, not on the review-loop marker (director found it on Plan sound? and missing on the Feature preset's Review Passed?, a preset gate placed by hand; most preset gates were that shape). Any gate with a No edge now offers it; the setter requires only a decision with a No edge; forks join the candidates because looping back to one re-runs the parallel section (one preset does exactly that and showed a raw node id before); a label tooltip says what the dropdown does. Three tests, one walking every preset. 1907 -> 1911 (by direct session)

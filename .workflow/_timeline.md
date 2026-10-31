@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-10-30 - verifier-and-review-loop-family (update) - the route-back dropdown shows on every gate with a No edge (preset gates included), forks are valid targets, label tooltip. 1907 -> 1911 - .workflow/verifier-and-review-loop-family.md
 2026-10-30 - house-tooltips (fix) - Generate Refine and Generate Plan keep their tooltips once requirements exist (the validator was wiping them). 1906 -> 1907 - .workflow/house-tooltips.md
 2026-10-30 - house-tooltips (update) - every dropdown option in Node Configuration explains itself on hover (model, effort, depth, strategy, source, output format, writing style), plus the tool chips, the branching options, the palette node types, and the review-loop menu items; the tooltip ignores the mouse. 1897 -> 1906 - .workflow/house-tooltips.md
 2026-10-30 - house-tooltips (update) - every role in the Agent Type dropdowns explains itself on hover (option tips, trigger tip follows the choice, agent preset form too); Tester and Verifier descriptions sharpened. 1893 -> 1897 - .workflow/house-tooltips.md

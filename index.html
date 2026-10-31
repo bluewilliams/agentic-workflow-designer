@@ -6499,8 +6499,8 @@ function detachReviewLoop(targetId) {
 // so this just moves that one edge and re-renders. Undoable.
 function setReviewLoopBackTarget(decisionId, targetNodeId) {
   const decision = state.nodes.find(n => n.id === decisionId);
-  if (!decision || decision.config.reviewLoopDecisionFor === undefined) return;
-  const edge = state.connections.find(c => c.from === decisionId && c.label === decision.config.noLabel);
+  if (!decision || decision.type !== 'decision') return;
+  const edge = state.connections.find(c => c.from === decisionId && c.label === (decision.config.noLabel || 'No'));
   if (!edge || edge.to === targetNodeId) return;
   if (decisionId === targetNodeId) return; // never a self-loop
   pushUndo();
@@ -6617,15 +6617,21 @@ function updateConfig() {
     // failure branch back to a different node - e.g. loop a Verifier's "Not verified"
     // back to the Planner. The candidate list is the work nodes; review nodes are not
     // valid fix targets. Selecting one re-points the back-edge and redraws it live.
-    if (node.config.reviewLoopDecisionFor !== undefined) {
+    // Where the No verdict sends the work. Keyed on the gate's No edge, not on how the gate was
+    // made: a preset gate placed by hand and a gate a review loop created are the same thing
+    // to the user, and both get the dropdown.
+    {
       const noLabel = node.config.noLabel || 'No';
       const backEdge = state.connections.find(c => c.from === node.id && c.label === noLabel);
       const currentTarget = backEdge ? backEdge.to : node.config.reviewLoopDecisionFor;
-      const candidates = state.nodes
-        .filter(n => (n.type === 'agent' || n.type === 'task') && !(n.config && isReviewRole(n.config.agentType)))
-        .map(n => ({ value: n.id, label: escHtml(n.label || '') }));
-      if (candidates.length) {
-        H[H.length] = configSelect(`On "${escHtml(noLabel)}", route back to`, 'reviewLoopBackTo', currentTarget, candidates);
+      if (currentTarget !== undefined) {
+        const candidates = state.nodes   // a fork is a valid target too: looping back to it re-runs the whole parallel section
+          .filter(n => (n.type === 'agent' || n.type === 'task' || n.type === 'parallel') && !(n.config && isReviewRole(n.config.agentType)))
+          .map(n => ({ value: n.id, label: escHtml(n.label || '') }));
+        if (candidates.length) {
+          H[H.length] = configSelect(`On "${escHtml(noLabel)}", route back to`, 'reviewLoopBackTo', currentTarget, candidates,
+            'The step that receives the work when this gate says no. Re-points the gate\'s No edge; only non-review steps are offered, so a loop never sends work to another reviewer.');
+        }
       }
     }
   } else if (node.type === 'parallel') {

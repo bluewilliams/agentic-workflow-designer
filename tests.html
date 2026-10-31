@@ -18127,6 +18127,62 @@ describe('Generate Refine and Generate Plan keep their tooltips once requirement
   });
 });
 
+describe('Route back to: every gate with a No edge offers it, however the gate was made', () => {
+  function routeSelect() { return win.document.querySelector('#configFields .config-select[data-key="reviewLoopBackTo"]'); }
+  it('should offer the dropdown on a preset gate that no review loop created, and re-point its No edge', () => {
+    resetState();
+    win.loadPreset('feature');
+    const gate = win.state.nodes.find(n => n.type === 'decision' && /review passed/i.test(n.label));
+    expect(gate.config.reviewLoopDecisionFor).toBe(undefined);   // the shape that was hiding the control
+    win.selectNode(gate.id); win.updateConfig();
+    const cs = routeSelect();
+    expect(!!cs).toBe(true);
+    const noLabel = gate.config.noLabel;
+    const before = win.state.connections.find(c => c.from === gate.id && c.label === noLabel);
+    expect(cs.querySelector('.custom-select-trigger').textContent).toBe(win.state.nodes.find(n => n.id === before.to).label);
+    const planner = win.state.nodes.find(n => n.type === 'agent' && /plan/i.test(n.label));
+    cs.querySelector('.custom-select-option[data-value="' + planner.id + '"]').click();
+    const after = win.state.connections.find(c => c.from === gate.id && c.label === noLabel);
+    expect(after.to).toBe(planner.id);
+    expect(win.state.connections.filter(c => c.from === gate.id && c.label === noLabel).length).toBe(1);
+    const offered = Array.from(routeSelect().querySelectorAll('.custom-select-option')).map(o => win.state.nodes.find(n => n.id === o.dataset.value));
+    expect(offered.length > 0).toBe(true);
+    offered.forEach(n => { expect(['agent', 'task', 'parallel'].includes(n.type)).toBe(true); expect(win.isReviewRole(n.config.agentType)).toBe(false); });   // no reviewer is ever offered; a fork is a valid target
+  });
+  it('should offer the dropdown on every gate with a No edge in every preset', () => {
+    const ids = Array.from(win.document.querySelectorAll('.preset-item[data-preset]')).map(el => el.dataset.preset);
+    expect(ids.length > 10).toBe(true);
+    let gates = 0;
+    ids.forEach(id => {
+      resetState(); win.loadPreset(id);
+      win.state.nodes.filter(n => n.type === 'decision').forEach(d => {
+        const noEdge = win.state.connections.find(c => c.from === d.id && c.label === (d.config.noLabel || 'No'));
+        if (!noEdge) return;
+        gates++;
+        win.selectNode(d.id); win.updateConfig();
+        const cs = routeSelect();
+        expect(!!cs).toBe(true);
+        expect(cs.querySelector('.custom-select-trigger').textContent).toBe(win.state.nodes.find(n => n.id === noEdge.to).label);
+      });
+    });
+    expect(gates > 15).toBe(true);
+  });
+  it('should offer nothing on a decision that has no No edge yet', () => {
+    resetState();
+    win.addNode('agent', 0, 0, 'Builder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const d = win.addNode('decision', 300, 0, 'Fine?', { condition:'ok', yesLabel:'Yes', noLabel:'No', maxRevisions:3 });
+    win.selectNode(d.id); win.updateConfig();
+    expect(routeSelect()).toBe(null);
+  });
+  it('should carry a label tooltip that says what the dropdown does', () => {
+    resetState();
+    win.loadPreset('feature');
+    const gate = win.state.nodes.find(n => n.type === 'decision' && /plan sound/i.test(n.label));
+    win.selectNode(gate.id); win.updateConfig();
+    expect(routeSelect().closest('.config-field').querySelector('label').getAttribute('title')).toContain('receives the work when this gate says no');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
