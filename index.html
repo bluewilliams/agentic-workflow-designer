@@ -1140,6 +1140,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <div class="context-menu-item" id="ctxAddBranch" style="display:none" onclick="addBranchToFork()" title="Add another concurrent branch to this fork.">Add Branch</div>
   <div class="context-menu-item" id="ctxSkeptic" style="display:none" onclick="toggleReviewLoop('adversary')" title="Attach a Skeptic: a refute-first critic (read-only tools) that reviews this step's output and loops back only material defects.">Add skeptic review</div>
   <div class="context-menu-item" id="ctxVerifier" style="display:none" onclick="toggleReviewLoop('verifier')" title="Attach a Verifier: exercises the real outcome (browser, API, CLI, data) and proves it meets the objective; loops back what is not verified.">Add verification</div>
+  <div class="context-menu-item" id="ctxEval" style="display:none" onclick="togglePreRegisteredEval()" title="Add an Eval Author right after the requirements: it writes a frozen, checkable definition of done (the pre-registered eval) before any plan exists; the Verifier executes it (one is added if the workflow has none).">Add eval author</div>
   <div class="context-menu-item" onclick="disconnectNode()">Disconnect All</div>
   <div class="context-menu-item danger" onclick="deleteSelected()">Delete</div>
 </div>
@@ -1275,6 +1276,8 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Skeptic</strong> tries to <em>refute</em> the work by inspection - a role-aware adversarial critic that only sends work back for material Critical/High defects, never nitpicks.</li>
   <li><strong>Verifier</strong> <em>proves</em> the outcome meets the objective with evidence - it runs the code, calls the API, or drives a browser instead of just reading it.</li>
 </ul>
+<p><strong>Pre-registered eval.</strong> Right-click the <strong>Input</strong> node and pick <strong>Add eval author</strong>: an <strong>Eval Author</strong> lands right after the requirements and, when the workflow has no Verifier, a Verifier loop lands on the last build step. The Eval Author sees the requirements and the repository only, never a plan, and writes the eval before anyone builds: numbered criteria with the requirement each serves, its kind (automated, manual, rubric), the exact check, and the pass condition; executable checks are written as real tests that are expected to fail until the work exists. The eval is frozen with a hash and lives in the durable record (else the memory directory). The Verifier executes every criterion and reports pass, fail, or blocked with evidence, on top of its own verification; its gate fails when any criterion fails. An Eval Author without a Verifier is a validation error with a one-click fix, and the prompt tells the orchestrator to stop until it is fixed. Requirements with no executable surface get a model-graded rubric: still pre-registered and build-blind, a smaller win than on code with a test runner.</p>
+<p><strong>Using it well.</strong> Add one when the definition of done is clear and cheap to get wrong (a feature with acceptance criteria, an API, a CLI, a migration); skip it for exploration and research. It is the acceptance eval for this run's deliverable, one trial graded on outcome, not a test suite for the agent across many tasks; the pass rate across runs lands in Run Reports. The Verifier executes it the way it verifies anything: curl against a local or dev instance, a browser when the Browser MCP toggle is on, a CLI with real arguments; what the environment cannot support is reported BLOCKED with the reason, never faked. The eval never widens what a run may touch: criteria belong in environments the run owns (the working tree, an ephemeral database or container, a disposable dev instance); anything that would need a shared or production environment is a manual procedure with an exact observation or BLOCKED by design, never a destructive command. The runner's permission mode and allowlist remain the enforcement layer.</p>
 <p><strong>When to use which.</strong> Reach for a <strong>Skeptic</strong> on high-stakes or expensive-to-undo steps where a confident-but-wrong output is costly: the plan (a wrong direction is the most expensive mistake to make), security-sensitive code, or anything subtle. Reach for a <strong>Verifier</strong> on any step with a runnable outcome - a built feature, an API integration, a UI, a data migration - placed late, right before delivery.</p>
 <p><strong>Why they're powerful.</strong> They are complementary: the Skeptic catches what reasoning can see (logic, design, security), the Verifier catches what only execution reveals (it reads fine - but does it actually run?). Together they give defense in depth - doubt early, prove late - which is exactly how a careful senior engineer works. One click drops in the whole reviewer + Decision gate + back-edge that routes failures back to the step to fix, with a bounded revision count so it retries and then stops rather than spinning. It reuses the same loop machinery the presets use, so it renders correctly in every export format. Right-click again to <strong>Remove</strong> it, or use the Decision node's <strong>send-back target</strong> dropdown to re-point the failure branch to a different node. The <strong>Delivery Swarm</strong> preset shows both in one flow.</p>
 
@@ -1589,6 +1592,7 @@ const AGENT_TYPES = [
   { id: 'coder', name: 'Coder', desc: 'Writes and modifies code' },
   { id: 'debugger', name: 'Debugger', desc: 'Investigates bugs to root cause' },
   { id: 'designAnalyzer', name: 'Design Analyzer', desc: 'Distills the design system, styling conventions, and the product\'s visual identity into a brief, read-only (consumes the UI Context section; looks at the running app only when one is already running)' },
+  { id: 'evalAuthor', name: 'Eval Author', desc: 'Writes the eval before anyone plans or builds: a frozen, checkable definition of done derived from the requirements alone (the Verifier executes it; requires a Verifier)' },
   { id: 'frontend', name: 'Frontend', desc: 'UI/UX implementation specialist' },
   { id: 'general', name: 'General', desc: 'General-purpose agent' },
   { id: 'planner', name: 'Planner', desc: 'Analyzes requirements, creates implementation plans' },
@@ -1638,7 +1642,8 @@ const AGENT_TYPE_TOOL_DEFAULTS = {
   appExplorer:    ['Read', 'Grep', 'Glob', 'LSP', 'Bash'],
   designAnalyzer: ['Read', 'Grep', 'Glob', 'Bash', 'LSP'],
   adversary:  ['Read', 'Grep', 'Glob', 'LSP'],
-  verifier:   ['Read', 'Write', 'Grep', 'Glob', 'Bash', 'LSP', 'WebFetch']
+  verifier:   ['Read', 'Write', 'Grep', 'Glob', 'Bash', 'LSP', 'WebFetch'],
+  evalAuthor: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LSP']
 };
 // The default tool set a node of this type/style starts from (always copy before assigning).
 function agentTypeToolDefaults(type, writingStyle) {
@@ -2418,6 +2423,7 @@ function runReportDirective() {
   if (state.consumeRecords) r.push('- Include `grounded`: an array of the record slugs that actually informed this run (matched at the grounding scan AND used - briefed into a step, cited in a decision, or re-verified); matched-and-used OpenSpec docs ride the same array as `openspec:<capability>` entries, so they never collide with record slugs. Omit the field entirely when nothing was used; never list a document that merely appeared in a listing.');
   if (hasVerifyMandates()) r.push('- Include `blockedVerifications` only when a REQUIRED verification mandate could not be executed: an array of short strings, each naming the check and why it could not run. Omit the field when every required check ran; never invent entries.');
   r.push('- One `gates` entry per decision gate: the revise `cycles` actually used and the `final` verdict.');
+  if (hasEvalAuthor()) r.push('- Include `eval`: the executing step\'s per-criterion results as counts - `{"criteria": N, "passed": N, "failed": N, "blocked": N}` - copied from its results, never estimated; omit the field only when the eval was never executed (and say why in `notes`).');
   r.push('- ALSO append the exact same fence to `~/.awd/run-reports.md`, creating the directory and file if missing - that file is the workflow designer\'s telemetry drop and its canonical feed (a copy inside a durable record is archival context). If writing outside the working directory is not permitted, skip this silently; the response fence still stands.');
   r.push('- The fence is data, not prose - place it at the very end of the final response. If a memory breadcrumb comment is required, the breadcrumb stays the very last line and this fence goes immediately before it.');
   return r.join('\n');
@@ -2698,7 +2704,7 @@ function datadogStepHint(node) {
 // the hint self-gates ("Reach for whichever technique fits"). Writer stays out (docs work
 // rarely spans repo seams); DATADOG_STEP_ROLES stays narrower on purpose - plan-shaping
 // telemetry belongs to the reasoning roles, implementers inherit it via the orchestrator's brief.
-const CODE_SEARCH_STEP_ROLES = new Set(['planner', 'architect', 'researcher', 'debugger', 'coder', 'backend', 'frontend', 'general', 'reviewer', 'tester', 'adversary', 'verifier', 'analyst', 'appExplorer', 'designAnalyzer']);
+const CODE_SEARCH_STEP_ROLES = new Set(['planner', 'architect', 'researcher', 'debugger', 'coder', 'backend', 'frontend', 'general', 'reviewer', 'tester', 'adversary', 'verifier', 'analyst', 'appExplorer', 'designAnalyzer', 'evalAuthor']);
 function codeSearchStepHint(node) {
   if (!state.mcpCodeSearch) return '';
   if (!node || !node.config || !CODE_SEARCH_STEP_ROLES.has(node.config.agentType)) return '';
@@ -2732,6 +2738,108 @@ function verifyInstructionsStepHint(node) {
   return 'Verification instructions apply to this step - you are this workflow\'s OWNING verification step for the repo\'s verification mandates (one step owns them so an expensive check never runs twice). The orchestrator has routed the applicable verification mandates (files and inline notes) into your brief - work through every applicable check and report each one as executed-with-result, not-applicable-with-reason, or blocked-with-reason. These repo-mandated checks are IN ADDITION to your own verification method, not a substitute for it - execute them alongside the judgment-driven verification your role already requires; they extend the definition of done, they do not narrow it. A blocked REQUIRED verification is a gate-failing finding: surface it in your verdict line, in the durable record\'s Verify section and Verification ledger (when a record is in use), and in the awd:run fence\'s `blockedVerifications` array - never let it silently pass. These files define WHAT must be proven, not HOW; treat any tools they mention as suggestions, never restrictions.';
 }
 
+// ═══════════════════════════════════════════════════════════
+// PRE-REGISTERED EVAL (Eval Author writes it, the Verifier executes it) - REMOVABLE
+// The value of an eval is three properties: written before the build, by a role that has not
+// seen the plan, and frozen so the end check runs against what was asked. One new role writes
+// it (Eval Author, placed right after Input); the LAST Verifier in execution order executes it
+// through its gate (route-back, Max Revisions, run-report cycles). An Eval Author with no
+// Verifier is a configuration error: the validator says so with a one-click fix, and the
+// emitted preamble tells the orchestrator to stop before Step 1 - an eval nobody runs is worse
+// than none. Everything here is gated on the role's presence, so a workflow without an Eval
+// Author emits byte-identical prompts.
+// ═══════════════════════════════════════════════════════════
+const EVAL_AUTHOR_ROLE = 'evalAuthor';
+function evalAuthorNodes() { return state.nodes.filter(n => n && n.type === 'agent' && n.config && n.config.agentType === EVAL_AUTHOR_ROLE); }
+function hasEvalAuthor() { return evalAuthorNodes().length > 0; }
+// The step that executes the eval: the last Verifier in execution order, or null.
+// Reachable only: topologicalSort appends disconnected nodes, and a stray Verifier with no
+// edges must never be named as the executor (it would silence the no-executor error).
+// Memoized on the graph shape: the hints ask per node per generation.
+const _evalExecMemo = { sig: null, id: null };
+function evalExecutorId() {
+  const sig = graphShapeSig(true);
+  if (_evalExecMemo.sig === sig) return _evalExecMemo.id;
+  const v = topologicalSort().filter(n => n && n.type === 'agent' && n.config && n.config.agentType === 'verifier' && state.connections.some(c => c.to === n.id));
+  _evalExecMemo.sig = sig; _evalExecMemo.id = v.length ? v[v.length - 1].id : null;
+  return _evalExecMemo.id;
+}
+// Where the eval lives, by what the workflow keeps: the record when there is one (it travels
+// with the change and the completion gate already forbids companion documents), else the
+// memory directory, else the author's handoff carried verbatim.
+function evalArtifactLocation() {
+  if (state.durableRecord) return 'the "## Pre-registered eval" section of the durable record (`' + getArtifactPath() + '`), which you (the orchestrator, the record\'s single writer) transcribe verbatim from the Eval Author\'s handoff';
+  if (state.memoryEnabled) return '`' + getMemoryPath() + 'eval.md` (the Eval Author writes it; its own memory surface)';
+  return 'the Eval Author\'s handoff summary, which you carry verbatim into the executing step\'s brief';
+}
+// One rule for a criterion that could not be executed, shared by the preamble, the executor,
+// and the record: it follows the verification posture switch the sidebar already has.
+function evalBlockedRule() {
+  return state.verifyFailRun
+    ? 'A BLOCKED criterion (one that could not be executed here) fails the gate like a FAIL - the fail-the-run posture is on.'
+    : 'A BLOCKED criterion (one that could not be executed here) is reported with its reason and does not fail the gate - the report-only posture; turn on "Unmet required verifications fail the run" under Verification instructions to make it fail.';
+}
+// Steps that run before an Eval Author and are not the Input: they would hand it work it must not see.
+function evalAuthorUpstreamSteps(author) {
+  const seen = new Set(); const out = []; const stack = [author.id];
+  while (stack.length) {
+    const id = stack.pop();
+    state.connections.filter(c => c.to === id).forEach(c => {
+      if (seen.has(c.from)) return; seen.add(c.from);
+      const n = state.nodes.find(x => x.id === c.from);
+      if (!n) return;
+      if (n.type !== 'input') out.push(n);
+      stack.push(n.id);
+    });
+  }
+  return out;
+}
+// Workflow-level preamble: the contract the orchestrator enforces around the eval.
+function evalHint() {
+  const authors = evalAuthorNodes();
+  if (!authors.length) return null;
+  const names = authors.map(a => '"' + a.label + '"').join(', ');
+  const exec = evalExecutorId();
+  const execNode = exec ? state.nodes.find(n => n.id === exec) : null;
+  const r = [];
+  r.push('> **Pre-registered eval (configured).** This workflow carries an Eval Author step (' + names + ') that writes the eval: the frozen, checkable definition of done, derived from the requirements before any plan exists. Brief it with the requirements and repository context ONLY - never a plan, a design, a diff, or another step\'s output - and run it before any planning or build step has produced output. It writes the eval to ' + evalArtifactLocation() + ': numbered criteria, each with the requirement it serves, its kind (automated, manual, rubric), the exact check, and the pass condition. Once written the eval is FROZEN: no later step edits it, and a mismatch between the eval and what was built is reported, never resolved by rewriting the eval. Building steps may read it - it is the acceptance spec - and executable checks it wrote are expected to fail until the work exists.');
+  if (execNode) {
+    r.push('>');
+    r.push('> Execution: "' + execNode.label + '" executes every criterion at its turn and reports each as PASS, FAIL, or BLOCKED with the evidence or reason, in addition to its own verification and never instead of it; its gate verdict fails when any criterion fails. ' + evalBlockedRule() + ' Its brief carries the eval itself (the section, file, or handoff text), never the Eval Author\'s reasoning; its per-criterion results come back in its handoff, and the record\'s single writer appends them under the eval.');
+  } else {
+    r.push('>');
+    r.push('> **Configuration error: no Verifier executes this eval.** Stop before Step 1 and tell the director: add a Verifier (right-click the final build step, Add verification) or remove the Eval Author. An eval nobody runs is worse than none - do not proceed as if the eval were optional.');
+  }
+  return r.join('\n');
+}
+// Step-level hints: the author gets its workflow-specific contract, the executor gets the eval.
+function evalStepHint(node) {
+  if (!node || !node.config || !node.id || !hasEvalAuthor()) return '';
+  if (node.config.agentType === EVAL_AUTHOR_ROLE) {
+    const exec = evalExecutorId();
+    const execNode = exec ? state.nodes.find(n => n.id === exec) : null;
+    const home = state.durableRecord
+      ? 'Return the complete eval in your handoff (the orchestrator transcribes it verbatim into the durable record\'s "## Pre-registered eval" section - you do not edit the record)'
+      : state.memoryEnabled ? 'Write the eval to `' + getMemoryPath() + 'eval.md` and return it in your handoff as well' : 'Return the complete eval in your handoff (it is carried verbatim to the executing step)';
+    return 'Pre-registered eval: you are this workflow\'s Eval Author. You are briefed with the requirements and repository context only, by design - do not seek the plan. ' + home + ', with its frozen hash line; it is executed later by ' + (execNode ? '"' + execNode.label + '"' : 'the Verifier') + ', so every automated check must name the exact command and every manual check the exact observation. Executable checks you write are expected to fail now; confirm they run, never that they pass.';
+  }
+  if (node.id === evalExecutorId()) {
+    const author = evalAuthorNodes()[0];
+    const where = state.durableRecord ? 'the durable record\'s "## Pre-registered eval" section (in your brief)' : state.memoryEnabled ? '`' + getMemoryPath() + 'eval.md`' : 'your brief';
+    return 'Pre-registered eval: you are this workflow\'s eval executor. The eval written by "' + author.label + '" in ' + where + ' is authoritative: execute EVERY criterion as written (run each automated command, perform each manual procedure, judge each rubric against its stated bar) and report each as PASS, FAIL, or BLOCKED with the evidence or the reason. This is in addition to your own verification, never instead of it - the eval extends the definition of done, it does not narrow it. Never edit the eval; a criterion that no longer matches reality is reported as a FAIL with the reason. Your gate verdict is NOT VERIFIED when any criterion fails. ' + evalBlockedRule() + ' Return the per-criterion results as a table in your handoff' + (state.durableRecord ? ' (the orchestrator appends them under the eval in the record as a dated "Eval results" block; you do not edit the record)' : '') + '.';
+  }
+  return '';
+}
+// The build step a Verifier should wrap when the one-click adds one: the last build-role agent
+// in execution order that can take a loop, else the last loop-free agent of any role.
+function lastBuildStepId() {
+  const ordered = topologicalSort().filter(n => n && n.type === 'agent' && n.config && n.config.agentType !== EVAL_AUTHOR_ROLE && canAttachReviewLoop(n) && !hasReviewLoop(n.id));
+  const build = ordered.filter(n => APPROVAL_BUILD_ROLES.has(n.config.agentType));
+  const pick = build.length ? build[build.length - 1] : (ordered.length ? ordered[ordered.length - 1] : null);
+  return pick ? pick.id : null;
+}
+// ═══ end PRE-REGISTERED EVAL machinery ═══
+
 // Maps agentType to a PROMPTS key for fallback when user leaves prompt blank
 const AGENT_TYPE_PROMPT_MAP = {
   planner: 'planner', architect: 'architect', coder: 'implementer',
@@ -2739,7 +2847,7 @@ const AGENT_TYPE_PROMPT_MAP = {
   tester: 'tester', debugger: 'investigator', researcher: 'researcher',
   writer: 'writerTechnical', general: 'general', analyst: 'analysisSynthesizer',
   appExplorer: 'appExplorer', designAnalyzer: 'designSystemAnalyzer',
-  adversary: 'adversary', verifier: 'verifier'
+  adversary: 'adversary', verifier: 'verifier', evalAuthor: 'evalAuthor'
 };
 
 // Returns a quality prompt for any node - user prompt > agentType template > smart fallback
@@ -2829,6 +2937,7 @@ const ADVERSARY_LENS_BY_ROLE = {
   coder: 'implementer', frontend: 'implementer', backend: 'implementer', debugger: 'implementer',
   researcher: 'researcher', tester: 'tester', writer: 'writer', analyst: 'analysis',
   appExplorer: 'researcher', designAnalyzer: 'researcher',
+  evalAuthor: 'tester',
   reviewer: 'review'
 };
 // Builds the full critic prompt for a reviewed role: shared core + the matching lens.
@@ -2880,6 +2989,8 @@ const PROMPTS = {
   adversary: buildAdversaryPrompt(null),
 
   // --- Verification (prove the outcome meets the objective, with evidence) ---
+  evalAuthor: 'You are an eval author. Before anyone plans or builds, write the eval: the frozen, checkable definition of what "done" means for this work, derived from the requirements alone.\n\n**Independence is the point.** You receive the requirements and repository context and nothing else - no plan, no design, no diff. If a plan or implementation detail reaches you anyway, ignore it: an eval that mirrors the plan only proves the plan was followed, not that the requirement was met. You write criteria; you do not design the solution and you do not prejudge how it is built.\n\n**What a good criterion is.** One observable behavior, falsifiable, with a pass condition a stranger could apply: a specific input or action, the expected result, and the exact way to check it. Pass or fail only - no partial credit. "Works correctly" is not a criterion; "POST /orders with an empty cart returns 400 and the body names the cart" is. If you cannot say what observation would make a criterion fail, it is not a criterion.\n\n**Coverage.** Walk the requirements line by line and write at least one criterion for every acceptance criterion, every stated constraint that can be checked (a performance budget, a security rule, compatibility, data integrity), the boundaries and error paths the requirements imply (empty, zero, one, many, maximum, malformed, unauthorized, concurrent), and every "must not" - the non-goals and the regressions the work must leave untouched. Tag each criterion with the requirement line it serves so coverage is auditable. Where a requirement is ambiguous, do not guess: write the criterion as the requirement reads today, mark it "needs a decision", and name the question in your handoff.\n\n**Prefer executable checks.** Discover the project\'s test runner and conventions first (the most recently modified test files and how they run). Where the surface allows, write each check as a real test in those conventions, named so it is recognizable as the eval (an "eval" tag in the file name or the describe block), and record the exact command that runs it. These tests are expected to FAIL until the work exists - that is correct; do not make them pass. Where execution is impossible (a UI flow with no automation, a document, an operational outcome), write a precise manual procedure: the steps, the exact observation that means pass, and the one that means fail. Kinds: automated (a command with an expected exit code or output), manual (a procedure with an expected observation), rubric (a judgment with a stated bar - the last resort, and say why).\n\n**Method:**\n1. Read the requirements completely; list every acceptance criterion, constraint, and non-goal you can find.\n2. Explore the repository only as far as needed to make checks runnable: the test runner, how tests are named and placed, the entry points the requirements touch (documentSymbol and findReferences locate them). Do not read any plan or in-progress branch.\n3. Write the criteria, numbered E1, E2, ... in requirement order. For each: the criterion, the requirement it serves, the kind, the exact check, and the pass condition.\n4. Write the executable checks as test files where possible, run the command once to confirm it executes (failing is expected; a syntax error is not), and record the command.\n5. Write the eval to its home, freeze it (a hash line over the criteria block, computed with the shell when available, else the criteria count and the first criterion verbatim), and never touch it again.\n\nReport honestly: a criterion you could not make checkable is listed with why, never dropped; the number of criteria is whatever the requirements demand, not a quota.\n\n## Handoff Summary\nEnd your response with:\n- **Eval location**: where the eval was written, and its frozen hash\n- **Criteria**: the count by kind (automated / manual / rubric), then one line per criterion (id, kind, requirement served)\n- **Run command(s)**: the exact commands that execute the automated checks\n- **Open questions**: ambiguities turned into "needs a decision" criteria\n- **Not checkable**: anything that could not be made checkable, with why',
+
   verifier: 'You are a verifier. Prove the outcome meets its objective, with evidence. You are the escalation tier: you are summoned when the user wants the work actually RUN - deep, practical, sometimes time-consuming exercising of the real system, beyond the tester\'s automated suites.\n\n\n**Independence.** Verify the outcome against the objective, not the producer\'s claims. Do not trust "I tested this" - re-run it yourself. Do not trust a passing test you have not read - confirm it actually exercises the behavior. Assume nothing is done until you have seen it work.\n\n**1. Establish the definition of done.** Restate the objective and its acceptance criteria in concrete, checkable terms. If specific acceptance criteria or verification steps were provided in your notes, treat them as authoritative and check each one - IN ADDITION to, never instead of, the verification your own judgment of the work demands: provided steps extend the definition of done, they do not narrow it. If none were given, derive the criteria from the requirements and state them, so there is a clear bar to verify against. Enumerate the definition of done as a CHECKLIST before exercising anything, then tick each item with its command-and-output evidence as you verify - an auditable trail that resists happy-path drift.\n\n**2. Exercise the work - match the method to what was produced:**\n- Code, a function, or a library: run the existing tests; if there are none, write a quick throwaway harness or call the code directly with representative AND boundary inputs and observe the real results. Run the build, linter, and type checker if present.\n- An API, endpoint, or service: actually call it against a local or dev instance (curl or an HTTP client). Check status codes, the response shape, and the error and edge cases - not just the happy path.\n- A web app or UI: open it in a browser with whatever browser-automation tools are available, drive the real user flow, and confirm the expected behavior and state render. Check an error or empty state too.\n- A CLI, script, or job: run it with real arguments; confirm the output, exit code, and side effects match the objective.\n- Documentation, a runbook, or a guide: follow the steps literally, in order, as a brand-new reader with no extra context would, and confirm they actually produce the stated outcome. Flag any step that is wrong, out of order, missing, or assumes something the reader does not have.\n- Data, a migration, or a transformation: reconcile counts and totals against the source, spot-check records, and confirm reversibility or idempotency where required. Look for silent data loss.\n- Config, infrastructure, or a deployment: apply it to a safe local target or dry-run it, then confirm health checks pass, the service comes up, and the setting takes effect.\n- Research, analysis, or a recommendation: independently re-derive or spot-check the key claims against the primary sources; confirm cited facts exist and say what they are claimed to, and that the conclusion follows.\n- A design, plan, or spec (nothing runnable yet): trace every requirement to the exact place the design satisfies it; confirm it is complete and internally consistent.\n\nSet up whatever local environment you need, and use every tool you have - run commands, call services, drive a browser, read files - to get real evidence. Reuse the repository\'s own test rig or harness pattern when one exists (read how its suite drives the system); build a throwaway harness when none fits; ALWAYS remove scratch artifacts before finishing.\n\n**3. Try to make it fail, do not just confirm it passes.** Push the boundaries and the empty, null, and error inputs, and the path the producer most likely did not try. A verification that only walks the happy path gives false confidence. When asserting, match the precise contract form (the parameter, the API shape, the emitted structure), never a loose substring - prose and examples legitimately contain look-alike strings.\n\n**4. The evidence ladder - degrade honestly, never fake a pass:**\n- Best: execute it and show the real evidence (the command and its output, the actual response, what the UI did, the steps you followed).\n- Running the WHOLE system is usually unrealistic (missing integrations, credentials, environments - that is the normal case, not a special one; when you judge a full run achievable and the best evidence, absolutely attempt it), and limited runnability is never permission to go trace-only: exercise the largest slice you CAN - call the changed function directly, hit the one locally-runnable endpoint, render the component in isolation, or build a purpose-made harness that wires a handful of the affected classes together and integration-exercises them as a unit, stubbing the missing seams so the real local logic still executes. This is the thorough practical testing a tester does not do by default - it is why you were summoned. Practical testing of the affected areas comes first, expanding minimally beyond the changed surface when the blast radius genuinely warrants it - your judgment, stated in the report. Drop to trace-only one criterion at a time, never wholesale.\n- If you cannot execute it here, trace each acceptance criterion to concrete evidence in the artifact and say exactly how you confirmed it.\n- If something genuinely cannot be verified in this environment, say so plainly, state what evidence would settle it, and do NOT report it as verified. An honest "not verified" beats a hollow pass.\n- When turns or time run low, verify the highest-risk criteria first and report the remainder plainly as not-verified with what evidence would settle each - never compress into a hollow pass.\n\n**Safety.** Verification must be non-destructive and local. NEVER run destructive or state-changing operations to verify (DROP/DELETE/TRUNCATE, terraform apply or destroy, docker rm, rm -rf, git push, deploys, executing a migration), and never touch production or staging. Use localhost and dev only, read-only queries, and dry runs. If verifying truly requires a destructive or external action, describe the exact steps for a human to run instead.\n\n**Output contract.** End with exactly one verdict line, then the breakdown. NOT VERIFIED means an objective is genuinely unmet or could not be confirmed - not a stylistic preference.\n\nVERDICT: VERIFIED\nor\nVERDICT: NOT VERIFIED\n\n- Per objective or acceptance criterion: the method you used, the actual evidence, and pass or fail.\n- For NOT VERIFIED: each gap, exactly what failed, and the concrete change needed so the source step can fix it directly.\n- Could not verify: anything you could not check here and what evidence would settle it.\n\n**Convergence.** You are inside a fix-and-reverify loop whose cycle cap the orchestrator enforces (it tells you which cycle this is). Your verdict is always honest - never report VERIFIED while an objective is unmet, even on the last cycle; the workflow\'s cap decides whether to proceed, and your documented gaps become the record of what was accepted. On a re-verify, check only the previously failed criteria and anything the fixes could have disturbed.',
 
   // --- Review ---
@@ -5464,6 +5575,7 @@ function genDurableRecordProtocol(fmt) {
   const wfName = getName() || 'workflow';
   const hasVerifier = state.nodes.some(n => n && n.type === 'agent' && n.config && n.config.agentType === 'verifier');
   const hasLedger = hasVerifier || !!(state.verifyPaths && state.verifyPaths.length);
+  const hasEval = hasEvalAuthor();
   const p = [];
   p.push('---');
   p.push('## Durable Record (committable artifact)');
@@ -5490,6 +5602,7 @@ function genDurableRecordProtocol(fmt) {
   p.push('- **Surface area (file -> role)**: a compact map of the main files or types the change touches and what each does, including explicit out-of-scope notes, so an agent or person can navigate the change without rediscovering it. Mark it provisional until the grounding or first working step verifies it: the orchestrator should not assert confident surface-area guesses before grounding, and should label any pre-grounding map as provisional and correct it once the real files are known. Reference each file by a durable anchor - the file plus the symbol, function, type, or named section it touches - not a bare line number, which goes stale the moment the file changes; line numbers are fine in the working notes while grounding, but soften them to anchors at finalize.');
   p.push('- **Task checklist**: the actual units of work needed to deliver the change - the concrete research, coding, and testing tasks (for example "add the input validation", "implement the query filter", "write the test for the empty-result case"), written as a markdown checkbox list (`- [ ]` open, `- [x]` done), authored UP FRONT when the record is born, derived from the plan. Granularity rule: one checkbox per discrete verifiable step - the resume-unit test is "could a fresh agent resume from this box?" - not one box per file and not one blob per feature. Boxes are ticked AS each task completes during the run, never transcribed wholesale at the end; when one agent completes several tasks, tick each box individually so the record shows the true step trail. This is the work breakdown a developer would track, NOT the workflow\'s agent or step names. It still grows during the run as work reveals more tasks, so it is not frozen after planning. Where the plan assigns a task to a workflow step, end the box with the owner tag `(@{slug})` - readers and live tooling can then map each task to the step that owns it.');
   p.push('- **Verify**: the actual commands to build and test the change - EXACT and copy-paste runnable (the test command with its arguments, the specific grep, the build invocation), not a prose description of testing - and the result once they have been run (for example "all tests pass"), so any human or agent - or a CI eval - can re-run them and re-confirm the feature still holds. Mirror the same commands into the `awd:record` fence\'s `verify` array so tools can re-run them without parsing prose. Record real results, not intended ones. The FIRST step to touch this record also writes a one-time **environment capability survey** here: what verification this environment can and cannot perform (databases, dev servers, credentials, devices, network access). Downstream steps INHERIT the survey instead of rediscovering it serially - and no step may silently skip a check by assuming impossibility when the survey says otherwise.');
+  if (hasEval) p.push('- **Pre-registered eval** (include when the workflow runs an Eval Author): transcribed verbatim from the Eval Author\'s handoff before any plan exists and FROZEN from then on - a `Frozen:` hash line over the criteria, then the numbered criteria (id, requirement served, kind, exact check, pass condition). No step edits this section afterwards; when the executing Verifier hands off its results, append an **Eval results** subsection under it (one line per criterion: PASS, FAIL, or BLOCKED with the evidence or reason, dated per run; a re-run appends a new dated block, never rewrites). A mismatch between the eval and what was built is recorded as a FAIL with the reason, never resolved by editing the criteria. ' + evalBlockedRule());
   if (hasLedger) p.push('- **Verification ledger** (include when the workflow runs a verifier, and whenever repo verification mandates are configured): one checkbox per verification act actually performed - the method and target plus the result reference (suite runs, harnesses built and removed, UI flows driven, external mandates executed) - ticked as performed, append-and-tick only. Every repo-mandated (verification-instructions) check lands here with its executed / not-applicable / blocked status: a blocked required check is an UNTICKED box with its reason, visible forever. A re-run of the same act by a later step annotates the existing line ("re-confirmed by X"), never duplicates it. The orchestrator transcribes ledger lines from step handoffs (no write races).');
   p.push('- **Risks / trade-offs** (include only if any exist): forward-looking risks or trade-offs the change carries, each with how it is mitigated or why it is acceptable to live with. Distinct from Gotchas - a gotcha is a fact already discovered, a risk is something a maintainer should keep watching. Omit the section entirely when there are none.');
   p.push('- **Gotchas / non-obvious** (include only if any exist): subtle behaviors, contract quirks, or edge decisions a future maintainer would otherwise trip on. Omit the section entirely when there are none.');
@@ -5537,7 +5650,7 @@ function genDurableRecordProtocol(fmt) {
   if (state.openSpecArtifacts) p.push('- (d2) **OpenSpec artifacts (enabled for this run - FAITHFUL, team-committable)**: this run also leaves first-class OpenSpec artifacts, indistinguishable from OpenSpec-native work, for teams whose repos commit `openspec/` and not `.workflow/`. Never stamp them as generated and never point them at the record - they stand on their own, hand-edits to them are team truth, and future runs (ours and OpenSpec\'s) ground on them as normal OpenSpec documents. The change under `openspec/changes/{change-slug}/` was created at kickoff and kept current during the run (see the kickoff step); its spec deltas are written the way this repository\'s other changes express them (existing `openspec/` files ALWAYS outrank the shapes described here). NOW, AT FINALIZE, two halves - BOTH mandatory, spec first, and finalize is incomplete until both are done: (1) APPLY the change to `openspec/specs/{capability-slug}/spec.md` as DELTAS - modify ONLY the `### Requirement:` sections (with their `#### Scenario:` Given/When/Then blocks) your change touches, preserving every other line of an existing spec verbatim (a finalize merges into team-owned specs, it never rewrites them); when NO spec file exists yet (greenfield), CREATE `openspec/specs/{capability-slug}/spec.md` with a `## Purpose` line and the full `## Requirements` this change delivers - the spec directory is the capability\'s current truth and this change just created the capability. (2) THEN archive the change exactly the way this repository archives changes (openspec\'s convention moves it under the changes archive with a date prefix). The `openspec` CLI\'s own `archive` command performs the spec-apply itself - prefer it when available, and treat a validation failure as a completion-gate failure; a MANUAL archive must do BOTH halves explicitly. Moving the change to the archive without updating `openspec/specs/` leaves the capability\'s truth trapped in the archive - that is drift, not delivery, and an OpenSpec teammate reading `specs/` would see nothing shipped. Decisions with rejected alternatives, verify evidence, the owner-tagged checklist, and history remain in the record; the OpenSpec artifacts carry what OpenSpec carries. Multi-repo: the full lifecycle runs in each repository whose record you wrote.');
   p.push('- (e) Make it the best durable artifact - fill the gaps a cold reader would hit: add any Success criterion, assumption, Risk, follow-up, or navigational aid the work revealed but no single step recorded, and strengthen the Why or a decision\'s rationale if it is thinner than a future maintainer would need. Adding durable context here is as valid as removing transcript noise.');
   p.push('- (f) BEFORE stripping, sweep the sections you are about to remove for stranded durable content - manual verification procedures, decisions, gotchas that an agent parked in Resume / handoff - and MOVE each to its durable home (procedures for unrun checks into Verify, with their cross-references updated), because stripping deletes whatever remains. Then strip the in-progress scaffolding (the "Current state / next action" line and the "Resume / handoff" section) and compress the transcript accretion - distilling rather than deleting anything that tells a future reader why a choice was made or shows the work was independently checked. The committed artifact is the requirements (with verifying tests), the approach and decisions, the completed checklist, the Verify results, and the outcome. In short, the orchestrator compresses Verify and Gotchas from running commentary into the durable facts: collapse a verbose per-agent verdict to a single durable line - that an independent review or verification ran, and what it confirmed or changed - rather than dropping it (the fact the work was adversarially checked is durable signal, not noise); collapse duplicate scan-line restatements to one line each; soften line-number references to durable anchors (the symbol, function, or section name, which does not rot as the file changes); distill any transient implementation scaffolding (paste-ready strings, a pre-implementation test plan, step-by-step working notes) into the durable section it belongs in - the file map into Surface area, the decisions into Approach, the realized tests into Verify - and drop whatever the committed code now carries verbatim, so no paste-ready working scaffolding survives; and keep the final facts plus the Built-with provenance line. Compress the transcript accretion, not the reasoning: the committed record must still read like an authored spec (as clean and complete as an OpenSpec or spec-kit document), so a maintainer reading it cold can see what changed and why; never compress away the Why, the decisions and their rejected alternatives, or the durable gotchas. When a detail sits between noise and context, keep it in distilled form - a future agent re-deriving the why costs far more than a couple of retained lines.');
-  p.push('- (g) Completion gate - finalize is not done until ALL of these are true: no in-progress scaffolding remains (no "Current state / next action", no "Resume / handoff") AND nothing durable was stranded in a stripped section (manual procedures for unrun checks now live in Verify, with cross-references intact); the status line reads finalized or committable, NOT "in progress"; every Task checklist item is ticked or explicitly marked deferred with a reason; the Outcome is filled; each Requirement scenario names its verifying test; no bare line numbers remain (every code reference is a durable anchor - a symbol, function, or section name); no transient or paste-ready scaffolding remains (it has been distilled into the durable sections or dropped where the committed code now carries it); the `awd:record` fence is present with a status consistent with the checklist and record body; the Current behavior section reads as present-tense truth of the shipped behavior; the History section is present and its latest line covers this run (the created line for a new record, an amendment line for an update - including a line in any OTHER record this run amended); the append-only sections were never rewritten, only extended (see Section mutability rules); the Found bugs section is consistent with the step handoffs (every deferred defect a step reported appears there, none invented)' + (hasLedger ? '; the Verification ledger is consistent with the verifying steps\' handoffs (every reported act appears, blocked required items visibly unticked with their reasons)' : '') + '; the fence\'s `verify` commands were ACTUALLY run this session with their real results in the Verify section; no companion documents were created (record + index + timeline are the only durable surfaces)' + (state.openSpecArtifacts ? ' beyond the sanctioned OpenSpec artifacts, whose change is archived and whose spec deltas are applied for this capability' : '') + '; and the `.workflow/_index.md` capability entry is written AND a one-line entry is prepended to the chronological `.workflow/_timeline.md`. This applies to UPDATES of an existing record too: an Update section always gets its own `_timeline.md` line, and the record\'s `_index.md` intent line is REWRITTEN whenever the update changes what a scanner should know - the timeline is the history lens, the index line is current truth, and a stale index line silently hides the newest capability from every future grounding scan. If any is false, finalize is incomplete - finish it. A half-finalized record is a failure: it misleads a future reader into thinking the work is still underway. There is no external validator for this system - the agent IS the linter, and this gate is the validation.');
+  p.push('- (g) Completion gate - finalize is not done until ALL of these are true: no in-progress scaffolding remains (no "Current state / next action", no "Resume / handoff") AND nothing durable was stranded in a stripped section (manual procedures for unrun checks now live in Verify, with cross-references intact); the status line reads finalized or committable, NOT "in progress"; every Task checklist item is ticked or explicitly marked deferred with a reason; the Outcome is filled; each Requirement scenario names its verifying test; no bare line numbers remain (every code reference is a durable anchor - a symbol, function, or section name); no transient or paste-ready scaffolding remains (it has been distilled into the durable sections or dropped where the committed code now carries it); the `awd:record` fence is present with a status consistent with the checklist and record body; the Current behavior section reads as present-tense truth of the shipped behavior; the History section is present and its latest line covers this run (the created line for a new record, an amendment line for an update - including a line in any OTHER record this run amended); the append-only sections were never rewritten, only extended (see Section mutability rules); the Found bugs section is consistent with the step handoffs (every deferred defect a step reported appears there, none invented)' + (hasLedger ? '; the Verification ledger is consistent with the verifying steps\' handoffs (every reported act appears, blocked required items visibly unticked with their reasons)' : '') + (hasEval ? '; the Pre-registered eval section is byte-identical to its frozen form (the hash still matches) and its Eval results subsection reports every criterion for this run' : '') + '; the fence\'s `verify` commands were ACTUALLY run this session with their real results in the Verify section; no companion documents were created (record + index + timeline are the only durable surfaces)' + (state.openSpecArtifacts ? ' beyond the sanctioned OpenSpec artifacts, whose change is archived and whose spec deltas are applied for this capability' : '') + '; and the `.workflow/_index.md` capability entry is written AND a one-line entry is prepended to the chronological `.workflow/_timeline.md`. This applies to UPDATES of an existing record too: an Update section always gets its own `_timeline.md` line, and the record\'s `_index.md` intent line is REWRITTEN whenever the update changes what a scanner should know - the timeline is the history lens, the index line is current truth, and a stale index line silently hides the newest capability from every future grounding scan. If any is false, finalize is incomplete - finish it. A half-finalized record is a failure: it misleads a future reader into thinking the work is still underway. There is no external validator for this system - the agent IS the linter, and this gate is the validation.');
   p.push('');
   p.push('### Where it lives');
   p.push('- **Single repository**: write it to `' + apath + '` in that repo so it versions with the code (the change to this file lands in the same PR as the implementation).');
@@ -6443,6 +6556,17 @@ function attachReviewLoop(targetId, kind) {
   // undo step and _undoBatch can never stick true if an inner call throws.
   let reviewer;
   batchUndo(() => {
+    // Make room: the loop takes two slots to the right of the target. When anything already
+    // sits in that span on the target's row (the Output node after a final step, the next step
+    // in a chain), everything right of the target slides right by the same amount, so the loop
+    // never lands on top of a node and the rest of the layout keeps its shape.
+    const span = 600;
+    const crowded = state.nodes.some(n => n.id !== targetId && n.x > target.x && n.x < target.x + span + 140 && Math.abs(n.y - target.y) < 90);
+    if (crowded) {   // only what runs after the target moves; a parallel sibling keeps its place
+      const down = new Set(); const stack = [targetId];
+      while (stack.length) { const id = stack.pop(); state.connections.filter(c => c.from === id).forEach(c => { if (!down.has(c.to)) { down.add(c.to); stack.push(c.to); } }); }
+      state.nodes.forEach(n => { if (n.id !== targetId && down.has(n.id) && n.x > target.x) n.x += span; });
+    }
     const cfg = {
       agentType: kind, reviewLoopFor: targetId, reviewLoopKind: kind,
       tools: spec.tools.slice(), maxTurns: spec.maxTurns
@@ -6507,6 +6631,75 @@ function setReviewLoopBackTarget(decisionId, targetNodeId) {
   edge.to = targetNodeId;
   render();
   updateConfig();
+}
+// One click adds the pre-registered eval: the Eval Author right after the Input node (its only
+// upstream is the requirements, so it can never see a plan), and, when the workflow has no
+// Verifier, a verification loop on the last build step so the eval has an executor and a gate
+// to route back from. Two undo steps when both happen (the loop attach is its own batch).
+function addPreRegisteredEval(inputId) {
+  const input = state.nodes.find(n => n.id === inputId && n.type === 'input');
+  if (!input || hasEvalAuthor()) return;
+  const outs = state.connections.filter(c => c.from === inputId);
+  let author;
+  batchUndo(() => {
+    // Above the main row, right after the Input; climb while the spot is taken.
+    let ax = input.x + 240, ay = input.y - 110;
+    const taken = () => state.nodes.some(n => Math.abs(n.x - ax) < 200 && Math.abs(n.y - ay) < 60);
+    for (let i = 0; i < 6 && taken(); i++) ay -= 90;
+    author = addNode('agent', ax, ay, 'Eval Author', {   // the full template in the prompt, as the presets do, so it can be read and edited in place
+      agentType: EVAL_AUTHOR_ROLE, prompt: PROMPTS.evalAuthor, tools: AGENT_TYPE_TOOL_DEFAULTS.evalAuthor.slice(), maxTurns: 10
+    });
+    const outIds = new Set(outs.map(c => c.id));
+    state.connections = state.connections.filter(c => !outIds.has(c.id));
+    addConnection(inputId, author.id);
+    outs.forEach(c => addConnection(author.id, c.to, c.label, c.fromPort));
+  });
+  let addedVerifier = false;
+  if (evalExecutorId() === null) {
+    const t = lastBuildStepId();
+    if (t) { attachReviewLoop(t, 'verifier'); addedVerifier = true; }
+  }
+  // The canvas re-flows around the new branch (director: a hand-placed author above the row
+  // looked odd next to a laid-out preset); the user's own layout is one Undo away.
+  autoLayout();
+  selectNode(author.id, true);
+  render();
+  updateConfig();
+  showToast(addedVerifier ? 'Eval Author added after the requirements, and a Verifier loop added to execute the eval' : 'Eval Author added after the requirements; the Verifier executes the eval');
+}
+// Removes every Eval Author and reconnects what it sat between. The Verifier stays: it is a
+// review loop in its own right, and removing it silently would drop a check the user may want.
+function removePreRegisteredEval() {
+  const authors = evalAuthorNodes();
+  if (!authors.length) return;
+  authors.forEach(a => { if (hasReviewLoop(a.id)) detachReviewLoop(a.id); });   // a loop attached to the author would be orphaned
+  batchUndo(() => {
+    authors.forEach(a => {
+      const ins = state.connections.filter(c => c.to === a.id);
+      const outs = state.connections.filter(c => c.from === a.id);
+      state.connections = state.connections.filter(c => c.from !== a.id && c.to !== a.id);
+      state.nodes = state.nodes.filter(n => n.id !== a.id);
+      ins.forEach(i => outs.forEach(o => addConnection(i.from, o.to, o.label)));
+      if (state.selectedId === a.id) state.selectedId = null;
+    });
+  });
+  render();
+  updateConfig();
+  showToast('Eval Author removed; any Verifier stays');
+}
+function togglePreRegisteredEval() {
+  hideContextMenu();
+  const sel = state.nodes.find(n => n.id === state.selectedId);
+  if (hasEvalAuthor()) { removePreRegisteredEval(); return; }
+  if (sel && sel.type === 'input') addPreRegisteredEval(sel.id);
+}
+// Validation one-click: wrap the last build step in a Verifier so a pre-registered eval has an executor.
+function advisorAttachVerifier(nodeId) {
+  const n = state.nodes.find(x => x.id === nodeId);
+  if (!n || !canAttachReviewLoop(n) || hasReviewLoop(nodeId)) return;
+  closeValidation();
+  attachReviewLoop(nodeId, 'verifier');
+  showToast('Verifier loop attached to "' + n.label + '" - it executes the pre-registered eval');
 }
 // Context-menu entry point: toggles a review loop of `kind` on the selected node.
 // One loop per node, so if any loop is already attached this detaches it.
@@ -7525,6 +7718,14 @@ function showContextMenu(x, y) {
   };
   setReviewItem('ctxSkeptic', 'adversary');
   setReviewItem('ctxVerifier', 'verifier');
+  // Pre-registered eval: offered on the Input node (add) and on an Eval Author (remove).
+  const evalItem = $('ctxEval');
+  if (evalItem) {
+    const setTip = t => { evalItem.setAttribute('title', t); evalItem.removeAttribute('data-tip'); };
+    if (sel && sel.type === 'input' && !hasEvalAuthor()) { evalItem.style.display = 'flex'; evalItem.textContent = 'Add eval author'; setTip('Add an Eval Author right after the requirements: it writes a frozen, checkable definition of done (the pre-registered eval) before any plan exists; the Verifier executes it (one is added if the workflow has none).'); }
+    else if (sel && hasEvalAuthor() && (sel.type === 'input' || (sel.config && sel.config.agentType === EVAL_AUTHOR_ROLE))) { evalItem.style.display = 'flex'; evalItem.textContent = 'Remove eval author'; setTip('Remove the Eval Author and reconnect what it sat between. A Verifier stays: it is a review loop in its own right.'); }
+    else evalItem.style.display = 'none';
+  }
   menu.classList.add('show');
 }
 function hideContextMenu() { $('contextMenu').classList.remove('show'); }
@@ -10688,6 +10889,36 @@ function validateWorkflow() {
       if (!definedLabels.has(ref)) warnings.push({ type: 'warn', msg: 'Step "' + n.label + '" references "' + ref + '" which is not a defined step' });
     });
   });
+  // Pre-registered eval: an Eval Author needs a Verifier to execute its eval (an error, with a
+  // one-click fix), must run first (nothing but the Input upstream, or it sees work it must
+  // not), and must run before its executor.
+  {
+    const _authors = evalAuthorNodes();
+    if (_authors.length) {
+      const _exec = evalExecutorId();
+      if (_exec === null) {
+        const _fixTarget = lastBuildStepId();
+        warnings.push({ type: 'error', msg: '"' + _authors[0].label + '" writes a pre-registered eval but no Verifier executes it - add a Verifier (right-click the final build step, Add verification) or remove the Eval Author. An eval nobody runs is worse than none.', action: _fixTarget ? 'attachVerifier' : null, nodeId: _fixTarget });
+      }
+      const _order = topologicalSort().map(n => n.id);
+      _authors.forEach(a => {
+        const _up = evalAuthorUpstreamSteps(a);
+        if (_up.length) warnings.push({ type: 'warn', msg: '"' + a.label + '" runs after "' + _up[0].label + '" - move it right after the Input node so it never sees a plan or code' });
+        if (_exec !== null && _order.indexOf(_exec) !== -1 && _order.indexOf(a.id) !== -1 && _order.indexOf(_exec) < _order.indexOf(a.id)) warnings.push({ type: 'warn', msg: '"' + a.label + '" runs after its executor - the Verifier would execute an eval that does not exist yet' });
+      });
+      if (_authors.length > 1) warnings.push({ type: 'warn', msg: _authors.length + ' Eval Authors - one eval per workflow; the executor reads the first' });
+      // The executor must run after the last build step, or it grades unfinished work.
+      if (_exec !== null) {
+        const _agents = topologicalSort().filter(n => n && n.type === 'agent' && n.config);
+        const _execIdx = _agents.findIndex(n => n.id === _exec);
+        const _lateBuild = _agents.slice(_execIdx + 1).find(n => APPROVAL_BUILD_ROLES.has(n.config.agentType));
+        if (_lateBuild) {
+          const _execNode = _agents[_execIdx];
+          warnings.push({ type: 'warn', msg: '"' + _execNode.label + '" executes the pre-registered eval but "' + _lateBuild.label + '" builds after it - the eval would grade unfinished work. Attach a Verifier to the last build step (right-click it, Add verification).' });
+        }
+      }
+    }
+  }
   return warnings;
 }
 // ═══════════════════════════════════════════════════════════
@@ -10949,9 +11180,12 @@ function showValidation() {
       const isErr = w.type === 'error';
       const icon = isErr ? '✖' : '⚠';
       const color = isErr ? '#ef4444' : '#f59e0b';
+      const fix = (w.action === 'attachVerifier' && w.nodeId)
+        ? '<button class="btn sm" style="margin-left:auto;flex:0 0 auto" title="One click adds a Verifier loop on the last build step: it executes the pre-registered eval and its gate routes failures back" onclick="advisorAttachVerifier(\'' + w.nodeId + '\')">Attach Verifier</button>'
+        : '';
       return '<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06)">'
         + '<span style="color:' + color + ';flex:0 0 auto">' + icon + '</span>'
-        + '<span>' + escHtml(w.msg) + '</span></div>';
+        + '<span>' + escHtml(w.msg) + '</span>' + fix + '</div>';
     }).join('');
   }
   if (suggestions.length > 0) {
@@ -11234,6 +11468,12 @@ function explainAgentNode(node, format) {
        : ((!state.verifyPaths || !state.verifyPaths.length) ? 'no verification paths configured - add them under Multi-Repo & Context Paths (Verification instructions)'
           : 'not the owning verification step (mandates go to ONE step - the last verifier-type node, else the last tester - so an expensive check never runs twice; reviewers audit, they do not execute)'),
     veStep));
+  const evStep = evalStepHint(node);
+  rows.push(exRow('Pre-registered eval step hint', !!evStep,
+    evStep ? (node.config.agentType === EVAL_AUTHOR_ROLE ? 'this step is the Eval Author: briefed with the requirements only, writes and freezes the eval' : 'this step is the eval executor (the last Verifier in execution order): the eval is authoritative, every criterion reported pass, fail, or blocked')
+      : (!hasEvalAuthor() ? 'no Eval Author in this workflow - right-click the Input node, Add eval author'
+         : (evalExecutorId() === null ? 'an Eval Author exists but no Verifier executes the eval (a configuration error - see Review)' : 'neither the Eval Author nor the executing Verifier')),
+    evStep));
   const fd = foundDefectNote(node);
   const _fdType = node.config.agentType;
   let _fdStatus;
@@ -11611,6 +11851,11 @@ function explainWorkflow(format) {
   const _vePaths = (state.verifyPaths || []).filter(Boolean);
   const _veNames = _vePaths.join(', ') + (((state.verifyNotes || '').trim()) ? (_vePaths.length ? ' + inline notes' : 'inline notes') : '');
   rows.push(exRow('Verification instructions', !!ve, ve ? 'verification mandates configured: ' + _veNames + ' (routed to the owning verification step - Verifier if present, else final Tester; posture ' + (state.verifyFailRun ? 'fails the run' : 'report-only') + ')' : 'no verification paths configured - add them under Multi-Repo & Context Paths (Verification instructions)', ve));
+  const ev = evalHint();
+  rows.push(exRow('Pre-registered eval', !!ev, ev
+    ? ('an Eval Author writes a frozen eval from the requirements before any plan; ' + (evalExecutorId() !== null ? 'the last Verifier executes it through its gate' : 'NO VERIFIER EXECUTES IT - the orchestrator is told to stop before Step 1 (add a Verifier or remove the Eval Author)'))
+    : 'no Eval Author in this workflow - right-click the Input node, Add eval author',
+    ev));
   // The sdk format returns its own single summary row above and never reaches here, so this
   // row covers the prose formats plus the by-design Claude.ai skip.
   const ef = format === 'claude' ? null : effortHint();
@@ -12370,6 +12615,8 @@ function pushSharedHints(p, format, includeEffort) {
   if (pd) { p.push(pd); p.push(''); }
   const ve = verifyInstructionsHint();
   if (ve) { p.push(ve); p.push(''); }
+  const ev = evalHint();
+  if (ev) { p.push(ev); p.push(''); }
   if (includeEffort !== false) {
     const ef = effortHint();
     if (ef) { p.push(ef); p.push(''); }
@@ -12455,6 +12702,7 @@ function genWorkflow() {
           const _dpS = depthStepNote(s); if (_dpS) p.push('  ' + _dpS);
           const _csS = codeSearchStepHint(s); if (_csS) p.push('  ' + _csS);
           const _veS = verifyInstructionsStepHint(s); if (_veS) p.push('  ' + _veS);
+          const _evS = evalStepHint(s); if (_evS) p.push('  ' + _evS);
           const _bplS = branchStepNote(s); if (_bplS) p.push('  ' + _bplS);
           const _fdS = foundDefectNote(s); if (_fdS) p.push('  ' + _fdS);
           const _rhS = recordHandoffHint(s); if (_rhS) p.push('  ' + _rhS);
@@ -12485,6 +12733,7 @@ function genWorkflow() {
         const _dpN = depthStepNote(node); if (_dpN) p.push('- ' + _dpN);
         const _csN = codeSearchStepHint(node); if (_csN) p.push('- ' + _csN);
         const _veN = verifyInstructionsStepHint(node); if (_veN) p.push('- ' + _veN);
+        const _evN = evalStepHint(node); if (_evN) p.push('- ' + _evN);
         const _bplN = branchStepNote(node); if (_bplN) p.push('- ' + _bplN);
         const _fdN = foundDefectNote(node); if (_fdN) p.push('- ' + _fdN);
         const _rhN = recordHandoffHint(node); if (_rhN) p.push('- ' + _rhN);
@@ -12688,6 +12937,7 @@ function genSubAgents() {
     const _apSa = approvePlanStepHint(node, _apCp); if (_apSa) { promptLines.push(''); promptLines.push(_apSa); }
     const _csSa = codeSearchStepHint(node); if (_csSa) { promptLines.push(''); promptLines.push(_csSa); }
     const _veSa = verifyInstructionsStepHint(node); if (_veSa) { promptLines.push(''); promptLines.push(_veSa); }
+    const _evSa = evalStepHint(node); if (_evSa) { promptLines.push(''); promptLines.push(_evSa); }
     const _bplSa = branchStepNote(node, true); if (_bplSa) { promptLines.push(''); promptLines.push(_bplSa); }
     const _fdSa = foundDefectNote(node); if (_fdSa) { promptLines.push(''); promptLines.push(_fdSa); }
     const _rhSa = recordHandoffHint(node); if (_rhSa) { promptLines.push(''); promptLines.push(_rhSa); }
@@ -12960,6 +13210,7 @@ function genAgentTeams() {
     const _apAt = approvePlanStepHint(node, _apCp); if (_apAt) lines.push(`${pre}  ${_apAt}`);
     const _csAt = codeSearchStepHint(node); if (_csAt) lines.push(`${pre}  ${_csAt}`);
     const _veAt = verifyInstructionsStepHint(node); if (_veAt) lines.push(`${pre}  ${_veAt}`);
+    const _evAt = evalStepHint(node); if (_evAt) lines.push(`${pre}  ${_evAt}`);
     const _bplAt = branchStepNote(node, true); if (_bplAt) _bplAt.split('\n').forEach(l => lines.push(`${pre}  ${l}`));
     const _fdAt = foundDefectNote(node); if (_fdAt) lines.push(`${pre}  ${_fdAt}`);
     const _rhAt = recordHandoffHint(node); if (_rhAt) lines.push(`${pre}  ${_rhAt}`);
@@ -13720,6 +13971,7 @@ function genClaudePrompt() {
           const _apCpS = approvePlanStepHint(s, _apCp); if (_apCpS) p.push(_apCpS);
           const _csCpS = codeSearchStepHint(s); if (_csCpS) p.push(_csCpS);
           const _veCpS = verifyInstructionsStepHint(s); if (_veCpS) p.push(_veCpS);
+          const _evCpS = evalStepHint(s); if (_evCpS) p.push(_evCpS);
           const _bplCpS = branchStepNote(s); if (_bplCpS) p.push(_bplCpS);
           const _fdCpS = foundDefectNote(s); if (_fdCpS) p.push(_fdCpS);
           const _rhCpS = recordHandoffHint(s); if (_rhCpS) p.push(_rhCpS);
@@ -13754,6 +14006,7 @@ function genClaudePrompt() {
         const _apCpN = approvePlanStepHint(node, _apCp); if (_apCpN) p.push(_apCpN);
         const _csCpN = codeSearchStepHint(node); if (_csCpN) p.push(_csCpN);
         const _veCpN = verifyInstructionsStepHint(node); if (_veCpN) p.push(_veCpN);
+        const _evCpN = evalStepHint(node); if (_evCpN) p.push(_evCpN);
         const _bplCpN = branchStepNote(node); if (_bplCpN) p.push(_bplCpN);
         const _fdCpN = foundDefectNote(node); if (_fdCpN) p.push(_fdCpN);
         const _rhCpN = recordHandoffHint(node); if (_rhCpN) p.push(_rhCpN);
@@ -14041,7 +14294,7 @@ const OPENSPEC_ROLE_GROUP = {
   planner: 'plan', architect: 'plan',
   coder: 'build', backend: 'build', frontend: 'build', debugger: 'build',
   reviewer: 'review', adversary: 'skeptic', verifier: 'verify',
-  tester: 'test', researcher: 'research', analyst: 'analysis',
+  tester: 'test', evalAuthor: 'test', researcher: 'research', analyst: 'analysis',
   appExplorer: 'research', designAnalyzer: 'research',
   // documentation/content roles (incl. the writing-style-flavored types) -> the docs skeleton
   writer: 'docs', technical: 'docs', userguide: 'docs', business: 'docs', api: 'docs', runbook: 'docs'
@@ -14692,6 +14945,13 @@ function ingestRunReport(rep, opts) {
     if (typeof b !== 'string' || !b.trim()) return;
     wf.blockedVerifications = (wf.blockedVerifications || []).concat([b.trim()]).slice(-5);
   });
+  // Pre-registered eval results aggregate per workflow (runs that reported one, and the sums),
+  // so the status line and the Tuning Prompt can see the pass rate.
+  if (rep.eval && typeof rep.eval === 'object') {
+    const ev = wf.eval = wf.eval || { runs: 0, criteria: 0, passed: 0, failed: 0, blocked: 0 };
+    ev.runs++;
+    ['criteria', 'passed', 'failed', 'blocked'].forEach(k => { if (typeof rep.eval[k] === 'number' && rep.eval[k] >= 0) ev[k] += rep.eval[k]; });
+  }
   wf.lastReport = rep;
   wf.lastDate = new Date().toISOString().slice(0, 10);
   wf.reports = (wf.reports || 0) + 1;
@@ -14737,8 +14997,9 @@ function updateRunReportSection() {
       const orphans = Object.keys(wf.nodes).filter(sl => !onCanvas[sl]).sort();
       if (orphans.length) orphanNote = ' ' + orphans.length + ' reported step' + (orphans.length !== 1 ? 's match' : ' matches') + ' no node on the canvas (renamed or removed; that history is not shown): ' + orphans.slice(0, 5).join(', ') + (orphans.length > 5 ? ', ...' : '') + '.';
     }
+    const evalNote = (has && wf.eval && wf.eval.runs) ? ' Pre-registered eval: ' + wf.eval.passed + ' of ' + wf.eval.criteria + ' criteria passed over ' + wf.eval.runs + ' run' + (wf.eval.runs !== 1 ? 's' : '') + (wf.eval.blocked ? ' (' + wf.eval.blocked + ' blocked)' : '') + '.' : '';
     status.textContent = has
-      ? (wf.reports || 1) + ' run report' + ((wf.reports || 1) !== 1 ? 's' : '') + ' ingested for "' + name + '"' + (wf.lastDate ? ' - last ' + wf.lastDate : '') + '. Node badges and the tuning prompt are live.' + orphanNote
+      ? (wf.reports || 1) + ' run report' + ((wf.reports || 1) !== 1 ? 's' : '') + ' ingested for "' + name + '"' + (wf.lastDate ? ' - last ' + wf.lastDate : '') + '. Node badges and the tuning prompt are live.' + orphanNote + evalNote
       : 'No run reports yet - connect ~/.awd once to catch every workflow\'s reports automatically (or a repo\'s .workflow folder for just that repo\'s; paste into Import works everywhere).';
   }
   if (tb) {
@@ -14841,6 +15102,10 @@ function genTuningPrompt() {
     const avg = e.cycleRuns ? (e.cycleSum / e.cycleRuns).toFixed(1) : '-';
     L.push('| ' + slug + ' | ' + e.runs + ' | ' + e.capHits + ' | ' + e.failures + ' | ' + e.cycleRuns + ' | ' + avg + ' |');
   });
+  if (wf.eval && wf.eval.runs) {
+    L.push('');
+    L.push('Pre-registered eval over ' + wf.eval.runs + ' run' + (wf.eval.runs !== 1 ? 's' : '') + ': ' + wf.eval.passed + ' passed, ' + wf.eval.failed + ' failed, ' + wf.eval.blocked + ' blocked of ' + wf.eval.criteria + ' criteria. A criterion that fails or blocks run after run is either a requirement the workflow never meets or an eval that cannot be executed in this environment - propose which, and the fix.');
+  }
   if (wf.unmatched && wf.unmatched.length) {
     L.push('');
     L.push('Unmatched slugs (steps reported by runs but absent from the current canvas - likely renamed): ' + wf.unmatched.join(', '));

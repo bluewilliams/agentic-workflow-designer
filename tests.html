@@ -463,7 +463,7 @@ describe('Pure Utilities', () => {
       const writer = win.AGENT_TYPES.find(a => a.id === 'writer');
       expect(!!writer).toBe(true);
       expect(writer.name).toBe('Writer');
-      expect(win.AGENT_TYPES.length).toBe(16); // 14 + App Explorer + Design Analyzer (context-agent-types)
+      expect(win.AGENT_TYPES.length).toBe(17); // 14 + App Explorer + Design Analyzer (context-agent-types) + Eval Author
     });
     it('should return technical prompt for default style', () => {
       const node = { label:'Writer', config:{ prompt:'', agentType:'writer', notes:'' }};
@@ -3166,7 +3166,7 @@ describe('Plan approval gate (Approve plan before build)', () => {
     const rcp = win.approvalCheckpoint();                                                       // mode-aware preset: assert by role, not label
     expect(rcp.node.config.agentType).toBe('writer');                                           // research ending in a writer pauses before the writer
     expect(rcp.prior.some(n => n.config.agentType === 'researcher')).toBe(true);                 // with the research in hand
-    win.AGENT_TYPES.forEach(a => { if (!win.APPROVAL_BUILD_ROLES.has(a.id)) expect(['planner', 'architect', 'researcher', 'debugger', 'analyst', 'appExplorer', 'designAnalyzer', 'reviewer', 'adversary', 'verifier'].indexOf(a.id) !== -1).toBe(true); });   // every role classified deliberately; General builds (pausing early is the safe direction)
+    win.AGENT_TYPES.forEach(a => { if (!win.APPROVAL_BUILD_ROLES.has(a.id)) expect(['planner', 'architect', 'researcher', 'debugger', 'analyst', 'appExplorer', 'designAnalyzer', 'reviewer', 'adversary', 'verifier', 'evalAuthor'].indexOf(a.id) !== -1).toBe(true); });   // every role classified deliberately; General builds (pausing early is the safe direction)
     resetState();
     const iu = win.addNode('input', 0, 0, 'Spec');
     const pu = win.addNode('agent', 200, 0, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'p', maxTurns:5 });
@@ -10839,7 +10839,7 @@ describe('Agent craft batch', () => {
       expect(ae.desc).toContain('READ-ONLY');
       expect(da.name).toBe('Design Analyzer');
       expect(da.desc).toContain('read-only');
-      expect(win.AGENT_TYPES.length).toBe(16);
+      expect(win.AGENT_TYPES.length).toBe(17);   // + Eval Author
     });
     it('maps both types to their templates and resolves via getEffectivePrompt', () => {
       expect(win.AGENT_TYPE_PROMPT_MAP.appExplorer).toBe('appExplorer');
@@ -12568,7 +12568,7 @@ describe('Usability & Help', () => {
       const adv = win.AGENT_TYPES.find(a => a.id === 'adversary');
       expect(!!adv).toBe(true);
       expect(adv.name).toBe('Skeptic');
-      expect(win.AGENT_TYPES.length).toBe(16); // 14 + App Explorer + Design Analyzer (context-agent-types)
+      expect(win.AGENT_TYPES.length).toBe(17); // 14 + App Explorer + Design Analyzer (context-agent-types) + Eval Author
     });
     it('should map adversary to its PROMPTS key', () => {
       expect(win.AGENT_TYPE_PROMPT_MAP.adversary).toBe('adversary');
@@ -18216,6 +18216,307 @@ describe('Route back to: every gate with a No edge offers it, however the gate w
     const gate = win.state.nodes.find(n => n.type === 'decision' && /plan sound/i.test(n.label));
     win.selectNode(gate.id); win.updateConfig();
     expect(routeSelect().closest('.config-field').querySelector('label').getAttribute('title')).toContain('receives the work when this gate says no');
+  });
+});
+
+describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval and the Verifier executes it', () => {
+  const FORMATS = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt'];
+  function inputNode() { return win.state.nodes.find(n => n.type === 'input'); }
+  function author() { return win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'evalAuthor'); }
+  function verifiers() { return win.state.nodes.filter(n => n.type === 'agent' && n.config.agentType === 'verifier'); }
+  function edge(from, to) { return win.state.connections.find(c => c.from === from && c.to === to); }
+  afterEach(() => { win.state.approvePlan = false; win.state.verifyFailRun = false; try { win.localStorage.removeItem('awd_run_reports'); } catch (e) {} });
+  it('should register the role in every table a role must join, with a description that names the Verifier requirement', () => {
+    const t = win.AGENT_TYPES.find(a => a.id === 'evalAuthor');
+    expect(t.name).toBe('Eval Author');
+    expect(t.desc).toContain('requires a Verifier');
+    expect(win.AGENT_TYPE_TOOL_DEFAULTS.evalAuthor).toEqual(['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LSP']);
+    expect(win.AGENT_TYPE_PROMPT_MAP.evalAuthor).toBe('evalAuthor');
+    expect(win.OPENSPEC_ROLE_GROUP.evalAuthor).toBe('test');
+    expect(win.ADVERSARY_LENS_BY_ROLE.evalAuthor).toBe('tester');
+    expect(win.CODE_SEARCH_STEP_ROLES.has('evalAuthor')).toBe(true);
+    expect(win.APPROVAL_BUILD_ROLES.has('evalAuthor')).toBe(false);   // the eval is plan material: the approval pause stays after it
+    const tpl = win.PROMPTS.evalAuthor;
+    ['Independence is the point', 'no plan, no design, no diff', 'Pass or fail only', 'expected to FAIL until the work exists', 'needs a decision', 'freeze it', '## Handoff Summary', 'Eval location', 'Not checkable'].forEach(s => expect(tpl).toContain(s));
+  });
+  it('should emit nothing about evals when no Eval Author is on the canvas, in every format', () => {
+    resetState(); win.loadPreset('feature');
+    FORMATS.forEach(f => expect(win[f]().indexOf('Pre-registered eval')).toBe(-1));
+    expect(win.genAgentSDK().indexOf('Pre-registered eval')).toBe(-1);
+    expect(win.evalHint()).toBe(null);
+    expect(win.validateWorkflow().some(w => /eval/i.test(w.msg))).toBe(false);
+  });
+  it('should add the Eval Author right after the Input and a Verifier loop on the last build step when the workflow has none, in two undo steps', () => {
+    resetState(); win.loadPreset('feature');
+    expect(verifiers().length).toBe(0);
+    const inp = inputNode();
+    const firstSteps = win.state.connections.filter(c => c.from === inp.id).map(c => c.to);
+    const nodesBefore = win.state.nodes.length;
+    win.addPreRegisteredEval(inp.id);
+    const a = author();
+    expect(!!a).toBe(true);
+    expect(!!edge(inp.id, a.id)).toBe(true);
+    firstSteps.forEach(id => { expect(!!edge(a.id, id)).toBe(true); expect(!!edge(inp.id, id)).toBe(false); });
+    expect(verifiers().length).toBe(1);
+    const v = verifiers()[0];
+    const tester = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'tester');
+    expect(v.config.reviewLoopFor).toBe(tester.id);   // the last build-role step
+    expect(win.evalExecutorId()).toBe(v.id);
+    expect(win.validateWorkflow().some(w => w.type === 'error')).toBe(false);
+    expect(win.evalAuthorUpstreamSteps(a).length).toBe(0);
+    expect(a.config.prompt).toBe(win.PROMPTS.evalAuthor);                       // the template sits in the prompt, editable, as the presets do
+    expect(win.classifyAgentPrompt(a).state).toBe('template');
+    win.selectNode(a.id); win.updateConfig();
+    expect(win.document.querySelector('#configFields .agent-prompt-status').textContent).toContain('Full Eval Author role template attached');
+    win.undo(); win.undo();
+    expect(win.state.nodes.length).toBe(nodesBefore);
+    expect(!!author()).toBe(false);
+    firstSteps.forEach(id => expect(!!edge(inp.id, id)).toBe(true));
+  });
+  it('should make room for a loop attached to a final step instead of landing it on the Output node', () => {
+    resetState(); win.loadPreset('feature');
+    const tester = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'tester');
+    const out = win.state.nodes.find(n => n.type === 'output');
+    const outX = out.x;
+    win.attachReviewLoop(tester.id, 'verifier');
+    const v = verifiers()[0];
+    const gate = win.state.nodes.find(n => n.type === 'decision' && n.config.reviewLoopDecisionFor === tester.id);
+    expect(out.x > gate.x).toBe(true);           // the Output slid right of the gate
+    expect(gate.x > v.x && v.x > tester.x).toBe(true);
+    expect(out.x - outX).toBe(600);
+    const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && Math.abs(a.y - b.y) < 60;
+    expect(overlap(out, gate)).toBe(false); expect(overlap(out, v)).toBe(false);
+    // a loop in the middle of a chain slides the downstream steps too, in order
+    resetState(); win.loadPreset('feature');
+    const planner = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'planner');
+    const coder = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'coder');
+    const coderX = coder.x;
+    win.attachReviewLoop(coder.id, 'verifier');
+    expect(coder.x).toBe(coderX);
+    expect(planner.x < coder.x).toBe(true);
+    const tester2 = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'tester');
+    const gate2 = win.state.nodes.find(n => n.type === 'decision' && n.config.reviewLoopDecisionFor === coder.id);
+    expect(tester2.x > gate2.x).toBe(true);
+  });
+  it('should brief a Verifier that was on the canvas before the Eval Author, and stop briefing it once the author is removed', () => {
+    resetState(); win.loadPreset('feature');
+    const tester = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'tester');
+    win.attachReviewLoop(tester.id, 'verifier');            // the Verifier exists first
+    const v = verifiers()[0];
+    const promptBefore = v.config.prompt;
+    expect(win.genWorkflow().indexOf('eval executor')).toBe(-1);
+    win.addPreRegisteredEval(inputNode().id);
+    expect(v.config.prompt).toBe(promptBefore);              // nothing is written into the node; the clause is computed at generation
+    FORMATS.forEach(f => expect(win[f]()).toContain('you are this workflow\'s eval executor'));
+    expect(win.explainNode(v, 'prompt').find(r => r.part === 'Pre-registered eval step hint').status).toBe('emitted');
+    win.removePreRegisteredEval();
+    FORMATS.forEach(f => expect(win[f]().indexOf('eval executor')).toBe(-1));
+    expect(win.explainNode(v, 'prompt').find(r => r.part === 'Pre-registered eval step hint').status).toBe('skipped');
+  });
+  it('should warn when the executing Verifier runs before a later build step, and stay quiet when it runs last', () => {
+    resetState(); win.loadPreset('feature');
+    const coder = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'coder');
+    win.attachReviewLoop(coder.id, 'verifier');            // a Verifier in the middle: the Tester still builds after it
+    win.addPreRegisteredEval(inputNode().id);
+    expect(verifiers().length).toBe(1);                     // the existing Verifier is the executor, no second one is added
+    const warn = win.validateWorkflow().find(w => /would grade unfinished work/.test(w.msg));
+    expect(!!warn).toBe(true);
+    expect(warn.msg).toContain('"Tester" builds after it');
+    const tester = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'tester');
+    win.attachReviewLoop(tester.id, 'verifier');            // a Verifier on the last build step takes over as executor
+    expect(win.evalExecutorId()).toBe(verifiers().find(v => v.config.reviewLoopFor === tester.id).id);
+    expect(win.validateWorkflow().some(w => /would grade unfinished work/.test(w.msg))).toBe(false);
+  });
+  it('should not add a second Verifier when one exists, and should remove only the Eval Author on toggle', () => {
+    resetState(); win.loadPreset('feature');
+    const tester = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'tester');
+    win.attachReviewLoop(tester.id, 'verifier');
+    expect(verifiers().length).toBe(1);
+    const inp = inputNode();
+    win.selectNode(inp.id); win.togglePreRegisteredEval();
+    expect(!!author()).toBe(true);
+    expect(verifiers().length).toBe(1);
+    const firstSteps = win.state.connections.filter(c => c.from === author().id).map(c => c.to);
+    win.selectNode(inp.id); win.togglePreRegisteredEval();
+    expect(!!author()).toBe(false);
+    expect(verifiers().length).toBe(1);   // the Verifier stays
+    firstSteps.forEach(id => expect(!!edge(inp.id, id)).toBe(true));
+  });
+  it('should flag an Eval Author with no Verifier as an error with a one-click fix, and warn when it runs after a step or after its executor', () => {
+    resetState(); win.loadPreset('feature');
+    const inp = inputNode();
+    const planner = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'planner');
+    const a = win.addNode('agent', 0, 0, 'Eval Author', { agentType:'evalAuthor', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(inp.id, a.id);
+    let issues = win.validateWorkflow();
+    const err = issues.find(w => w.type === 'error' && /no Verifier executes it/.test(w.msg));
+    expect(!!err).toBe(true);
+    expect(err.action).toBe('attachVerifier');
+    expect(err.nodeId).toBe(win.lastBuildStepId());
+    expect(win.genWorkflow()).toContain('Configuration error: no Verifier executes this eval');
+    win.advisorAttachVerifier(err.nodeId);
+    issues = win.validateWorkflow();
+    expect(issues.some(w => w.type === 'error')).toBe(false);
+    expect(win.genWorkflow().indexOf('Configuration error')).toBe(-1);
+    // ordering: an author fed by the planner would see the plan
+    win.addConnection(planner.id, a.id);
+    expect(win.validateWorkflow().some(w => /runs after "Planner"/.test(w.msg))).toBe(true);
+  });
+  it('should brief the author with its contract and the executing Verifier with the eval, in the four prose formats, and ask the run report for the eval counts', () => {
+    resetState(); win.loadPreset('feature');
+    win.addPreRegisteredEval(inputNode().id);
+    const v = verifiers()[0];
+    FORMATS.forEach(f => {
+      const out = win[f]();
+      expect(out).toContain('Pre-registered eval (configured)');
+      expect(out).toContain('"' + v.label + '" executes every criterion');
+      expect(out).toContain('you are this workflow\'s Eval Author');
+      expect(out).toContain('you are this workflow\'s eval executor');
+      expect(out).toContain('Include `eval`');
+    });
+    expect(win.evalStepHint(v)).toContain('authoritative');
+    expect(win.evalStepHint(author())).toContain('do not seek the plan');
+    const other = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'coder');
+    expect(win.evalStepHint(other)).toBe('');
+  });
+  it('should place the eval where the workflow keeps state: the record, else the memory directory, else the handoff', () => {
+    resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
+    win.state.durableRecord = true; win.state.memoryEnabled = true;
+    expect(win.evalArtifactLocation()).toContain('"## Pre-registered eval" section of the durable record');
+    expect(win.genWorkflow()).toContain('**Pre-registered eval** (include when the workflow runs an Eval Author)');
+    expect(win.genWorkflow()).toContain('byte-identical to its frozen form');
+    win.state.durableRecord = false;
+    expect(win.evalArtifactLocation()).toContain('eval.md');
+    expect(win.genWorkflow().indexOf('**Pre-registered eval** (include')).toBe(-1);
+    win.state.memoryEnabled = false;
+    expect(win.evalArtifactLocation()).toContain('handoff summary');
+    win.state.durableRecord = false; win.state.memoryEnabled = false;
+  });
+  it('should aggregate eval results from run reports into the status line and the tuning prompt', () => {
+    resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
+    const name = win.getName() || 'workflow';
+    win.ingestRunReport({ workflow: name, steps: [{ slug: 'planner', status: 'done' }], gates: [], eval: { criteria: 4, passed: 3, failed: 1, blocked: 0 }, notes: '' }, { quiet: true });
+    win.ingestRunReport({ workflow: name, steps: [{ slug: 'planner', status: 'done' }], gates: [], eval: { criteria: 4, passed: 4, failed: 0, blocked: 0 }, notes: '' }, { quiet: true });
+    const wf = win.loadRunReports()[name];
+    expect(wf.eval).toEqual({ runs: 2, criteria: 8, passed: 7, failed: 1, blocked: 0 });
+    win.updateRunReportSection();
+    expect(win.document.getElementById('runReportStatus').textContent).toContain('Pre-registered eval: 7 of 8 criteria passed over 2 runs');
+    expect(win.genTuningPrompt()).toContain('Pre-registered eval over 2 runs: 7 passed, 1 failed, 0 blocked of 8 criteria');
+    win.ingestRunReport({ workflow: name, steps: [{ slug: 'planner', status: 'done' }], gates: [], notes: '' }, { quiet: true });   // a report without the block changes nothing
+    expect(win.loadRunReports()[name].eval.runs).toBe(2);
+  });
+  it('should ignore a Verifier that is not connected when naming the executor, keep the record single-writer, and state one rule for blocked criteria', () => {
+    resetState(); win.loadPreset('feature');
+    const inp = inputNode();
+    const a = win.addNode('agent', 0, 0, 'Eval Author', { agentType:'evalAuthor', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(inp.id, a.id);
+    win.addNode('agent', 900, 400, 'Stray Verifier', { agentType:'verifier', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });   // no edges
+    expect(win.evalExecutorId()).toBe(null);
+    expect(win.validateWorkflow().some(w => w.type === 'error')).toBe(true);
+    win.advisorAttachVerifier(win.lastBuildStepId());
+    const v = verifiers().find(x => x.config.reviewLoopFor);
+    expect(win.evalExecutorId()).toBe(v.id);
+    win.state.durableRecord = true;
+    expect(win.evalStepHint(a)).toContain('you do not edit the record');
+    expect(win.evalStepHint(v)).toContain('you do not edit the record');
+    expect(win.evalHint()).toContain('single writer');
+    win.state.verifyFailRun = false;
+    expect(win.evalStepHint(v)).toContain('does not fail the gate');
+    expect(win.genWorkflow()).toContain('does not fail the gate');
+    win.state.verifyFailRun = true;
+    expect(win.evalStepHint(v)).toContain('fails the gate like a FAIL');
+    expect(win.evalHint()).toContain('fails the gate like a FAIL');
+    win.state.durableRecord = false;
+  });
+  it('should detach a loop attached to the Eval Author when removing it, so nothing is orphaned', () => {
+    resetState(); win.loadPreset('feature');
+    win.addPreRegisteredEval(inputNode().id);
+    const a = author();
+    win.attachReviewLoop(a.id, 'adversary');
+    expect(win.hasReviewLoop(a.id)).toBe(true);
+    const before = win.state.nodes.length;
+    win.removePreRegisteredEval();
+    expect(!!author()).toBe(false);
+    expect(win.state.nodes.length).toBe(before - 3);   // author, its Skeptic, its gate
+    expect(win.state.nodes.some(n => n.config && n.config.reviewLoopFor === a.id)).toBe(false);
+    expect(win.state.connections.every(c => win.state.nodes.some(n => n.id === c.from) && win.state.nodes.some(n => n.id === c.to))).toBe(true);
+  });
+  it('should move only the nodes downstream of the target when making room, leaving a parallel sibling in place', () => {
+    resetState();
+    const i = win.addNode('input', 0, 100, 'In', {});
+    const fork = win.addNode('parallel', 200, 100, 'Fork', { strategy:'all', description:'' });
+    const a = win.addNode('agent', 450, 60, 'A', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const b = win.addNode('agent', 470, 150, 'B', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const join = win.addNode('task', 760, 100, 'Join', { description:'', acceptance:'' });
+    win.addConnection(i.id, fork.id); win.addConnection(fork.id, a.id); win.addConnection(fork.id, b.id); win.addConnection(a.id, join.id); win.addConnection(b.id, join.id);
+    const bx = b.x, joinX = join.x;
+    win.attachReviewLoop(a.id, 'verifier');
+    expect(b.x).toBe(bx);              // the sibling did not move
+    expect(join.x).toBe(joinX + 600);  // the join, downstream of A, made room
+  });
+  it('should re-flow the canvas after the one-click so the author sits in a laid-out graph, one Undo from the old layout', () => {
+    resetState(); win.loadPreset('feature');
+    const inp = inputNode();
+    const planner = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'planner');
+    const beforeX = planner.x, beforeY = planner.y;
+    win.addPreRegisteredEval(inp.id);
+    const a = author();
+    const overlap = (x, y) => x.x < y.x + y.w && x.x + x.w > y.x && x.y < y.y + y.h && x.y + x.h > y.y;
+    win.state.nodes.forEach(n => win.state.nodes.forEach(m => { if (n !== m) expect(overlap(n, m)).toBe(false); }));
+    expect(a.x > inp.x && a.x < planner.x).toBe(true);   // the author sits between the Input and the Planner in the flow
+    while (win.undoDepth() && author()) win.undo();
+    const plannerNow = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'planner');   // undo swaps the node objects: re-find
+    expect(plannerNow.x).toBe(beforeX); expect(plannerNow.y).toBe(beforeY);
+  });
+  it('should keep an Input edge port when re-routing through the author and climb when the author spot is taken', () => {
+    resetState(); win.loadPreset('feature');
+    const inp = inputNode();
+    const blocker = win.addNode('task', inp.x + 240, inp.y - 110, 'Blocker', { description:'', acceptance:'' });
+    const out = win.state.connections.find(c => c.from === inp.id); out.fromPort = 'bottom';
+    win.addPreRegisteredEval(inp.id);
+    const a = author();
+    const overlap = (x, y) => x.x < y.x + y.w && x.x + x.w > y.x && x.y < y.y + y.h && x.y + x.h > y.y;
+    expect(win.state.nodes.filter(n => n.id !== a.id).some(n => overlap(a, n))).toBe(false);   // after the re-flow nothing sits on the author
+    const re = win.state.connections.find(c => c.from === a.id && c.to === out.to);
+    expect(re.fromPort).toBe('bottom');
+  });
+  it('should explain the eval at workflow level and on the two steps it touches', () => {
+    resetState(); win.loadPreset('feature');
+    expect(win.explainWorkflow('prompt').find(r => r.part === 'Pre-registered eval').reason).toContain('no Eval Author');
+    win.addPreRegisteredEval(inputNode().id);
+    const wfRow = win.explainWorkflow('prompt').find(r => r.part === 'Pre-registered eval');
+    expect(wfRow.status).toBe('emitted');
+    expect(wfRow.reason).toContain('the last Verifier executes it');
+    const aRow = win.explainNode(author(), 'prompt').find(r => r.part === 'Pre-registered eval step hint');
+    expect(aRow.status).toBe('emitted'); expect(aRow.reason).toContain('Eval Author');
+    const vRow = win.explainNode(verifiers()[0], 'prompt').find(r => r.part === 'Pre-registered eval step hint');
+    expect(vRow.status).toBe('emitted'); expect(vRow.reason).toContain('eval executor');
+    const coder = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'coder');
+    expect(win.explainNode(coder, 'prompt').find(r => r.part === 'Pre-registered eval step hint').status).toBe('skipped');
+  });
+  it('should keep the approval checkpoint after the Eval Author, so the director approves the plan with the eval in hand', () => {
+    resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
+    win.state.approvePlan = true;
+    const cp = win.approvalCheckpoint();
+    expect(cp.node.label).toBe('Implementer');
+    expect(cp.prior.some(n => n.config.agentType === 'evalAuthor')).toBe(true);
+  });
+  it('should offer the context menu item on the Input node to add and on the Eval Author to remove', () => {
+    resetState(); win.loadPreset('feature');
+    const inp = inputNode();
+    win.selectNode(inp.id); win.showContextMenu(10, 10);
+    const item = win.document.getElementById('ctxEval');
+    expect(item.style.display).toBe('flex'); expect(item.textContent).toBe('Add eval author');
+    win.hideContextMenu();
+    win.addPreRegisteredEval(inp.id);
+    win.selectNode(author().id); win.showContextMenu(10, 10);
+    expect(item.style.display).toBe('flex'); expect(item.textContent).toBe('Remove eval author');
+    expect(item.getAttribute('title')).toContain('A Verifier stays');
+    win.hideContextMenu();
+    const coder = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'coder');
+    win.selectNode(coder.id); win.showContextMenu(10, 10);
+    expect(item.style.display).toBe('none');
+    win.hideContextMenu();
   });
 });
 

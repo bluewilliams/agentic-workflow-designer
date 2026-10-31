@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## pre-registered-eval
+
+- record: .workflow/pre-registered-eval.md
+- intent: a new Eval Author role writes a frozen, build-blind eval from the requirements before any plan exists; the last Verifier executes it through its gate (route-back, Max Revisions); an Eval Author without a Verifier is a validation error with a one-click fix and the preamble tells the orchestrator to stop; one-click add from the Input node (adds a Verifier loop when missing); record section, run-report eval block, Explain rows. Nothing emitted without the role.
+- files: index.html (AGENT_TYPES and role tables, PROMPTS.evalAuthor, eval machinery block, addPreRegisteredEval/removePreRegisteredEval/togglePreRegisteredEval, advisorAttachVerifier, context menu, validateWorkflow, pushSharedHints, six step-hint sites, explainNode/explainWorkflow, genDurableRecordProtocol, runReportDirective, ingestRunReport, updateRunReportSection, genTuningPrompt, attachReviewLoop room-making, help), tests.html (Pre-registered eval suite), README.md
+- status: current | date: 2026-10-31 | note: decided with the director (Verifier executes, no stand-ins); browser-checked; one review round, twelve findings acted on. 1913 -> 1931.
+
 ## rendered-text-fields
 
 - record: .workflow/rendered-text-fields.md
