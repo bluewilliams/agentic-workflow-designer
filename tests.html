@@ -18250,7 +18250,7 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
     expect(win.evalHint()).toBe(null);
     expect(win.validateWorkflow().some(w => /eval/i.test(w.msg))).toBe(false);
   });
-  it('should add the Eval Author right after the Input and a Verifier loop on the last build step when the workflow has none, in two undo steps', () => {
+  it('should add the Eval Author right after the Input and a Verifier loop on the last build step when the workflow has none, in one undo step', () => {
     resetState(); win.loadPreset('feature');
     expect(verifiers().length).toBe(0);
     const inp = inputNode();
@@ -18272,7 +18272,7 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
     expect(win.classifyAgentPrompt(a).state).toBe('template');
     win.selectNode(a.id); win.updateConfig();
     expect(win.document.querySelector('#configFields .agent-prompt-status').textContent).toContain('Full Eval Author role template attached');
-    win.undo(); win.undo();
+    win.undo();   // the author, the loop, and the re-flow are one step
     expect(win.state.nodes.length).toBe(nodesBefore);
     expect(!!author()).toBe(false);
     firstSteps.forEach(id => expect(!!edge(inp.id, id)).toBe(true));
@@ -18789,6 +18789,11 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
     expect(preambleFor('always')).toContain('ask the director ONCE');
     expect(preambleFor('always').indexOf('only those that move the pass bar')).toBe(-1);
     expect(preambleFor('decide')).toContain('No question reaches the director');
+    expect(preambleFor('decide')).toContain('into the planning step\'s brief as a resolved requirement');
+    expect(preambleFor('bar')).toContain('fold each answer into the planning step\'s brief as a resolved requirement');
+    expect(preambleFor('always')).toContain('fold each answer into the planning step\'s brief');
+    expect(win.evalHint()).toContain('written toward the eval, never around it');
+    expect(win.evalHint()).toContain('only the director can move the bar');
     expect(preambleFor('decide').indexOf('ask the director ONCE')).toBe(-1);
     a.config.evalAmbiguity = 'decide';
     expect(win.genWorkflow()).toContain('No question reaches the director');
@@ -18806,6 +18811,70 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
     expect(t).toContain('name that assumption in the check');
     expect(t).toContain('as a guard');
     expect(author().config.prompt).toBe(t);   // the one-click author carries the full template
+  });
+  it('should put the approval pause on the first step that can own a plan, never on the Eval Author, when no build role exists', () => {
+    resetState();
+    const i = win.addNode('input', 0, 100, 'Requirements');
+    const a = win.addNode('agent', 300, 100, 'Eval Author', { agentType:'evalAuthor', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const r = win.addNode('agent', 600, 100, 'Researcher', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const an = win.addNode('agent', 900, 100, 'Analyst', { agentType:'analyst', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(i.id, a.id); win.addConnection(a.id, r.id); win.addConnection(r.id, an.id);
+    win.attachReviewLoop(an.id, 'verifier');
+    win.state.approvePlan = true;
+    const cp = win.approvalCheckpoint();
+    expect(cp.node.id).toBe(r.id);
+    expect(cp.builds).toBe(false);
+    expect(cp.prior.map(n => n.id)).toEqual([a.id]);
+    expect(win.approvePlanHint(cp)).toContain('The Eval Author ran before this pause');
+    expect(win.approvePlanStepHint ? (win.approvePlanStepHint(a) || '') : '').toBe('');
+  });
+  it('should not warn that the Eval Author runs after a fork or a gate that produces nothing', () => {
+    resetState();
+    const i = win.addNode('input', 0, 100, 'Requirements');
+    const fork = win.addNode('parallel', 200, 100, 'Fork', { strategy:'all', description:'' });
+    const a = win.addNode('agent', 400, 40, 'Eval Author', { agentType:'evalAuthor', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const p = win.addNode('agent', 400, 160, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const c = win.addNode('agent', 700, 100, 'Coder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(i.id, fork.id); win.addConnection(fork.id, a.id); win.addConnection(fork.id, p.id); win.addConnection(a.id, c.id); win.addConnection(p.id, c.id);
+    win.attachReviewLoop(c.id, 'verifier');
+    expect(win.evalAuthorUpstreamSteps(a).length).toBe(0);
+    expect(win.validateWorkflow().filter(w => /Eval Author.*runs after/.test(w.msg)).length).toBe(0);
+    const d = win.addNode('agent', 100, 300, 'Designer', { agentType:'architect', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(d.id, fork.id);   // an agent behind the fork is still an upstream step
+    expect(win.evalAuthorUpstreamSteps(a).map(n => n.id)).toEqual([d.id]);
+  });
+  it('should move nothing when the only crowder beside a loop target is a parallel sibling, even with a far downstream node', () => {
+    resetState();
+    const i = win.addNode('input', 0, 0, 'Requirements');
+    const fork = win.addNode('parallel', 150, 0, 'Fork', { strategy:'all', description:'' });
+    const t = win.addNode('agent', 300, 0, 'T', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const sib = win.addNode('agent', 600, 40, 'S', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const out = win.addNode('output', 2300, 0, 'Done', { deliverable:'x', format:'default' });
+    win.addConnection(i.id, fork.id); win.addConnection(fork.id, t.id); win.addConnection(fork.id, sib.id); win.addConnection(t.id, out.id); win.addConnection(sib.id, out.id);
+    win.attachReviewLoop(t.id, 'verifier');
+    expect(sib.x).toBe(600);
+    expect(out.x).toBe(2300);   // nothing downstream crowded the span, so nothing moved
+  });
+  it('should undo the whole one-click Add eval in one step', () => {
+    resetState(); win.loadPreset('feature_fast');
+    const nodesBefore = win.state.nodes.length, edgesBefore = win.state.connections.map(c => c.from + '>' + c.to + ':' + (c.label || '')).sort().join('|');
+    const xsBefore = win.state.nodes.map(n => n.id + '@' + n.x + ',' + n.y).sort().join('|');
+    win.addPreRegisteredEval(inputNode().id);
+    expect(!!author()).toBe(true);
+    expect(win.state.nodes.length).toBe(nodesBefore + 3);   // the author, the Verifier, its gate
+    win.undo();
+    expect(win.state.nodes.length).toBe(nodesBefore);
+    expect(win.state.connections.map(c => c.from + '>' + c.to + ':' + (c.label || '')).sort().join('|')).toBe(edgesBefore);
+    expect(win.state.nodes.map(n => n.id + '@' + n.x + ',' + n.y).sort().join('|')).toBe(xsBefore);   // the re-flow is part of the same step
+  });
+  it('should memoize the connected set on the graph shape and recompute it when an edge changes', () => {
+    resetState(); win.loadPreset('feature');
+    const a = win.evalReachableIds(), b = win.evalReachableIds();
+    expect(a).toBe(b);
+    const stray = win.addNode('agent', 50, 900, 'Stray', { agentType:'verifier', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    expect(win.evalReachableIds().has(stray.id)).toBe(false);
+    win.addConnection(inputNode().id, stray.id);
+    expect(win.evalReachableIds().has(stray.id)).toBe(true);
   });
   it('should ignore an empty or array eval block and read a null count as zero', () => {
     resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
@@ -19014,6 +19083,461 @@ describe('Reviewer brief names the declared posture of the step it reviews', () 
     delete rev.config.defectPosture;
     const planner = win.state.nodes.find(n => n.label === 'Planner');
     expect(win.foundDefectNote(planner)).toBe('');   // only a reviewer learns a producer's posture
+  });
+});
+
+// One notion of the run: the eval executor, the verification-mandates owner, and the Workflow
+// Review all read "the run" from evalReachableIds (connected to an Input in either direction).
+describe('One notion of the run: a step not connected to an Input never runs, never owns the mandates, and is named in Review', () => {
+  const NEVER_RUNS = 'is not connected to an Input node, so it never runs';
+  function agent(x, y, label, type) { return win.addNode('agent', x, y, label, { agentType: type, model: 'opus-5', tools: ['Read'], prompt: 'Do the ' + type + ' work.', maxTurns: 10 }); }
+  function input(x, y) { return win.addNode('input', x, y, 'In', {}); }
+  function output(x, y) { return win.addNode('output', x, y, 'Done', { deliverable: '', format: 'code', targetBranch: '', branchName: '' }); }
+  function chain(ids) { for (let i = 0; i + 1 < ids.length; i++) win.addConnection(ids[i], ids[i + 1]); }
+  function entriesFor(label) { return win.validateWorkflow().filter(w => String(w.msg).indexOf('"' + label + '"') !== -1); }
+  function strayWarnings() { return win.validateWorkflow().filter(w => String(w.msg).indexOf(NEVER_RUNS) !== -1); }
+  function rowOf(rows, part) { return rows.find(r => r.part === part); }
+  // In -> Builder -> Run Verifier -> Done, plus Side Planner -> Side Coder -> Side Coder Two -> Stray Verifier
+  // with no Input; the stray chain is deeper, so Stray Verifier sorts after Run Verifier in execution order.
+  function strayCanvas() {
+    resetState();
+    const i = input(0, 100); const b = agent(300, 100, 'Builder', 'coder'); const v = agent(600, 100, 'Run Verifier', 'verifier'); const o = output(900, 100);
+    chain([i.id, b.id, v.id, o.id]);
+    const p = agent(0, 500, 'Side Planner', 'planner'); const c = agent(300, 500, 'Side Coder', 'coder'); const c2 = agent(600, 500, 'Side Coder Two', 'coder'); const s = agent(900, 500, 'Stray Verifier', 'verifier');
+    chain([p.id, c.id, c2.id, s.id]);
+    return { i, b, v, o, p, c, c2, s };
+  }
+  // The pre-change owner rule (no connectivity filter), computed here as the reference for connected presets.
+  function topoOwnerRule() {
+    const ordered = win.topologicalSort().filter(n => n && n.type === 'agent' && n.config);
+    const v = ordered.filter(n => n.config.agentType === 'verifier'); if (v.length) return v[v.length - 1].id;
+    const t = ordered.filter(n => n.config.agentType === 'tester'); return t.length ? t[t.length - 1].id : null;
+  }
+  afterEach(() => {
+    win.state.verifyPaths = []; win.state.verifyNotes = ''; win.state.verifyFailRun = true;
+    resetState();
+  });
+
+  it('should name each agent of a stray chain exactly once with the never-runs warning', () => {
+    const h = strayCanvas();
+    [h.p, h.c, h.c2, h.s].forEach(n => {
+      const e = entriesFor(n.label);
+      expect(e.length).toBe(1);
+      expect(e[0].type).toBe('warn');
+      expect(e[0].msg).toBe('"' + n.label + '" ' + NEVER_RUNS + ' - connect it to the run or remove it');
+    });
+    expect(strayWarnings().length).toBe(4);
+    ['Builder', 'Run Verifier'].forEach(l => expect(entriesFor(l).length).toBe(0));
+  });
+  it('should drop the never-runs warning once the stray chain is connected to the run, even against the edge direction', () => {
+    const h = strayCanvas();
+    win.addConnection(h.p.id, h.b.id);   // Side Planner feeds the Builder: connected in reverse
+    expect(strayWarnings().length).toBe(0);
+    expect(entriesFor('Stray Verifier').length).toBe(0);
+  });
+  it('should give a fully loose agent only the not-connected-to-anything entry, never a second never-runs entry', () => {
+    const h = strayCanvas();
+    win.state.connections = win.state.connections.filter(c => c.from !== h.s.id && c.to !== h.s.id);
+    const e = entriesFor('Stray Verifier');
+    expect(e.length).toBe(1);
+    expect(e[0].msg).toBe('"Stray Verifier" is not connected to anything');
+    expect(entriesFor('Side Coder Two').map(w => w.msg)).toEqual(['"Side Coder Two" ' + NEVER_RUNS + ' - connect it to the run or remove it']);   // still has an edge, so it is the stray kind
+    expect(strayWarnings().length).toBe(3);
+  });
+  it('should warn a stray agent that keeps an edge to a non-agent node, and never warn the non-agent node itself', () => {
+    resetState();
+    const i = input(0, 100); const b = agent(300, 100, 'Builder', 'coder'); chain([i.id, b.id]);
+    const s = agent(300, 500, 'Lonely Writer', 'writer'); const o2 = output(600, 500);
+    win.addConnection(s.id, o2.id);
+    expect(strayWarnings().map(w => w.msg)).toEqual(['"Lonely Writer" ' + NEVER_RUNS + ' - connect it to the run or remove it']);
+  });
+  it('should treat every linked agent as part of the run on a canvas with no Input, and still name a loose one', () => {
+    resetState(); win.state.verifyPaths = ['docs/verify.md'];
+    const c = agent(0, 100, 'Builder', 'coder'); const lv = agent(300, 100, 'Linked Verifier', 'verifier'); chain([c.id, lv.id]);
+    agent(300, 400, 'Loose Verifier', 'verifier');
+    expect(strayWarnings().length).toBe(0);
+    expect(entriesFor('Loose Verifier').map(w => w.msg)).toEqual(['"Loose Verifier" is not connected to anything']);
+    expect(win.resolveVerifyOwnerId()).toBe(lv.id);
+  });
+  it('should give no step the mandates on a canvas with no Input where the only Verifier is loose', () => {
+    resetState(); win.state.verifyPaths = ['docs/verify.md'];
+    const c = agent(0, 100, 'Builder', 'coder'); const p = agent(300, 100, 'Planner Two', 'planner'); chain([c.id, p.id]);
+    agent(300, 400, 'Loose Verifier', 'verifier');
+    expect(win.resolveVerifyOwnerId()).toBe(null);
+  });
+
+  it('should route the mandates to the connected Verifier, not a stray Verifier that sorts later, in every generated format', () => {
+    const h = strayCanvas(); win.state.verifyPaths = ['docs/verify.md'];
+    expect(win.topologicalSort().map(n => n.id).indexOf(h.s.id) > win.topologicalSort().map(n => n.id).indexOf(h.v.id)).toBe(true);
+    expect(win.resolveVerifyOwnerId()).toBe(h.v.id);
+    const hint = win.verifyInstructionsStepHint(h.v);
+    expect(hint).toContain('OWNING verification step');
+    expect(win.verifyInstructionsStepHint(h.s)).toBe('');
+    ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt'].forEach(f => expect(f + ':' + win[f]().split(hint).length).toBe(f + ':2'));   // exactly one step carries it
+  });
+  it('should route the mandates to the connected Tester when the only Verifier is stray', () => {
+    resetState(); win.state.verifyPaths = ['docs/verify.md'];
+    const i = input(0, 100); const b = agent(300, 100, 'Builder', 'coder'); const t = agent(600, 100, 'Run Tester', 'tester'); chain([i.id, b.id, t.id]);
+    const c = agent(300, 500, 'Side Coder', 'coder'); const s = agent(600, 500, 'Stray Verifier', 'verifier'); chain([c.id, s.id]);
+    expect(win.resolveVerifyOwnerId()).toBe(t.id);
+    expect(win.verifyInstructionsStepHint(s)).toBe('');
+  });
+  it('should give no step the mandates when every Verifier and Tester is stray, and the advisor names the stray Verifier first', () => {
+    resetState(); win.state.verifyPaths = ['docs/verify.md'];
+    const i = input(0, 100); const b = agent(300, 100, 'Builder', 'coder'); chain([i.id, b.id]);
+    const st = agent(300, 500, 'Stray Tester', 'tester'); const sv = agent(600, 500, 'Stray Verifier', 'verifier'); chain([st.id, sv.id]);
+    expect(win.resolveVerifyOwnerId()).toBe(null);
+    const adv = win.adviseWorkflow().map(a => a.msg).filter(m => m.indexOf('no step owns them') !== -1);
+    expect(adv.length).toBe(1);
+    expect(adv[0]).toContain('no step owns them - connect "Stray Verifier" to the run (it is not connected to an Input, so it never runs), or add a Verifier or Tester');
+    win.state.connections = win.state.connections.filter(c => c.from !== sv.id && c.to !== sv.id);
+    win.state.nodes = win.state.nodes.filter(n => n.id !== sv.id);   // only the stray Tester is left to name
+    expect(win.adviseWorkflow().map(a => a.msg).find(m => m.indexOf('no step owns them') !== -1)).toContain('connect "Stray Tester" to the run');
+  });
+  it('should keep the advisor ownerless message free of a connect hint when no Verifier or Tester exists, and silent once a connected owner exists', () => {
+    resetState(); win.state.verifyPaths = ['docs/verify.md'];
+    const i = input(0, 100); const b = agent(300, 100, 'Builder', 'coder'); chain([i.id, b.id]);
+    const msg = win.adviseWorkflow().map(a => a.msg).find(m => m.indexOf('no step owns them') !== -1);
+    expect(msg).toBe('Verification instructions are configured but no step owns them - add a Verifier or Tester so the repo\'s mandated checks have a dedicated executor (until then the orchestrator itself runs them at close-out).');
+    const v = agent(600, 100, 'Run Verifier', 'verifier'); win.addConnection(b.id, v.id);
+    expect(win.adviseWorkflow().some(a => a.msg.indexOf('no step owns them') !== -1)).toBe(false);
+  });
+
+  it('should make the mandates owner the eval executor whenever a connected Verifier exists, and leave the owner to a Tester when none does', () => {
+    const h = strayCanvas(); win.state.verifyPaths = ['docs/verify.md'];
+    const a = agent(150, 0, 'Eval Author', 'evalAuthor'); win.addConnection(h.i.id, a.id); win.addConnection(a.id, h.b.id);
+    expect(win.evalExecutorId()).toBe(h.v.id);
+    expect(win.resolveVerifyOwnerId()).toBe(win.evalExecutorId());
+    win.state.verifyPaths = []; win.state.verifyNotes = 'Run the smoke suite.';   // inline notes only
+    expect(win.resolveVerifyOwnerId()).toBe(win.evalExecutorId());
+    h.v.config.agentType = 'tester';   // no connected Verifier left: R3 does not apply, the connected Tester owns them
+    expect(win.evalExecutorId()).toBe(null);
+    expect(win.resolveVerifyOwnerId()).toBe(h.v.id);
+  });
+
+  it('should tell a stray Verifier in its own Explain rows that it never runs, so it neither owns the mandates nor executes the eval', () => {
+    const h = strayCanvas(); win.state.verifyPaths = ['docs/verify.md'];
+    const a = agent(150, 0, 'Eval Author', 'evalAuthor'); win.addConnection(h.i.id, a.id); win.addConnection(a.id, h.b.id);
+    ['prompt', 'subagent', 'teams'].forEach(f => {
+      const sr = win.explainNode(h.s, f);
+      const ve = rowOf(sr, 'Verification-instructions step hint'); const ev = rowOf(sr, 'Pre-registered eval step hint');
+      expect(f + ':' + ve.status).toBe(f + ':skipped');
+      expect(ve.reason).toBe('not the owning verification step: this step is not connected to an Input, so it never runs and cannot own the mandates (they go to the last connected Verifier, else the last connected Tester)');
+      expect(f + ':' + ev.status).toBe(f + ':skipped');
+      expect(ev.reason).toBe('this Verifier is not connected to an Input, so it never runs and does not execute the eval');
+      const vr = win.explainNode(h.v, f);
+      expect(rowOf(vr, 'Verification-instructions step hint').reason).toContain('the last Verifier connected to the run, in execution order, else the last connected Tester');
+      expect(rowOf(vr, 'Pre-registered eval step hint').reason).toContain('this step is the eval executor (the last Verifier connected to the run, in execution order)');
+    });
+  });
+  it('should keep the generic not-the-owner reason for a connected Verifier that an earlier position loses to a later one', () => {
+    resetState(); win.state.verifyPaths = ['docs/verify.md'];
+    const i = input(0, 100); const v1 = agent(300, 100, 'First Verifier', 'verifier'); const v2 = agent(600, 100, 'Last Verifier', 'verifier'); chain([i.id, v1.id, v2.id]);
+    const r = rowOf(win.explainNode(v1, 'prompt'), 'Verification-instructions step hint');
+    expect(r.status).toBe('skipped');
+    expect(r.reason.indexOf('not the owning verification step (mandates go to ONE step')).toBe(0);
+    expect(r.reason.indexOf('not connected to an Input')).toBe(-1);
+  });
+  it('should give a stray Tester the stray reason in its verification row', () => {
+    const h = strayCanvas(); win.state.verifyPaths = ['docs/verify.md'];
+    h.s.config.agentType = 'tester';
+    expect(rowOf(win.explainNode(h.s, 'prompt'), 'Verification-instructions step hint').reason).toContain('this step is not connected to an Input, so it never runs and cannot own the mandates');
+  });
+  it('should append the configuration error to a stray Verifier eval row when no connected Verifier executes the eval', () => {
+    const h = strayCanvas();
+    const a = agent(150, 0, 'Eval Author', 'evalAuthor'); win.addConnection(h.i.id, a.id); win.addConnection(a.id, h.b.id);
+    h.v.config.agentType = 'tester';
+    expect(rowOf(win.explainNode(h.s, 'prompt'), 'Pre-registered eval step hint').reason).toBe('this Verifier is not connected to an Input, so it never runs and does not execute the eval (no connected Verifier executes it either - a configuration error, see Review)');
+  });
+  it('should tell a stray Verifier it is not connected to the run when only inline notes arm the mandates', () => {
+    const h = strayCanvas(); win.state.verifyNotes = 'Run the smoke suite.';
+    expect(rowOf(win.explainNode(h.v, 'prompt'), 'Verification-instructions step hint').status).toBe('emitted');
+    const r = rowOf(win.explainNode(h.s, 'prompt'), 'Verification-instructions step hint');
+    expect(r.status).toBe('skipped');
+    expect(r.reason).toBe('not the owning verification step: this step is not connected to an Input, so it never runs and cannot own the mandates (they go to the last connected Verifier, else the last connected Tester)');
+    win.state.verifyNotes = '';   // nothing configured: the no-mandates reason still wins over the stray reason
+    expect(rowOf(win.explainNode(h.s, 'prompt'), 'Verification-instructions step hint').reason.indexOf('no verification paths configured')).toBe(0);
+  });
+
+  it('should name the owner and the executor by label in the workflow Explain rows, and say who runs ownerless mandates', () => {
+    const h = strayCanvas(); win.state.verifyPaths = ['docs/verify.md'];
+    const a = agent(150, 0, 'Eval Author', 'evalAuthor'); win.addConnection(h.i.id, a.id); win.addConnection(a.id, h.b.id);
+    let rows = win.explainWorkflow('prompt');
+    expect(rowOf(rows, 'Verification instructions').reason).toBe('verification mandates configured: docs/verify.md (routed to "Run Verifier", the owning verification step: the last Verifier connected to the run, else the last connected Tester; posture fails the run)');
+    expect(rowOf(rows, 'Pre-registered eval').reason).toContain('the last Verifier executes it through its gate ("Run Verifier", the last one connected to the run)');
+    win.state.nodes = win.state.nodes.filter(n => n.id !== a.id); win.state.connections = win.state.connections.filter(c => c.from !== a.id && c.to !== a.id);
+    win.addConnection(h.i.id, h.b.id);
+    h.v.config.agentType = 'coder'; win.state.verifyFailRun = false;   // only the stray Verifier remains
+    rows = win.explainWorkflow('prompt');
+    expect(rowOf(rows, 'Verification instructions').reason).toBe('verification mandates configured: docs/verify.md (no Verifier or Tester connected to the run owns them, so the orchestrator executes them at close-out; posture report-only)');
+  });
+
+  it('should tell a stray Verifier in its status line that it never runs, naming the connected owner or the close-out fallback', () => {
+    const h = strayCanvas(); win.state.verifyPaths = ['docs/verify.md'];
+    expect(win.verifyStatusHtml(h.s)).toBe('This Verifier is not connected to an Input, so it never runs and does not own the verification mandates - "Run Verifier" owns them.');
+    expect(win.verifyStatusHtml(h.v).indexOf('Owns this workflow\'s verification mandates')).toBe(0);
+    h.v.config.agentType = 'coder';
+    expect(win.verifyStatusHtml(h.s)).toBe('This Verifier is not connected to an Input, so it never runs and does not own the verification mandates - no connected step owns them, so the orchestrator runs them at close-out.');
+  });
+  it('should name the owner for a connected non-owner Verifier, and the close-out fallback for a connected step when nothing owns the mandates', () => {
+    resetState(); win.state.verifyPaths = ['docs/verify.md'];
+    const i = input(0, 100); const v1 = agent(300, 100, 'First Verifier', 'verifier'); const v2 = agent(600, 100, 'Last Verifier', 'verifier'); chain([i.id, v1.id, v2.id]);
+    expect(win.verifyStatusHtml(v1)).toBe('Verification mandates are owned by "Last Verifier" (the last verification step in the flow) - one owner, so an expensive check never runs twice.');
+    v1.config.agentType = 'coder'; v2.config.agentType = 'coder';   // a connected step, no owner anywhere (was "another step")
+    expect(win.verifyStatusHtml(v1)).toBe('No connected step owns the verification mandates, so the orchestrator runs them at close-out.');
+  });
+
+  // Captured from the build before this change (plain preset, the app defaults the eval also pins).
+  const PLAIN_GOLD = {"feature":"a8z85jzxuw,y7an31qbc3,1526i8mzob0,fl518g9ka3,iayaj371tm","bugfix":"2f48exlkxfc,h4cfrpp9ws,y7fbd2bk9h,xsd1o7s665,28jnjb2qd9u","fullstack":"dr9in4llvz,1gmpzbrbpsm,2a5elezkd2u,1knpwoa0drf,uks2icwu7g","new_project":"12xt2nvtfc1,1w0zw8iw8xz,1t8vbukwqww,ue8xlel1nk,1tip2ji3hdq","ui_component":"qdac2onw1v,19dbaukr8m6,zo2vgxpe80,1r1fpyhj3it,u5qk3dunnv","refactoring":"1ws0unwifvs,jp9p9s8j9l,59gkvjjm3l,1nvdndbisdo,1jg7kwg4lqg","documentation":"ejk8u95zhk,xyu3bkiplv,p6zpcadsff,1nvghvcu4kc,1vdyi5n2ww1","feature_fast":"1kcbmobh25w,86l1lejeg4,1wwnkwih07c,24js0q32icf,1i62e6kgz4l","devops":"3uxq2quobh,11tz84lmyyb,1zzb7yx6h2,amqkfzi2sd,jcd02ehbo6","platform_provisioning":"tyhyfwnhoh,23ay7umoec8,2ekbqt8aucg,nxn8c1u2sf,13yafqlqjku","cross_repo":"1zynnrdc7wj,2957zrtwuv,oa8knn9y49,2dltjrgfc6r,2gn8s8ypcol","performance":"adhk3s90rc,a4hpoew7cr,1z2fnb13nbi,2d0db4vqpfe,1w9u0k0s6cy","data_migration":"242gs2mvqxt,1sje8xpu23e,1a1e8eco1jo,1vrx7l7zsjq,5lozh2w7z6","testing":"zaz0gv9bpd,dlsebmpjc6,1oq5fvb5q4t,1tbneoo2len,r2izojhaae","test_automation":"1r7yk9f6ucq,1lspvb4e682,1117c27phor,zemn72v5re,rcatz6e1br","review":"ch3688nk2a,1q6jbpwnbb0,1cvsetp11lh,n4lcjl0y4,bqp3s40a5k","parallel_research":"efhsfwglx9,1bzt8bvw8mt,1gkpdl7ythu,tcpkj7l4dx,1kxcnd2d4e1","swarm":"osy4vdoneo,huafk9vvc8,1vb89ztmqhj,sp1je4dh63,6r4dw980nx","analysis_forecast":"2f6th5mgvft,9einpt9ncy,txdmo9izax,1suijdrdojk,1h334vj8lzp","incident_rca":"2jfx0xqs53,w9amaa9xgq,1dpajuk65b9,19lmd0v5gf1,1n2aziuuut0","delivery_swarm":"kjhwz7yc3c,9gytdpbo79,1r2g6jwp0fu,lr3clt3zub,15qmrm1tpjg","touchup":"invo853hfl,1tndtlb5poy,23z9oau7axs,h7myidmka9,1n69be65l42","record_sync":"1nse7qsyhvq,11iw6dnex82,279s63ulrh7,hcnap9yc2t,1tp1pv8qv8s"};
+  function h53(str) {
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  }
+  it('should generate the same output in all five formats for every plain preset as before the change', () => {
+    const keys = [...win.document.querySelectorAll('.preset-item[data-preset]')].map(el => el.dataset.preset);
+    expect(keys.sort().join(',')).toBe(Object.keys(PLAIN_GOLD).sort().join(','));   // a new preset needs a captured value
+    try {
+      keys.forEach(k => {
+        resetState(); win.loadPreset(k);
+        win.document.getElementById('workflowName').value = 'eval-fixture';   // a blank name is auto-generated at random
+        Object.assign(win.state, { approvePlan: false, clarifyFirst: false, mcpAtlassian: true, consumeRecords: true, defaultEvalHome: 'record', mcpCustom: '' });
+        const got = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt', 'genAgentSDK'].map(f => h53(win[f]())).join(',');
+        expect(k + ':' + got).toBe(k + ':' + PLAIN_GOLD[k]);
+      });
+    } finally {
+      win.document.getElementById('storyInput').value = ''; win.document.getElementById('workflowName').value = '';
+    }
+  });
+  it('should never raise the never-runs warning on any preset, and keep the preset owner the topological rule gives', () => {
+    const keys = [...win.document.querySelectorAll('.preset-item[data-preset]')].map(el => el.dataset.preset);
+    expect(keys.length > 0).toBe(true);
+    keys.forEach(k => {
+      resetState(); win.loadPreset(k); win.state.verifyPaths = ['docs/verify.md'];
+      expect(k + ':' + strayWarnings().length).toBe(k + ':0');
+      expect(k + ':' + win.resolveVerifyOwnerId()).toBe(k + ':' + topoOwnerRule());
+      win.addPreRegisteredEval(win.state.nodes.find(n => n.type === 'input').id);
+      expect(k + '+eval:' + strayWarnings().length).toBe(k + '+eval:0');
+      expect(k + '+eval:' + win.resolveVerifyOwnerId()).toBe(k + '+eval:' + topoOwnerRule());
+    });
+  });
+});
+
+// Pre-registered eval for one-notion-of-the-run (written by the Eval Author before any plan).
+// Criteria E1..E17 live in the durable record; each it() title carries its criterion id.
+// FROZEN: never edit this block to make a change pass. Guards (tagged [guard]) pass today and
+// must keep passing; the rest are expected to FAIL until the work exists.
+describe('Eval: one notion of the run (pre-registered eval)', () => {
+  const FIVE = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt', 'genAgentSDK'];
+  const presetKeys = () => [...win.document.querySelectorAll('.preset-item[data-preset]')].map(el => el.dataset.preset);
+  function h53(str, seed) {
+    let h1 = 0xdeadbeef ^ (seed || 0), h2 = 0x41c6ce57 ^ (seed || 0);
+    for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  }
+  function agent(x, y, label, type) { return win.addNode('agent', x, y, label, { agentType: type, model: 'opus-5', tools: ['Read'], prompt: 'Do the ' + type + ' work.', maxTurns: 10 }); }
+  function input(x, y, label) { return win.addNode('input', x, y, label || 'In', {}); }
+  function output(x, y) { return win.addNode('output', x, y, 'Done', { deliverable: '', format: 'code', targetBranch: '', branchName: '' }); }
+  function chain(ids) { for (let i = 0; i + 1 < ids.length; i++) win.addConnection(ids[i], ids[i + 1]); }
+  function naming(label) { return win.validateWorkflow().filter(w => String(w.msg).indexOf(label) !== -1); }
+  function rowOf(rows, part) { return rows.find(r => r.part === part); }
+  // Connected to an Input along edges in either direction, computed here so the eval never relies on the code under test.
+  function connectedToInput(id) {
+    const inputs = win.state.nodes.filter(n => n.type === 'input').map(n => n.id);
+    const seen = new Set(); const stack = inputs.slice();
+    while (stack.length) { const cur = stack.pop(); if (seen.has(cur)) continue; seen.add(cur); win.state.connections.forEach(c => { if (c.from === cur) stack.push(c.to); if (c.to === cur) stack.push(c.from); }); }
+    return seen.has(id);
+  }
+  // Canvas H: In -> Builder -> Run Verifier -> Done, plus a stray sub-chain whose Verifier sorts
+  // AFTER Run Verifier in execution order (Side Planner -> Side Coder -> Side Tester -> Stray Verifier).
+  function canvasH() {
+    resetState();
+    const i = input(0, 100); const b = agent(300, 100, 'Builder', 'coder'); const v = agent(600, 100, 'Run Verifier', 'verifier'); const o = output(900, 100);
+    chain([i.id, b.id, v.id, o.id]);
+    const p = agent(0, 500, 'Side Planner', 'planner'); const c = agent(300, 500, 'Side Coder', 'coder'); const t = agent(600, 500, 'Side Tester', 'tester'); const s = agent(900, 500, 'Stray Verifier', 'verifier');
+    chain([p.id, c.id, t.id, s.id]);
+    return { i, b, v, o, p, c, t, s };
+  }
+  function withEvalAuthor(h) {
+    const a = agent(150, 0, 'Eval Author', 'evalAuthor');
+    win.addConnection(h.i.id, a.id); win.addConnection(a.id, h.b.id);
+    return a;
+  }
+  function variant(k, v) {
+    resetState(); win.loadPreset(k);
+    win.document.getElementById('workflowName').value = 'eval-fixture';   // a blank name is auto-generated at random
+    Object.assign(win.state, { approvePlan: false, clarifyFirst: false, mcpAtlassian: true, consumeRecords: true, defaultEvalHome: 'record', mcpCustom: '' });   // app defaults that resetState does not touch
+    if (v >= 1) win.state.verifyPaths = ['docs/verify.md'];
+    if (v >= 2) win.addPreRegisteredEval(win.state.nodes.find(n => n.type === 'input').id);
+    if (v >= 3) { win.state.memoryEnabled = true; win.state.durableRecord = true; }
+  }
+  afterEach(() => {
+    win.state.verifyPaths = []; win.state.verifyNotes = ''; win.state.verifyFailRun = true; win.state.durableRecord = false; win.state.memoryEnabled = false;
+    win.document.getElementById('storyInput').value = ''; win.document.getElementById('workflowName').value = '';
+    try { win.localStorage.removeItem('awd_run_reports'); win.localStorage.removeItem('awd_prefs'); } catch (e) { /* storage may be unavailable */ }
+    resetState();
+  });
+
+  // Today's output, captured before the work existed (the definition of "byte-identical to today").
+  const GOLD = {"gen":{"feature|0":"a8z85jzxuw,y7an31qbc3,1526i8mzob0,fl518g9ka3,iayaj371tm","feature|1":"19j7lk9j6a9,2d7q52ou9ng,1pa8eycf200,1t35sjlyzyk,ji8a7ytye8","feature|2":"1ixzr7w841y,2gbsmyq1xnr,48woqj7xgx,2f8x1zf4j4u,286uyebhuha","feature|3":"5jya4tt499,2babaq8tt4d,1b8m2ik83nz,essrp8x2hl,11epbhd9fed","bugfix|0":"2f48exlkxfc,h4cfrpp9ws,y7fbd2bk9h,xsd1o7s665,28jnjb2qd9u","bugfix|1":"2dddp8avi1q,1jdqif3wdrq,10eu9gd15bt,1d0cguyw4p5,13rufr184b5","bugfix|2":"1zu66zohliw,1xoz65cx8kw,cqevirhfx3,152itjb4bp7,19qpecsk36y","bugfix|3":"163q50zlfna,1iwti4nt26v,1rzpavtapro,1v94kyxw8eo,1gm98e4549q","fullstack|0":"dr9in4llvz,1gmpzbrbpsm,2a5elezkd2u,1knpwoa0drf,uks2icwu7g","fullstack|1":"1fiy4ftkqw5,1gb53cokqqb,d2dqeuaw1r,1v4fgvo1vwj,1bzpw3j49ij","fullstack|2":"4mtb2h9deh,11atga3x71i,vj6w2debro,19i8use6in3,168bnoq7ov8","fullstack|3":"20ygz16iqze,mne9cd5seq,1g2jv0rya6f,1sthwppfnai,12x2p4zp7sx","new_project|0":"12xt2nvtfc1,1w0zw8iw8xz,1t8vbukwqww,ue8xlel1nk,1tip2ji3hdq","new_project|1":"dne7rmjp9u,22yelwh0nh7,1s76s3t5uwm,k3lqldltnp,1ljzrjx868g","new_project|2":"1o9bwp7vqr2,1i7e0zp0o49,l561u5yzdx,dfoz69z9bc,16ayj27l4ak","new_project|3":"l5olodgoe3,1kv977l9oxw,1diq4fxcign,1b0jcg3g74g,8unug4wokg","ui_component|0":"qdac2onw1v,19dbaukr8m6,zo2vgxpe80,1r1fpyhj3it,u5qk3dunnv","ui_component|1":"2w7zraxwvq,57jtmnhv7d,wxksepckdl,1776jtrp7ug,3aje9epw3p","ui_component|2":"2dip6g4e1hx,qcfvlvbshm,1pam936hcvh,q4clb1qfxu,1aghhlgte1i","ui_component|3":"14ubkmmmtlh,1v39oyh19wi,zdfs0pl9ay,10mm7zyfx4x,158w7sxd3b6","refactoring|0":"1ws0unwifvs,jp9p9s8j9l,59gkvjjm3l,1nvdndbisdo,1jg7kwg4lqg","refactoring|1":"vaijywo2u0,1m3hr7a9xw4,1ljbm6tsy7i,ndex7u7gw2,jlef55n359","refactoring|2":"2cgrhynlul2,1am1lliby4z,vgftmbz0pc,158v6psszol,1qp3lp4hpj0","refactoring|3":"cmciab8aou,owmydnc5zu,1jn3o15ihca,120xys5mx2i,5o8utb2swd","documentation|0":"ejk8u95zhk,xyu3bkiplv,p6zpcadsff,1nvghvcu4kc,1vdyi5n2ww1","documentation|1":"2fvd260yw8b,1qhwoxf07du,czclsr2jt1,1n9wkif9ql9,vgergka5nz","documentation|2":"ceddjgpgq7,15ia08xbpiz,139ld7okzl9,8dmj0z4vda,1t9gexy5r0","documentation|3":"1c4pbpz5gdb,1bfkqtafuj8,2ezr52cbrzg,yvlywax996,oc5lp3v9a2","feature_fast|0":"1kcbmobh25w,86l1lejeg4,1wwnkwih07c,24js0q32icf,1i62e6kgz4l","feature_fast|1":"v5zy9ecxlc,mwtylnphw4,1s5d22bn7ao,275fj7k15ve,jt21ugkdjd","feature_fast|2":"21qfv4562ey,gavol2upm9,1tkwo10urp1,16m6tawz7ql,26ba78si8si","feature_fast|3":"95wa637m00,10abs6mgus7,vc8zcecfph,3cvfvd525m,2ezgj3apouv","devops|0":"3uxq2quobh,11tz84lmyyb,1zzb7yx6h2,amqkfzi2sd,jcd02ehbo6","devops|1":"uj8rlpjrrt,1n4wp0m6cgi,25qbqub6ne7,2cb6yqa6nb2,16vzzxdti6q","devops|2":"7f6amc92fe,1qevxf1uta4,2fqjh22c892,216quac3ypz,o4laex3vwm","devops|3":"214tiv87o7n,1qoxknvyt13,mkn2r0xrm6,1ijcgccpfqw,8kxkkb3w3h","platform_provisioning|0":"tyhyfwnhoh,23ay7umoec8,2ekbqt8aucg,nxn8c1u2sf,13yafqlqjku","platform_provisioning|1":"1pc87t6gkbg,ovt60u8542,22976e0zi8y,1rubi98y7i,1voliyxt7zy","platform_provisioning|2":"5hykt3p4oy,1wb4gkvm1vp,2djgyvy3vhu,pimuo4ucna,19ojvd11mq7","platform_provisioning|3":"2623th7e37o,33thgb6h7h,1s320mspcip,1833iwvzme4,24irv9rq69s","cross_repo|0":"1zynnrdc7wj,2957zrtwuv,oa8knn9y49,2dltjrgfc6r,2gn8s8ypcol","cross_repo|1":"xtangi4cdn,1f2uosl8s1n,j5s5ngvoox,1ruxu7dtzfx,242p6grqkh2","cross_repo|2":"28wvpiu0lp3,2933aj0huof,uueuxbqkl3,rhxzbhgad3,180az94haa4","cross_repo|3":"ly9sf0txeh,5s2ffzaecm,55jp38tdcr,1c0guvii9yu,ei2n316vyx","performance|0":"adhk3s90rc,a4hpoew7cr,1z2fnb13nbi,2d0db4vqpfe,1w9u0k0s6cy","performance|1":"123cdi8peqq,cqct31fbd9,22jgi13bbiv,cp8ddbunwj,f8egb08lv0","performance|2":"1jn5kchp9az,13nq9vdnhup,1o2ux6nbefd,1lj03ncqsrb,1wlsbt5uxwd","performance|3":"yxoqvgp7bs,3keujhq4w7,1n29qrcgkpl,oge38s2zs2,mbiiqaqkab","data_migration|0":"242gs2mvqxt,1sje8xpu23e,1a1e8eco1jo,1vrx7l7zsjq,5lozh2w7z6","data_migration|1":"2dlf4ji5ejw,1nazddjmm44,ploady1g2i,rbodj9gs1b,pkf5nmoz0y","data_migration|2":"2bgbte2q9w4,u64w1am7i2,1xs99itllvl,1ggi1hzxnzg,1xha36iyy30","data_migration|3":"l9ngin53zb,s43ieh9ine,21q5e1ysnrf,en69b1g91b,1rpvv0o4lk0","testing|0":"zaz0gv9bpd,dlsebmpjc6,1oq5fvb5q4t,1tbneoo2len,r2izojhaae","testing|1":"1in80034yj7,x71hy7zsyo,1ncmr1p7s32,2caiur3v52j,mnqosdqivh","testing|2":"if1zzfdgz7,1ypxl2b7zq,46jplp4p1o,187glyet5e4,2qv2wkmylx","testing|3":"17a9elcejab,fm6rfu4693,2cwsb9nzwrp,6xz7ydp1bs,h9l6aoh8yb","test_automation|0":"1r7yk9f6ucq,1lspvb4e682,1117c27phor,zemn72v5re,rcatz6e1br","test_automation|1":"1ln10l8ujyd,17p6t0buocg,2cah02zw8mt,ic7c9wpr85,1u5m6tijj4p","test_automation|2":"ny4suihu8v,259qdr668kk,21yrl17nrhf,2axvbo8wbyg,1h3oqiyirp5","test_automation|3":"ij3arzsrw,1zicaxc7u16,21daglafeoo,28vzpcl7i5z,1mk9had595b","review|0":"ch3688nk2a,1q6jbpwnbb0,1cvsetp11lh,n4lcjl0y4,bqp3s40a5k","review|1":"1tm7s813fno,1qce3q1656,15h4xpfneyh,2bmemsntyos,p2nufpi5q0","review|2":"dlb2hroaey,rria2bvieq,1hp6c41yr74,2b6r5yyu65c,21mt367xhsn","review|3":"vikjk2mgvw,26557xzvk4z,23x7x4iav89,1oo8a08x74g,1h6cd9iio4m","parallel_research|0":"efhsfwglx9,1bzt8bvw8mt,1gkpdl7ythu,tcpkj7l4dx,1kxcnd2d4e1","parallel_research|1":"15uczc6w9jc,26slcz2022c,1mms08nsowr,lf3nkkxdgn,1p64ogpn7es","parallel_research|2":"2b2gryxi0rg,wt232545xj,1z3wvboa13j,1eh36p8arh4,bmvotql393","parallel_research|3":"2009dnrdizg,2chmiul92ll,1ugxf6h7z6q,1k4arbvsej1,bwtacmuq1x","swarm|0":"osy4vdoneo,huafk9vvc8,1vb89ztmqhj,sp1je4dh63,6r4dw980nx","swarm|1":"153dhjuhta4,28el7jmd0ky,1dkm5yv7xwy,15wzscu8cuh,1rqbnj5dxv7","swarm|2":"p8uvktefac,2dht9xfj8n4,e817mduk01,14y1k5i4kzz,1vdf6pdqylm","swarm|3":"3znjrxbc7l,azuv1fonv1,1rxhjcklv3f,271ho1qqzq,esl02er8g9","analysis_forecast|0":"2f6th5mgvft,9einpt9ncy,txdmo9izax,1suijdrdojk,1h334vj8lzp","analysis_forecast|1":"206in8tnor0,1hbz1yq5rmj,1szkvbc60qt,1kj6dp5mt1t,1ne15w81au5","analysis_forecast|2":"45crygulv4,13zcibrms8o,v9ago16ezx,jt68pf5vqj,1w527kspem","analysis_forecast|3":"29ugbrg769b,17r9179wion,10nxq5pll05,22b1xukltub,wokf9omw99","incident_rca|0":"2jfx0xqs53,w9amaa9xgq,1dpajuk65b9,19lmd0v5gf1,1n2aziuuut0","incident_rca|1":"2d9m58oi7xx,14pjhhs4di0,12n3b63x215,1vz0jhbu0p0,nwel1ys0cm","incident_rca|2":"axb27x48tq,24vn6bps509,qblnyzwoa2,1sb6egmhfra,zydndktaav","incident_rca|3":"zmrb0830ip,1zwxbhyt2jt,5zfo6rp0bs,eaes4ynfi4,1g50jf5xwrs","delivery_swarm|0":"kjhwz7yc3c,9gytdpbo79,1r2g6jwp0fu,lr3clt3zub,15qmrm1tpjg","delivery_swarm|1":"25bhdmwtukl,lzq0oqayx7,1hhvf2esuwl,6mvia0mnoo,197f3zswgc2","delivery_swarm|2":"j303a0gvi8,1aktwaw60be,s7bd6u8emf,1v7pw7tyqw5,3rrqvh6dx2","delivery_swarm|3":"whg4scvczf,20dfy5hujru,1rb3l966cjr,10tefj0j9jr,ee5j9rkq95","touchup|0":"invo853hfl,1tndtlb5poy,23z9oau7axs,h7myidmka9,1n69be65l42","touchup|1":"1fe4o6vtjtj,jzwtex6b3,1jurh35g51g,ulubrs22be,v83zy7nunp","touchup|2":"qe77wgp4nc,12vuwojcjgr,1h4bojb8try,1qq1hw42su7,rxavo00g5m","touchup|3":"hkrb50vjel,1mqewa9bl22,1zcom6swcik,a79mh15ib7,swrpra52aa","record_sync|0":"1nse7qsyhvq,11iw6dnex82,279s63ulrh7,hcnap9yc2t,1tp1pv8qv8s","record_sync|1":"1dlg4i0kapt,1e7rk32yb8v,g2rcctanq9,1k8mmfbk16t,1ghy3bcmjfm","record_sync|2":"10fzfp8rppg,1pup3207mib,2e5p95i8cov,1x869t6udxj,kxrg9k8hzj","record_sync|3":"1rti7sbyy1i,1du0dncjmlk,1rey0lp5ld1,1236bjrwua8,63uqohv1df"},"place":{"feature":"1b6o2c5okh3","bugfix":"1wib8gdemr5","fullstack":"2eu6ogjuwpm","new_project":"14ybksvlfhm","ui_component":"1dpdyohqcs9","refactoring":"23tw3tf2g3t","documentation":"wnqzn49ydo","feature_fast":"2fvx0v31mk","devops":"1iapng5s1ed","platform_provisioning":"6kgamvljaq","cross_repo":"25k8sovd8ax","performance":"1vgyk8oit94","data_migration":"vmkiwodnt2","testing":"1c2swksv2jh","test_automation":"1bbe10mskim","review":"bhrpw6uw4j","parallel_research":"ab2w735pkj","swarm":"1tyeur5mrgd","analysis_forecast":"1oqkjtzthyn","incident_rca":"cwn07io45m","delivery_swarm":"24uckolqsxe","touchup":"1x0l701zm7","record_sync":"r50ah39h1h"},"review":{"feature|0":{},"feature|2":{},"bugfix|0":{},"bugfix|2":{},"fullstack|0":{},"fullstack|2":{},"new_project|0":{},"new_project|2":{},"ui_component|0":{},"ui_component|2":{},"refactoring|0":{},"refactoring|2":{},"documentation|0":{},"documentation|2":{"Eval Author":1},"feature_fast|0":{},"feature_fast|2":{},"devops|0":{},"devops|2":{},"platform_provisioning|0":{},"platform_provisioning|2":{},"cross_repo|0":{},"cross_repo|2":{},"performance|0":{},"performance|2":{},"data_migration|0":{},"data_migration|2":{},"testing|0":{},"testing|2":{},"test_automation|0":{},"test_automation|2":{"Feature Writer":1,"Verification: Step Definitions":1},"review|0":{},"review|2":{},"parallel_research|0":{},"parallel_research|2":{},"swarm|0":{},"swarm|2":{},"analysis_forecast|0":{},"analysis_forecast|2":{},"incident_rca|0":{},"incident_rca|2":{"Verifier: Root Cause":1,"RCA Writer":1},"delivery_swarm|0":{},"delivery_swarm|2":{"Verification: Integrator":1,"Test Engineer":1},"touchup|0":{},"touchup|2":{},"record_sync|0":{},"record_sync|2":{}},"controls":35,"prefs":"appSourceAccess,appSourceBranch,appSourcePath,approvePlan,artifactPath,clarifyFirst,consumeRecords,defaultDelivery,defaultEvalHome,defaultModel,durableRecord,effort,exportFormat,mcpAtlassian,mcpBrowser,mcpCodeSearch,mcpCustom,mcpDatadog,mcpGithub,memoryEnabled,openSpecArtifacts,pins,plibFavs,plibOpen,productDocPaths,repositories,rulesPaths,telemetryEnabled,telemetryEndpoint,telemetryService,telemetryTags,telemetryUser,uiContextNotes,verifyFailRun,verifyNotes,verifyPaths"};
+  function presetConnected() { return win.state.nodes.filter(n => n.type === 'agent').every(n => connectedToInput(n.id)); }
+  function reviewMap() {
+    const ws = win.validateWorkflow(); const m = {};
+    win.state.nodes.filter(n => n.type === 'agent').forEach(n => { const c = ws.filter(w => String(w.msg).indexOf('"' + n.label + '"') !== -1).length; if (c) m[n.label] = c; });
+    return m;
+  }
+  function verifyOn() { win.state.verifyPaths = ['docs/verify.md']; }
+
+  it('should warn by name for every agent in a stray sub-chain that has edges but no connection to an Input (E1)', () => {
+    const h = canvasH();
+    [h.p, h.c, h.t, h.s].forEach(n => {
+      expect(connectedToInput(n.id)).toBe(false);
+      expect(naming(n.label).some(w => w.type === 'warn' || w.type === 'error')).toBe(true);
+    });
+  });
+  it('should not warn about an agent connected to an Input only through an incoming edge or only through a second Input [guard] (E2)', () => {
+    resetState();
+    const i = input(0, 100); const b = agent(300, 100, 'Builder', 'coder'); const v = agent(600, 100, 'Run Verifier', 'verifier'); const o = output(900, 100);
+    chain([i.id, b.id, v.id, o.id]);
+    const f = agent(0, 400, 'Feeder Researcher', 'researcher'); win.addConnection(f.id, b.id);   // reaches the run only against the edge direction
+    const i2 = input(0, 700, 'Second In'); const a2 = agent(300, 700, 'Second Analyst', 'analyst'); win.addConnection(i2.id, a2.id);
+    expect(connectedToInput(f.id) && connectedToInput(a2.id)).toBe(true);
+    expect(naming('Feeder Researcher').length).toBe(0);
+    expect(naming('Second Analyst').length).toBe(0);
+  });
+  it('should still warn by name for a fully loose agent [guard] (E3)', () => {
+    resetState();
+    const i = input(0, 100); const b = agent(300, 100, 'Builder', 'coder'); const o = output(600, 100);
+    chain([i.id, b.id, o.id]);
+    agent(300, 400, 'Loose Coder', 'coder');
+    expect(naming('Loose Coder').some(w => w.type === 'warn' || w.type === 'error')).toBe(true);
+  });
+  it('should leave the review entries that name agents unchanged for every preset, with and without the one-click eval [guard] (E4)', () => {
+    presetKeys().forEach(k => [0, 2].forEach(v => {
+      variant(k, v);
+      expect(presetConnected()).toBe(true);
+      expect(JSON.stringify(reviewMap())).toBe(JSON.stringify(GOLD.review[k + '|' + v]));
+    }));
+  });
+  it('should give the mandates to the last connected Verifier when a stray Verifier sorts later or sits loose (E5)', () => {
+    let h = canvasH(); verifyOn();
+    expect(win.resolveVerifyOwnerId()).toBe(h.v.id);
+    expect(win.verifyInstructionsStepHint(h.v) !== '').toBe(true);
+    expect(win.verifyInstructionsStepHint(h.s)).toBe('');
+    win.state.verifyPaths = []; win.state.verifyNotes = 'Run the smoke suite.';   // inline notes arm the mandates too
+    expect(win.resolveVerifyOwnerId()).toBe(h.v.id);
+    h = canvasH(); verifyOn();
+    win.state.connections = win.state.connections.filter(c => c.to !== h.s.id && c.from !== h.s.id);   // the stray Verifier fully loose
+    expect(win.resolveVerifyOwnerId()).toBe(h.v.id);
+  });
+  it('should give the mandates to the last connected Tester when the only Verifiers and later Testers are stray (E6)', () => {
+    resetState(); verifyOn();
+    const i = input(0, 100); const b = agent(300, 100, 'Builder', 'coder'); const t = agent(600, 100, 'Run Tester', 'tester'); const o = output(900, 100);
+    chain([i.id, b.id, t.id, o.id]);
+    const sv = agent(300, 400, 'Stray Verifier', 'verifier');   // loose
+    const p = agent(0, 600, 'Side Planner', 'planner'); const c1 = agent(300, 600, 'Side Coder', 'coder'); const c2 = agent(600, 600, 'Side Coder Two', 'coder'); const st = agent(900, 600, 'Stray Tester', 'tester');
+    chain([p.id, c1.id, c2.id, st.id]);   // sorts after Run Tester in execution order
+    expect(win.resolveVerifyOwnerId()).toBe(t.id);
+    expect(win.verifyInstructionsStepHint(t) !== '').toBe(true);
+    expect(win.verifyInstructionsStepHint(sv)).toBe('');
+    expect(win.verifyInstructionsStepHint(st)).toBe('');
+  });
+  it('should give the mandates to no step when every Verifier and Tester is stray (E7)', () => {
+    resetState(); verifyOn();
+    const i = input(0, 100); const b = agent(300, 100, 'Builder', 'coder'); const o = output(600, 100);
+    chain([i.id, b.id, o.id]);
+    const sv = agent(300, 400, 'Stray Verifier', 'verifier'); const st = agent(600, 400, 'Stray Tester', 'tester');
+    expect(win.resolveVerifyOwnerId()).toBe(null);
+    expect(win.verifyInstructionsStepHint(sv)).toBe('');
+    expect(win.verifyInstructionsStepHint(st)).toBe('');
+  });
+  it('should keep the preference order among connected steps: the last Verifier, over any Tester [guard] (E8)', () => {
+    resetState(); verifyOn();
+    let i = input(0, 100); let b = agent(300, 100, 'Builder', 'coder'); const v1 = agent(600, 100, 'First Verifier', 'verifier'); const t1 = agent(900, 100, 'Final Tester', 'tester'); const v2 = agent(1200, 100, 'Last Verifier', 'verifier'); let o = output(1500, 100);
+    chain([i.id, b.id, v1.id, t1.id, v2.id, o.id]);
+    expect(win.resolveVerifyOwnerId()).toBe(v2.id);
+    resetState(); verifyOn();
+    i = input(0, 100); b = agent(300, 100, 'Builder', 'coder'); const only = agent(600, 100, 'Only Verifier', 'verifier'); const later = agent(900, 100, 'Later Tester', 'tester'); o = output(1200, 100);
+    chain([i.id, b.id, only.id, later.id, o.id]);
+    expect(win.resolveVerifyOwnerId()).toBe(only.id);
+  });
+  it('should make the eval executor and the mandates owner the same connected Verifier on a canvas with a stray Verifier (E9)', () => {
+    const h = canvasH(); withEvalAuthor(h); verifyOn();
+    expect(win.evalExecutorId()).toBe(h.v.id);
+    expect(win.resolveVerifyOwnerId()).toBe(h.v.id);
+    win.state.verifyPaths = []; win.state.verifyNotes = 'Run the smoke suite.';
+    expect(win.resolveVerifyOwnerId()).toBe(win.evalExecutorId());
+  });
+  it('should make the eval executor and the mandates owner agree on every preset with the one-click eval and a stray Verifier chain that sorts last (E10)', () => {
+    presetKeys().forEach(k => {
+      variant(k, 2);
+      const depth = win.state.nodes.length + 1;
+      const ids = []; for (let j = 0; j < depth; j++) ids.push(agent(j * 50, 3000, 'Stray Step ' + j, 'coder').id);
+      ids.push(agent(depth * 50, 3000, 'Stray Verifier', 'verifier').id);
+      chain(ids);
+      const exec = win.evalExecutorId();
+      if (exec !== null) expect(k + ':' + win.resolveVerifyOwnerId()).toBe(k + ':' + exec);
+    });
+  });
+  it('should generate byte-identical output in all five formats for every preset, plain, with mandates, with the one-click eval, and with memory and record on [guard] (E11)', () => {
+    presetKeys().forEach(k => [0, 1, 2, 3].forEach(v => {
+      variant(k, v);
+      expect(presetConnected()).toBe(true);
+      expect(k + '|' + v + ':' + FIVE.map(f => h53(win[f]())).join(',')).toBe(k + '|' + v + ':' + GOLD.gen[k + '|' + v]);
+    }));
+  });
+  it('should show the owner and executor rows on the same connected Verifier, and tell a stray Verifier it is not the owner because it is not connected (E12)', () => {
+    const h = canvasH(); withEvalAuthor(h); verifyOn();
+    ['prompt', 'subagent', 'teams'].forEach(f => {
+      const vr = win.explainNode(h.v, f); const sr = win.explainNode(h.s, f);
+      expect(f + ':' + rowOf(vr, 'Verification-instructions step hint').status).toBe(f + ':emitted');
+      expect(f + ':' + rowOf(vr, 'Pre-registered eval step hint').status).toBe(f + ':emitted');
+      expect(f + ':' + rowOf(sr, 'Verification-instructions step hint').status).toBe(f + ':skipped');
+      expect(f + ':' + rowOf(sr, 'Pre-registered eval step hint').status).toBe(f + ':skipped');
+      expect(/connect|outside the run|not part of the run|not in the run|never runs/i.test(rowOf(sr, 'Verification-instructions step hint').reason)).toBe(true);
+    });
+  });
+  it('should keep a stray Verifier out of the workflow-level Explain rows for the mandates and the eval [guard part of E13]', () => {
+    const h = canvasH(); withEvalAuthor(h); verifyOn();
+    const rows = win.explainWorkflow('prompt');
+    ['Verification instructions', 'Pre-registered eval'].forEach(p => expect(rowOf(rows, p).reason.indexOf('Stray Verifier')).toBe(-1));
+  });
+  it('should place the one-click eval exactly where it places it today for every preset [guard] (E15)', () => {
+    presetKeys().forEach(k => {
+      variant(k, 0);
+      win.addPreRegisteredEval(win.state.nodes.find(n => n.type === 'input').id);
+      const sig = h53(JSON.stringify([win.state.nodes.map(n => [n.type, n.config && n.config.agentType || '', n.label, n.x, n.y]), win.state.connections.map(c => [c.from, c.to, c.label || ''])]));
+      expect(k + ':' + sig).toBe(k + ':' + GOLD.place[k]);
+    });
+  });
+  it('should add no sidebar setting: the same sidebar controls and the same persisted preference keys [guard] (E16)', () => {
+    resetState();
+    expect(win.document.querySelectorAll('#sidebar input, #sidebar select, #sidebar textarea').length).toBe(GOLD.controls);
+    win.savePrefs();
+    expect(Object.keys(JSON.parse(win.localStorage.getItem('awd_prefs'))).sort().join(',')).toBe(GOLD.prefs);
+  });
+  it('should choose the eval executor exactly as today, including the no-Input canvas and a second Input [guard] (E17)', () => {
+    let h = canvasH(); withEvalAuthor(h);
+    expect(win.evalExecutorId()).toBe(h.v.id);
+    resetState();
+    let a = agent(0, 100, 'Eval Author', 'evalAuthor'); let c = agent(300, 100, 'Builder', 'coder'); const lv = agent(600, 100, 'Linked Verifier', 'verifier');
+    chain([a.id, c.id, lv.id]); agent(300, 400, 'Loose Verifier', 'verifier');   // no Input node on this canvas
+    expect(win.evalExecutorId()).toBe(lv.id);
+    resetState();
+    a = agent(0, 100, 'Eval Author', 'evalAuthor'); c = agent(300, 100, 'Builder', 'coder'); chain([a.id, c.id]); agent(300, 400, 'Loose Verifier', 'verifier');
+    expect(win.evalExecutorId()).toBe(null);
+    resetState();
+    const i = input(0, 100); a = agent(150, 0, 'Eval Author', 'evalAuthor'); c = agent(300, 100, 'Builder', 'coder'); const v1 = agent(600, 100, 'Run Verifier', 'verifier');
+    chain([i.id, a.id, c.id, v1.id]);
+    const i2 = input(0, 600, 'Second In'); const x1 = agent(300, 600, 'Second Coder', 'coder'); const x2 = agent(600, 600, 'Second Tester', 'tester'); const x3 = agent(900, 600, 'Second Verifier', 'verifier');
+    chain([i2.id, x1.id, x2.id, x3.id]);   // connected to an Input, and sorts after Run Verifier
+    expect(win.evalExecutorId()).toBe(x3.id);
+    verifyOn();
+    expect(win.resolveVerifyOwnerId()).toBe(x3.id);
   });
 });
 

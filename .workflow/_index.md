@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## one-notion-of-the-run
+
+- record: .workflow/one-notion-of-the-run.md
+- intent: one connected set (evalReachableIds) defines the run - the verification-mandates owner is chosen from it (last connected Verifier, else Tester, else none) so it always equals the pre-registered eval executor, the Workflow Review warns by name for every agent with edges but no path to an Input, and Explain, the Verifier status line, and the advisor say why a stray Verifier is not the owner; every preset byte-identical in all five formats
+- files: index.html (resolveVerifyOwnerId, validateWorkflow, explainAgentNode, explainWorkflow, verifyStatusHtml, advisor rule j), tests.html (describe One notion of the run; the frozen eval describe)
+- status: current | date: 2026-11-01 | note: built by the eval feature's first live run (Feature (fast) + Add eval, director approval); amends verification-instructions and pre-registered-eval. 1961 -> 1998.
+
 ## pre-registered-eval
 
 - record: .workflow/pre-registered-eval.md

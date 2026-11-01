@@ -2517,7 +2517,7 @@ function approvalCheckpoint() {
       const roleOf = n => AGENT_TYPES.some(a => a.id === n.config.agentType) ? n.config.agentType : 'general';   // unknown or missing role = General, as the rest of the app treats it
       let idx = agents.findIndex(n => APPROVAL_BUILD_ROLES.has(roleOf(n)));
       const builds = idx !== -1;   // any reachable step builds: the gate's wording, even when the pause moves earlier
-      if (idx === -1) idx = 0;
+      if (idx === -1) { idx = agents.findIndex(n => !approvalIsReviewNode(n)); if (idx === -1) idx = 0; }   // no build role: the first step that can own a plan, never an Eval Author or a critic
       // Inside a per-repository lane the pause moves to the lane's FIRST step: one approval
       // covers every repository, and every format (the SDK fans the lane out as one unit)
       // pauses at the same place.
@@ -2657,15 +2657,15 @@ const FOUND_DEFECT_ROLES = new Set(['coder', 'backend', 'frontend', 'general', '
 // is ignored; stale values from an earlier type are tolerated, same as stale collapse keys).
 const DEFECT_KNOB_ROLES = new Set(['coder', 'backend', 'frontend', 'general']);
 function nodeDefectPosture(node) { return (node && node.config && node.config.defectPosture) || 'balanced'; }
-// The build steps a reviewer judges whose posture is not the default: the reviewer's template
-// says to judge declared fixes against the producing step's DECLARED posture, so the brief
-// names that posture at generation time instead of leaving it to the handoff.
 // A coder-family step's effective posture: the two non-default values it can run, else balanced
 // (a stale reviewer-only value left by a type change resolves to balanced, as its brief does).
 function coderPosture(node) {
   const v = node && node.config && DEFECT_KNOB_ROLES.has(node.config.agentType) ? nodeDefectPosture(node) : 'balanced';
   return v === 'record-only' || v === 'aggressive' ? v : 'balanced';
 }
+// The build steps a reviewer judges whose posture is not the default: the reviewer's template
+// says to judge declared fixes against the producing step's DECLARED posture, so the brief
+// names that posture at generation time instead of leaving it to the handoff.
 function reviewedProducers(node) {
   return getDepNodes(node.id).filter(n => coderPosture(n) !== 'balanced');
 }
@@ -2745,12 +2745,14 @@ function codeSearchStepHint(node) {
 // AND the node\'s role; returns '' otherwise so nothing leaks into implementer/planner steps.
 const VERIFY_OWNER_ROLES = new Set(['verifier', 'tester']);
 // The team's verification mandates go to exactly ONE step - the workflow's owning
-// verification step: the last verifier-type node in execution order, else the last
-// tester. One owner means an expensive check (a cloud grid run, a load test) never
-// executes twice; reviewers audit reported outcomes, they never execute mandates.
-// A tester that never receives the mandates cannot duplicate them.
+// verification step: the last verifier-type node connected to the run (evalReachableIds) in
+// execution order, else the last connected tester. One owner means an expensive check (a cloud
+// grid run, a load test) never executes twice; reviewers audit reported outcomes, they never
+// execute mandates. A tester that never receives the mandates cannot duplicate them, and a
+// stray step that never runs never owns them, so the owner is the eval executor by construction.
 function resolveVerifyOwnerId() {
-  const ordered = topologicalSort().filter(n => n && n.type === 'agent' && n.config);
+  const reach = evalReachableIds();
+  const ordered = topologicalSort().filter(n => n && n.type === 'agent' && n.config && reach.has(n.id));
   const verifiers = ordered.filter(n => n.config.agentType === 'verifier');
   if (verifiers.length) return verifiers[verifiers.length - 1].id;
   const testers = ordered.filter(n => n.config.agentType === 'tester');
@@ -2779,27 +2781,32 @@ function verifyInstructionsStepHint(node) {
 const EVAL_AUTHOR_ROLE = 'evalAuthor';
 function evalAuthorNodes() { return state.nodes.filter(n => n && n.type === 'agent' && n.config && n.config.agentType === EVAL_AUTHOR_ROLE); }
 function hasEvalAuthor() { return evalAuthorNodes().length > 0; }
-// The step that executes the eval: the last Verifier in execution order, or null.
-// The nodes that belong to the run: connected to an Input node by any chain of edges, in
-// either direction. This is deliberately weaker than "downstream along forward edges": a
-// hand-built gate whose No branch leads forward to a Debugger and a Verifier is emitted as
+// The nodes that belong to the run, the ONE notion of it shared by the eval executor, the
+// verification-mandates owner, and the Workflow Review warning for agents that never run:
+// connected to an Input node by any chain of edges, in either direction. This is deliberately
+// weaker than "downstream along forward edges": a hand-built gate whose No branch leads forward to a Debugger and a Verifier is emitted as
 // steps by every generator, so it is part of the run; only a loose node or a sub-chain with no
 // connection to an Input is not. With no Input node, every node that has at least one edge
 // counts (a loose Verifier dropped from the palette never does). Different from
 // advisorReachable, which answers "what runs after X" along forward edges.
+const _evalReachMemo = { sig: null, ids: null };   // the review, Explain, the status line, and the owner ask per node per render
 function evalReachableIds() {
+  const sig = graphShapeSig(false);
+  if (_evalReachMemo.sig === sig) return _evalReachMemo.ids;
   const inputs = state.nodes.filter(n => n.type === 'input');
+  let seen;
   if (!inputs.length) {
-    const linked = new Set(); state.connections.forEach(c => { linked.add(c.from); linked.add(c.to); });
-    return linked;
+    seen = new Set(); state.connections.forEach(c => { seen.add(c.from); seen.add(c.to); });
+  } else {
+    seen = new Set(); const stack = inputs.map(n => n.id);
+    while (stack.length) {
+      const id = stack.pop();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      state.connections.forEach(c => { if (c.from === id && !seen.has(c.to)) stack.push(c.to); if (c.to === id && !seen.has(c.from)) stack.push(c.from); });
+    }
   }
-  const seen = new Set(); const stack = inputs.map(n => n.id);
-  while (stack.length) {
-    const id = stack.pop();
-    if (seen.has(id)) continue;
-    seen.add(id);
-    state.connections.forEach(c => { if (c.from === id && !seen.has(c.to)) stack.push(c.to); if (c.to === id && !seen.has(c.from)) stack.push(c.from); });
-  }
+  _evalReachMemo.sig = sig; _evalReachMemo.ids = seen;
   return seen;
 }
 // The executor: the last Verifier that belongs to the run, in execution order. Memoized on the
@@ -2847,8 +2854,8 @@ function evalAmbiguityStepClause(node) {
 }
 function evalAmbiguityOrchestratorClause(author) {
   const v = evalAmbiguityOf(author);
-  if (v === 'decide') return '> Open questions: the Eval Author decides every question the requirements leave open and lists its assumptions in its handoff; carry each one into the durable record as a decision (question -> assumption -> the criterion it shaped). No question reaches the director.';
-  return '> Open questions: when the Eval Author\'s handoff lists open questions' + (v === 'always' ? '' : ' (only those that move the pass bar; it decides the rest and records them)') + ', ask the director ONCE, in one short batch with the proposed defaults, before the eval is frozen and before any planning step starts; then re-dispatch the Eval Author with its draft and the answers to finalize and freeze, and record each answer in the durable record as a decision (question -> answer -> the criterion it shaped). Running non-interactively (no director available to answer), do NOT block: adopt the proposed defaults, record them as assumptions, and continue. An eval frozen around an unanswered question is a guess nobody agreed to.';
+  if (v === 'decide') return '> Open questions: the Eval Author decides every question the requirements leave open and lists its assumptions in its handoff; carry each one into the durable record as a decision (question -> assumption -> the criterion it shaped) and into the planning step\'s brief as a resolved requirement, so the plan is built to the same reading the eval is frozen on. No question reaches the director.';
+  return '> Open questions: when the Eval Author\'s handoff lists open questions' + (v === 'always' ? '' : ' (only those that move the pass bar; it decides the rest and records them)') + ', ask the director ONCE, in one short batch with the proposed defaults, before the eval is frozen and before any planning step starts; then re-dispatch the Eval Author with its draft and the answers to finalize and freeze, record each answer in the durable record as a decision (question -> answer -> the criterion it shaped), and fold each answer into the planning step\'s brief as a resolved requirement, exactly as the clarify gate does, so the plan is built to the same reading the eval is frozen on. Running non-interactively (no director available to answer), do NOT block: adopt the proposed defaults, record them as assumptions, and continue. An eval frozen around an unanswered question is a guess nobody agreed to.';
 }
 function evalInRecord() {
   if (!state.durableRecord) return true;   // without a record the question does not arise
@@ -2897,7 +2904,7 @@ function evalAuthorUpstreamSteps(author) {
       if (seen.has(c.from)) return; seen.add(c.from);
       const n = state.nodes.find(x => x.id === c.from);
       if (!n) return;
-      if (n.type !== 'input') out.push(n);
+      if (n.type === 'agent') out.push(n);   // a fork, a gate, or a task produces nothing the author could see; keep walking past it
       stack.push(n.id);
     });
   }
@@ -2915,7 +2922,7 @@ function evalHint(atlUrls) {
   const ticketClause = urls.length
     ? ' The requirements here are a ticket: the Eval Author\'s brief is the RESOLVED ticket content you fetched up front (description, acceptance criteria, comments, and the linked material), not the URL - there is no plan yet to distill it into. If the ticket is an epic, fetch its child stories and include them: the eval covers every story, not the epic\'s title.'
     : '';
-  r.push('> **Pre-registered eval (configured).** This workflow carries an Eval Author step (' + names + ') that writes the eval: the frozen, checkable definition of done, derived from the requirements before any plan exists. Brief it with the requirements and repository context ONLY - never a plan, a design, a diff, or another step\'s output - and run it before any planning or build step has produced output.' + ticketClause + ' It writes the eval to ' + evalArtifactLocation() + ': numbered criteria, each with the requirement it serves, its kind (automated, manual, rubric), the exact check, and the pass condition. Once written the eval is FROZEN: no later step edits it, and a mismatch between the eval and what was built is reported, never resolved by rewriting the eval. Building steps may read it - it is the acceptance spec - and executable checks it wrote are expected to fail until the work exists.');
+  r.push('> **Pre-registered eval (configured).** This workflow carries an Eval Author step (' + names + ') that writes the eval: the frozen, checkable definition of done, derived from the requirements before any plan exists. Brief it with the requirements and repository context ONLY - never a plan, a design, a diff, or another step\'s output - and run it before any planning or build step has produced output.' + ticketClause + ' It writes the eval to ' + evalArtifactLocation() + ': numbered criteria, each with the requirement it serves, its kind (automated, manual, rubric), the exact check, and the pass condition. Once written the eval is FROZEN: no later step edits it, and a mismatch between the eval and what was built is reported, never resolved by rewriting the eval. Building steps may read it - it is the acceptance spec - and executable checks it wrote are expected to fail until the work exists. Every brief you write after the freeze is written toward the eval, never around it: never instruct a step to skip, narrow, or avoid something a frozen criterion requires; when a criterion looks wrong, the step reports the mismatch and the gate fails, and you do not route around it - only the director can move the bar, as a recorded decision.');
   r.push('>');
   r.push(evalAmbiguityOrchestratorClause(authors[0]));
   if (execNode) {
@@ -4442,7 +4449,11 @@ function verifyStatusHtml(node) {
     return 'Owns this workflow\'s verification mandates (' + (n ? n + ' file' + (n !== 1 ? 's' : '') : '') + (n && (state.verifyNotes || '').trim() ? ' + ' : '') + ((state.verifyNotes || '').trim() ? 'inline notes' : '') + ') - they route into this step\'s brief; posture: ' + (state.verifyFailRun ? 'unmet required checks fail the run' : 'report-only') + '.';
   }
   const ownerNode = state.nodes.find(n => n.id === owner);
-  return 'Verification mandates are owned by "' + escHtml(ownerNode ? ownerNode.label : 'another step') + '" (the last verification step in the flow) - one owner, so an expensive check never runs twice.';
+  if (!evalReachableIds().has(node.id)) {
+    return 'This Verifier is not connected to an Input, so it never runs and does not own the verification mandates' + (ownerNode ? ' - "' + escHtml(ownerNode.label) + '" owns them.' : ' - no connected step owns them, so the orchestrator runs them at close-out.');
+  }
+  if (!ownerNode) return 'No connected step owns the verification mandates, so the orchestrator runs them at close-out.';
+  return 'Verification mandates are owned by "' + escHtml(ownerNode.label) + '" (the last verification step in the flow) - one owner, so an expensive check never runs twice.';
 }
 function refreshVerifyStatusLine() {
   const el = document.querySelector('#configFields .config-verify-status');
@@ -6404,9 +6415,10 @@ function pushUndo(snap) {
   _redoStack.length = 0; // Clear redo on new action
 }
 function batchUndo(fn) {
-  pushUndo(); // Single snapshot before the batch
+  pushUndo(); // Single snapshot before the batch (a no-op inside an enclosing batch, so nested batches fold into one undo step)
+  const was = _undoBatch;
   _undoBatch = true;
-  try { fn(); } finally { _undoBatch = false; }
+  try { fn(); } finally { _undoBatch = was; }
 }
 function undo() {
   if (_undoStack.length === 0) return;
@@ -6715,15 +6727,13 @@ function attachReviewLoop(targetId, kind) {
     // is not downstream (a parallel sibling on a near row) keeps its place; Auto Layout untangles
     // that case.
     const span = 600;
-    const crowded = state.nodes.some(n => n.id !== targetId && n.x > target.x && n.x < target.x + span + 140 && Math.abs(n.y - target.y) < 90);
-    if (crowded) {   // only what runs after the target moves; a parallel sibling keeps its place
-      const down = advisorReachable(targetId);   // what runs after the target, along forward edges
-      const movers = state.nodes.filter(n => n.id !== targetId && down.has(n.id) && n.x > target.x);
-      if (movers.length) {
-        const minX = Math.min.apply(null, movers.map(n => n.x));
-        const shift = Math.max(span, target.x + span + 180 - minX);   // a close neighbor moves far enough to clear the gate, not just by the span
-        movers.forEach(n => { n.x += shift; });
-      }
+    const down = advisorReachable(targetId);   // what runs after the target, along forward edges
+    const movers = state.nodes.filter(n => n.id !== targetId && down.has(n.id) && n.x > target.x);
+    const crowded = movers.some(n => n.x < target.x + span + 140 && Math.abs(n.y - target.y) < 90);   // a crowder that is not downstream moves nothing
+    if (crowded) {
+      const minX = Math.min.apply(null, movers.map(n => n.x));
+      const shift = Math.max(span, target.x + span + 180 - minX);   // a close neighbor moves far enough to clear the gate, not just by the span
+      movers.forEach(n => { n.x += shift; });
     }
     const cfg = {
       agentType: kind, reviewLoopFor: targetId, reviewLoopKind: kind,
@@ -6799,12 +6809,10 @@ function addPreRegisteredEval(inputId) {
   if (!input || hasEvalAuthor()) return;
   const outs = state.connections.filter(c => c.from === inputId);
   let author;
-  batchUndo(() => {
-    // Above the main row, right after the Input; climb while the spot is taken.
-    let ax = input.x + 240, ay = input.y - 110;
-    const taken = () => state.nodes.some(n => Math.abs(n.x - ax) < 200 && Math.abs(n.y - ay) < 60);
-    for (let i = 0; i < 6 && taken(); i++) ay -= 90;
-    author = addNode('agent', ax, ay, 'Eval Author', {   // the full template in the prompt, as the presets do, so it can be read and edited in place
+  let outcome = 'existing';
+  batchUndo(() => {   // the author, the Verifier loop, and the re-flow are ONE undo step
+    // Provisional spot right after the Input; Auto Layout below re-flows the canvas.
+    author = addNode('agent', input.x + 240, input.y - 110, 'Eval Author', {   // the full template in the prompt, as the presets do, so it can be read and edited in place
       agentType: EVAL_AUTHOR_ROLE, prompt: PROMPTS.evalAuthor, tools: AGENT_TYPE_TOOL_DEFAULTS.evalAuthor.slice(), maxTurns: 10,
       evalReplaced: outs.map(c => ({ from: inputId, to: c.to, label: c.label || '', fromPort: c.fromPort || '' }))   // what the Input's edges were, so Remove restores them exactly
     });
@@ -6812,15 +6820,14 @@ function addPreRegisteredEval(inputId) {
     state.connections = state.connections.filter(c => !outIds.has(c.id));
     addConnection(inputId, author.id, undefined, outs.length ? outs[0].fromPort : undefined);   // the Input keeps the port its first edge left from
     outs.forEach(c => addConnection(author.id, c.to, c.label));
+    if (evalExecutorId() === null) {
+      const t = lastBuildStepId();
+      if (t) { attachReviewLoop(t, 'verifier'); outcome = 'added'; } else outcome = 'none';
+    }
+    // The canvas re-flows around the new branch (director: a hand-placed author above the row
+    // looked odd next to a laid-out preset); the user's own layout is one Undo away.
+    autoLayout();
   });
-  let outcome = 'existing';
-  if (evalExecutorId() === null) {
-    const t = lastBuildStepId();
-    if (t) { attachReviewLoop(t, 'verifier'); outcome = 'added'; } else outcome = 'none';
-  }
-  // The canvas re-flows around the new branch (director: a hand-placed author above the row
-  // looked odd next to a laid-out preset); the user's own layout is one Undo away.
-  autoLayout();
   selectNode(author.id, true);
   render();
   updateConfig();
@@ -11004,6 +11011,12 @@ function validateWorkflow() {
     const hasOut = state.connections.some(c => c.from === n.id);
     if (!hasIn && !hasOut) warnings.push({ type: 'warn', msg: '"' + n.label + '" is not connected to anything' });
   });
+  // Agents with edges that still never run: a sub-chain with no connection to an Input node.
+  // Loose agents are already named above, so each node gets one entry.
+  const _runIds = evalReachableIds();
+  state.nodes.filter(n => n.type === 'agent' && !_runIds.has(n.id) && state.connections.some(c => c.to === n.id || c.from === n.id)).forEach(n => {
+    warnings.push({ type: 'warn', msg: '"' + n.label + '" is not connected to an Input node, so it never runs - connect it to the run or remove it' });
+  });
   // General agents with empty prompts (generic scaffold the user is expected to tailor)
   state.nodes.filter(n => n.type === 'agent').forEach(n => {
     if (!n.config.prompt || !n.config.prompt.trim()) {
@@ -11311,11 +11324,13 @@ function adviseWorkflow() {
   }
 
   // (j) Verification mandates with no owning step: the beat routes the files to the
-  // Verifier (else the final Tester); with neither, the orchestrator must improvise at
+  // connected Verifier (else the connected Tester); with neither, the orchestrator must improvise at
   // close-out. Surface the gap - emission is untouched (config binds; the fallback clause
   // in the beat covers the ownerless run honestly).
   if (verifyOwnerlessMisconfig()) {
-    s.push({ msg: 'Verification instructions are configured but no step owns them - add a Verifier or Tester so the repo\'s mandated checks have a dedicated executor (until then the orchestrator itself runs them at close-out).' });
+    const _reach = evalReachableIds();
+    const _stray = state.nodes.filter(n => n.type === 'agent' && n.config && VERIFY_OWNER_ROLES.has(n.config.agentType) && !_reach.has(n.id)).sort((a, b) => (a.config.agentType === 'verifier' ? 0 : 1) - (b.config.agentType === 'verifier' ? 0 : 1))[0];
+    s.push({ msg: 'Verification instructions are configured but no step owns them - ' + (_stray ? 'connect "' + _stray.label + '" to the run (it is not connected to an Input, so it never runs), or ' : '') + 'add a Verifier or Tester so the repo\'s mandated checks have a dedicated executor (until then the orchestrator itself runs them at close-out).' });
   }
 
   // (f) Telemetry-informed advice, only when run reports exist for this workflow.
@@ -11691,14 +11706,16 @@ function explainAgentNode(node, format) {
     : _bplCfg ? (APPROVAL_PLAN_OWNER_ROLES.has(node.config.agentType) ? 'a branching strategy is configured but another step owns the plan (the one the approval gate names)' : 'a branching strategy is configured but this step neither plans nor builds (reviewers and verifiers read branches, they do not create them)') : 'no branching strategy configured on an Output node that delivers by Commit or Pull Request', brStep));
   const veStep = verifyInstructionsStepHint(node);
   rows.push(exRow('Verification-instructions step hint', !!veStep,
-    veStep ? 'verification paths configured and this step is the owning verification step (the last Verifier in execution order, else the last Tester)'
-       : ((!state.verifyPaths || !state.verifyPaths.length) ? 'no verification paths configured - add them under Multi-Repo & Context Paths (Verification instructions)'
+    veStep ? 'verification paths configured and this step is the owning verification step (the last Verifier connected to the run, in execution order, else the last connected Tester)'
+       : (!hasVerifyMandates() ? 'no verification paths configured - add them under Multi-Repo & Context Paths (Verification instructions)'
+          : (VERIFY_OWNER_ROLES.has(node.config.agentType) && !evalReachableIds().has(node.id)) ? 'not the owning verification step: this step is not connected to an Input, so it never runs and cannot own the mandates (they go to the last connected Verifier, else the last connected Tester)'
           : 'not the owning verification step (mandates go to ONE step - the last verifier-type node, else the last tester - so an expensive check never runs twice; reviewers audit, they do not execute)'),
     veStep));
   const evStep = evalStepHint(node);
   rows.push(exRow('Pre-registered eval step hint', !!evStep,
-    evStep ? (node.config.agentType === EVAL_AUTHOR_ROLE ? 'this step is the Eval Author: briefed with the requirements only, writes and freezes the eval' : 'this step is the eval executor (the last Verifier in execution order): the eval is authoritative, every criterion reported pass, fail, or blocked')
+    evStep ? (node.config.agentType === EVAL_AUTHOR_ROLE ? 'this step is the Eval Author: briefed with the requirements only, writes and freezes the eval' : 'this step is the eval executor (the last Verifier connected to the run, in execution order): the eval is authoritative, every criterion reported pass, fail, or blocked')
       : (!hasEvalAuthor() ? 'no Eval Author in this workflow - right-click the Input node, Add eval'
+         : (node.config.agentType === 'verifier' && !evalReachableIds().has(node.id)) ? 'this Verifier is not connected to an Input, so it never runs and does not execute the eval' + (evalExecutorId() === null ? ' (no connected Verifier executes it either - a configuration error, see Review)' : '')
          : (evalExecutorId() === null ? 'an Eval Author exists but no Verifier executes the eval (a configuration error - see Review)' : 'neither the Eval Author nor the executing Verifier')),
     evStep));
   const fd = foundDefectNote(node);
@@ -12081,10 +12098,12 @@ function explainWorkflow(format) {
   const ve = verifyInstructionsHint();
   const _vePaths = (state.verifyPaths || []).filter(Boolean);
   const _veNames = _vePaths.join(', ') + (((state.verifyNotes || '').trim()) ? (_vePaths.length ? ' + inline notes' : 'inline notes') : '');
-  rows.push(exRow('Verification instructions', !!ve, ve ? 'verification mandates configured: ' + _veNames + ' (routed to the owning verification step - Verifier if present, else final Tester; posture ' + (state.verifyFailRun ? 'fails the run' : 'report-only') + ')' : 'no verification paths configured - add them under Multi-Repo & Context Paths (Verification instructions)', ve));
+  const _veOwner = ve ? state.nodes.find(n => n.id === resolveVerifyOwnerId()) : null;
+  const _veRoute = _veOwner ? 'routed to "' + _veOwner.label + '", the owning verification step: the last Verifier connected to the run, else the last connected Tester' : 'no Verifier or Tester connected to the run owns them, so the orchestrator executes them at close-out';
+  rows.push(exRow('Verification instructions', !!ve, ve ? 'verification mandates configured: ' + _veNames + ' (' + _veRoute + '; posture ' + (state.verifyFailRun ? 'fails the run' : 'report-only') + ')' : 'no verification paths configured - add them under Multi-Repo & Context Paths (Verification instructions)', ve));
   const ev = evalHint();
   rows.push(exRow('Pre-registered eval', !!ev, ev
-    ? ('an Eval Author writes a frozen eval from the requirements before any plan; ' + (evalExecutorId() !== null ? 'the last Verifier executes it through its gate' : 'NO VERIFIER EXECUTES IT - the orchestrator is told to stop before Step 1 (add a Verifier or remove the Eval Author)'))
+    ? ('an Eval Author writes a frozen eval from the requirements before any plan; ' + (evalExecutorId() !== null ? 'the last Verifier executes it through its gate ("' + state.nodes.find(n => n.id === evalExecutorId()).label + '", the last one connected to the run)' : 'NO VERIFIER EXECUTES IT - the orchestrator is told to stop before Step 1 (add a Verifier or remove the Eval Author)'))
     : 'no Eval Author in this workflow - right-click the Input node, Add eval',
     ev));
   // The sdk format returns its own single summary row above and never reaches here, so this
