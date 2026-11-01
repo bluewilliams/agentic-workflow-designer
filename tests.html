@@ -18225,7 +18225,11 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
   function author() { return win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'evalAuthor'); }
   function verifiers() { return win.state.nodes.filter(n => n.type === 'agent' && n.config.agentType === 'verifier'); }
   function edge(from, to) { return win.state.connections.find(c => c.from === from && c.to === to); }
-  afterEach(() => { win.state.approvePlan = false; win.state.verifyFailRun = false; try { win.localStorage.removeItem('awd_run_reports'); } catch (e) {} });
+  afterEach(() => {
+    win.state.approvePlan = false; win.state.verifyFailRun = false; win.state.durableRecord = false; win.state.memoryEnabled = false;
+    win.document.getElementById('storyInput').value = '';
+    try { win.localStorage.removeItem('awd_run_reports'); win.localStorage.removeItem('awd_prefs'); } catch (e) {}
+  });
   it('should register the role in every table a role must join, with a description that names the Verifier requirement', () => {
     const t = win.AGENT_TYPES.find(a => a.id === 'evalAuthor');
     expect(t.name).toBe('Eval Author');
@@ -18324,7 +18328,6 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
     expect(hint).toContain('If the ticket is an epic, fetch its child stories');
     expect(win.genWorkflow()).toContain('fetch its child stories and include them');
     expect(win.PROMPTS.evalAuthor).toContain('for an epic, every child story');
-    story.value = '';
   });
   it('should warn when the executing Verifier runs before a later build step, and stay quiet when it runs last', () => {
     resetState(); win.loadPreset('feature');
@@ -18334,7 +18337,7 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
     expect(verifiers().length).toBe(1);                     // the existing Verifier is the executor, no second one is added
     const warn = win.validateWorkflow().find(w => /would grade unfinished work/.test(w.msg));
     expect(!!warn).toBe(true);
-    expect(warn.msg).toContain('"Tester" builds after it');
+    expect(warn.msg).toContain('"Tester" does not finish before it');
     const tester = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'tester');
     win.attachReviewLoop(tester.id, 'verifier');            // a Verifier on the last build step takes over as executor
     expect(win.evalExecutorId()).toBe(verifiers().find(v => v.config.reviewLoopFor === tester.id).id);
@@ -18395,15 +18398,16 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
   it('should place the eval where the workflow keeps state: the record, else the memory directory, else the handoff', () => {
     resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
     win.state.durableRecord = true; win.state.memoryEnabled = true;
-    expect(win.evalArtifactLocation()).toContain('"## Pre-registered eval" section of the durable record');
+    expect(win.evalArtifactLocation()).toContain('"## Pre-registered eval" section of the durable record');   // one durable artifact
+    expect(win.genWorkflow()).toContain('COMPACT: one line each');
+    expect(win.genWorkflow()).toContain('one durable artifact');
     expect(win.genWorkflow()).toContain('**Pre-registered eval** (include when the workflow runs an Eval Author)');
-    expect(win.genWorkflow()).toContain('byte-identical to its frozen form');
+    expect(win.genWorkflow()).toContain('still match their frozen hash');
     win.state.durableRecord = false;
     expect(win.evalArtifactLocation()).toContain('eval.md');
     expect(win.genWorkflow().indexOf('**Pre-registered eval** (include')).toBe(-1);
     win.state.memoryEnabled = false;
     expect(win.evalArtifactLocation()).toContain('handoff summary');
-    win.state.durableRecord = false; win.state.memoryEnabled = false;
   });
   it('should aggregate eval results from run reports into the status line and the tuning prompt', () => {
     resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
@@ -18439,7 +18443,332 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
     win.state.verifyFailRun = true;
     expect(win.evalStepHint(v)).toContain('fails the gate like a FAIL');
     expect(win.evalHint()).toContain('fails the gate like a FAIL');
-    win.state.durableRecord = false;
+  });
+  it('should not count a Verifier in a disconnected sub-chain as the executor, nor a loose build step as a later build step', () => {
+    resetState(); win.loadPreset('feature');
+    win.addPreRegisteredEval(inputNode().id);
+    const real = verifiers()[0];
+    const strayTask = win.addNode('task', 50, 500, 'Stray task', { description:'', acceptance:'' });
+    const strayV = win.addNode('agent', 300, 500, 'Stray Verifier', { agentType:'verifier', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(strayTask.id, strayV.id);                   // edges, but no path from the Input
+    expect(win.evalExecutorId()).toBe(real.id);
+    win.addNode('agent', 600, 500, 'Loose Coder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    expect(win.validateWorkflow().some(w => /would grade unfinished work/.test(w.msg))).toBe(false);
+  });
+  it('should not warn about ordering when a Skeptic loop is attached to the Eval Author', () => {
+    resetState(); win.loadPreset('feature');
+    win.addPreRegisteredEval(inputNode().id);
+    win.attachReviewLoop(author().id, 'adversary');
+    expect(win.validateWorkflow().some(w => /runs after/.test(w.msg) && /Eval Author/.test(w.msg))).toBe(false);
+    expect(win.evalAuthorUpstreamSteps(author()).length).toBe(0);
+  });
+  it('should wire the one-click Verifier after the deliverable when the last build step already has a loop, or say no step can take it', () => {
+    resetState();
+    const i = win.addNode('input', 0, 100, 'In', {});
+    const coder = win.addNode('agent', 300, 100, 'Coder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const analyst = win.addNode('agent', 900, 100, 'Analyst', { agentType:'analyst', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const out = win.addNode('output', 1500, 100, 'Done', { deliverable:'', format:'code', targetBranch:'', branchName:'' });
+    win.addConnection(i.id, coder.id); win.addConnection(coder.id, analyst.id); win.addConnection(analyst.id, out.id);
+    win.attachReviewLoop(coder.id, 'adversary');                  // the last build step is taken
+    expect(win.lastBuildStepId()).toBe(analyst.id);                // the first loop-free step after it, never one before the build
+    win.addPreRegisteredEval(i.id);
+    expect(verifiers()[0].config.reviewLoopFor).toBe(analyst.id);
+    expect(win.validateWorkflow().some(w => w.type === 'error' || /unfinished work/.test(w.msg))).toBe(false);
+    resetState();
+    const i2 = win.addNode('input', 0, 100, 'In', {});
+    const coder2 = win.addNode('agent', 300, 100, 'Coder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(i2.id, coder2.id);
+    win.attachReviewLoop(coder2.id, 'adversary');                 // nothing runs after the taken build step
+    expect(win.lastBuildStepId()).toBe(null);
+    win.addPreRegisteredEval(i2.id);
+    expect(verifiers().length).toBe(0);
+    const err = win.validateWorkflow().find(w => w.type === 'error');
+    expect(!!err).toBe(true); expect(err.action).toBe(null);      // an honest error with no impossible fix button
+  });
+  it('should round-trip add and remove: a gate routed back to the author keeps its No edge label and the Input edge keeps its port', () => {
+    resetState(); win.loadPreset('feature');
+    const inp = inputNode();
+    const out = win.state.connections.find(c => c.from === inp.id); out.fromPort = 'bottom';
+    win.addPreRegisteredEval(inp.id);
+    const a = author(); const v = verifiers()[0];
+    const gate = win.state.nodes.find(n => n.type === 'decision' && n.config.reviewLoopDecisionFor === v.config.reviewLoopFor);
+    win.setReviewLoopBackTarget(gate.id, a.id);                   // the Verifier's gate routes failures back to the author
+    const noLabel = gate.config.noLabel;
+    expect(win.state.connections.find(c => c.from === gate.id && c.label === noLabel).to).toBe(a.id);
+    const nextId = win.state.connections.find(c => c.from === a.id && c.to !== gate.id).to;
+    win.removePreRegisteredEval();
+    const back = win.state.connections.find(c => c.from === gate.id && c.label === noLabel);
+    expect(!!back).toBe(true); expect(back.to).toBe(nextId);       // the No edge survives with its label, re-pointed past the removed author
+    expect(win.state.connections.filter(c => c.from === gate.id).every(c => c.label)).toBe(true);
+    expect(win.state.connections.find(c => c.from === inp.id && c.to === nextId).fromPort).toBe('bottom');
+  });
+  it('should never let the Eval Author own the plan at the approval gate, and say the eval precedes the pause', () => {
+    resetState();
+    const i = win.addNode('input', 0, 100, 'In', {});
+    const a = win.addNode('agent', 300, 100, 'Eval Author', { agentType:'evalAuthor', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const coder = win.addNode('agent', 600, 100, 'Coder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(i.id, a.id); win.addConnection(a.id, coder.id);
+    win.attachReviewLoop(coder.id, 'verifier');
+    win.state.approvePlan = true;
+    const cp = win.approvalCheckpoint();
+    expect(cp.node.id).toBe(coder.id);
+    expect(cp.owner).toBe(null);                                   // no step owns the plan: the author never does
+    const hint = win.approvePlanHint(cp);
+    expect(hint).toContain('The Eval Author ran before this pause');
+    expect(hint).toContain('No step runs before it that produces a plan');
+    expect(hint).toContain('write the plan yourself first');
+    expect(hint.indexOf('step that owns the plan (Eval Author)')).toBe(-1);
+  });
+  it('should ignore a malformed eval block whose parts exceed its total', () => {
+    resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
+    const name = win.getName() || 'workflow';
+    win.ingestRunReport({ workflow: name, steps: [{ slug: 'planner', status: 'done' }], gates: [], eval: { criteria: 2, passed: 5, failed: 0, blocked: 0 }, notes: '' }, { quiet: true });
+    expect(win.loadRunReports()[name].eval).toBe(undefined);
+    win.ingestRunReport({ workflow: name, steps: [{ slug: 'planner', status: 'done' }], gates: [], eval: { criteria: 3, passed: 1.5, failed: 0, blocked: 0 }, notes: '' }, { quiet: true });
+    expect(win.loadRunReports()[name].eval).toBe(undefined);
+    win.ingestRunReport({ workflow: name, steps: [{ slug: 'planner', status: 'done' }], gates: [], eval: { criteria: 3, passed: 2, failed: 1 }, notes: '' }, { quiet: true });
+    expect(win.loadRunReports()[name].eval).toEqual({ runs: 1, criteria: 3, passed: 2, failed: 1, blocked: 0 });
+  });
+  it('should treat a loose Verifier as outside the run even with no Input node, and a forward No branch as inside it', () => {
+    resetState();
+    const a = win.addNode('agent', 0, 100, 'Eval Author', { agentType:'evalAuthor', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const coder = win.addNode('agent', 300, 100, 'Coder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(a.id, coder.id);
+    win.addNode('agent', 300, 400, 'Loose Verifier', { agentType:'verifier', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });   // no Input node on this canvas, no edges on this Verifier
+    expect(win.evalExecutorId()).toBe(null);
+    expect(win.validateWorkflow().some(w => w.type === 'error')).toBe(true);
+    resetState();
+    const i = win.addNode('input', 0, 100, 'In', {});
+    const c2 = win.addNode('agent', 300, 100, 'Coder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const gate = win.addNode('decision', 600, 100, 'Tests pass?', { condition:'tests pass', yesLabel:'Yes', noLabel:'No', maxRevisions:3 });
+    const dbg = win.addNode('agent', 900, 200, 'Debugger', { agentType:'debugger', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const v = win.addNode('agent', 1200, 200, 'Verifier', { agentType:'verifier', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const out = win.addNode('output', 1500, 100, 'Done', { deliverable:'', format:'code', targetBranch:'', branchName:'' });
+    win.addConnection(i.id, c2.id); win.addConnection(c2.id, gate.id); win.addConnection(gate.id, dbg.id, 'No'); win.addConnection(dbg.id, v.id); win.addConnection(v.id, out.id); win.addConnection(gate.id, out.id, 'Yes');
+    const author2 = win.addNode('agent', 150, 0, 'Eval Author', { agentType:'evalAuthor', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(i.id, author2.id);
+    expect(win.evalExecutorId()).toBe(v.id);                       // the hand-built No branch is part of the run
+  });
+  it('should not pick a parallel sibling as the step after a taken build step, and should warn when a build step runs alongside the executor', () => {
+    resetState();
+    const i = win.addNode('input', 0, 100, 'In', {});
+    const fork = win.addNode('parallel', 200, 100, 'Fork', { strategy:'all', description:'' });
+    const coder = win.addNode('agent', 500, 60, 'Coder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const analyst = win.addNode('agent', 520, 160, 'Analyst', { agentType:'analyst', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const out = win.addNode('output', 1200, 100, 'Done', { deliverable:'', format:'code', targetBranch:'', branchName:'' });
+    win.addConnection(i.id, fork.id); win.addConnection(fork.id, coder.id); win.addConnection(fork.id, analyst.id); win.addConnection(coder.id, out.id); win.addConnection(analyst.id, out.id);
+    win.attachReviewLoop(coder.id, 'adversary');
+    expect(win.lastBuildStepId()).toBe(null);                      // the Analyst runs alongside the Coder, not after it
+    win.attachReviewLoop(analyst.id, 'verifier');                  // a Verifier on the sibling branch anyway
+    win.addPreRegisteredEval(i.id);
+    expect(win.validateWorkflow().some(w => /does not finish before it/.test(w.msg) && /"Coder"/.test(w.msg))).toBe(true);
+  });
+  it('should restore every Input edge exactly on remove, including ports, and give a gate routed to the author one revise edge', () => {
+    resetState();
+    const i = win.addNode('input', 0, 100, 'In', {});
+    const a1 = win.addNode('agent', 300, 40, 'A', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const b1 = win.addNode('agent', 300, 160, 'B', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(i.id, a1.id, undefined, 'right'); win.addConnection(i.id, b1.id, undefined, 'bottom');
+    win.addPreRegisteredEval(i.id);
+    const a = author(); const v = verifiers()[0];
+    const gate = win.state.nodes.find(n => n.type === 'decision' && n.config.reviewLoopDecisionFor === v.config.reviewLoopFor);
+    win.setReviewLoopBackTarget(gate.id, a.id);
+    win.removePreRegisteredEval();
+    expect(win.state.connections.find(c => c.from === i.id && c.to === a1.id).fromPort).toBe('right');
+    expect(win.state.connections.find(c => c.from === i.id && c.to === b1.id).fromPort).toBe('bottom');
+    expect(win.state.connections.filter(c => c.from === gate.id && c.label === gate.config.noLabel).length).toBe(1);
+  });
+  it('should keep the eval in the durable record by default and let the Eval Author node move it to a file beside the record', () => {
+    resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
+    win.state.durableRecord = true;
+    const a = author();
+    win.selectNode(a.id); win.updateConfig();
+    expect(win.state.defaultEvalHome).toBe('record');
+    const side = win.document.querySelector('#defaultEvalFields .config-select[data-key="evalHome"]');
+    expect(!!side).toBe(true);
+    expect(side.querySelector('.custom-select-trigger').textContent).toBe('The durable record');
+    const cs = win.document.querySelector('#configFields .config-select[data-key="evalHome"]');
+    expect(!!cs).toBe(true);
+    expect(cs.querySelector('.custom-select-trigger').textContent).toBe('Default (The durable record)');
+    expect(win.evalInRecord()).toBe(true);
+    let out = win.genWorkflow();
+    expect(out).toContain('COMPACT: one line each');
+    expect(out.indexOf('sanctioned eval file')).toBe(-1);
+    cs.querySelector('.custom-select-option[data-value="file"]').click();
+    expect(a.config.evalHome).toBe('file');
+    expect(win.evalInRecord()).toBe(false);
+    out = win.genWorkflow();
+    expect(out).toContain('beyond the sanctioned eval file beside the record');
+    expect(out).toContain(win.evalFilePath());
+    expect(out).toContain('one line per run of results');
+    expect(win.evalStepHint(a)).toContain('you do not write either file');
+    expect(win.evalStepHint(verifiers()[0])).toContain(win.evalFilePath());
+    expect(win.evalFilePath()).toBe(win.getArtifactPath().replace(/\.md$/, '') + '.eval.md');
+    cs.querySelector('.custom-select-option[data-value="default"]').click();   // back to Default, then flip the sidebar
+    expect(win.evalInRecord()).toBe(true);
+    side.querySelector('.custom-select-option[data-value="file"]').click();
+    expect(win.state.defaultEvalHome).toBe('file');
+    expect(win.evalInRecord()).toBe(false);
+    expect(win.document.querySelector('#configFields .config-select[data-key="evalHome"] .custom-select-trigger').textContent).toBe('Default (A file beside the record)');
+    win.document.querySelector('#configFields .config-select[data-key="evalHome"] .custom-select-option[data-value="record"]').click();   // the node overrides back
+    expect(win.evalInRecord()).toBe(true);
+    const portable = win.serializeWorkflow({ portable: true });
+    expect(portable.canvas.nodes.find(n => n.config && n.config.agentType === 'evalAuthor').config.evalHome).toBe('record');
+    win.savePrefsDebounced(); win.flushPendingSaves();
+    expect(JSON.parse(win.localStorage.getItem('awd_prefs')).defaultEvalHome).toBe('file');
+    expect(win.buildTeamSettings().settings.defaultEvalHome).toBe('file');
+    expect(win.teamValueIsDefault('defaultEvalHome', 'record')).toBe(true);
+    expect(win.teamValueIsDefault('defaultEvalHome', 'file')).toBe(false);
+    win.state.defaultEvalHome = 'record'; win.renderDefaultEval();
+    win.state.durableRecord = false; win.state.memoryEnabled = false;   // no record: the choice does not apply
+    expect(win.evalInRecord()).toBe(true);
+    expect(win.evalArtifactLocation()).toContain('handoff summary');
+    const coder = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'coder');
+    win.selectNode(coder.id); win.updateConfig();
+    expect(win.document.querySelector('#configFields .config-select[data-key="evalHome"]')).toBe(null);   // only the author carries it
+  });
+  it('should hide both eval home selects while no durable record is kept and keep the stored choice', () => {
+    resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
+    win.state.memoryEnabled = true; win.state.durableRecord = true; win.state.defaultEvalHome = 'file';
+    win.syncDurableUI(); win.renderDefaultEval();
+    const a = author(); a.config.evalHome = 'record';
+    win.selectNode(a.id); win.updateConfig();
+    const field = win.document.getElementById('defaultEvalField');
+    expect(field.style.display).toBe('block');
+    expect(!!win.document.querySelector('#configFields .config-select[data-key="evalHome"]')).toBe(true);
+    win.document.getElementById('durableRecordToggle').checked = false;
+    win.toggleDurableRecord();   // the real path a user takes
+    expect(win.state.durableRecord).toBe(false);
+    expect(field.style.display).toBe('none');
+    expect(win.document.querySelector('#configFields .config-select[data-key="evalHome"]')).toBe(null);   // the panel re-rendered without it
+    expect(win.state.defaultEvalHome).toBe('file');   // sticky
+    expect(a.config.evalHome).toBe('record');
+    expect(win.evalInRecord()).toBe(true);   // the choice does not apply without a record
+    win.document.getElementById('durableRecordToggle').checked = true;
+    win.toggleDurableRecord();
+    expect(field.style.display).toBe('block');
+    expect(win.document.querySelector('#configFields .config-select[data-key="evalHome"] .custom-select-trigger').textContent).toBe('The durable record');
+    expect(win.evalInRecord()).toBe(true);   // the node's own choice is read again
+    delete a.config.evalHome;
+    expect(win.evalInRecord()).toBe(false);   // and the sidebar's file default too
+    win.state.memoryEnabled = false;
+    win.clearDurableRecord();   // memory off takes the record with it, and the selects
+    expect(field.style.display).toBe('none');
+    expect(win.document.querySelector('#configFields .config-select[data-key="evalHome"]')).toBe(null);
+    win.state.defaultEvalHome = 'record'; win.renderDefaultEval();
+  });
+  it('should keep the pre-eval approval wording when only a hand-wired Skeptic precedes the pause', () => {
+    resetState();
+    const i = win.addNode('input', 0, 100, 'Requirements');
+    const sk = win.addNode('agent', 300, 100, 'Skeptic', { agentType:'adversary', adversaryRole:'planner', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const coder = win.addNode('agent', 600, 100, 'Coder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(i.id, sk.id); win.addConnection(sk.id, coder.id);
+    win.state.approvePlan = true;
+    const hint = win.approvePlanHint();
+    expect(hint).toContain('only after every step before it has completed, including any Skeptic gate on the plan');
+    expect(hint.indexOf('Eval Author')).toBe(-1);
+    expect(hint.indexOf('No step runs before it')).toBe(-1);
+  });
+  it('should arm the fail-the-run switch while an Eval Author exists and follow it in the blocked rule', () => {
+    resetState(); win.loadPreset('feature'); win.updatePrompt();
+    const cb = win.document.getElementById('verifyFailRunToggle');
+    expect(win.hasVerifyMandates()).toBe(false);
+    expect(cb.disabled).toBe(true);
+    win.addPreRegisteredEval(inputNode().id); win.updatePrompt();
+    expect(cb.disabled).toBe(false);
+    expect(win.document.getElementById('verifyFailRunHint').style.display).toBe('none');
+    win.state.verifyFailRun = true;
+    expect(win.evalBlockedRule()).toContain('fails the gate like a FAIL');
+    win.state.verifyFailRun = false;
+    expect(win.evalBlockedRule()).toContain('does not fail the gate');
+    win.removePreRegisteredEval(); win.updatePrompt();
+    expect(cb.disabled).toBe(true);
+    expect(win.document.getElementById('verifyFailRunHint').textContent).toContain('or an eval');
+  });
+  it('should tell the Eval Author to deliver the eval where its brief says instead of writing a home of its own', () => {
+    expect(win.PROMPTS.evalAuthor).toContain('Deliver the eval where your brief says');
+    expect(win.PROMPTS.evalAuthor).toContain('return it complete in your handoff and write no file');
+    expect(win.PROMPTS.evalAuthor.indexOf('Write the eval to its home')).toBe(-1);
+    expect(win.PROMPTS.evalAuthor).toContain('"in this handoff"');
+  });
+  it('should reset the Eval default with the rest of the Defaults section on New Workflow unless pinned', () => {
+    resetState(); win.loadPreset('feature');
+    win.state.defaultEvalHome = 'file'; win.renderDefaultEval();
+    win.state.pins = win.defaultPins(); win.renderPins();   // Defaults pinned (the app default)
+    win.clearCanvas(true);
+    expect(win.state.defaultEvalHome).toBe('file');
+    win.state.pins.defaults = false; win.renderPins();
+    win.clearCanvas(true);
+    expect(win.state.defaultEvalHome).toBe('record');
+    expect(win.document.querySelector('#defaultEvalFields .custom-select-trigger').textContent).toBe('The durable record');
+    win.state.pins = win.defaultPins(); win.renderPins();
+  });
+  it('should leave a parallel sibling in place when the loop room-making finds nothing downstream to move', () => {
+    resetState();
+    const i = win.addNode('input', 0, 100, 'Requirements');
+    const a = win.addNode('agent', 300, 100, 'A', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const b = win.addNode('agent', 600, 140, 'B', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(i.id, a.id); win.addConnection(i.id, b.id);
+    win.attachReviewLoop(a.id, 'verifier');
+    expect(b.x).toBe(600);
+    expect(win.state.nodes.every(n => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true);
+  });
+  it('should hand the steps after an Eval Author back to the Input on Remove when its own inbound edge was cut', () => {
+    resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
+    const i = inputNode(), a = author();
+    const planner = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'planner');
+    win.state.connections = win.state.connections.filter(c => !(c.from === i.id && c.to === a.id));
+    win.removePreRegisteredEval();
+    expect(author()).toBe(undefined);
+    expect(!!win.state.connections.find(c => c.from === i.id && c.to === planner.id)).toBe(true);
+    expect(win.state.connections.filter(c => c.from === i.id).length).toBe(1);
+  });
+  it('should restore the remembered label and port only on the Input edge, not on another inbound edge', () => {
+    resetState();
+    const i = win.addNode('input', 0, 100, 'Requirements');
+    const p = win.addNode('agent', 600, 100, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(i.id, p.id, 'spec', 'bottom');
+    win.addPreRegisteredEval(i.id);
+    const a = author();
+    const r = win.addNode('agent', 300, 300, 'Researcher', { agentType:'researcher', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    win.addConnection(r.id, a.id);
+    win.removePreRegisteredEval();
+    const fromInput = win.state.connections.find(c => c.from === i.id && c.to === p.id);
+    const fromResearcher = win.state.connections.find(c => c.from === r.id && c.to === p.id);
+    expect(fromInput.label).toBe('spec'); expect(fromInput.fromPort).toBe('bottom');
+    expect(!!fromResearcher).toBe(true);
+    expect(fromResearcher.label || '').toBe(''); expect(fromResearcher.fromPort === 'bottom').toBe(false);
+  });
+  it('should not carry the replaced-edge memory into a duplicate of the Eval Author', () => {
+    resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
+    const a = author();
+    expect(Array.isArray(a.config.evalReplaced)).toBe(true);
+    win.selectNode(a.id); win.duplicateNode();
+    const copy = win.state.nodes.find(n => n.label === 'Eval Author (copy)');
+    expect(!!copy).toBe(true);
+    expect(copy.config.evalReplaced).toBe(undefined);
+    expect(win.normalizeAgentConfig(a.config).evalReplaced).toBe(undefined);   // the agent library never held it
+  });
+  it('should ignore an empty or array eval block and read a null count as zero', () => {
+    resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
+    const name = win.getName() || 'workflow';
+    win.ingestRunReport({ workflow: name, steps: [{ slug: 'planner', status: 'done' }], gates: [], eval: {}, notes: '' }, { quiet: true });
+    win.ingestRunReport({ workflow: name, steps: [{ slug: 'planner', status: 'done' }], gates: [], eval: [], notes: '' }, { quiet: true });
+    expect(win.loadRunReports()[name].eval).toBe(undefined);
+    win.ingestRunReport({ workflow: name, steps: [{ slug: 'planner', status: 'done' }], gates: [], eval: { criteria: 3, passed: 3, failed: 0, blocked: null }, notes: '' }, { quiet: true });
+    expect(win.loadRunReports()[name].eval).toEqual({ runs: 1, criteria: 3, passed: 3, failed: 0, blocked: 0 });
+  });
+  it('should move a close downstream neighbor far enough to clear the new gate when making room', () => {
+    resetState();
+    const i = win.addNode('input', 0, 100, 'In', {});
+    const a = win.addNode('agent', 200, 100, 'A', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const b = win.addNode('agent', 300, 100, 'B', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });   // only 100 to the right
+    win.addConnection(i.id, a.id); win.addConnection(a.id, b.id);
+    win.attachReviewLoop(a.id, 'verifier');
+    const gate = win.state.nodes.find(n => n.type === 'decision');
+    const overlap = (x, y) => x.x < y.x + y.w && x.x + x.w > y.x && Math.abs(x.y - y.y) < 60;
+    expect(overlap(b, gate)).toBe(false);
+    expect(b.x > gate.x + gate.w).toBe(true);
   });
   it('should detach a loop attached to the Eval Author when removing it, so nothing is orphaned', () => {
     resetState(); win.loadPreset('feature');
@@ -18490,8 +18819,7 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
     const a = author();
     const overlap = (x, y) => x.x < y.x + y.w && x.x + x.w > y.x && x.y < y.y + y.h && x.y + x.h > y.y;
     expect(win.state.nodes.filter(n => n.id !== a.id).some(n => overlap(a, n))).toBe(false);   // after the re-flow nothing sits on the author
-    const re = win.state.connections.find(c => c.from === a.id && c.to === out.to);
-    expect(re.fromPort).toBe('bottom');
+    expect(win.state.connections.find(c => c.from === inp.id && c.to === a.id).fromPort).toBe('bottom');   // the port stays on the Input's edge
   });
   it('should explain the eval at workflow level and on the two steps it touches', () => {
     resetState(); win.loadPreset('feature');
@@ -18542,7 +18870,7 @@ document.getElementById('app').addEventListener('load', function() {
   // win.eval() is indirect eval (global scope only, can't see let declarations).
   // Injecting a <script> tag works because inline scripts share the global lexical env.
   const s = win.document.createElement('script');
-  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.MONITOR_IDLE_MS = MONITOR_IDLE_MS; window.TELEMETRY_DEFAULT_SERVICE = TELEMETRY_DEFAULT_SERVICE; window.TELEMETRY_EVENTS = TELEMETRY_EVENTS; window.DEPTH_LEVELS = DEPTH_LEVELS; window.DEPTH_KEYWORD = DEPTH_KEYWORD; window.nodeDepth = nodeDepth; window.workflowHasDepth = workflowHasDepth; window.depthStepNote = depthStepNote; window.depthHint = depthHint; window.depthNodes = depthNodes; window.depthOrchestratorNote = depthOrchestratorNote; window.approvePlanHint = approvePlanHint; window.approvePlanStepHint = approvePlanStepHint; window.approvalCheckpoint = approvalCheckpoint; window.APPROVAL_PLAN_OWNER_ROLES = APPROVAL_PLAN_OWNER_ROLES; window.graphShapeSig = graphShapeSig; window.APPROVAL_BUILD_ROLES = APPROVAL_BUILD_ROLES; window.toggleApprovePlan = toggleApprovePlan; window.VERIFIER_HONESTY = VERIFIER_HONESTY; window.TASK_SIGNAL = TASK_SIGNAL; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN; window.STORY_PLACEHOLDERS = STORY_PLACEHOLDERS; window.AMEND_SCOPE_MARKERS = AMEND_SCOPE_MARKERS; window.BRANCHING_STRATEGIES = BRANCHING_STRATEGIES; window.INTEGRATION_CHOICES = INTEGRATION_CHOICES; window.NEW_WORKFLOW_SWITCHES = NEW_WORKFLOW_SWITCHES; window.FORMAT_TIPS = FORMAT_TIPS; window.DEPTH_OPTION_TIPS = DEPTH_OPTION_TIPS; window.BRANCHING_TIPS = BRANCHING_TIPS; window._undoStack = _undoStack; window.cancelPendingSaves = function () { clearTimeout(_prefTimer); clearTimeout(_autoSaveTimer); _prefsDirty = false; _autoSaveDirty = false; }; window.flushPendingSaves = flushPendingSaves; window.savePrefsDebounced = savePrefsDebounced;';
+  s.textContent = 'window.state = state; window.AGENT_TYPES = AGENT_TYPES; window.AGENT_TYPE_PROMPT_MAP = AGENT_TYPE_PROMPT_MAP; window.PROMPTS = PROMPTS; window.WRITING_STYLES = WRITING_STYLES; window.WRITER_TOOL_DEFAULTS = WRITER_TOOL_DEFAULTS; window.AGENT_TYPE_TOOL_DEFAULTS = AGENT_TYPE_TOOL_DEFAULTS; window.REVIEW_LOOP_KINDS = REVIEW_LOOP_KINDS; window.NODE_DEFAULTS = NODE_DEFAULTS; window.ALL_TOOLS = ALL_TOOLS; window.MODELS = MODELS; window.EFFORT_LEVELS = EFFORT_LEVELS; window.effortHint = effortHint; window.setEffort = setEffort; window.modelEffortLevels = modelEffortLevels; window.resolvedEffortFor = resolvedEffortFor; window.effortStepNote = effortStepNote; window.nodeEffort = nodeEffort; window.workflowHasEffort = workflowHasEffort; window.buildAdversaryPrompt = buildAdversaryPrompt; window.ADVERSARY_LENSES = ADVERSARY_LENSES; window.ADVERSARY_LENS_BY_ROLE = ADVERSARY_LENS_BY_ROLE; window.CODE_SEARCH_STEP_ROLES = CODE_SEARCH_STEP_ROLES; window.DATADOG_STEP_ROLES = DATADOG_STEP_ROLES; window.OPENSPEC_RECORD_SECTIONS = OPENSPEC_RECORD_SECTIONS; window.OPENSPEC_ROLE_GROUP = OPENSPEC_ROLE_GROUP; window.toolScopeNote = toolScopeNote; window.reviseContinuity = reviseContinuity; window.explainNode = explainNode; window.explainWorkflow = explainWorkflow; window.explainProbe = explainProbe; window.showExplain = showExplain; window.explainSelectedStep = explainSelectedStep; window.orchestratorRunPlan = orchestratorRunPlan; window.closeExplain = closeExplain; window.EXPLAIN_FORMATS = EXPLAIN_FORMATS; window.runReportDirective = runReportDirective; window.parseRunReport = parseRunReport; window.extractRunFences = extractRunFences; window.runReportHash = runReportHash; window.ingestRunFences = ingestRunFences; window.scanRunReportsFromHandle = scanRunReportsFromHandle; window.repoConnect = repoConnect; window.repoConnectSupported = repoConnectSupported; window.renderRepoConnect = renderRepoConnect; window.resolveRecordsDir = resolveRecordsDir; window.ingestRunReport = ingestRunReport; window.loadRunReports = loadRunReports; window.saveRunReports = saveRunReports; window.runReportStatsFor = runReportStatsFor; window.hasRunReportData = hasRunReportData; window.updateRunReportSection = updateRunReportSection; window.runStatsSummary = runStatsSummary; window.genTuningPrompt = genTuningPrompt; window.copyTuningPrompt = copyTuningPrompt; window.showValidation = showValidation; window.closeValidation = closeValidation; window.adviseWorkflow = adviseWorkflow; window.advisorAttachSkeptic = advisorAttachSkeptic; window.attachReviewLoop = attachReviewLoop; window.hasReviewLoop = hasReviewLoop; window.updateValidation = updateValidation; window.isReviseBackEdge = isReviseBackEdge; window.undoDepth = function() { return _undoStack.length; }; window.clearUndo = function() { _undoStack.length = 0; _redoStack.length = 0; }; window.codeSearchHint = codeSearchHint; window.consumeRecordsHint = consumeRecordsHint; window.clarifyFirstHint = clarifyFirstHint; window.datadogGroundingHint = datadogGroundingHint; window.datadogStepHint = datadogStepHint; window.codeSearchStepHint = codeSearchStepHint; window.recordHandoffHint = recordHandoffHint; window.orchestratorIdentity = orchestratorIdentity; window.executionModelDirective = executionModelDirective; window.customMcpHint = customMcpHint; window.atlassianTicketFetchHint = atlassianTicketFetchHint; window.atlassianGeneralHint = atlassianGeneralHint; window.githubGeneralHint = githubGeneralHint; window.browserGeneralHint = browserGeneralHint; window.browserStepHint = browserStepHint; window.BROWSER_STEP_ROLES = BROWSER_STEP_ROLES; window.rulesPathsHint = rulesPathsHint; window.productDocsHint = productDocsHint; window.addRulesPath = addRulesPath; window.removeRulesPath = removeRulesPath; window.clearRulesPaths = clearRulesPaths; window.addProductDocPath = addProductDocPath; window.removeProductDocPath = removeProductDocPath; window.clearProductDocPaths = clearProductDocPaths; window.verifyInstructionsHint = verifyInstructionsHint; window.verifyInstructionsStepHint = verifyInstructionsStepHint; window.VERIFY_OWNER_ROLES = VERIFY_OWNER_ROLES; window.resolveVerifyOwnerId = resolveVerifyOwnerId; window.FOUND_DEFECT_ROLES = FOUND_DEFECT_ROLES; window.foundDefectNote = foundDefectNote; window.addVerifyPath = addVerifyPath; window.removeVerifyPath = removeVerifyPath; window.clearVerifyPaths = clearVerifyPaths; window.setVerifyFailRun = setVerifyFailRun; window.renderVerifyRows = renderVerifyRows; window.openSpecContextBlock = openSpecContextBlock; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.clearCanvas = clearCanvas; window.getPlan = getPlan; window.serializeWorkflow = serializeWorkflow; window.autoSaveWorkflow = autoSaveWorkflow; window.toggleDurableRecord = toggleDurableRecord; window.toggleMemory = toggleMemory; window.generateRefinePrompt = generateRefinePrompt; window.generatePlanPrompt = generatePlanPrompt; window.clipboardCopyInstruction = clipboardCopyInstruction; window.slugify = slugify; window.autoLayout = autoLayout; window.toggleHelp = toggleHelp; window.configInput = configInput; window.copyPrompt = copyPrompt; window.togglePromptLib = togglePromptLib; window.PROMPT_LIBRARY = PROMPT_LIBRARY; window.renderPromptLib = renderPromptLib; window.copyLibPrompt = copyLibPrompt; window.closePlibInput = closePlibInput; window.confirmPlibInput = confirmPlibInput; window.validateStoryInput = validateStoryInput; window.scanForSecrets = scanForSecrets; window.toggleFavorite = toggleFavorite; window.buildPromptCard = buildPromptCard; window.filterPromptLib = filterPromptLib; window.undo = undo; window.redo = redo; window.validateWorkflow = validateWorkflow; window.estimateTokens = estimateTokens; window.duplicateWorkflow = duplicateWorkflow; window.duplicateNode = duplicateNode; window.disconnectNode = disconnectNode; window.deleteSelected = deleteSelected; window.deleteConnection = deleteConnection; window.genWorkflow = genWorkflow; window.genSubAgents = genSubAgents; window.genAgentTeams = genAgentTeams; window.genAgentSDK = genAgentSDK; window.genClaudePrompt = genClaudePrompt; window.buildOpenSpecSchema = buildOpenSpecSchema; window.openSpecZip = openSpecZip; window.exportOpenSpecSchema = exportOpenSpecSchema; window.openSpecExportToast = openSpecExportToast; window.openSpecGroundingBlock = openSpecGroundingBlock; window.groundingLookupSteps = groundingLookupSteps; window.openSpecParseYaml = openSpecParseYaml; window.openSpecSchemaToWorkflow = openSpecSchemaToWorkflow; window.openSpecImportForeign = openSpecImportForeign; window.openSpecExtractAgentContext = openSpecExtractAgentContext; window.bezierPath = bezierPath; window.connectionObstructed = connectionObstructed; window.openSpecExtractMeta = openSpecExtractMeta; window.openSpecStepIntent = openSpecStepIntent; window.openSpecAdoptContextPaths = openSpecAdoptContextPaths; window.effectivePromptLib = effectivePromptLib; window.getCustomPrompts = getCustomPrompts; window.saveCustomPrompts = saveCustomPrompts; window.mergeImportedPrompts = mergeImportedPrompts; window.getCustomAgents = getCustomAgents; window.saveCustomAgents = saveCustomAgents; window.newAgentId = newAgentId; window.compareAgentVersions = compareAgentVersions; window.mergeImportedAgents = mergeImportedAgents; window.instantiateAgent = instantiateAgent; window.renderAgentLibrary = renderAgentLibrary; window.renderAgentLib = renderAgentLib; window.toggleAgentLib = toggleAgentLib; window.filterAgentLib = filterAgentLib; window.openAgentForm = openAgentForm; window.saveAgentForm = saveAgentForm; window.applyAgentTypeChange = applyAgentTypeChange; window.onAgentFormTypeChange = onAgentFormTypeChange; window.getAgentFavs = getAgentFavs; window.saveAgentFavs = saveAgentFavs; window.toggleAgentFav = toggleAgentFav; window.isAgentFav = isAgentFav; window.renderAgentPalette = renderAgentPalette; window.deserializeWorkflow = deserializeWorkflow; window.getWritingStyleDirective = getWritingStyleDirective; window.renderMarkdown = renderMarkdown; window.updatePrompt = updatePrompt; window.openTextExpand = openTextExpand; window.closeTextExpand = closeTextExpand; window.syncTextExpand = syncTextExpand; window.textExpandTitleFor = textExpandTitleFor; window.taExpandButton = taExpandButton; window.textExpandIsOpen = textExpandIsOpen; window.configTextarea = configTextarea; window.enhanceExpandableTextarea = enhanceExpandableTextarea; window.editAgentContext = editAgentContext; window.getRawPrompt = function() { return _rawPrompt; }; window.appConfirm = appConfirm; window.withConfirm = withConfirm; window.confirmModalResolve = confirmModalResolve; window.sessionBridge = sessionBridge; window.bridgeExpectedNames = bridgeExpectedNames; window.bridgeScanOutbox = bridgeScanOutbox; window.bridgePoll = bridgePoll; window.bridgeApply = bridgeApply; window.bridgeDismiss = bridgeDismiss; window.renderBridgeBanner = renderBridgeBanner; window.appTip = appTip; window.APP_TIP_DELAY_MS = APP_TIP_DELAY_MS; window.MONITOR_MAX_WATCHES = MONITOR_MAX_WATCHES; window.MONITOR_IDLE_MS = MONITOR_IDLE_MS; window.TELEMETRY_DEFAULT_SERVICE = TELEMETRY_DEFAULT_SERVICE; window.TELEMETRY_EVENTS = TELEMETRY_EVENTS; window.DEPTH_LEVELS = DEPTH_LEVELS; window.DEPTH_KEYWORD = DEPTH_KEYWORD; window.nodeDepth = nodeDepth; window.workflowHasDepth = workflowHasDepth; window.depthStepNote = depthStepNote; window.depthHint = depthHint; window.depthNodes = depthNodes; window.depthOrchestratorNote = depthOrchestratorNote; window.approvePlanHint = approvePlanHint; window.approvePlanStepHint = approvePlanStepHint; window.approvalCheckpoint = approvalCheckpoint; window.APPROVAL_PLAN_OWNER_ROLES = APPROVAL_PLAN_OWNER_ROLES; window.graphShapeSig = graphShapeSig; window.APPROVAL_BUILD_ROLES = APPROVAL_BUILD_ROLES; window.toggleApprovePlan = toggleApprovePlan; window.VERIFIER_HONESTY = VERIFIER_HONESTY; window.TASK_SIGNAL = TASK_SIGNAL; window.runMonitor = runMonitor; window.MONITOR_DOT = MONITOR_DOT; window.MONITOR_MAX_FILES = MONITOR_MAX_FILES; window.MONITOR_FILES_SHOWN = MONITOR_FILES_SHOWN; window.STORY_PLACEHOLDERS = STORY_PLACEHOLDERS; window.AMEND_SCOPE_MARKERS = AMEND_SCOPE_MARKERS; window.BRANCHING_STRATEGIES = BRANCHING_STRATEGIES; window.INTEGRATION_CHOICES = INTEGRATION_CHOICES; window.NEW_WORKFLOW_SWITCHES = NEW_WORKFLOW_SWITCHES; window.FORMAT_TIPS = FORMAT_TIPS; window.TEAM_SETTING_KEYS = TEAM_SETTING_KEYS; window.buildTeamSettings = buildTeamSettings; window.DEPTH_OPTION_TIPS = DEPTH_OPTION_TIPS; window.BRANCHING_TIPS = BRANCHING_TIPS; window._undoStack = _undoStack; window.cancelPendingSaves = function () { clearTimeout(_prefTimer); clearTimeout(_autoSaveTimer); _prefsDirty = false; _autoSaveDirty = false; }; window.flushPendingSaves = flushPendingSaves; window.savePrefsDebounced = savePrefsDebounced;';
   win.document.head.appendChild(s);
   // Bypass all confirm() dialogs
   win.confirm = () => true;
