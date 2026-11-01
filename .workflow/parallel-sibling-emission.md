@@ -38,3 +38,7 @@ All five generators walked the topo-ordered agent list with the same pattern: on
 - [x] validateWorkflow sibling-dependency warning (warn, not error)
 - [x] Revise-edge-aware reachability (manual loops and attached loops excluded)
 - [x] Tests: exactly-once per format, warning on/off cases; suite green; content-lint
+
+## History
+
+- 2026-11-01: the five generators' emitted-id walk is unchanged but its input list is now runSortedNodes (the connected set), so a stray fork, join, or lane is omitted with its branches while a connected group emits exactly as before (by strays-never-run)

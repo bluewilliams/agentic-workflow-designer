@@ -2452,6 +2452,7 @@ describe('Default Delivery and section pins', () => {
     expect(out.config.format).toBe('default');                                  // the live node is untouched
     setDefault({ format: 'pr', branching: 'single', targetBranch: 'develop' });
     const other = win.addNode('output', 0, 0, 'Other', { format: 'pr', branching: 'story' });
+    win.addConnection(win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'tester').id, other.id);   // in the run: a loose Output is not a delivery
     expect(win.validateWorkflow().some(w => /names a single branch while/.test(w.msg))).toBe(false);   // the Default node names nothing itself
     out.config.branchName = 'feature/x';
     expect(win.validateWorkflow().some(w => /names a single branch while/.test(w.msg))).toBe(true);
@@ -2472,7 +2473,8 @@ describe('Default Delivery and section pins', () => {
   it('round 4: a sidebar default change refreshes validation; an output node saved without a format loads as Leave Uncommitted and the panel agrees', () => {
     resetState(); win.loadPreset('feature');
     const out = win.state.nodes.find(n => n.type === 'output');
-    win.addNode('output', 0, 0, 'Second', { format: 'commit', branching: 'story' });
+    const second = win.addNode('output', 0, 0, 'Second', { format: 'commit', branching: 'story' });
+    win.addConnection(win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'tester').id, second.id);
     win.render();
     const badgeHas = (re) => win.validateWorkflow().some(w => re.test(w.msg));
     const badge = win.document.getElementById('validationInfo');
@@ -2897,14 +2899,18 @@ describe('Branching strategy (Output node)', () => {
     expect(win.adviseWorkflow().some(x => x.msg.indexOf('Approve plan before build off') !== -1)).toBe(false);
     win.state.approvePlan = false;
     // two branch-creating Output nodes with different formats: warned, and the PR delivery is what the plan describes
+    const runAgent = win.state.nodes.filter(n => n.type === 'agent').slice(-1)[0];
     const commitOut = win.addNode('output', 1800, 500, 'Also commit', { deliverable: '', format: 'commit', branching: 'chunk' });
+    win.addConnection(runAgent.id, commitOut.id);   // in the run: a loose Output is not a delivery
     expect(win.workflowBranching().pr).toBe(true);
     expect(win.validateWorkflow().some(x => x.msg.indexOf('Two Output nodes create branches with different formats') !== -1)).toBe(true);
     win.state.nodes = win.state.nodes.filter(n => n.id !== commitOut.id);
     const singleOut = win.addNode('output', 1800, 600, 'Named PR', { deliverable: '', format: 'pr', branchName: 'feature/PROJ-9-x', targetBranch: 'release/1' });
+    win.addConnection(runAgent.id, singleOut.id);
     expect(win.validateWorkflow().some(x => x.msg.indexOf('names a single branch while') !== -1 && x.msg.indexOf('are ignored') !== -1)).toBe(true);   // its name would be discarded: say so
     win.state.nodes = win.state.nodes.filter(n => n.id !== singleOut.id);
     const second = win.addNode('output', 1800, 700, 'Second strategy', { deliverable: '', format: 'pr', branching: 'chunk' });
+    win.addConnection(runAgent.id, second.id);
     expect(win.validateWorkflow().some(x => x.msg.indexOf('Two Output nodes set a branching strategy') !== -1)).toBe(true);
     win.state.nodes = win.state.nodes.filter(n => n.id !== second.id);
     // the Commit brief never speaks of pull requests at the gate
@@ -3392,8 +3398,9 @@ describe('Plan approval gate (Approve plan before build)', () => {
     win.addConnection(inp.id, rev.id); win.addConnection(rev.id, out.id);
     win.addNode('agent', 600, 300, 'Orphan Coder', { agentType:'coder', model:'opus-5', tools:['Read','Write'], prompt:'o', maxTurns:5 });   // dragged from the palette, never wired
     const cp = win.approvalCheckpoint();
-    expect(cp.node.label).toBe('Orphan Coder');                                                  // the generators RUN an unwired node (first, in fact), so the director approves before it
-    expect(win.genWorkflow().indexOf('Director approval checkpoint') < win.genWorkflow().indexOf('**Step 2:')).toBe(true);
+    expect(cp.node.label).toBe('Reviewer');                                                      // a stray never runs, so it is never the pause
+    expect(cp.prior.length).toBe(0);                                                             // and never a prior step
+    expect(win.genWorkflow()).toNotContain('Orphan Coder');
     win.state.nodes = win.state.nodes.filter(n => n.label !== 'Orphan Coder');
     expect(win.approvalCheckpoint().node.label).toBe('Reviewer');                                // review-only shape: approve the approach before its first step
     expect(win.approvePlanHint()).toContain('this workflow builds nothing');
@@ -19538,6 +19545,437 @@ describe('Eval: one notion of the run (pre-registered eval)', () => {
     expect(win.evalExecutorId()).toBe(x3.id);
     verifyOn();
     expect(win.resolveVerifyOwnerId()).toBe(x3.id);
+  });
+});
+
+describe('Strays never run: the step list is the connected set', () => {
+  const FIVE = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt', 'genAgentSDK'];
+  const NUMBERED = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt'];
+  function agent(x, y, label, type) { return win.addNode('agent', x, y, label, { agentType: type, model: 'opus-5', tools: ['Read'], prompt: 'Do the ' + type + ' work.', maxTurns: 10 }); }
+  function chain(ids) { for (let i = 0; i + 1 < ids.length; i++) win.addConnection(ids[i], ids[i + 1]); }
+  function stepNumbers(text) { const out = []; const re = /^(?:\*\*|### )Step (\d+):/gm; let m; while ((m = re.exec(text))) out.push(Number(m[1])); return out.join(','); }
+  function gen5() { return FIVE.map(f => win[f]()); }
+  function setup() { resetState(); win.document.getElementById('workflowName').value = 'strays-fixture'; win.state.approvePlan = false; }
+  function wired() {
+    const i = win.addNode('input', 0, 100, 'In', {}); const p = agent(300, 100, 'Plan Lead', 'planner'); const c = agent(600, 100, 'Build Lead', 'coder'); const t = agent(900, 100, 'Test Lead', 'tester');
+    chain([i.id, p.id, c.id, t.id]);
+    return { i, p, c, t };
+  }
+  afterEach(() => {
+    win.state.approvePlan = false; win.state.verifyPaths = [];
+    win.document.getElementById('workflowName').value = '';
+    resetState();
+  });
+
+  it('should omit a stray chain from each of the five formats and number the remaining steps without a gap', () => {
+    setup(); wired();
+    const before = gen5();
+    const w1 = agent(0, 600, 'Wanderer Planner', 'planner'); const w2 = agent(300, 600, 'Wanderer Coder', 'coder'); chain([w1.id, w2.id]);
+    const after = gen5();
+    FIVE.forEach((f, j) => {
+      expect(f + ':' + after[j].indexOf('Wanderer')).toBe(f + ':-1');
+      expect(f + ':' + (after[j] === before[j])).toBe(f + ':true');
+    });
+    NUMBERED.forEach(f => expect(f + ':' + stepNumbers(win[f]())).toBe(f + ':1,2,3'));
+    expect(win.runSortedNodes().map(n => n.label).join(',')).toBe('In,Plan Lead,Build Lead,Test Lead');
+  });
+  it('should keep the one step of a single agent on a canvas with no Input and no edges', () => {
+    setup(); const s = agent(0, 0, 'Only Coder', 'coder');
+    expect(win.evalReachableIds().has(s.id)).toBe(true);
+    FIVE.forEach(f => expect(f + ':' + (win[f]().indexOf('Only Coder') !== -1)).toBe(f + ':true'));
+    NUMBERED.forEach(f => expect(f + ':' + stepNumbers(win[f]())).toBe(f + ':1'));
+  });
+  it('should keep every loose agent when the canvas has no Input and no edges', () => {
+    setup(); agent(0, 0, 'Loose Planner', 'planner'); agent(300, 0, 'Loose Coder', 'coder'); agent(600, 0, 'Loose Tester', 'tester');
+    expect(win.runSortedNodes().length).toBe(3);
+    NUMBERED.forEach(f => expect(f + ':' + stepNumbers(win[f]())).toBe(f + ':1,2,3'));
+  });
+  it('should omit a loose agent beside a chain on a canvas with no Input', () => {
+    setup();
+    const a = agent(0, 100, 'Chain Planner', 'planner'); const b = agent(300, 100, 'Chain Coder', 'coder'); chain([a.id, b.id]);
+    const before = gen5();
+    agent(0, 500, 'Wanderer Loner', 'coder');
+    const after = gen5();
+    FIVE.forEach((f, j) => expect(f + ':' + (after[j] === before[j] && after[j].indexOf('Wanderer') === -1)).toBe(f + ':true'));
+    NUMBERED.forEach(f => expect(f + ':' + stepNumbers(after[NUMBERED.indexOf(f)])).toBe(f + ':1,2'));
+  });
+  it('should let a wired chain beside an edgeless Input define the run, so its steps and its approval gate stand', () => {
+    setup(); win.state.approvePlan = true;
+    win.addNode('input', 0, 0, 'Unwired In', {});
+    const p = agent(200, 0, 'Plan Lead', 'planner'); const c = agent(400, 0, 'Build Lead', 'coder'); chain([p.id, c.id]);
+    agent(0, 400, 'Wanderer Loner', 'coder');
+    const reach = win.evalReachableIds();
+    expect(reach.has(p.id) && reach.has(c.id)).toBe(true);
+    expect(reach.size).toBe(2);   // the edgeless Input and the loose agent are both outside the run
+    expect(win.approvalCheckpoint().node.label).toBe('Build Lead');
+    NUMBERED.forEach(f => expect(f + ':' + stepNumbers(win[f]())).toBe(f + ':1,2'));
+    FIVE.forEach(f => expect(f + ':' + (win[f]().indexOf('Wanderer') === -1)).toBe(f + ':true'));
+  });
+  it('should never choose a stray as the approval pause or count it as a prior step', () => {
+    setup(); win.state.approvePlan = true; wired();
+    const w1 = agent(0, 600, 'Wanderer Planner', 'planner'); const w2 = agent(300, 600, 'Wanderer Coder', 'coder'); chain([w1.id, w2.id]);
+    agent(0, 900, 'Wanderer Loner', 'coder');
+    const cp = win.approvalCheckpoint();
+    expect(cp.node.label).toBe('Build Lead');
+    expect(cp.prior.map(n => n.label).join(',')).toBe('Plan Lead');
+    expect(cp.owner.label).toBe('Plan Lead');
+    expect(win.approvePlanHint()).toContain('before **Build Lead** starts');
+  });
+  it('should omit a stray fork and join with its branches and keep a connected parallel group as it was', () => {
+    setup();
+    const i = win.addNode('input', 0, 100, 'In', {}); const f = win.addNode('parallel', 200, 100, 'Run Fork', { strategy: 'all', description: '' });
+    const r1 = agent(400, 50, 'Branch One', 'researcher'); const r2 = agent(400, 150, 'Branch Two', 'analyst'); const j = win.addNode('parallel', 600, 100, 'Run Join', { strategy: 'all', description: '' });
+    win.addConnection(i.id, f.id); win.addConnection(f.id, r1.id); win.addConnection(f.id, r2.id); win.addConnection(r1.id, j.id); win.addConnection(r2.id, j.id);
+    const before = gen5();
+    const sf = win.addNode('parallel', 0, 600, 'Wanderer Fork', { strategy: 'all', description: '' });
+    const sa = agent(200, 550, 'Wanderer Branch A', 'researcher'); const sb = agent(200, 650, 'Wanderer Branch B', 'analyst');
+    win.addConnection(sf.id, sa.id); win.addConnection(sf.id, sb.id);
+    const after = gen5();
+    FIVE.forEach((g, k) => expect(g + ':' + (after[k] === before[k] && after[k].indexOf('Wanderer') === -1)).toBe(g + ':true'));
+  });
+  it('should give validateWorkflow, the mandates owner, the eval executor, and Explain the same set the generators emit', () => {
+    setup(); win.state.verifyPaths = ['docs/verify.md'];
+    const { i, t } = wired(); const v = agent(1200, 100, 'Run Verifier', 'verifier'); win.addConnection(t.id, v.id);
+    const w1 = agent(0, 600, 'Wanderer Coder', 'coder'); const sv = agent(300, 600, 'Wanderer Verifier', 'verifier'); chain([w1.id, sv.id]);
+    const emitted = new Set(win.runSortedNodes().map(n => n.id));
+    const reach = win.evalReachableIds();
+    expect(win.state.nodes.every(n => emitted.has(n.id) === reach.has(n.id))).toBe(true);
+    const warned = win.validateWorkflow().filter(w => /not connected to an Input node, so it never runs/.test(String(w.msg))).map(w => String(w.msg));
+    expect(warned.length).toBe(2);
+    expect(warned.join('|')).toContain('Wanderer Verifier');
+    expect(win.resolveVerifyOwnerId()).toBe(v.id);
+    expect(win.evalExecutorId()).toBe(v.id);
+    const row = win.explainNode(sv, 'prompt').find(r => r.part === 'Verification-instructions step hint');
+    expect(row.reason).toContain('not connected to an Input, so it never runs');
+    expect(emitted.has(sv.id) || emitted.has(w1.id)).toBe(false);
+    expect(emitted.has(i.id)).toBe(true);
+  });
+  it('should keep the eval contract, the delivery, and the ledger on the run, not on a stray author, output, or verifier', () => {
+    resetState();
+    const i = win.addNode('input', 0, 100, 'Requirements');
+    const p = win.addNode('agent', 300, 100, 'Planner', { agentType:'planner', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const c = win.addNode('agent', 600, 100, 'Coder', { agentType:'coder', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const out = win.addNode('output', 900, 100, 'Done', { deliverable:'x', format:'default' });
+    win.addConnection(i.id, p.id); win.addConnection(p.id, c.id); win.addConnection(c.id, out.id);
+    const strayAuthor = win.addNode('agent', 100, 500, 'Wanderer Author', { agentType:'evalAuthor', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const strayVerifier = win.addNode('agent', 400, 500, 'Wanderer Verifier', { agentType:'verifier', model:'opus-5', tools:['Read'], prompt:'', maxTurns:10 });
+    const strayOut = win.addNode('output', 700, 500, 'Wanderer Delivery', { deliverable:'y', format:'pr' });
+    expect(win.evalAuthorsOnCanvas().length).toBe(1);
+    expect(win.hasEvalAuthor()).toBe(false);
+    expect(win.evalHint()).toBe(null);
+    expect(win.genWorkflow().indexOf('Pre-registered eval (configured)')).toBe(-1);
+    expect(win.evalStepHint(c)).toBe('');
+    expect(win.deliveryFormats().indexOf('pr')).toBe(-1);
+    expect(win.workflowBranching()).toBe(null);
+    expect(win.genWorkflow().indexOf('gh pr create')).toBe(-1);
+    win.state.memoryEnabled = true; win.state.durableRecord = true;
+    expect(win.genWorkflow().indexOf('**Verification ledger**')).toBe(-1);   // the stray Verifier never runs, so no ledger
+    expect(win.explainWorkflow('prompt').map(r => r.full || '').join('\n').indexOf('Wanderer')).toBe(-1);   // Explain's run plan reads the run
+    expect(win.buildOpenSpecSchema().schemaYaml.indexOf('wanderer')).toBe(-1);
+    win.addConnection(i.id, strayAuthor.id); win.addConnection(strayAuthor.id, p.id);   // wire the author in: the contract returns
+    expect(win.hasEvalAuthor()).toBe(true);
+    expect(win.genWorkflow()).toContain('Pre-registered eval (configured)');
+    win.state.memoryEnabled = false; win.state.durableRecord = false;
+  });
+  it('should undo Remove eval in one step when the author carried a review loop', () => {
+    resetState(); win.loadPreset('feature_fast'); win.addPreRegisteredEval(win.state.nodes.find(n => n.type === 'input').id);
+    const a = win.state.nodes.find(n => n.config && n.config.agentType === 'evalAuthor');
+    win.attachReviewLoop(a.id, 'adversary');
+    const nodesBefore = win.state.nodes.length, edges = win.state.connections.map(c => c.from + '>' + c.to + ':' + (c.label || '')).sort().join('|');
+    win.removePreRegisteredEval();
+    expect(win.evalAuthorsOnCanvas().length).toBe(0);
+    win.undo();
+    expect(win.state.nodes.length).toBe(nodesBefore);
+    expect(win.state.connections.map(c => c.from + '>' + c.to + ':' + (c.label || '')).sort().join('|')).toBe(edges);
+  });
+  it('should render the Eval default once on New Workflow with Defaults unpinned', () => {
+    resetState(); win.loadPreset('feature');
+    win.state.pins = win.defaultPins(); win.state.pins.defaults = false; win.renderPins();
+    win.state.defaultEvalHome = 'file';
+    win.clearCanvas(true);
+    expect(win.state.defaultEvalHome).toBe('record');
+    expect(win.document.querySelectorAll('#defaultEvalFields .config-select').length).toBe(1);
+    expect(win.document.querySelector('#defaultEvalFields .custom-select-trigger').textContent).toBe('The durable record');
+    win.state.pins = win.defaultPins(); win.renderPins();
+  });
+});
+
+describe('Eval: strays never run (pre-registered eval)', () => {
+  const FIVE = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt', 'genAgentSDK'];
+  // Structural assumption: the four numbered formats print a step heading at line start as `**Step N:` (Workflow) or `### Step N:` (the other three); the Agent SDK prints no step numbers.
+  const NUMBERED = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt'];
+  const STRAY = /strayling/i;   // every stray label in this block carries this word, so its label, slug, or variable name in any output is a match
+  const presetKeys = () => [...win.document.querySelectorAll('.preset-item[data-preset]')].map(el => el.dataset.preset);
+  function h53(str, seed) {
+    let h1 = 0xdeadbeef ^ (seed || 0), h2 = 0x41c6ce57 ^ (seed || 0);
+    for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  }
+  function agent(x, y, label, type) { return win.addNode('agent', x, y, label, { agentType: type, model: 'opus-5', tools: ['Read'], prompt: 'Do the ' + type + ' work.', maxTurns: 10 }); }
+  function input(x, y, label) { return win.addNode('input', x, y, label || 'In', {}); }
+  function output(x, y) { return win.addNode('output', x, y, 'Done', { deliverable: '', format: 'code', targetBranch: '', branchName: '' }); }
+  function fork(x, y, label, strategy) { return win.addNode('parallel', x, y, label, { strategy: strategy, description: '' }); }
+  function chain(ids) { for (let i = 0; i + 1 < ids.length; i++) win.addConnection(ids[i], ids[i + 1]); }
+  // Variant 0 = plain; 1 = mandates; 2 = one-click eval; 3 = memory and record; 4 = approval checkpoint with memory and record.
+  function prep(v) {
+    win.document.getElementById('workflowName').value = 'eval-fixture';   // a blank name is auto-generated at random
+    Object.assign(win.state, { approvePlan: false, clarifyFirst: false, mcpAtlassian: true, consumeRecords: true, defaultEvalHome: 'record', mcpCustom: '', memoryEnabled: false, durableRecord: false, verifyPaths: [] });
+    if (v === 1) win.state.verifyPaths = ['docs/verify.md'];
+    if (v >= 3) { win.state.memoryEnabled = true; win.state.durableRecord = true; }
+    if (v === 4) win.state.approvePlan = true;
+  }
+  function presetVariant(k, v) {
+    resetState(); win.loadPreset(k); prep(v);
+    if (v === 2) win.addPreRegisteredEval(win.state.nodes.find(n => n.type === 'input').id);
+  }
+  function gen5() { return FIVE.map(f => win[f]()); }
+  function labelOf(n) { return n ? n.label : null; }
+  function checkpoint() {
+    const cp = win.approvalCheckpoint();
+    if (!cp) return null;
+    return { node: labelOf(cp.node), prior: cp.prior.map(labelOf), group: cp.group.map(labelOf), builds: cp.builds, owner: labelOf(cp.owner), reviewer: labelOf(cp.reviewer), ownerGroup: cp.ownerGroup.map(labelOf) };
+  }
+  function headings(text) { const out = []; const re = /^(?:\*\*|### )Step (\d+):\s*(.*)$/gm; let m; while ((m = re.exec(text))) out.push({ n: Number(m[1]), title: m[2] }); return out; }
+  function reviewSig() { return h53(JSON.stringify(win.validateWorkflow().map(w => [w.type, String(w.msg)]))); }
+  // The connected chain: In -> Alpha Planner -> Beta Coder -> Done.
+  function base() {
+    const i = input(0, 100); const a = agent(300, 100, 'Alpha Planner', 'planner'); const b = agent(600, 100, 'Beta Coder', 'coder'); const o = output(900, 100);
+    chain([i.id, a.id, b.id, o.id]);
+    return { i, a, b, o };
+  }
+  // Strays that sort early in execution order: a sub-chain (a planner, then a builder) and a loose builder.
+  function addStrays() {
+    const p = agent(0, 600, 'Strayling Planner', 'planner'); const c = agent(300, 600, 'Strayling Coder', 'coder'); chain([p.id, c.id]);
+    const l = agent(0, 900, 'Strayling Loner', 'coder');
+    return { p, c, l };
+  }
+  // A stray fork and join with two branches, and a stray per-repository lane, neither with a path to an Input.
+  function addStrayForks() {
+    const f = fork(0, 1200, 'Strayling Fork', 'all'); const ba = agent(300, 1150, 'Strayling Branch A', 'researcher'); const bb = agent(300, 1250, 'Strayling Branch B', 'analyst');
+    const j = fork(600, 1200, 'Strayling Join', 'all'); const after = agent(900, 1200, 'Strayling After', 'writer');
+    win.addConnection(f.id, ba.id); win.addConnection(f.id, bb.id); win.addConnection(ba.id, j.id); win.addConnection(bb.id, j.id); win.addConnection(j.id, after.id);
+    const lf = fork(0, 1500, 'Strayling Lanes', 'per-repo'); const lc = agent(300, 1500, 'Strayling Lane Coder', 'coder'); const lt = agent(600, 1500, 'Strayling Lane Tester', 'tester'); const lj = fork(900, 1500, 'Strayling Collect', 'all');
+    chain([lf.id, lc.id, lt.id, lj.id]);
+  }
+  // A canvas with no Input: a chain with edges.
+  function noInputChain() {
+    const g = agent(0, 100, 'Gamma Planner', 'planner'); const d = agent(300, 100, 'Delta Coder', 'coder'); const e = agent(600, 100, 'Epsilon Tester', 'tester');
+    chain([g.id, d.id, e.id]);
+  }
+  // The verification fixture: a connected Verifier, an Eval Author, a stray Verifier chain that sorts later, and a loose Verifier.
+  function verifyCanvas() {
+    resetState(); prep(0); win.state.verifyPaths = ['docs/verify.md'];
+    const i = input(0, 100); const ea = agent(150, 0, 'Eval Author', 'evalAuthor'); const a = agent(300, 100, 'Alpha Planner', 'planner'); const b = agent(600, 100, 'Beta Coder', 'coder'); const v = agent(900, 100, 'Run Verifier', 'verifier'); const o = output(1200, 100);
+    chain([i.id, ea.id, a.id, b.id, v.id, o.id]);
+    const ids = []; for (let k = 0; k < 6; k++) ids.push(agent(k * 100, 600, 'Strayling Step ' + k, 'coder').id);
+    const sv = agent(700, 600, 'Strayling Verifier', 'verifier'); ids.push(sv.id); chain(ids);
+    const lv = agent(0, 900, 'Strayling Lone Verifier', 'verifier');
+    return { v, sv, lv };
+  }
+  function explainSig(nodes) {
+    const rows = [];
+    nodes.forEach(n => ['prompt', 'subagent', 'teams'].forEach(f => win.explainNode(n, f).filter(r => r.part === 'Verification-instructions step hint' || r.part === 'Pre-registered eval step hint').forEach(r => rows.push([n.label, f, r.part, r.status, r.reason]))));
+    win.explainWorkflow('prompt').filter(r => r.part === 'Verification instructions' || r.part === 'Pre-registered eval').forEach(r => rows.push(['workflow', r.part, r.status, r.reason]));
+    return h53(JSON.stringify(rows));
+  }
+  afterEach(() => {
+    win.state.verifyPaths = []; win.state.verifyNotes = ''; win.state.verifyFailRun = true; win.state.durableRecord = false; win.state.memoryEnabled = false; win.state.approvePlan = false;
+    win.document.getElementById('storyInput').value = ''; win.document.getElementById('workflowName').value = '';
+    try { win.localStorage.removeItem('awd_run_reports'); win.localStorage.removeItem('awd_prefs'); } catch (e) { /* storage may be unavailable */ }
+    resetState();
+  });
+
+  // Today's values, captured before the work existed (the definition of "as today" and "byte-identical to today").
+  const GOLD = {"gen":{"solo|0":"1b0ip1cavc4,jdujb013kx,23o9z4dlc8q,exokrfch7n,1wg9n8ozt7d","loose3|0":"275g62yorug,2eh1m0qvt4u,cyvz0ic2kj,30hapddipy,1bqwu1sregn","noin|0":"hb1s52l51d,2eog8wjgu5i,i1h44nyhmy,21foch43wfq,1gvlbhtb08r","feeder|0":"aairewlcqv,19eerh4n2rp,boxrrfvy4n,78kybdk0ir,1xxg95sb6gw","solo|4":"1pp55dwx4u7,208ur2j8ea0,1yavtcsbmc8,1e9xic0yj2s,2ccq5hzrf9h","loose3|4":"d9t0ui4c5j,gc4llwyw5l,1dcv0leqvsr,1mhz8gjn3pr,14iw60h9rva","noin|4":"va4w5mrsmo,a2regdfgby,tk96kblygy,2br5e267wef,ggbi050fj9","feeder|4":"232vgu6foss,1lfca6lnv5o,2fk370bbb5d,yoefaugwl,k1v4mxzz6b"},"cp":{"solo|0":"{\"node\":\"Solo Coder\",\"prior\":[],\"group\":[\"Solo Coder\"],\"builds\":true,\"owner\":null,\"reviewer\":null,\"ownerGroup\":[]}","loose3|0":"{\"node\":\"Loose Two\",\"prior\":[\"Loose One\"],\"group\":[\"Loose Two\"],\"builds\":true,\"owner\":\"Loose One\",\"reviewer\":null,\"ownerGroup\":[]}","noin|0":"{\"node\":\"Delta Coder\",\"prior\":[\"Gamma Planner\"],\"group\":[\"Delta Coder\"],\"builds\":true,\"owner\":\"Gamma Planner\",\"reviewer\":null,\"ownerGroup\":[]}","solo|4":"{\"node\":\"Solo Coder\",\"prior\":[],\"group\":[\"Solo Coder\"],\"builds\":true,\"owner\":null,\"reviewer\":null,\"ownerGroup\":[]}","loose3|4":"{\"node\":\"Loose Two\",\"prior\":[\"Loose One\"],\"group\":[\"Loose Two\"],\"builds\":true,\"owner\":\"Loose One\",\"reviewer\":null,\"ownerGroup\":[]}","noin|4":"{\"node\":\"Delta Coder\",\"prior\":[\"Gamma Planner\"],\"group\":[\"Delta Coder\"],\"builds\":true,\"owner\":\"Gamma Planner\",\"reviewer\":null,\"ownerGroup\":[]}"},"preset":{"feature|0":"166c7ya50bg,ilefc8ry1c,1t8i75xp5a2,25mypjux5mu,3utha8kpsz","feature|1":"1ap4yjq67ua,1s2aqqha3n3,1axca6nfdwv,3dii7g302j,1b91fx6brec","feature|2":"1x00rbguaks,2bvi6bun4o8,1nh4mv2xq1f,27fkd93b73r,po5rxj0esj","feature|3":"1dfsteubkq8,uda0y4h7lt,43k6w2f9p1,1phrdg88niu,5mg5h4e32b","feature|4":"o241jquzu1,lw28055n35,1f5ouih2ve6,1e40tc1d7z9,1datzydj9ol","bugfix|0":"2a7hbmw4rf4,28ji8ub4cys,18zw9gyk8v,ch7yt2lyqm,21f0ihj3n5v","bugfix|1":"2csaa51sw2k,25dr8jxazqs,2e9nnrednti,29xc99c8bxa,5rg4peo633","bugfix|2":"1df28my0tf8,ixno6zetr8,8h0rtu33ng,6xt8viz4et,7428d0ui0q","bugfix|3":"l1g9e01yip,16vdxav89ju,yxxtlfrunq,19660ozh13p,4ph4n832eo","bugfix|4":"u5n93mzovb,220vhqov6yt,oidmdr517l,5yb32q0vy5,20yt1ydymjy","fullstack|0":"1yhxl1m3mw3,k8550wendm,s6gkapubrf,5htxtlu2di,2gb861gd2fl","fullstack|1":"clczuqyse6,zdgcdzeezi,100s359zoyz,1dcgp2wudy0,1x2vcgs8lwq","fullstack|2":"73ba99zlak,1io4ryajbue,1w474oml396,1bmx90sf7bm,807g27oxv0","fullstack|3":"1t5ue5olxdk,1vliofmett0,18rllgajkxj,1yzj96eisc7,sx0d08lqyx","fullstack|4":"1240t5m802r,1qs0uu8htxj,t83ecckxtt,2bq6uvz2mrb,l7swmipwgd","new_project|0":"11tkgjasosz,137qiw39nat,1vtjmlwsv4c,x966qyccpl,qfktuc80nk","new_project|1":"2512xudhu4v,2dxrf5yfydn,ordxs7s2vf,5fjck24oi1,2114gv1uiyl","new_project|2":"1r0afmum12v,1rwr9ptp97c,sk1xdbhres,s05aixhoj8,15ghhjrmmbz","new_project|3":"maynas3k2v,m3olfckay5,1wk3r38thbq,o46m6zqls5,2g1y1ktp9zs","new_project|4":"n1tujkla74,kxgk1rf683,237dv284dg5,1ir8ghbatk4,1b9ktwe4dnd","ui_component|0":"1h14u3s3i2o,2aipth1pfm,33fmudlq79,28ptgo73dmw,bcybuaxny8","ui_component|1":"hxcjc5z253,sv4o4mjl8k,o4air7zyox,4i0edwfvt2,22g8m6xtdia","ui_component|2":"t8oqfwxj58,tqjqri416r,momc67uwfp,26mp9gj1rc0,s496ajvt1y","ui_component|3":"m2casx5zaw,1q3arffc15j,147heil348z,3hp1cro7gt,pceilzn8fx","ui_component|4":"kzd6dyp9ki,vbzx1ibdnb,2daen3yyxbi,6wv6yxld32,1a7wa4d2pjh","refactoring|0":"1x88dhsyyao,fzxntdqapn,27d1uh3dsz8,8d7et1dpkq,20w5xmiml7w","refactoring|1":"1jhpjmfwk7r,23logrlf0w7,10febomsk4z,1z4xm8e3igh,cew9nji4ae","refactoring|2":"1nsqcl5c7tz,1m10wytvsyk,nka93kelg1,4sbsmpv7u5,2baxjd5oka3","refactoring|3":"20d3zkx7dj2,js3eliy6i9,pmi9syj0sk,22c3x92x9bp,r8gu5ai0jy","refactoring|4":"lpwevio4ji,17d3zftvoi2,1v8068i32jt,o96c18jgix,1n7vdowgq91","documentation|0":"8illudxqt8,1ghetjwth9p,1r490freal6,g4n0dp2vjq,11wrsozipfl","documentation|1":"1e0xauchv5d,1jr26hvw1nd,vrruywklcx,19m26z94lvc,1qb06d7wo0r","documentation|2":"pq1vz31536,1zj6jzpfjpw,18jgut7p41r,2ebyy1ampl2,5sqsrz04po","documentation|3":"1hlogdtvg0j,203cjcbb0l9,16eikqs1r05,cqwpf5nfav,1kps7mfzyyc","documentation|4":"13vmt9h2gyb,2ffguotosq5,1ihdaqdj87l,5daf2uf92w,21lbsxisqq3","feature_fast|0":"1y5jef9pzv2,bzam5ysxml,1fs67snql6v,1hcwz374qsv,1j8qqsjzp1c","feature_fast|1":"y60zihehl3,28pj3av5pi5,1daqh1a4vmi,1p9jrc1givu,1by28438sco","feature_fast|2":"18tnoeslan9,1mtda9dzrmk,a0ou65e15i,n3wki447p8,1ap4yvcr22w","feature_fast|3":"1tsmoh7ej4v,n5irqei4r0,1sswosy8w5j,263f6i4otyw,36auea02af","feature_fast|4":"23jcjjo1ca7,140by4kyrko,iz4t9sk3es,1gtppig1sam,1tuy1e176c3","devops|0":"kxubizi4mr,8y3gp1z66j,b4vbzr6pml,1fogx6vzti2,xx04bdxqru","devops|1":"1g6nlah72b5,22x8tyqvhoe,262o30fugid,1drkwigf616,4szyuaiwsq","devops|2":"1snytsqr0s7,q6d9honlnh,e7ug4mnr26,1koekgd8f2n,1ptoe067jtg","devops|3":"2acna9jms30,1dzwuhb51p2,xwxsmd771e,dop73i8q60,1qi5k17f3m3","devops|4":"1uuy9ykldbe,8v4pyj4eoe,291ie80oqqd,1qptbs7vu87,1xi212abqvn","platform_provisioning|0":"bgcsjbxqlu,2b7qk5b0usf,1d9buw64jfn,1g5x5sp6v2,1d3nfvqs7az","platform_provisioning|1":"1njxnb6dkli,6jcy4nppb0,1djsfowi9sf,kb1wuliex5,61tlk7ad94","platform_provisioning|2":"29cs8u64iga,15un5wmrxai,nuib6ta74y,p6rfsvk6xy,123mihxkuoh","platform_provisioning|3":"1vtxqwskigj,12yy1okcxd7,ty69yu4ant,haw2fpir0p,2cna3k2455p","platform_provisioning|4":"lro1t8luid,asce489jai,2ujez6ieov,ya1l36mxo4,o4o0wtb7zb","cross_repo|0":"8s6q8pgsp9,1ivg23s8l4p,27ge1tdego9,1jt8njlh2m8,12lpvdz5pzc","cross_repo|1":"ch1ohbbcwf,gzaqz4f6lw,1azo9dqg9lh,13265tf3aio,z1o6k9j3yo","cross_repo|2":"11tjkrbyrm8,2s6kafyhwr,1b42aj5ecmq,1zivqkfaxh7,1h3zkb49ug0","cross_repo|3":"1frjcf3b08i,t5p5kyixpg,1yz0edv081k,151nmvgfkmh,215rweo0ipp","cross_repo|4":"1ago3rfkf06,yok5hjlw0d,1fjlvpy7d8v,1wh4ipoidz8,4dxp1wxu9s","performance|0":"v6ogjzj399,266cngopsxz,s3fi4e27d5,14p5bp31g3e,aqyhsjqya7","performance|1":"9i6wlxdoly,iiy8vz9j1s,nzo2ri41yd,13ajhkgbs38,259ytets6fw","performance|2":"8z1cuikdqq,3rnou7ud3j,2baiaesrrui,gngeye3fqe,232y87ugucf","performance|3":"idjj4cdepf,12fux02e21r,1b04l6dafqc,1bdjfgy7z8a,mfucdcbkne","performance|4":"1m5s4c2wsg3,1ei6ey3nsi7,1by72ht1ayt,2ezhlofabnu,7z4nnt00bi","data_migration|0":"qfakyt6foh,1npfqwsoiz8,2c2rquz4nq2,2e3tm8f8ob0,1d625s7nlat","data_migration|1":"l5a1t6qnq8,hip2vhuf0t,2d1ebakvvfu,o7qf60sxon,13ig7kss9re","data_migration|2":"ml5ndkkhd0,1nftumtphjy,1ujwe8eans,1co07keisas,wyx7fta2rq","data_migration|3":"26w9g9ternh,vegnf73g3l,195m06oz6kv,tl2btt8r6t,8od21cwm05","data_migration|4":"1not0dmfuly,1i0x9zy9sus,981axqyncc,16aec0fnzzq,1v6bks6ry5l","testing|0":"2cbmgmtxdma,lcrua5njtr,akpfdgwnh3,fjmrzapa7y,11p8wku38rg","testing|1":"27956hnugf6,29tn1mcn2ij,xu9fvvbuh8,262el8pfri7,1xo8kn5rqew","testing|2":"1kk2rhl1hsj,2bidrtujhib,1x3utdf4m3s,1kstbmx2kpa,dmevb8v4on","testing|3":"164rnq070nx,nw0qbv5lf1,7gmmvhe1rr,v0bgqjqr19,159yneej706","testing|4":"1pvu6dvnmty,4rjh7bbojp,8pqmnail87,fioufiatmr,1tmuuqdzi2r","test_automation|0":"1ub29qlo8gz,zwy3oglod7,jzu3rw4xyo,1eplswxacuk,1pcrex2st7k","test_automation|1":"9bvdz2zx2e,12mthht1860,xx8137ug38,c0noqoc9c6,ecx9sly3cz","test_automation|2":"1xha40y4ct6,13k061wzuga,1gqk5ypfose,18dsxneig72,2bn0wn1hdn7","test_automation|3":"1rd60dn5ikm,5891evawc9,ydacc7wn09,7y02uzzsfa,8lpefqqha7","test_automation|4":"6yrd7vm3p2,70yfq86557,1udx9wqxy4v,4t2c8l2j3b,13lq63wrmi","review|0":"20jshq8guh0,1fu10lyl0sy,17q6r2fk27y,10xhhi684oa,yft8ipu5fq","review|1":"20fittpjkip,1dzzia5azrp,gmhwpmf98s,299shlsnnou,2cmp3mrqfds","review|2":"hfnegvt8xc,1yqxapz5gy8,1yedoteqfmj,106ug7wlqfj,v1pzeuynkh","review|3":"2fi4hjzx9ag,sbb2fo8hg6,1akl8mlyssd,2ftc3ei6vmi,1p6b1lnx31i","review|4":"2fr57vl6kdp,11xt632c3h3,2b5dihab43a,f4hif6o163,75bazvx1h8","parallel_research|0":"8gknehwpis,l5e2xa6n8a,16ou9msxf9a,hlffswnoxk,k8b52x30le","parallel_research|1":"10jz7brtohv,1vl2alyg1rd,10k814ilcat,slj2lxaxhg,oiv2fonee0","parallel_research|2":"1hovyj0hujk,2gc7eodqm1k,wctq71arv3,2g06dqgr9yo,muesewusa9","parallel_research|3":"1v6jspma23u,5noq0eukxy,266jlny3xoi,18k3n2eziqh,1eu99vj6y8q","parallel_research|4":"1p5vgx2hjxj,1maxps5u4ej,1yye9xjg1mg,18h41j30ub2,294zou3gppa","swarm|0":"2amkztxc9hj,2a6upmot5ck,1mpoycccm0k,1nkhcgxn7qw,m350vdwfb0","swarm|1":"1mbd3ewzqy3,1h4aegxpuzv,13qorniz5n7,1znuco02lrv,26h75n7n1xn","swarm|2":"2bqs09joe0f,14ulb905w2m,bk3f4b0qo0,1yfpkn4kxky,l2cq4uxwy5","swarm|3":"lah98r2yso,2cl9yjj1toh,28yoenu53um,19iugemio56,hrnwcf7tkq","swarm|4":"4cekqgozht,5z1qc28j48,1kv1ulbp2wb,4f7squwomg,1iq0vuz9gpv","analysis_forecast|0":"ynsscft62d,12zz0sr4k30,eix00qppf6,16mf4wp786v,fuz64lwz9i","analysis_forecast|1":"1p3svi3llw2,vb4d4shq3,12giardr9vf,j88twwsrda,28k6wl8wvm6","analysis_forecast|2":"jfh020o8ls,23de7yqs7tc,1hgw5ehnmx2,1gd9m7f3xyb,19em7tvlm21","analysis_forecast|3":"10bkvu8j3jk,19u5kxjgdqk,1h11wr6p09i,21nlbrx7gpx,175c4y8azoo","analysis_forecast|4":"efsgcspmlp,p7thgf2m6b,1ero8mk9927,43uo86ma9l,npfwat6z04","incident_rca|0":"y3hru4j2h4,146w53azqyg,12oeytkrhvq,5hvpu1aacv,sn0vz1z41l","incident_rca|1":"16j08ldodpj,28casmx96ti,fsnjof91w9,8dq6r0qg31,4iumwllqff","incident_rca|2":"1fr7sr0lg57,1aal5uv4w6a,d6z7dvl09n,3q0atc86uv,6ww3xegzqi","incident_rca|3":"296gkuy4487,j4c67bf7zb,wlaksafvuy,boh8a1l97t,19gdud1z7fd","incident_rca|4":"1wprafqjl9t,1nworkdpujx,1jy9nb2lxgd,1thcykhael6,oto58akaqp","delivery_swarm|0":"1nvrfo0rfsn,1dujl5psj40,1czkmnh9hor,ta31zkshd0,yl2w0he04f","delivery_swarm|1":"2bozbnieb63,1807o4ux09c,xdzd34eknt,23pxbcpujiv,12yh9lupodb","delivery_swarm|2":"9jfuo7qa7t,qhlvlqk04n,1mkpy56eikl,22dg058itbf,152e6z8k53m","delivery_swarm|3":"1wnd3hz5emu,56bkv68icb,12c1fr1vubi,z7so49kikr,1lu2uyw9i1v","delivery_swarm|4":"cw450ioon2,biigjljb2,1l6tmm4suwz,1dyz5zkk2wg,srnsc5y7nq","touchup|0":"2dfeec0z87f,1eeb7a6is2g,1du0pbovubf,1eazrfbwspw,7y7ici11ls","touchup|1":"10i5yo85jhn,z560c1vsk7,w3dr3ow8al,1h3b8lt4wgm,15px4kp059u","touchup|2":"9ca3iymgpq,mmznx4vnf5,1w6lnbfol77,1afxr4n77k9,ug6av5w5ee","touchup|3":"wr4lxjxxxg,uaizr8x9z0,29tlavu9vyn,5acyyoi0b7,8j41ghg4na","touchup|4":"gnrtwud9p9,13fyrqi028y,7ld361azwb,244pvlmrhq6,5qbxr1orpf","record_sync|0":"1xpdtiisxwd,elhj64tykj,5kqdagtphj,26ck5keds0q,1buhg72n5eg","record_sync|1":"1wc5nbxsokn,ijdpdin0l0,xwyy9kxuvu,1dqoa1vmoiy,18j97fzxr0j","record_sync|2":"mowfkd2nhv,44qq3gsl7n,yb8cz9qchl,2dcxir35a6a,17qstp0t34y","record_sync|3":"xlbrqe1vn4,p68mg7da8,p2jl130x85,dhxzdye1wj,u9ptniwkaj","record_sync|4":"150xj3wa882,4hqecd36ac,241sglturis,1amjnom5hvo,wdf1woyfuo"},"place":{"feature":"1b6o2c5okh3","bugfix":"1wib8gdemr5","fullstack":"2eu6ogjuwpm","new_project":"14ybksvlfhm","ui_component":"1dpdyohqcs9","refactoring":"23tw3tf2g3t","documentation":"wnqzn49ydo","feature_fast":"2fvx0v31mk","devops":"1iapng5s1ed","platform_provisioning":"6kgamvljaq","cross_repo":"25k8sovd8ax","performance":"1vgyk8oit94","data_migration":"vmkiwodnt2","testing":"1c2swksv2jh","test_automation":"1bbe10mskim","review":"bhrpw6uw4j","parallel_research":"ab2w735pkj","swarm":"1tyeur5mrgd","analysis_forecast":"1oqkjtzthyn","incident_rca":"cwn07io45m","delivery_swarm":"24uckolqsxe","touchup":"1x0l701zm7","record_sync":"r50ah39h1h"},"review":"{\"strays\":\"5iwue38qla\",\"forks\":\"27vbw5f23cr\",\"noin\":\"1f13avbaq0q\",\"loose\":\"2sb9d30l9p\",\"verify\":\"nlattqxb4s\"}","explain":"1iew7gvu47n","controls":35,"prefs":"appSourceAccess,appSourceBranch,appSourcePath,approvePlan,artifactPath,clarifyFirst,consumeRecords,defaultDelivery,defaultEvalHome,defaultModel,durableRecord,effort,exportFormat,mcpAtlassian,mcpBrowser,mcpCodeSearch,mcpCustom,mcpDatadog,mcpGithub,memoryEnabled,openSpecArtifacts,pins,plibFavs,plibOpen,productDocPaths,repositories,rulesPaths,telemetryEnabled,telemetryEndpoint,telemetryService,telemetryTags,telemetryUser,uiContextNotes,verifyFailRun,verifyNotes,verifyPaths"};
+
+  it('should omit a stray sub-chain and a loose agent from all five formats (E1)', () => {
+    resetState(); prep(0); base(); addStrays();
+    FIVE.forEach((f, j) => expect(f + ':' + STRAY.test(win[f]())).toBe(f + ':false'));
+  });
+  it('should number the remaining steps 1, 2 with no gap in the four numbered formats when strays are present (E2)', () => {
+    resetState(); prep(0); base(); addStrays();
+    NUMBERED.forEach(f => {
+      const hs = headings(win[f]());
+      expect(f + ':' + hs.map(h => h.n).join(',')).toBe(f + ':1,2');
+      expect(f + ':' + (hs[0].title.indexOf('Alpha Planner') !== -1 && hs[1].title.indexOf('Beta Coder') !== -1)).toBe(f + ':true');
+    });
+  });
+  it('should generate the same output with strays as without them, plain and with the approval checkpoint, memory, and record (E3)', () => {
+    [0, 4].forEach(v => {
+      resetState(); prep(v); base();
+      const before = gen5();
+      addStrays();
+      const after = gen5();
+      FIVE.forEach((f, j) => expect(v + ':' + f + ':' + (after[j] === before[j])).toBe(v + ':' + f + ':true'));
+    });
+  });
+  it('should generate the same output for every preset when a stray sub-chain and a loose agent are added (E4)', () => {
+    presetKeys().forEach(k => [0, 2, 4].forEach(v => {
+      presetVariant(k, v);
+      const before = gen5();
+      addStrays();
+      const after = gen5();
+      FIVE.forEach((f, j) => expect(k + '|' + v + ':' + f + ':' + (after[j] === before[j] && !STRAY.test(after[j]))).toBe(k + '|' + v + ':' + f + ':true'));
+    }));
+  });
+  it('should omit a stray fork and join with its branches and a stray per-repository lane, beside a plain chain, a connected parallel group, and connected lanes (E5)', () => {
+    [null, 'parallel_research', 'cross_repo'].forEach(k => [0, 4].forEach(v => {
+      if (k) presetVariant(k, v); else { resetState(); prep(v); base(); }
+      const before = gen5();
+      addStrayForks();
+      const after = gen5();
+      FIVE.forEach((f, j) => expect((k || 'base') + '|' + v + ':' + f + ':' + (after[j] === before[j] && !STRAY.test(after[j]))).toBe((k || 'base') + '|' + v + ':' + f + ':true'));
+    }));
+  });
+  it('should generate a single agent on a canvas with no Input and no edges exactly as today [guard] (E6)', () => {
+    [0, 4].forEach(v => {
+      resetState(); prep(v); agent(300, 100, 'Solo Coder', 'coder');
+      expect('solo|' + v + ':' + gen5().map(t => h53(t)).join(',')).toBe('solo|' + v + ':' + GOLD.gen['solo|' + v]);
+      expect('solo|' + v + ':' + JSON.stringify(checkpoint())).toBe('solo|' + v + ':' + GOLD.cp['solo|' + v]);
+    });
+  });
+  it('should generate several loose agents on a canvas with no Input and no edges exactly as today [guard] (E7)', () => {
+    [0, 4].forEach(v => {
+      resetState(); prep(v); agent(0, 100, 'Loose One', 'planner'); agent(300, 100, 'Loose Two', 'coder'); agent(600, 100, 'Loose Three', 'tester');
+      expect('loose3|' + v + ':' + gen5().map(t => h53(t)).join(',')).toBe('loose3|' + v + ':' + GOLD.gen['loose3|' + v]);
+      expect('loose3|' + v + ':' + JSON.stringify(checkpoint())).toBe('loose3|' + v + ':' + GOLD.cp['loose3|' + v]);
+    });
+  });
+  it('should generate a chain with edges on a canvas with no Input exactly as today [guard] (E8)', () => {
+    [0, 4].forEach(v => {
+      resetState(); prep(v); noInputChain();
+      expect('noin|' + v + ':' + gen5().map(t => h53(t)).join(',')).toBe('noin|' + v + ':' + GOLD.gen['noin|' + v]);
+      expect('noin|' + v + ':' + JSON.stringify(checkpoint())).toBe('noin|' + v + ':' + GOLD.cp['noin|' + v]);
+    });
+  });
+  it('should omit a loose agent beside a chain on a canvas with no Input and leave the chain output unchanged (E9)', () => {
+    [0, 4].forEach(v => {
+      resetState(); prep(v); noInputChain();
+      const before = gen5();
+      agent(0, 900, 'Strayling Loner', 'coder');
+      const after = gen5();
+      FIVE.forEach((f, j) => expect(v + ':' + f + ':' + (after[j] === before[j] && !STRAY.test(after[j]))).toBe(v + ':' + f + ':true'));
+    });
+  });
+  it('should never pause on a stray or count one as a prior step, and keep the checkpoint it has without strays (E10)', () => {
+    resetState(); prep(4); base();
+    const want = JSON.stringify(checkpoint());
+    addStrays();
+    const cp = checkpoint();
+    expect(STRAY.test(JSON.stringify(cp))).toBe(false);
+    expect(cp.node).toBe('Beta Coder');
+    expect(JSON.stringify(cp.prior)).toBe(JSON.stringify(['Alpha Planner']));
+    expect(JSON.stringify(cp)).toBe(want);
+  });
+  it('should ignore a loose agent for the checkpoint on a canvas with no Input, where the chain with edges is the run (E11)', () => {
+    resetState(); prep(4); noInputChain();
+    const want = JSON.stringify(checkpoint());
+    agent(0, 900, 'Strayling Loner', 'coder');
+    const cp = checkpoint();
+    expect(STRAY.test(JSON.stringify(cp))).toBe(false);
+    expect(JSON.stringify(cp)).toBe(want);
+  });
+  it('should omit a stray from the output panel and the active prompt text in every export format (E12)', () => {
+    resetState(); prep(0); base(); addStrays();
+    ['prompt', 'subagent', 'teams', 'sdk', 'claude'].forEach(fmt => {
+      win.state.exportFormat = fmt;
+      win.updatePrompt();
+      expect(fmt + ':' + STRAY.test(win.getActivePromptText())).toBe(fmt + ':false');
+      expect(fmt + ':' + STRAY.test(win.document.getElementById('promptOutput').textContent)).toBe(fmt + ':false');
+    });
+  });
+  it('should omit loose agents when the canvas has an Input but no agent is connected (E13)', () => {
+    [0, 4].forEach(v => {
+      resetState(); prep(v); const i = input(0, 100); const o = output(600, 100); win.addConnection(i.id, o.id);
+      const before = gen5();
+      agent(300, 400, 'Strayling Loner', 'coder'); agent(300, 600, 'Strayling Second Loner', 'planner');
+      const after = gen5();
+      FIVE.forEach((f, j) => expect(v + ':' + f + ':' + (after[j] === before[j] && !STRAY.test(after[j]))).toBe(v + ':' + f + ':true'));
+    });
+  });
+  it('should keep emitting an agent connected only through an incoming edge or only through a second Input, exactly as today [guard] (E14)', () => {
+    [0, 4].forEach(v => {
+      resetState(); prep(v);
+      const i = input(0, 100); const b = agent(300, 100, 'Builder', 'coder'); const o = output(600, 100); chain([i.id, b.id, o.id]);
+      const fd = agent(0, 400, 'Feeder Researcher', 'researcher'); win.addConnection(fd.id, b.id);
+      const i2 = input(0, 700, 'Second In'); const a2 = agent(300, 700, 'Second Analyst', 'analyst'); win.addConnection(i2.id, a2.id);
+      const outs = gen5();
+      FIVE.forEach((f, j) => expect(v + ':' + f + ':' + (outs[j].indexOf('Feeder Researcher') !== -1 && outs[j].indexOf('Second Analyst') !== -1)).toBe(v + ':' + f + ':true'));
+      expect('feeder|' + v + ':' + outs.map(t => h53(t)).join(',')).toBe('feeder|' + v + ':' + GOLD.gen['feeder|' + v]);
+    });
+  });
+  it('should generate byte-identical output in all five formats for every preset in five variants, including the approval checkpoint [guard] (E15)', () => {
+    presetKeys().forEach(k => [0, 1, 2, 3, 4].forEach(v => {
+      presetVariant(k, v);
+      expect(k + '|' + v + ':' + gen5().map(t => h53(t)).join(',')).toBe(k + '|' + v + ':' + GOLD.preset[k + '|' + v]);
+    }));
+  });
+  it('should leave every Workflow Review entry unchanged on canvases with strays [guard] (E16)', () => {
+    const sigs = {};
+    resetState(); prep(0); base(); addStrays(); sigs.strays = reviewSig();
+    resetState(); prep(0); base(); addStrayForks(); sigs.forks = reviewSig();
+    resetState(); prep(0); noInputChain(); agent(0, 900, 'Strayling Loner', 'coder'); sigs.noin = reviewSig();
+    resetState(); prep(0); agent(0, 100, 'Loose One', 'planner'); agent(300, 100, 'Loose Two', 'coder'); sigs.loose = reviewSig();
+    verifyCanvas(); sigs.verify = reviewSig();
+    expect(JSON.stringify(sigs)).toBe(GOLD.review);
+  });
+  it('should give the mandates and the eval to the connected Verifier, never a stray one, exactly as today [guard] (E17)', () => {
+    const h = verifyCanvas();
+    expect(win.resolveVerifyOwnerId()).toBe(h.v.id);
+    expect(win.evalExecutorId()).toBe(h.v.id);
+    resetState(); prep(0); win.state.verifyPaths = ['docs/verify.md'];
+    const a = agent(0, 100, 'Eval Author', 'evalAuthor'); const c = agent(300, 100, 'Builder', 'coder'); const lv = agent(600, 100, 'Linked Verifier', 'verifier'); chain([a.id, c.id, lv.id]);
+    agent(300, 400, 'Strayling Verifier', 'verifier');   // no Input on this canvas
+    expect(win.resolveVerifyOwnerId()).toBe(lv.id);
+    expect(win.evalExecutorId()).toBe(lv.id);
+  });
+  it('should leave the Explain rows for the mandates and the eval unchanged on a canvas with stray Verifiers [guard] (E18)', () => {
+    const h = verifyCanvas();
+    expect(explainSig([h.v, h.sv, h.lv])).toBe(GOLD.explain);
+  });
+  // Director's answer to Q1: the no-Input no-edge clause lives in the shared connected set, so on that canvas every node is the run and the owner, the executor, Review, and Explain follow it.
+  it('should make a Verifier on a canvas with no Input and no edges the mandates owner and the eval executor, with Review and Explain describing a step that runs (E19)', () => {
+    const NEVER = /never runs|not connected to an Input/i;
+    const fixtures = [
+      () => ({ v: agent(300, 100, 'Solo Verifier', 'verifier'), others: [] }),
+      () => { const c = agent(0, 100, 'Loose Coder', 'coder'); return { v: agent(300, 100, 'Loose Verifier', 'verifier'), others: [c] }; },
+      () => { const e = agent(0, 100, 'Loose Eval Author', 'evalAuthor'); return { v: agent(300, 100, 'Eval Verifier', 'verifier'), others: [e], evalAuthor: true }; }
+    ];
+    fixtures.forEach(make => {
+      resetState(); prep(0); win.state.verifyPaths = ['docs/verify.md'];
+      const fx = make(); const tag = fx.v.label + ':';
+      expect(tag + win.resolveVerifyOwnerId()).toBe(tag + fx.v.id);
+      expect(tag + win.evalExecutorId()).toBe(tag + fx.v.id);
+      // Review: no entry says a node of this canvas never runs, and none says the mandates have no owner.
+      const msgs = win.validateWorkflow().map(w => String(w.msg));
+      [fx.v].concat(fx.others).forEach(n => expect(tag + msgs.some(m => m.indexOf('"' + n.label + '"') !== -1 && NEVER.test(m))).toBe(tag + false));
+      expect(tag + msgs.some(m => /no step owns them/i.test(m))).toBe(tag + false);
+      // Explain (structural assumption: the rows are named as today): the Verifier's mandates hint is emitted with a reason that does not say it never runs; the workflow row names it as the owner.
+      ['prompt', 'subagent', 'teams'].forEach(f => {
+        const rows = win.explainNode(fx.v, f);
+        const vi = rows.find(r => r.part === 'Verification-instructions step hint');
+        expect(tag + f + ':' + vi.status + ':' + NEVER.test(vi.reason)).toBe(tag + f + ':emitted:false');
+        const ev = rows.find(r => r.part === 'Pre-registered eval step hint');
+        expect(tag + f + ':' + NEVER.test(ev.reason)).toBe(tag + f + ':false');
+        if (fx.evalAuthor) expect(tag + f + ':' + ev.status).toBe(tag + f + ':emitted');
+      });
+      const wr = win.explainWorkflow('prompt').find(r => r.part === 'Verification instructions');
+      expect(tag + (wr.reason.indexOf(fx.v.label) !== -1)).toBe(tag + true);
+    });
+  });
+  it('should add no sidebar setting and place the one-click eval exactly as today [guard] (E20)', () => {
+    resetState();
+    expect(win.document.querySelectorAll('#sidebar input, #sidebar select, #sidebar textarea').length).toBe(GOLD.controls);
+    win.savePrefs();
+    expect(Object.keys(JSON.parse(win.localStorage.getItem('awd_prefs'))).sort().join(',')).toBe(GOLD.prefs);
+    presetKeys().forEach(k => {
+      presetVariant(k, 0);
+      win.addPreRegisteredEval(win.state.nodes.find(n => n.type === 'input').id);
+      const sig = h53(JSON.stringify([win.state.nodes.map(n => [n.type, n.config && n.config.agentType || '', n.label, n.x, n.y]), win.state.connections.map(c => [c.from, c.to, c.label || ''])]));
+      expect(k + ':' + sig).toBe(k + ':' + GOLD.place[k]);
+    });
   });
 });
 

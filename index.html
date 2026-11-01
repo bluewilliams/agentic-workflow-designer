@@ -1955,7 +1955,7 @@ function adoptDeliveryAsDefault() {
 // Ordered as delivery dispatches (a Pull Request node outranks a Commit node), so the strategy
 // the prompt describes is the one the delivery block acts on.
 function branchingOutputs() {
-  const rows = state.nodes.filter(n => n.type === 'output' && n.config).map(n => ({ n, c: outCfg(n) }))
+  const rows = runOutputs().filter(n => n.config).map(n => ({ n, c: outCfg(n) }))
     .filter(r => (r.c.format === 'pr' || r.c.format === 'commit') && BRANCHING_STRATEGIES.includes(r.c.branching) && r.c.branching !== 'single');
   return rows.sort((a, b) => (a.c.format === 'pr' ? 0 : 1) - (b.c.format === 'pr' ? 0 : 1)).map(r => r.n);
 }
@@ -2509,9 +2509,9 @@ function approvalSiblingIds(nodeId) {
 function approvalCheckpoint() {
   const sig = graphShapeSig(true);
   if (_approvalMemo.sig !== sig) {
-    // The SAME agent list every generator emits (topological order, unreachable nodes included
-    // and first): a stray builder the run would execute is a step the director approves before.
-    const agents = topologicalSort().filter(n => n && n.type === 'agent' && n.config);
+    // The SAME agent list every generator emits (the run's execution order): a stray never runs,
+    // so it is never the pause and never a prior step.
+    const agents = runSortedNodes().filter(n => n && n.type === 'agent' && n.config);
     let ids = null;
     if (agents.length) {
       const roleOf = n => AGENT_TYPES.some(a => a.id === n.config.agentType) ? n.config.agentType : 'general';   // unknown or missing role = General, as the rest of the app treats it
@@ -2751,8 +2751,7 @@ const VERIFY_OWNER_ROLES = new Set(['verifier', 'tester']);
 // execute mandates. A tester that never receives the mandates cannot duplicate them, and a
 // stray step that never runs never owns them, so the owner is the eval executor by construction.
 function resolveVerifyOwnerId() {
-  const reach = evalReachableIds();
-  const ordered = topologicalSort().filter(n => n && n.type === 'agent' && n.config && reach.has(n.id));
+  const ordered = runSortedNodes().filter(n => n && n.type === 'agent' && n.config);
   const verifiers = ordered.filter(n => n.config.agentType === 'verifier');
   if (verifiers.length) return verifiers[verifiers.length - 1].id;
   const testers = ordered.filter(n => n.config.agentType === 'tester');
@@ -2779,7 +2778,12 @@ function verifyInstructionsStepHint(node) {
 // Author emits byte-identical prompts.
 // ═══════════════════════════════════════════════════════════
 const EVAL_AUTHOR_ROLE = 'evalAuthor';
-function evalAuthorNodes() { return state.nodes.filter(n => n && n.type === 'agent' && n.config && n.config.agentType === EVAL_AUTHOR_ROLE); }
+// Authors ON the canvas drive the one-click and its menu (add, remove, toggle); authors IN the
+// run (connected, so emitted as a step) drive everything the prompt, the record, the run report,
+// the Explain rows, and the fail-the-run switch say about the eval. A stray author is a node the
+// review names as never running, never a contract the orchestrator is told to honor.
+function evalAuthorsOnCanvas() { return state.nodes.filter(n => n && n.type === 'agent' && n.config && n.config.agentType === EVAL_AUTHOR_ROLE); }
+function evalAuthorNodes() { const reach = evalReachableIds(); return evalAuthorsOnCanvas().filter(n => reach.has(n.id)); }
 function hasEvalAuthor() { return evalAuthorNodes().length > 0; }
 // The nodes that belong to the run, the ONE notion of it shared by the eval executor, the
 // verification-mandates owner, and the Workflow Review warning for agents that never run:
@@ -2787,16 +2791,20 @@ function hasEvalAuthor() { return evalAuthorNodes().length > 0; }
 // weaker than "downstream along forward edges": a hand-built gate whose No branch leads forward to a Debugger and a Verifier is emitted as
 // steps by every generator, so it is part of the run; only a loose node or a sub-chain with no
 // connection to an Input is not. With no Input node, every node that has at least one edge
-// counts (a loose Verifier dropped from the palette never does). Different from
+// counts (a loose Verifier dropped from the palette never does), and with no edges at all every
+// node is the run. An Input with no edges is not wired yet, so it never defines the run: only
+// Inputs that have an edge do, else the no-Input rule applies. Different from
 // advisorReachable, which answers "what runs after X" along forward edges.
 const _evalReachMemo = { sig: null, ids: null };   // the review, Explain, the status line, and the owner ask per node per render
 function evalReachableIds() {
   const sig = graphShapeSig(false);
   if (_evalReachMemo.sig === sig) return _evalReachMemo.ids;
-  const inputs = state.nodes.filter(n => n.type === 'input');
+  const inputs = state.nodes.filter(n => n.type === 'input' && state.connections.some(c => c.from === n.id || c.to === n.id));
   let seen;
   if (!inputs.length) {
-    seen = new Set(); state.connections.forEach(c => { seen.add(c.from); seen.add(c.to); });
+    seen = new Set();
+    if (!state.connections.length) state.nodes.forEach(n => seen.add(n.id));
+    else state.connections.forEach(c => { seen.add(c.from); seen.add(c.to); });
   } else {
     seen = new Set(); const stack = inputs.map(n => n.id);
     while (stack.length) {
@@ -2815,8 +2823,7 @@ const _evalExecMemo = { sig: null, id: null };
 function evalExecutorId() {
   const sig = graphShapeSig(true);
   if (_evalExecMemo.sig === sig) return _evalExecMemo.id;
-  const reach = evalReachableIds();
-  const v = topologicalSort().filter(n => n && n.type === 'agent' && n.config && n.config.agentType === 'verifier' && reach.has(n.id));
+  const v = runSortedNodes().filter(n => n && n.type === 'agent' && n.config && n.config.agentType === 'verifier');
   _evalExecMemo.sig = sig; _evalExecMemo.id = v.length ? v[v.length - 1].id : null;
   return _evalExecMemo.id;
 }
@@ -2961,9 +2968,9 @@ function evalStepHint(node) {
 // grade unfinished work, and "no step can take it" is the honest answer. With no build-role
 // agent at all, the last loop-free agent: a research workflow still ends in a deliverable.
 // sorted and reach may be passed by a caller that already computed them.
-function lastBuildStepId(sorted, reach) {
-  reach = reach || evalReachableIds();
-  const agents = (sorted || topologicalSort()).filter(n => n && n.type === 'agent' && n.config && n.config.agentType !== EVAL_AUTHOR_ROLE && reach.has(n.id));
+function lastBuildStepId(sorted, reach) {   // a caller that already sorted and reached passes both; else the run's order
+  const ordered = sorted ? sorted.filter(n => (reach || evalReachableIds()).has(n.id)) : runSortedNodes();
+  const agents = ordered.filter(n => n && n.type === 'agent' && n.config && n.config.agentType !== EVAL_AUTHOR_ROLE);
   const free = n => canAttachReviewLoop(n) && !hasReviewLoop(n.id);
   let lastBuild = -1;
   agents.forEach((n, i) => { if (APPROVAL_BUILD_ROLES.has(n.config.agentType)) lastBuild = i; });
@@ -5734,7 +5741,7 @@ const tempLayer = () => $('tempLayer');
 function genDurableRecordProtocol(fmt) {
   const apath = getArtifactPath();
   const wfName = getName() || 'workflow';
-  const hasVerifier = state.nodes.some(n => n && n.type === 'agent' && n.config && n.config.agentType === 'verifier');
+  const hasVerifier = runSortedNodes().some(n => n && n.type === 'agent' && n.config && n.config.agentType === 'verifier');
   const hasLedger = hasVerifier || !!(state.verifyPaths && state.verifyPaths.length);
   const hasEval = hasEvalAuthor();
   const p = [];
@@ -6803,10 +6810,10 @@ function setReviewLoopBackTarget(decisionId, targetNodeId) {
 // One click adds the pre-registered eval: the Eval Author right after the Input node (its only
 // upstream is the requirements, so it can never see a plan), and, when the workflow has no
 // Verifier, a verification loop on the last build step so the eval has an executor and a gate
-// to route back from. Two undo steps when both happen (the loop attach is its own batch).
+// to route back from. One undo step, whatever it adds.
 function addPreRegisteredEval(inputId) {
   const input = state.nodes.find(n => n.id === inputId && n.type === 'input');
-  if (!input || hasEvalAuthor()) return;
+  if (!input || evalAuthorsOnCanvas().length) return;
   const outs = state.connections.filter(c => c.from === inputId);
   let author;
   let outcome = 'existing';
@@ -6838,10 +6845,10 @@ function addPreRegisteredEval(inputId) {
 // Removes every Eval Author and reconnects what it sat between. The Verifier stays: it is a
 // review loop in its own right, and removing it silently would drop a check the user may want.
 function removePreRegisteredEval() {
-  const authors = evalAuthorNodes();
+  const authors = evalAuthorsOnCanvas();
   if (!authors.length) return;
-  authors.forEach(a => { if (hasReviewLoop(a.id)) detachReviewLoop(a.id); });   // a loop attached to the author would be orphaned
-  batchUndo(() => {
+  batchUndo(() => {   // the detach and the removal are ONE undo step (batchUndo nests)
+    authors.forEach(a => { if (hasReviewLoop(a.id)) detachReviewLoop(a.id); });   // a loop attached to the author would be orphaned
     authors.forEach(a => {
       const ins = state.connections.filter(c => c.to === a.id);
       const outs = state.connections.filter(c => c.from === a.id);
@@ -6870,7 +6877,7 @@ function removePreRegisteredEval() {
 function togglePreRegisteredEval() {
   hideContextMenu();
   const sel = state.nodes.find(n => n.id === state.selectedId);
-  if (hasEvalAuthor()) { removePreRegisteredEval(); return; }
+  if (evalAuthorsOnCanvas().length) { removePreRegisteredEval(); return; }
   if (sel && sel.type === 'input') addPreRegisteredEval(sel.id);
 }
 // Validation one-click: wrap the last build step in a Verifier so a pre-registered eval has an executor.
@@ -7954,8 +7961,8 @@ function showContextMenu(x, y) {
   const evalItem = $('ctxEval');
   if (evalItem) {
     const setTip = t => { evalItem.setAttribute('title', t); evalItem.removeAttribute('data-tip'); };
-    if (sel && sel.type === 'input' && !hasEvalAuthor()) { evalItem.style.display = 'flex'; evalItem.textContent = 'Add eval'; setTip('Add a pre-registered eval: an Eval Author right after the requirements writes a frozen, checkable definition of done before any plan exists, and the Verifier executes it (one is added if the workflow has none).'); }
-    else if (sel && hasEvalAuthor() && (sel.type === 'input' || (sel.config && sel.config.agentType === EVAL_AUTHOR_ROLE))) { evalItem.style.display = 'flex'; evalItem.textContent = 'Remove eval'; setTip('Remove the Eval Author and reconnect what it sat between. A Verifier stays: it is a review loop in its own right.'); }
+    if (sel && sel.type === 'input' && !evalAuthorsOnCanvas().length) { evalItem.style.display = 'flex'; evalItem.textContent = 'Add eval'; setTip('Add a pre-registered eval: an Eval Author right after the requirements writes a frozen, checkable definition of done before any plan exists, and the Verifier executes it (one is added if the workflow has none).'); }
+    else if (sel && evalAuthorsOnCanvas().length && (sel.type === 'input' || (sel.config && sel.config.agentType === EVAL_AUTHOR_ROLE))) { evalItem.style.display = 'flex'; evalItem.textContent = 'Remove eval'; setTip('Remove the Eval Author and reconnect what it sat between. A Verifier stays: it is a review loop in its own right.'); }
     else evalItem.style.display = 'none';
   }
   menu.classList.add('show');
@@ -10880,9 +10887,8 @@ function clearCanvas(skipConfirm) {
     setDefaultModel(NODE_DEFAULTS.agent.config.model, true);
     setEffort('', true);
     state.defaultDelivery = blankDelivery();
-    renderDefaultDelivery();
     state.defaultEvalHome = 'record';
-    renderDefaultEval();
+    renderDefaultDelivery();   // renders the Eval default too
   }
   // Repo Context Paths ship pinned (sticky repo-level context); unpinned they clear here like the
   // other sections. state.verifyFailRun (the fail-the-run posture) is a preference and stays.
@@ -11930,7 +11936,7 @@ function explainNode(node, format) {
 // matrix never greps generated output for it.
 function orchestratorRunPlan(format) {
   format = format || state.exportFormat;
-  const ordered = topologicalSort();
+  const ordered = runSortedNodes();
   const agents = ordered.filter(nd => nd.type === 'agent');
   const decisions = state.nodes.filter(nd => nd.type === 'decision');
   const verb = format === 'subagent' ? 'Spawn' : format === 'teams' ? 'Delegate to' : 'Run';
@@ -12401,8 +12407,10 @@ function uiContextBlock(heading) {
 // > docs > code. Pull Request and Commit commit + push (PR also opens a PR); Report
 // and Documentation produce their artifact and never commit; code (and no output node)
 // leave changes uncommitted for the director to review.
+// Output nodes in the run: a loose Output is not a delivery (the generators emit none for it).
+function runOutputs() { const reach = evalReachableIds(); return state.nodes.filter(n => n.type === 'output' && reach.has(n.id)); }
 function deliveryFormats() {
-  return state.nodes.filter(n => n.type === 'output').map(n => outCfg(n).format);
+  return runOutputs().map(n => outCfg(n).format);
 }
 function deliversPr() {
   return deliveryFormats().includes('pr');
@@ -12892,7 +12900,7 @@ function pushSharedHints(p, format, includeEffort) {
 }
 function genWorkflow() {
   const story = getStory(), name = getName();
-  const ordered = topologicalSort();
+  const ordered = runSortedNodes();
   const _apCp = state.approvePlan ? approvalCheckpoint() : null;   // once per generation, passed to every per-step site
   const agents = ordered.filter(n => n.type === 'agent');
   const decisions = ordered.filter(n => n.type === 'decision');
@@ -13081,7 +13089,7 @@ function genWorkflow() {
 // ═══════════════════════════════════════════════════════════
 function genSubAgents() {
   const story = getStory(), name = getName();
-  const ordered = topologicalSort();
+  const ordered = runSortedNodes();
   const _apCp = state.approvePlan ? approvalCheckpoint() : null;   // once per generation, passed to every per-step site
   const agents = ordered.filter(n => n.type === 'agent');
   const parallels = ordered.filter(n => n.type === 'parallel');
@@ -13366,7 +13374,7 @@ function genSubAgents() {
 // ═══════════════════════════════════════════════════════════
 function genAgentTeams() {
   const story = getStory(), name = getName();
-  const ordered = topologicalSort();
+  const ordered = runSortedNodes();
   const _apCp = state.approvePlan ? approvalCheckpoint() : null;   // once per generation, passed to every per-step site
   const agents = ordered.filter(n => n.type === 'agent');
   const parallels = ordered.filter(n => n.type === 'parallel');
@@ -13610,7 +13618,7 @@ function genAgentTeams() {
 // ═══════════════════════════════════════════════════════════
 function genAgentSDK() {
   const story = getStory(), name = getName();
-  const ordered = topologicalSort();
+  const ordered = runSortedNodes();
   const _sdkCp = state.approvePlan ? approvalCheckpoint() : null;   // once per export: banner, helper, and hook share it
   const _sdkVar = n => n.label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();   // ONE label-to-identifier rule for the whole export
   const agents = ordered.filter(n => n.type === 'agent');
@@ -14145,7 +14153,7 @@ function genAgentSDK() {
 // ═══════════════════════════════════════════════════════════
 function genClaudePrompt() {
   const story = getStory(), name = getName();
-  const ordered = topologicalSort();
+  const ordered = runSortedNodes();
   const _apCp = state.approvePlan ? approvalCheckpoint() : null;   // once per generation, passed to every per-step site
   const agents = ordered.filter(n => n.type === 'agent');
   const decisions = ordered.filter(n => n.type === 'decision');
@@ -14678,7 +14686,7 @@ function openSpecTemplate(artifact) {
 }
 function buildOpenSpecSchema() {
   // Pure + testable. Returns { name, schemaYaml, templates:[{file, content}] }.
-  const ordered = topologicalSort();
+  const ordered = runSortedNodes();
   const work = ordered.filter(n => n.type === 'agent' || n.type === 'task');
   const posIdx = new Map(ordered.map((n, i) => [n.id, i]));
   const nm = openSpecSlug(getName() || 'workflow');
@@ -15091,6 +15099,9 @@ function reviseContinuity(format) {
 }
 // === end REVISE-EDGE CONTINUITY ===========================================
 
+// The run's execution order: the topological sort limited to the connected set, so a stray
+// agent is never emitted as a step.
+function runSortedNodes() { const reach = evalReachableIds(); return topologicalSort().filter(n => reach.has(n.id)); }
 function topologicalSort() {
   const adj = {};
   const inDeg = {};

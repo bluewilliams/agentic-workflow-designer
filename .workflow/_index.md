@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## strays-never-run
+
+- record: .workflow/strays-never-run.md
+- intent: an agent with no connection to the run is never emitted as a step - runSortedNodes (the topological order restricted to evalReachableIds) feeds the five generators and the approval checkpoint, steps renumber without a gap; the connected set gained two director rules (an edgeless Input does not define the run; a canvas with no edges is wholly the run); every preset byte-identical in all five formats
+- files: index.html (evalReachableIds, runSortedNodes, genWorkflow, genSubAgents, genAgentTeams, genAgentSDK, genClaudePrompt, approvalCheckpoint), tests.html (describe Strays never run; the frozen eval describe; one migrated Plan approval gate assertion)
+- status: current | date: 2026-11-01 | note: built by the eval feature's second live run (UI Component + Add eval on its own Verifier); amends one-notion-of-the-run, plan-approval-gate, parallel-sibling-emission. 2003 -> 2031.
+
 ## one-notion-of-the-run
 
 - record: .workflow/one-notion-of-the-run.md
