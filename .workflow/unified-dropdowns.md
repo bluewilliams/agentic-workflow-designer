@@ -23,7 +23,7 @@ The director preferred the Default Model dropdown's look over native selects (ma
    - Given a click on a skin option, Then native value + change handlers + trigger text all update. (Tests: clicking a skin option sets the native value, fires change handlers, and updates the trigger; a skin pick on the Agent Library type select fires the inline onchange (template pristine-swap))
 3. Programmatic writes MUST stay supported via the refresh hook. (Test: programmatic native sets follow through the refresh hook (restorePrefs / clearCanvas path))
 4. Keyboard operation MUST work and MUST NOT leak into canvas shortcuts. (Test: keyboard: Enter opens, arrows move, Enter selects, Escape closes - and never leaks to canvas shortcuts)
-5. One popup open at a time, across every dropdown species. (Test: only one popup open at a time, across the skin and the bespoke Default Model select)
+5. One popup open at a time, across every dropdown species. (Tests: only one popup open at a time, across the skin and the bespoke Default Model select; since 2026-11-01 also the Export, Import and run menus, and the ARIA state follows: should reset aria-expanded on a skinned select that another popup closes; should close the Export menu when a skin opens and close the skins when a button menu opens)
 6. Dynamic option rebuilds (openAgentForm) MUST refresh the skin in place. (Test: openAgentForm rebuilds the native options and the skin refreshes in place (no double-wrap, full roster))
 
 ## Success criteria
@@ -71,3 +71,4 @@ Direct fork execution by Claude (Fable) from the director's ruling ("I like the 
 
 - Grounds on / touches: grounds on `.workflow/expand-textarea-to-modal.md`, `.workflow/native-dark-scheme.md`, `.workflow/validation-modal.md`; amended `.workflow/native-dark-scheme.md` (its option-styling line superseded by this unit).
 - Branch: main (uncommitted delivery for the director).
+- 2026-11-01: two gaps found by the Eval Author backtest (a blind eval of this record's R5 failed them on the shipped work): a skin closed by another popup kept `aria-expanded="true"` (closeAllCustomSelects removed the class only; it now resets the trigger's ARIA state), and the Export, Import and run menus never closed a skin nor a skin them (both sides stopped propagation). closeAllCustomSelects closes the three menus when a skin opens, and the three menu openers close the skins. (by direct session)

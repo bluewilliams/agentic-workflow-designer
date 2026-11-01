@@ -18749,6 +18749,64 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
     expect(copy.config.evalReplaced).toBe(undefined);
     expect(win.normalizeAgentConfig(a.config).evalReplaced).toBe(undefined);   // the agent library never held it
   });
+  it('should offer the Open questions select on the Eval Author only and default to asking when the bar moves', () => {
+    resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
+    const a = author();
+    win.selectNode(a.id); win.updateConfig();
+    const cs = win.document.querySelector('#configFields .config-select[data-key="evalAmbiguity"]');
+    expect(!!cs).toBe(true);
+    expect(cs.querySelector('.custom-select-trigger').textContent).toContain('Ask when it moves the bar (default)');
+    expect(cs.querySelectorAll('.custom-select-option').length).toBe(3);
+    expect(win.evalAmbiguityOf(a)).toBe('bar');
+    a.config.evalAmbiguity = 'bogus';
+    expect(win.evalAmbiguityOf(a)).toBe('bar');   // an unknown stored value resolves to the default
+    delete a.config.evalAmbiguity;
+    cs.querySelector('.custom-select-option[data-value="always"]').click();
+    expect(a.config.evalAmbiguity).toBe('always');
+    const coder = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'coder');
+    win.selectNode(coder.id); win.updateConfig();
+    expect(win.document.querySelector('#configFields .config-select[data-key="evalAmbiguity"]')).toBe(null);
+  });
+  it('should change the author hint and the orchestrator clause with each Open questions setting', () => {
+    resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
+    const a = author();
+    const hintFor = v => { a.config.evalAmbiguity = v; return win.evalStepHint(a); };
+    const preambleFor = v => { a.config.evalAmbiguity = v; return win.evalHint(); };
+    expect(hintFor('bar')).toContain('ONLY when a wrong answer would fail work that meets the requirements');
+    expect(hintFor('bar')).toContain('deliver the eval as a draft (no hash) with the questions');
+    expect(hintFor('bar')).toContain('When you raised none, freeze now.');
+    expect(hintFor('always')).toContain('every question the requirements leave open goes in your handoff with a proposed default.');
+    expect(hintFor('always')).toContain('deliver the eval as a draft (no hash)');
+    expect(hintFor('decide')).toContain('never interrupt the run');
+    expect(hintFor('decide')).toContain('freeze now');
+    expect(hintFor('decide').indexOf('draft')).toBe(-1);
+    expect(win.PROMPTS.evalAuthor).toContain('deliver the eval as a DRAFT with the questions and no hash');
+    expect(win.PROMPTS.evalAuthor).toContain('"draft, N questions open"');
+    expect(preambleFor('bar')).toContain('ask the director ONCE, in one short batch');
+    expect(preambleFor('bar')).toContain('re-dispatch the Eval Author with its draft and the answers');
+    expect(preambleFor('bar')).toContain('(only those that move the pass bar; it decides the rest and records them)');
+    expect(preambleFor('bar')).toContain('Running non-interactively (no director available to answer), do NOT block');
+    expect(preambleFor('always')).toContain('ask the director ONCE');
+    expect(preambleFor('always').indexOf('only those that move the pass bar')).toBe(-1);
+    expect(preambleFor('decide')).toContain('No question reaches the director');
+    expect(preambleFor('decide').indexOf('ask the director ONCE')).toBe(-1);
+    a.config.evalAmbiguity = 'decide';
+    expect(win.genWorkflow()).toContain('No question reaches the director');
+    expect(win.genSubAgents()).toContain('never interrupt the run');
+    const row = win.explainNode(a, 'subagent').find(x => x.part === 'Pre-registered eval step hint');
+    expect(row.full).toContain('never interrupt the run');
+    const portable = win.serializeWorkflow({ portable: true });
+    expect(portable.canvas.nodes.find(n => n.config && n.config.agentType === 'evalAuthor').config.evalAmbiguity).toBe('decide');
+  });
+  it('should carry the pin-only-what-the-requirement-states guidance in the Eval Author template', () => {
+    const t = win.PROMPTS.evalAuthor;
+    expect(t).toContain('Pin only what the requirement states');
+    expect(t).toContain('never pin a literal phrase, a count, a file list, an ordering, or a wording the requirement does not state');
+    expect(t).toContain('a criterion that only restates others');
+    expect(t).toContain('name that assumption in the check');
+    expect(t).toContain('as a guard');
+    expect(author().config.prompt).toBe(t);   // the one-click author carries the full template
+  });
   it('should ignore an empty or array eval block and read a null count as zero', () => {
     resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
     const name = win.getName() || 'workflow';
@@ -18858,6 +18916,104 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
     win.selectNode(coder.id); win.showContextMenu(10, 10);
     expect(item.style.display).toBe('none');
     win.hideContextMenu();
+  });
+});
+
+describe('One popup open at a time: skins, button menus, and the ARIA state follow each other', () => {
+  afterEach(() => { win.closeAllCustomSelects(null); win.closeExportMenu(); win.closeImportMenu(); });
+  it('should reset aria-expanded on a skinned select that another popup closes', () => {
+    const accWrap = win.document.getElementById('appSourceAccess').closest('.enhanced-select');
+    const trigger = accWrap.querySelector('.custom-select-trigger');
+    trigger.click();
+    expect(accWrap.classList.contains('open')).toBe(true);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    win.document.getElementById('defaultModelTrigger').click();   // another species opens
+    expect(accWrap.classList.contains('open')).toBe(false);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(trigger.hasAttribute('aria-activedescendant')).toBe(false);
+  });
+  it('should close the Export menu when a skin opens and close the skins when a button menu opens', () => {
+    const accWrap = win.document.getElementById('appSourceAccess').closest('.enhanced-select');
+    const trigger = accWrap.querySelector('.custom-select-trigger');
+    const menu = win.document.getElementById('exportMenu'), btn = win.document.getElementById('exportMenuBtn');
+    win.toggleExportMenu({ stopPropagation: () => {} });
+    expect(menu.style.display).toBe('block');
+    trigger.click();
+    expect(accWrap.classList.contains('open')).toBe(true);
+    expect(menu.style.display).toBe('none');
+    expect(btn.getAttribute('aria-expanded')).toBe('false');
+    win.toggleExportMenu({ stopPropagation: () => {} });
+    expect(menu.style.display).toBe('block');
+    expect(accWrap.classList.contains('open')).toBe(false);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    win.toggleImportMenu({ stopPropagation: () => {} });   // the import menu closes skins the same way
+    trigger.click(); trigger.click();   // open, close: the skin's own close path still works
+    expect(accWrap.classList.contains('open')).toBe(false);
+    expect(win.document.getElementById('importMenu').style.display).toBe('none');
+  });
+});
+
+describe('Agent Prompt status follows a live edit', () => {
+  it('should show the Reset control and the edited status while typing without rebuilding the panel, keeping an open preview open', () => {
+    resetState(); win.loadPreset('feature');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    win.selectNode(impl.id); win.updateConfig();
+    const fields = win.document.getElementById('configFields');
+    expect(fields.querySelector('.agent-prompt-reset')).toBe(null);
+    expect(fields.querySelector('.agent-prompt-status').textContent).toContain('Full Coder role template attached');
+    fields.querySelector('.agent-prompt-preview-toggle').click();
+    expect(fields.querySelector('.agent-prompt-preview').classList.contains('open')).toBe(true);
+    const ta = fields.querySelector('[data-key="prompt"]');
+    const previewEl = fields.querySelector('.agent-prompt-preview');
+    ta.value = ta.value + '\nOne more rule.';
+    ta.dispatchEvent(new win.Event('input', { bubbles: true }));
+    expect(fields.querySelector('[data-key="prompt"]')).toBe(ta);   // the panel was not rebuilt
+    expect(fields.querySelector('.agent-prompt-preview')).toBe(previewEl);   // nor the preview element (its scroll survives)
+    expect(previewEl.querySelector('.agent-prompt-preview-body').textContent).toContain('One more rule.');   // open, so re-rendered
+    ta.value = ta.value + ' And another.';
+    ta.dispatchEvent(new win.Event('input', { bubbles: true }));
+    expect(fields.querySelectorAll('.agent-prompt-reset').length).toBe(1);   // a second keystroke adds no second control
+    expect(!!fields.querySelector('.agent-prompt-reset')).toBe(true);
+    expect(fields.querySelector('.agent-prompt-status').textContent).toContain('Edited from the Coder template');
+    expect(fields.querySelector('.agent-prompt-preview').classList.contains('open')).toBe(true);
+    expect(fields.querySelector('.agent-prompt-preview-toggle').getAttribute('aria-expanded')).toBe('true');
+    fields.querySelector('.agent-prompt-reset').click();   // the rebuilt control is bound
+    expect(impl.config.prompt).toBe(win.PROMPTS.implementer);
+    expect(win.document.querySelector('#configFields .agent-prompt-reset')).toBe(null);
+  });
+});
+
+describe('Reviewer brief names the declared posture of the step it reviews', () => {
+  it('should tell the reviewer the reviewed step posture only when that posture is not balanced', () => {
+    resetState(); win.loadPreset('feature');
+    const impl = win.state.nodes.find(n => n.label === 'Implementer');
+    const rev = win.state.nodes.find(n => n.label === 'Reviewer');
+    expect(win.foundDefectNote(rev)).toBe('');   // balanced everywhere: byte-identical to before
+    impl.config.defectPosture = 'record-only';
+    const note = win.foundDefectNote(rev);
+    expect(note.indexOf('**Declared posture of the step you review.** "Implementer": record-only')).toBe(0);   // headed, no leading space
+    expect(note).toContain('judge declared fixes against that posture');
+    expect(win.genWorkflow()).toContain('- **Declared posture of the step you review.**');
+    expect(win.genSubAgents()).toContain('"Implementer": record-only');
+    let row = win.explainNode(rev, 'subagent').find(x => x.part === 'Found-defect protocol');
+    expect(row.status).toBe('emitted');
+    expect(row.reason).toContain('reviewer at the balanced default');
+    expect(row.reason).toContain('It is also told the declared posture of the step it reviews (Implementer: record-only)');
+    rev.config.defectPosture = 'surgical';
+    const both = win.foundDefectNote(rev);
+    expect(both).toContain('surgical review posture');
+    expect(both).toContain('. **Declared posture of the step you review.** "Implementer": record-only');
+    row = win.explainNode(rev, 'subagent').find(x => x.part === 'Found-defect protocol');
+    expect(row.reason).toContain("reviewer flag-back posture 'surgical'");
+    expect(row.reason).toContain('It is also told the declared posture');
+    impl.config.defectPosture = 'surgical';   // a stale reviewer-only value on a coder resolves to balanced, as its own brief does
+    expect(win.foundDefectNote(rev).indexOf('Declared posture')).toBe(-1);
+    expect(win.foundDefectNote(impl)).toContain('never work around, never silently fix');
+    impl.config.defectPosture = 'balanced';
+    expect(win.foundDefectNote(rev).indexOf('Declared posture')).toBe(-1);
+    delete rev.config.defectPosture;
+    const planner = win.state.nodes.find(n => n.label === 'Planner');
+    expect(win.foundDefectNote(planner)).toBe('');   // only a reviewer learns a producer's posture
   });
 });
 

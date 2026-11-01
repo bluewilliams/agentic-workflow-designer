@@ -7,7 +7,7 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - record: .workflow/pre-registered-eval.md
 - intent: an Eval Author writes the eval (numbered, falsifiable, pass-or-fail criteria with exact checks, tagged to the requirement lines, executable tests first) from the requirements alone, before any plan exists, and freezes it; the last Verifier the run reaches executes every criterion in the real system (commands, curl, a browser, a CLI, data reconciliation) through its existing gate and reports PASS, FAIL, or BLOCKED with evidence. Pre-registration, author independence, and the freeze are what make it an eval rather than a checklist. One-click from the Input node (adds a Verifier loop after the deliverable when missing); an Eval Author with no reachable Verifier is a validation error with a fix and the prompt stops the run. Record section, run-report eval block, Explain rows. Nothing emitted without the role.
 - files: index.html (AGENT_TYPES and role tables, PROMPTS.evalAuthor, eval machinery block, addPreRegisteredEval/removePreRegisteredEval/togglePreRegisteredEval, advisorAttachVerifier, context menu, validateWorkflow, pushSharedHints, six step-hint sites, explainNode/explainWorkflow, genDurableRecordProtocol, runReportDirective, ingestRunReport, updateRunReportSection, genTuningPrompt, attachReviewLoop room-making, help), tests.html (Pre-registered eval suite), README.md
-- status: current | date: 2026-10-31 | note: decided with the director (Verifier executes, no stand-ins); browser-checked; four review rounds, forty-six of forty-eight findings acted on (deferred, twice: one shared notion of the run for the generators and the verification owner); the eval home selects hide without a record; a regression probe shows every preset unchanged in all formats without the role; the record is written as a design document. 1913 -> 1954.
+- status: current | date: 2026-10-31 | note: decided with the director (Verifier executes, no stand-ins); browser-checked; four review rounds, forty-six of forty-eight findings acted on (deferred, twice: one shared notion of the run for the generators and the verification owner); the eval home selects hide without a record; an Open questions select on the author (ask when it moves the bar by default) and the template's pin-only-what-is-stated paragraph after the backtest; a regression probe shows every preset unchanged in all formats without the role; the record is written as a design document. 1913 -> 1954.
 
 ## rendered-text-fields
 
@@ -308,7 +308,7 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - record: .workflow/unified-dropdowns.md
 - intent: one dropdown aesthetic app-wide - enhanceSelect() wraps the three native selects (appSourceAccess, customAgentType, customAgentModel) in the custom-select skin with the native authoritative underneath (skin picks dispatch real change events; programmatic writes follow via refreshEnhancedSelect at restorePrefs/clearCanvas/openAgentForm); full keyboard support (combobox/listbox, arrows, Escape) with canvas-shortcut exemption; one-popup-open enforced across all species; config-selects and #defaultModelSelect already custom, unchanged.
 - files: index.html (enhancer block + CSS + exemption + refresh call sites), tests.html (8-test suite)
-- status: current | date: 2026-07-10
+- status: current | date: 2026-07-10 | note: 2026-11-01 the one-popup rule reaches the button menus and the ARIA state follows (backtest finding).
 
 ## native-dark-scheme
 
@@ -329,7 +329,7 @@ Scan-then-open: read this index first, match an entry against the files or capab
 - record: .workflow/defect-posture.md
 - intent: two per-node Defect Posture knobs sharing one select and one emission surface (foundDefectNote): coder-family nodes tune fix-vs-record (balanced byte-identical default / record-only surgical / aggressive healing, all declared + tested); reviewer nodes tune flag-back intensity for pre-existing defects they spot (balanced notes / surgical ignores / aggressive sweeps + flags to the orchestrator - never fixing, never gate-failing), with an orchestrator handling line that dispatches flags ONLY along the review gate's drawn revise edge as a post-pass follow-up (outside gate cycles; record-only when no edge drawn) in all four prose formats. Non-balanced postures render on the node subtitle. Testers/verifiers carry the balanced protocol without a knob.
 - files: index.html (nodeDefectPosture, foundDefectNote variants, node-config select, reviewer clause, Explain row, help), tests.html (7 tests)
-- status: current | date: 2026-07-03 | note: 1474 -> 1481; balanced default means zero delta for untouched workflows.
+- status: current | date: 2026-07-03 | note: 1474 -> 1481; balanced default means zero delta for untouched workflows. 2026-11-01: the reviewer brief names the reviewed step's declared posture (backtest finding).
 
 ## agent-craft-batch
 
@@ -888,3 +888,10 @@ Record anatomy v2: each record opens with an `awd:record` JSON fence (slug, stat
 Superseded entries move here as one-line pointers (record path + superseded_by) so the active sections above track only the current capability surface.
 
 - tool-access-wording -> .workflow/tool-access-wording-and-dry.md - closed-enumeration tool semantics + the toolAccessText DRY extraction (2026-06-30); superseded_by .workflow/tool-suggestion-semantics.md (owner ruling: selections are suggestions, never restrictions - the DRY helper survives and carried the new wording).
+
+## agent-prompt-edit-ux
+
+- record: .workflow/agent-prompt-edit-ux.md
+- intent: the Agent Prompt textarea expands on focus, the status line says edited-from-template honestly, and a Reset-to-template control appears only when the prompt is edited (instant, undoable), live as the text is typed since 2026-11-01.
+- files: index.html (agentPromptStatusBlock, bindAgentPromptControls, refreshAgentPromptStatus, the config-panel input handler), tests.html (Agent Prompt Visibility suite; Agent Prompt status follows a live edit)
+- status: current | date: 2026-06-13 | note: index entry added 2026-11-01 when the backtest found the Reset control appeared only after re-select; fixed the same day.

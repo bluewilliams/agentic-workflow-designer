@@ -1280,7 +1280,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Skeptic</strong> tries to <em>refute</em> the work by inspection - a role-aware adversarial critic that only sends work back for material Critical/High defects, never nitpicks.</li>
   <li><strong>Verifier</strong> <em>proves</em> the outcome meets the objective with evidence - it runs the code, calls the API, or drives a browser instead of just reading it.</li>
 </ul>
-<p><strong>Pre-registered eval.</strong> Right-click the <strong>Input</strong> node and pick <strong>Add eval</strong>: an <strong>Eval Author</strong> lands right after the requirements and, when the workflow has no Verifier, a Verifier loop lands on the last build step. The Eval Author sees the requirements and the repository only, never a plan, and writes the eval before anyone builds: numbered criteria with the requirement each serves, its kind (automated, manual, rubric), the exact check, and the pass condition; executable checks are written as real tests that are expected to fail until the work exists. The eval is frozen with a hash and lives inside the durable record (one concise artifact: a line per criterion with its check, the results as a dated block of verdicts); for an eval that outgrows the record, <strong>Defaults &gt; Eval</strong> (or the Eval Author node, per workflow) can move it to a file beside the record. Without a record it lives in the memory directory. The Verifier executes every criterion and reports pass, fail, or blocked with evidence, on top of its own verification; its gate fails when any criterion fails. An Eval Author without a Verifier is a validation error with a one-click fix, and the prompt tells the orchestrator to stop until it is fixed. Requirements with no executable surface get a model-graded rubric: still pre-registered and build-blind, a smaller win than on code with a test runner.</p>
+<p><strong>Pre-registered eval.</strong> Right-click the <strong>Input</strong> node and pick <strong>Add eval</strong>: an <strong>Eval Author</strong> lands right after the requirements and, when the workflow has no Verifier, a Verifier loop lands on the last build step. The Eval Author sees the requirements and the repository only, never a plan, and writes the eval before anyone builds: numbered criteria with the requirement each serves, its kind (automated, manual, rubric), the exact check, and the pass condition; executable checks are written as real tests that are expected to fail until the work exists. The eval is frozen with a hash and lives inside the durable record (one concise artifact: a line per criterion with its check, the results as a dated block of verdicts); for an eval that outgrows the record, <strong>Defaults &gt; Eval</strong> (or the Eval Author node, per workflow) can move it to a file beside the record. Without a record it lives in the memory directory. The Verifier executes every criterion and reports pass, fail, or blocked with evidence, on top of its own verification; its gate fails when any criterion fails. The node's <strong>Open questions</strong> select says what the author does with a question the requirements leave open: by default it decides what it can defend and asks the director only when the answer moves the pass bar; a team can make it always ask, or never interrupt. An Eval Author without a Verifier is a validation error with a one-click fix, and the prompt tells the orchestrator to stop until it is fixed. Requirements with no executable surface get a model-graded rubric: still pre-registered and build-blind, a smaller win than on code with a test runner.</p>
 <p><strong>Using it well.</strong> Add one when the definition of done is clear and cheap to get wrong (a feature with acceptance criteria, an API, a CLI, a migration); skip it for exploration and research. It is the acceptance eval for this run's deliverable, one trial graded on outcome, not a test suite for the agent across many tasks; the pass rate across runs lands in Run Reports. The Verifier executes it the way it verifies anything: curl against a local or dev instance, a browser when the Browser MCP toggle is on, a CLI with real arguments; what the environment cannot support is reported BLOCKED with the reason, never faked. The eval never widens what a run may touch: criteria belong in environments the run owns (the working tree, an ephemeral database or container, a disposable dev instance); anything that would need a shared or production environment is a manual procedure with an exact observation or BLOCKED by design, never a destructive command. The runner's permission mode and allowlist remain the enforcement layer.</p>
 <p><strong>When to use which.</strong> Reach for a <strong>Skeptic</strong> on high-stakes or expensive-to-undo steps where a confident-but-wrong output is costly: the plan (a wrong direction is the most expensive mistake to make), security-sensitive code, or anything subtle. Reach for a <strong>Verifier</strong> on any step with a runnable outcome - a built feature, an API integration, a UI, a data migration - placed late, right before delivery.</p>
 <p><strong>Why they're powerful.</strong> They are complementary: the Skeptic catches what reasoning can see (logic, design, security), the Verifier catches what only execution reveals (it reads fine - but does it actually run?). Together they give defense in depth - doubt early, prove late - which is exactly how a careful senior engineer works. One click drops in the whole reviewer + Decision gate + back-edge that routes failures back to the step to fix, with a bounded revision count so it retries and then stops rather than spinning. It reuses the same loop machinery the presets use, so it renders correctly in every export format. Right-click again to <strong>Remove</strong> it, or use the Decision node's <strong>send-back target</strong> dropdown to re-point the failure branch to a different node. The <strong>Delivery Swarm</strong> preset shows both in one flow.</p>
@@ -2657,19 +2657,38 @@ const FOUND_DEFECT_ROLES = new Set(['coder', 'backend', 'frontend', 'general', '
 // is ignored; stale values from an earlier type are tolerated, same as stale collapse keys).
 const DEFECT_KNOB_ROLES = new Set(['coder', 'backend', 'frontend', 'general']);
 function nodeDefectPosture(node) { return (node && node.config && node.config.defectPosture) || 'balanced'; }
+// The build steps a reviewer judges whose posture is not the default: the reviewer's template
+// says to judge declared fixes against the producing step's DECLARED posture, so the brief
+// names that posture at generation time instead of leaving it to the handoff.
+// A coder-family step's effective posture: the two non-default values it can run, else balanced
+// (a stale reviewer-only value left by a type change resolves to balanced, as its brief does).
+function coderPosture(node) {
+  const v = node && node.config && DEFECT_KNOB_ROLES.has(node.config.agentType) ? nodeDefectPosture(node) : 'balanced';
+  return v === 'record-only' || v === 'aggressive' ? v : 'balanced';
+}
+function reviewedProducers(node) {
+  return getDepNodes(node.id).filter(n => coderPosture(n) !== 'balanced');
+}
+function reviewedProducersNote(node) {
+  const ps = reviewedProducers(node);
+  if (!ps.length) return '';
+  return '**Declared posture of the step' + (ps.length > 1 ? 's' : '') + ' you review.** ' + ps.map(x => '"' + x.label + '": ' + coderPosture(x)).join(', ') + ' - judge declared fixes against that posture: under record-only an in-passing fix is a scope finding; under aggressive a declared, tested fix near the diff is in scope.';
+}
 function foundDefectNote(node) {
   if (!node || !node.config) return '';
   if (node.config.agentType === 'reviewer') {
     // Reviewer posture is a DIFFERENT knob: flag-back intensity for pre-existing defects it
     // SPOTS - it never fixes, and flags never touch the gate verdict. Balanced emits nothing
-    // (byte-identical to the pre-knob reviewer).
+    // (byte-identical to the pre-knob reviewer) unless a reviewed step declared a posture.
     const rp = nodeDefectPosture(node);
-    if (rp === 'surgical') return '**Pre-existing defects: surgical review posture.** Judge ONLY the change under review. Do not report pre-existing defects you notice in the surrounding code unless they interact with the correctness of this change - the diff is your entire jurisdiction.';
-    if (rp === 'aggressive') return '**Pre-existing defects: aggressive flag-back posture.** In addition to your review of the change, actively sweep the immediate neighborhood of the diff for pre-existing defects. Report what you find in a dedicated "Flagged pre-existing defects (for the orchestrator)" section of your report - one line each: symptom, location by durable anchor, evidence. You never fix anything, and these flags NEVER affect your verdict: the gate judges the change under review, not the neighborhood - a pre-existing defect can never make the verdict NEEDS REVISION.';
-    return '';
+    const producerNote = reviewedProducersNote(node);
+    const tail = producerNote ? ' ' + producerNote : '';
+    if (rp === 'surgical') return '**Pre-existing defects: surgical review posture.** Judge ONLY the change under review. Do not report pre-existing defects you notice in the surrounding code unless they interact with the correctness of this change - the diff is your entire jurisdiction.' + tail;
+    if (rp === 'aggressive') return '**Pre-existing defects: aggressive flag-back posture.** In addition to your review of the change, actively sweep the immediate neighborhood of the diff for pre-existing defects. Report what you find in a dedicated "Flagged pre-existing defects (for the orchestrator)" section of your report - one line each: symptom, location by durable anchor, evidence. You never fix anything, and these flags NEVER affect your verdict: the gate judges the change under review, not the neighborhood - a pre-existing defect can never make the verdict NEEDS REVISION.' + tail;
+    return producerNote;
   }
   if (!FOUND_DEFECT_ROLES.has(node.config.agentType)) return '';
-  const posture = DEFECT_KNOB_ROLES.has(node.config.agentType) ? nodeDefectPosture(node) : 'balanced';
+  const posture = coderPosture(node);
   if (posture === 'record-only') return '**Found a pre-existing defect? Record it - this step runs the record-only posture.** Report every defect you find in your handoff (symptom, location by durable anchor, evidence, one line) so it lands in the record\'s Found bugs section - with ONE exception: a defect that outright BLOCKS your task gets fixed, covered with the tests correctness actually demands, and reported as a separately-declared item (pre-existing, fixed - blocked X). No in-passing fixes even when trivial: this workflow wants a surgical diff. Never work around a defect silently - if a workaround is truly unavoidable to proceed, declare it in your handoff and record the defect it papers over.';
   if (posture === 'aggressive') return '**Found a pre-existing defect? Fix what you responsibly can - this step runs the aggressive posture.** A defect that BLOCKS your task gets fixed, covered with the tests correctness actually demands, and reported as a separately-declared item. Beyond blockers, actively fix low-hanging defects in and near the code you are changing - opportunistically heal the working area - each fix tested as real work and separately declared. The balloon signal still applies: if proper coverage would grow into its own project, the defect was never low-hanging - record it instead of half-fixing it. Working AROUND a defect remains the worst outcome: fix it or record it, never mask it. Everything you do not fix is still reported in your handoff (symptom, durable anchor, evidence, one line) for the record\'s Found bugs section. The diff may grow, but every extra change is declared and tested; an undeclared drive-by change is a review finding even when the fix is right.';
   return '**Found a pre-existing defect? Fix, or record - never work around, never silently fix.** If it BLOCKS your task: fix it, cover it with the tests correctness actually demands - one assertion or an entire suite, whatever the behavior needs - and report it in your handoff as a separately-declared item (pre-existing, fixed - blocked X). If it is low-hanging fruit inside the code you are already changing (trivial, obviously correct, low blast radius - a null guard, an off-by-one, a stale reference): fix it in passing and test it as you would your own change - the coverage the fix deserves, not a token assertion; and use that coverage as a signal - if proper testing would balloon into its own project, the bug was never low-hanging, so record it instead of half-fixing it. Working AROUND a defect to make your change pass is the worst outcome: it entrenches the bug and hides it from review. Anything else (non-trivial, outside your change\'s area, or wide blast radius): do NOT fix it - report it in your handoff (symptom, location by durable anchor, evidence, one line) so it lands in the record\'s Found bugs section for the director\'s call. The line: fixes ride your declared diff or they do not happen; an undeclared drive-by change is a review finding even when the fix is right.';
@@ -2807,6 +2826,30 @@ const EVAL_HOME_OPTIONS = [
   { value: 'file', label: 'A file beside the record', tip: 'For evals that outgrow the record: the criteria live in `<record>.eval.md` beside it, committed with the change; the record keeps the pointer, the hash, the counts, and one results line per run.' }
 ];
 function evalHomeLabel(v) { const o = EVAL_HOME_OPTIONS.find(x => x.value === v); return o ? o.label : v; }
+// What the Eval Author does with a question the requirements leave open. The template already
+// tells it to mark such a criterion "needs a decision"; this is the director's choice of what
+// happens next, set where the step is (as Defect Posture is), no sidebar layer. The backtest
+// showed both failure modes: a guessed answer frozen into a criterion fails achievable work
+// for the whole revision loop, and asking about everything spends the director's attention.
+const EVAL_AMBIGUITY_OPTIONS = [
+  { value: 'bar', label: 'Ask when it moves the bar (default) - decide the rest and record it', tip: 'The author decides every open question it can defend and writes the assumption into the criterion. It asks the director only when a wrong answer would fail work that meets the requirements or pass work that does not: which inputs are in scope, whether one rule overrides another. The default: the director hears the questions that change what done means, and no others.' },
+  { value: 'always', label: 'Always ask the director - every open question, before the freeze', tip: 'Every question the requirements leave open goes to the director in one batch before the eval is frozen. For a team that wants full control of the pass bar, or a first run while learning what the author tends to ask. Costs one interruption per run that has questions.' },
+  { value: 'decide', label: 'Decide and record - never interrupt', tip: 'The author decides every open question with the most reasonable reading, writes the assumption into the criterion, and lists each one in its handoff; the orchestrator records them as decisions. For unattended runs and for teams that review assumptions after the fact. This is also what the other two become when no director is present.' }
+];
+function evalAmbiguityOf(node) { const v = node && node.config && node.config.evalAmbiguity; return EVAL_AMBIGUITY_OPTIONS.some(x => x.value === v) ? v : 'bar'; }
+// The author's clause (its step hint) and the orchestrator's (the preamble) for one setting.
+function evalAmbiguityStepClause(node) {
+  const v = evalAmbiguityOf(node);
+  const draft = ' When you raised any, deliver the eval as a draft (no hash) with the questions; the orchestrator returns the director\'s answers and you finalize and freeze with each answer written into its criterion. When you raised none, freeze now.';
+  if (v === 'always') return 'Open questions: every question the requirements leave open goes in your handoff with a proposed default.' + draft;
+  if (v === 'decide') return 'Open questions: never interrupt the run. Decide every question the requirements leave open with the most reasonable reading, write the assumption into the criterion, list each one with its reasoning in your handoff, and freeze now; the orchestrator records them as decisions.';
+  return 'Open questions: where the requirements leave a question open, decide it yourself when either answer leaves the pass bar where it is, and write the assumption into the criterion. Raise it in your handoff, with a proposed default, ONLY when a wrong answer would fail work that meets the requirements or pass work that does not (which inputs are in scope, whether one rule overrides another).' + draft;
+}
+function evalAmbiguityOrchestratorClause(author) {
+  const v = evalAmbiguityOf(author);
+  if (v === 'decide') return '> Open questions: the Eval Author decides every question the requirements leave open and lists its assumptions in its handoff; carry each one into the durable record as a decision (question -> assumption -> the criterion it shaped). No question reaches the director.';
+  return '> Open questions: when the Eval Author\'s handoff lists open questions' + (v === 'always' ? '' : ' (only those that move the pass bar; it decides the rest and records them)') + ', ask the director ONCE, in one short batch with the proposed defaults, before the eval is frozen and before any planning step starts; then re-dispatch the Eval Author with its draft and the answers to finalize and freeze, and record each answer in the durable record as a decision (question -> answer -> the criterion it shaped). Running non-interactively (no director available to answer), do NOT block: adopt the proposed defaults, record them as assumptions, and continue. An eval frozen around an unanswered question is a guess nobody agreed to.';
+}
 function evalInRecord() {
   if (!state.durableRecord) return true;   // without a record the question does not arise
   const a = evalAuthorNodes()[0];
@@ -2873,6 +2916,8 @@ function evalHint(atlUrls) {
     ? ' The requirements here are a ticket: the Eval Author\'s brief is the RESOLVED ticket content you fetched up front (description, acceptance criteria, comments, and the linked material), not the URL - there is no plan yet to distill it into. If the ticket is an epic, fetch its child stories and include them: the eval covers every story, not the epic\'s title.'
     : '';
   r.push('> **Pre-registered eval (configured).** This workflow carries an Eval Author step (' + names + ') that writes the eval: the frozen, checkable definition of done, derived from the requirements before any plan exists. Brief it with the requirements and repository context ONLY - never a plan, a design, a diff, or another step\'s output - and run it before any planning or build step has produced output.' + ticketClause + ' It writes the eval to ' + evalArtifactLocation() + ': numbered criteria, each with the requirement it serves, its kind (automated, manual, rubric), the exact check, and the pass condition. Once written the eval is FROZEN: no later step edits it, and a mismatch between the eval and what was built is reported, never resolved by rewriting the eval. Building steps may read it - it is the acceptance spec - and executable checks it wrote are expected to fail until the work exists.');
+  r.push('>');
+  r.push(evalAmbiguityOrchestratorClause(authors[0]));
   if (execNode) {
     r.push('>');
     r.push('> Execution: "' + execNode.label + '" executes every criterion at its turn and reports each as PASS, FAIL, or BLOCKED with the evidence or reason, in addition to its own verification and never instead of it; its gate verdict fails when any criterion fails. ' + evalBlockedRule() + ' Its brief carries the eval itself (the section, file, or handoff text), never the Eval Author\'s reasoning; its per-criterion results come back in its handoff, and the record\'s single writer appends them ' + (evalInRecord() ? 'under the eval in the record as a dated block of verdicts' : 'to the eval file as a dated block, with one results line in the record') + '.');
@@ -2893,7 +2938,7 @@ function evalStepHint(node) {
         ? 'Return the complete eval in your handoff, compact (one line per criterion with its check; the orchestrator transcribes it verbatim into the durable record\'s "## Pre-registered eval" section - you do not edit the record)'
         : 'Return the complete eval in your handoff (the orchestrator writes it verbatim to `' + evalFilePath() + '` beside the durable record and points to it from the record - you do not write either file)')
       : state.memoryEnabled ? 'Write the eval to `' + getMemoryPath() + 'eval.md` and return it in your handoff as well' : 'Return the complete eval in your handoff (it is carried verbatim to the executing step)';
-    return 'Pre-registered eval: you are this workflow\'s Eval Author. You are briefed with the requirements and repository context only, by design - do not seek the plan. ' + home + ', with its frozen hash line; it is executed later by ' + (execNode ? '"' + execNode.label + '"' : 'the Verifier') + ', so every automated check must name the exact command and every manual check the exact observation. Executable checks you write are expected to fail now; confirm they run, never that they pass.';
+    return 'Pre-registered eval: you are this workflow\'s Eval Author. You are briefed with the requirements and repository context only, by design - do not seek the plan. ' + home + ', with its frozen hash line; it is executed later by ' + (execNode ? '"' + execNode.label + '"' : 'the Verifier') + ', so every automated check must name the exact command and every manual check the exact observation. Executable checks you write are expected to fail now; confirm they run, never that they pass. ' + evalAmbiguityStepClause(node);
   }
   if (node.id === evalExecutorId()) {
     const author = evalAuthorNodes()[0];
@@ -3072,7 +3117,7 @@ const PROMPTS = {
   adversary: buildAdversaryPrompt(null),
 
   // --- Verification (prove the outcome meets the objective, with evidence) ---
-  evalAuthor: 'You are an eval author. Before anyone plans or builds, write the eval: the frozen, checkable definition of what "done" means for this work, derived from the requirements alone.\n\n**Independence is the point.** You receive the requirements and repository context and nothing else - no plan, no design, no diff. If a plan or implementation detail reaches you anyway, ignore it: an eval that mirrors the plan only proves the plan was followed, not that the requirement was met. You write criteria; you do not design the solution and you do not prejudge how it is built.\n\n**What a good criterion is.** One observable behavior, falsifiable, with a pass condition a stranger could apply: a specific input or action, the expected result, and the exact way to check it. Pass or fail only - no partial credit. "Works correctly" is not a criterion; "POST /orders with an empty cart returns 400 and the body names the cart" is. If you cannot say what observation would make a criterion fail, it is not a criterion.\n\n**Coverage.** Walk the requirements line by line and write at least one criterion for every acceptance criterion, every stated constraint that can be checked (a performance budget, a security rule, compatibility, data integrity), the boundaries and error paths the requirements imply (empty, zero, one, many, maximum, malformed, unauthorized, concurrent), and every "must not" - the non-goals and the regressions the work must leave untouched. Tag each criterion with the requirement line it serves so coverage is auditable. Where a requirement is ambiguous, do not guess: write the criterion as the requirement reads today, mark it "needs a decision", and name the question in your handoff.\n\n**Prefer executable checks.** Discover the project\'s test runner and conventions first (the most recently modified test files and how they run). Where the surface allows, write each check as a real test in those conventions, named so it is recognizable as the eval (an "eval" tag in the file name or the describe block), and record the exact command that runs it. These tests are expected to FAIL until the work exists - that is correct; do not make them pass. Where execution is impossible (a UI flow with no automation, a document, an operational outcome), write a precise manual procedure: the steps, the exact observation that means pass, and the one that means fail. Kinds: automated (a command with an expected exit code or output), manual (a procedure with an expected observation), rubric (a judgment with a stated bar - the last resort, and say why).\n\n**Method:**\n1. Read the requirements completely; list every acceptance criterion, constraint, and non-goal you can find. When the requirements are a ticket, its full resolved content is your source - description, acceptance criteria, comments, linked designs and docs - and for an epic, every child story: an eval that covers only the epic\'s title has covered nothing.\n2. Explore the repository only as far as needed to make checks runnable: the test runner, how tests are named and placed, the entry points the requirements touch (documentSymbol and findReferences locate them). Do not read any plan or in-progress branch.\n3. Write the criteria, numbered E1, E2, ... in requirement order. For each: the criterion, the requirement it serves, the kind, the exact check, and the pass condition.\n4. Write the executable checks as test files where possible, run the command once to confirm it executes (failing is expected; a syntax error is not), and record the command.\n5. Deliver the eval where your brief says: write it there when the brief names a path you own, and when the brief says the orchestrator transcribes it, return it complete in your handoff and write no file; freeze it either way (a hash line over the criteria block, computed with the shell when available, else the criteria count and the first criterion verbatim), and never touch it again.\n\nReport honestly: a criterion you could not make checkable is listed with why, never dropped; the number of criteria is whatever the requirements demand, not a quota.\n\n## Handoff Summary\nEnd your response with:\n- **Eval location**: where the eval lives (the path, or "in this handoff" when the orchestrator transcribes it), and its frozen hash\n- **Criteria**: the count by kind (automated / manual / rubric), then one line per criterion (id, kind, requirement served)\n- **Run command(s)**: the exact commands that execute the automated checks\n- **Open questions**: ambiguities turned into "needs a decision" criteria\n- **Not checkable**: anything that could not be made checkable, with why',
+  evalAuthor: 'You are an eval author. Before anyone plans or builds, write the eval: the frozen, checkable definition of what "done" means for this work, derived from the requirements alone.\n\n**Independence is the point.** You receive the requirements and repository context and nothing else - no plan, no design, no diff. If a plan or implementation detail reaches you anyway, ignore it: an eval that mirrors the plan only proves the plan was followed, not that the requirement was met. You write criteria; you do not design the solution and you do not prejudge how it is built.\n\n**What a good criterion is.** One observable behavior, falsifiable, with a pass condition a stranger could apply: a specific input or action, the expected result, and the exact way to check it. Pass or fail only - no partial credit. "Works correctly" is not a criterion; "POST /orders with an empty cart returns 400 and the body names the cart" is. If you cannot say what observation would make a criterion fail, it is not a criterion.\n\n**Pin only what the requirement states.** A criterion that fails work the requirement accepts is a defect in the eval, and the eval is frozen - so never pin a literal phrase, a count, a file list, an ordering, or a wording the requirement does not state; test the behavior the words describe. Do not write a criterion that only restates others (the suite passes, the build is green). When a check rests on a structural assumption about the code or its output (a heading format, an element role, a function name), name that assumption in the check so a wrong assumption reads as one rather than as a failed requirement. Tag every must-not criterion that already passes before the work exists as a guard, so the results read apart from the criteria that must flip from fail to pass.\n\n**Coverage.** Walk the requirements line by line and write at least one criterion for every acceptance criterion, every stated constraint that can be checked (a performance budget, a security rule, compatibility, data integrity), the boundaries and error paths the requirements imply (empty, zero, one, many, maximum, malformed, unauthorized, concurrent), and every "must not" - the non-goals and the regressions the work must leave untouched. Tag each criterion with the requirement line it serves so coverage is auditable. Where a requirement is ambiguous, do not guess: write the criterion as the requirement reads today, mark it "needs a decision", and name the question in your handoff.\n\n**Prefer executable checks.** Discover the project\'s test runner and conventions first (the most recently modified test files and how they run). Where the surface allows, write each check as a real test in those conventions, named so it is recognizable as the eval (an "eval" tag in the file name or the describe block), and record the exact command that runs it. These tests are expected to FAIL until the work exists - that is correct; do not make them pass. Where execution is impossible (a UI flow with no automation, a document, an operational outcome), write a precise manual procedure: the steps, the exact observation that means pass, and the one that means fail. Kinds: automated (a command with an expected exit code or output), manual (a procedure with an expected observation), rubric (a judgment with a stated bar - the last resort, and say why).\n\n**Method:**\n1. Read the requirements completely; list every acceptance criterion, constraint, and non-goal you can find. When the requirements are a ticket, its full resolved content is your source - description, acceptance criteria, comments, linked designs and docs - and for an epic, every child story: an eval that covers only the epic\'s title has covered nothing.\n2. Explore the repository only as far as needed to make checks runnable: the test runner, how tests are named and placed, the entry points the requirements touch (documentSymbol and findReferences locate them). Do not read any plan or in-progress branch.\n3. Write the criteria, numbered E1, E2, ... in requirement order. For each: the criterion, the requirement it serves, the kind, the exact check, and the pass condition.\n4. Write the executable checks as test files where possible, run the command once to confirm it executes (failing is expected; a syntax error is not), and record the command.\n5. Deliver the eval where your brief says: write it there when the brief names a path you own, and when the brief says the orchestrator transcribes it, return it complete in your handoff and write no file. Then freeze it (a hash line over the criteria block, computed with the shell when available, else the criteria count and the first criterion verbatim) and never touch it again - with one exception: when your brief tells you to raise open questions to the director and you raised any, deliver the eval as a DRAFT with the questions and no hash, and freeze it when the orchestrator returns the answers.\n\nReport honestly: a criterion you could not make checkable is listed with why, never dropped; the number of criteria is whatever the requirements demand, not a quota.\n\n## Handoff Summary\nEnd your response with:\n- **Eval location**: where the eval lives (the path, or "in this handoff" when the orchestrator transcribes it), and its frozen hash - or "draft, N questions open" when you raised questions and the freeze waits for the answers\n- **Criteria**: the count by kind (automated / manual / rubric), then one line per criterion (id, kind, requirement served)\n- **Run command(s)**: the exact commands that execute the automated checks\n- **Open questions**: ambiguities turned into "needs a decision" criteria\n- **Not checkable**: anything that could not be made checkable, with why',
 
   verifier: 'You are a verifier. Prove the outcome meets its objective, with evidence. You are the escalation tier: you are summoned when the user wants the work actually RUN - deep, practical, sometimes time-consuming exercising of the real system, beyond the tester\'s automated suites.\n\n\n**Independence.** Verify the outcome against the objective, not the producer\'s claims. Do not trust "I tested this" - re-run it yourself. Do not trust a passing test you have not read - confirm it actually exercises the behavior. Assume nothing is done until you have seen it work.\n\n**1. Establish the definition of done.** Restate the objective and its acceptance criteria in concrete, checkable terms. If specific acceptance criteria or verification steps were provided in your notes, treat them as authoritative and check each one - IN ADDITION to, never instead of, the verification your own judgment of the work demands: provided steps extend the definition of done, they do not narrow it. If none were given, derive the criteria from the requirements and state them, so there is a clear bar to verify against. Enumerate the definition of done as a CHECKLIST before exercising anything, then tick each item with its command-and-output evidence as you verify - an auditable trail that resists happy-path drift.\n\n**2. Exercise the work - match the method to what was produced:**\n- Code, a function, or a library: run the existing tests; if there are none, write a quick throwaway harness or call the code directly with representative AND boundary inputs and observe the real results. Run the build, linter, and type checker if present.\n- An API, endpoint, or service: actually call it against a local or dev instance (curl or an HTTP client). Check status codes, the response shape, and the error and edge cases - not just the happy path.\n- A web app or UI: open it in a browser with whatever browser-automation tools are available, drive the real user flow, and confirm the expected behavior and state render. Check an error or empty state too.\n- A CLI, script, or job: run it with real arguments; confirm the output, exit code, and side effects match the objective.\n- Documentation, a runbook, or a guide: follow the steps literally, in order, as a brand-new reader with no extra context would, and confirm they actually produce the stated outcome. Flag any step that is wrong, out of order, missing, or assumes something the reader does not have.\n- Data, a migration, or a transformation: reconcile counts and totals against the source, spot-check records, and confirm reversibility or idempotency where required. Look for silent data loss.\n- Config, infrastructure, or a deployment: apply it to a safe local target or dry-run it, then confirm health checks pass, the service comes up, and the setting takes effect.\n- Research, analysis, or a recommendation: independently re-derive or spot-check the key claims against the primary sources; confirm cited facts exist and say what they are claimed to, and that the conclusion follows.\n- A design, plan, or spec (nothing runnable yet): trace every requirement to the exact place the design satisfies it; confirm it is complete and internally consistent.\n\nSet up whatever local environment you need, and use every tool you have - run commands, call services, drive a browser, read files - to get real evidence. Reuse the repository\'s own test rig or harness pattern when one exists (read how its suite drives the system); build a throwaway harness when none fits; ALWAYS remove scratch artifacts before finishing.\n\n**3. Try to make it fail, do not just confirm it passes.** Push the boundaries and the empty, null, and error inputs, and the path the producer most likely did not try. A verification that only walks the happy path gives false confidence. When asserting, match the precise contract form (the parameter, the API shape, the emitted structure), never a loose substring - prose and examples legitimately contain look-alike strings.\n\n**4. The evidence ladder - degrade honestly, never fake a pass:**\n- Best: execute it and show the real evidence (the command and its output, the actual response, what the UI did, the steps you followed).\n- Running the WHOLE system is usually unrealistic (missing integrations, credentials, environments - that is the normal case, not a special one; when you judge a full run achievable and the best evidence, absolutely attempt it), and limited runnability is never permission to go trace-only: exercise the largest slice you CAN - call the changed function directly, hit the one locally-runnable endpoint, render the component in isolation, or build a purpose-made harness that wires a handful of the affected classes together and integration-exercises them as a unit, stubbing the missing seams so the real local logic still executes. This is the thorough practical testing a tester does not do by default - it is why you were summoned. Practical testing of the affected areas comes first, expanding minimally beyond the changed surface when the blast radius genuinely warrants it - your judgment, stated in the report. Drop to trace-only one criterion at a time, never wholesale.\n- If you cannot execute it here, trace each acceptance criterion to concrete evidence in the artifact and say exactly how you confirmed it.\n- If something genuinely cannot be verified in this environment, say so plainly, state what evidence would settle it, and do NOT report it as verified. An honest "not verified" beats a hollow pass.\n- When turns or time run low, verify the highest-risk criteria first and report the remainder plainly as not-verified with what evidence would settle each - never compress into a hollow pass.\n\n**Safety.** Verification must be non-destructive and local. NEVER run destructive or state-changing operations to verify (DROP/DELETE/TRUNCATE, terraform apply or destroy, docker rm, rm -rf, git push, deploys, executing a migration), and never touch production or staging. Use localhost and dev only, read-only queries, and dry runs. If verifying truly requires a destructive or external action, describe the exact steps for a human to run instead.\n\n**Output contract.** End with exactly one verdict line, then the breakdown. NOT VERIFIED means an objective is genuinely unmet or could not be confirmed - not a stylistic preference.\n\nVERDICT: VERIFIED\nor\nVERDICT: NOT VERIFIED\n\n- Per objective or acceptance criterion: the method you used, the actual evidence, and pass or fail.\n- For NOT VERIFIED: each gap, exactly what failed, and the concrete change needed so the source step can fix it directly.\n- Could not verify: anything you could not check here and what evidence would settle it.\n\n**Convergence.** You are inside a fix-and-reverify loop whose cycle cap the orchestrator enforces (it tells you which cycle this is). Your verdict is always honest - never report VERIFIED while an objective is unmet, even on the last cycle; the workflow\'s cap decides whether to proceed, and your documented gaps become the record of what was accepted. On a re-verify, check only the previously failed criteria and anything the fixes could have disturbed.',
 
@@ -4984,6 +5029,7 @@ function genHandoffBundle() {
 function toggleImportMenu(e) {
   e.stopPropagation();
   closeExportMenu();   // one dropdown open at a time
+  if (typeof closeAllCustomSelects === 'function') closeAllCustomSelects(null);
   if (typeof closeMonitorRunMenu === 'function') closeMonitorRunMenu();
   const m = $('importMenu'), b = $('importMenuBtn');
   const open = m.style.display !== 'none';
@@ -4998,6 +5044,7 @@ function closeImportMenu() {
 function toggleExportMenu(e) {
   if (e) e.stopPropagation();
   closeImportMenu();   // one dropdown open at a time
+  if (typeof closeAllCustomSelects === 'function') closeAllCustomSelects(null);
   if (typeof closeMonitorRunMenu === 'function') closeMonitorRunMenu();
   const m = $('exportMenu'), b = $('exportMenuBtn');
   const open = !m || m.style.display === 'none' || !m.style.display;
@@ -6895,11 +6942,14 @@ function updateConfig() {
         .concat(DEPTH_LEVELS.map(l => ({ value: l, label: DEPTH_OPTION_LABELS[l] || l, tip: DEPTH_OPTION_TIPS[l] || '' }))),
       'How much orchestration one step may do. Standard runs the step as one pass. Exhaustive asks the runner to fan the step out into coordinated sub-tasks before handing back: costlier, and it only takes effect in a runner with an orchestration tool (the prompt carries its opt-in word); elsewhere the step runs as Standard.');
     // Defect posture: two knobs, two homes. The coder family tunes fix-vs-record; the
-    if (node.config.agentType === EVAL_AUTHOR_ROLE && state.durableRecord) {
-      H[H.length] = configSelect('Eval lives in', 'evalHome', (node.config.evalHome === 'record' || node.config.evalHome === 'file') ? node.config.evalHome : 'default',
+    if (node.config.agentType === EVAL_AUTHOR_ROLE) {
+      if (state.durableRecord) H[H.length] = configSelect('Eval lives in', 'evalHome', (node.config.evalHome === 'record' || node.config.evalHome === 'file') ? node.config.evalHome : 'default',
         [{ value: 'default', label: escHtml('Default (' + evalHomeLabel(state.defaultEvalHome) + ')'), tip: 'Follows the sidebar\'s Eval default (Defaults section). Pick another option to override it for this workflow only.' }]
           .concat(EVAL_HOME_OPTIONS.map(o => ({ value: o.value, label: o.label, tip: o.tip }))),
         'Where this workflow\'s eval lives when a durable record is kept. Default follows the sidebar (the record, one concise artifact, unless a team changed it); a file beside the record is the escape hatch for a large eval.');
+      H[H.length] = configSelect('Open questions', 'evalAmbiguity', evalAmbiguityOf(node),
+        EVAL_AMBIGUITY_OPTIONS.map(o => ({ value: o.value, label: o.label, tip: o.tip })),
+        'What the Eval Author does with a question the requirements leave open. It decides and records what it can defend, asks the director only as this setting allows, and freezes only after the questions it raised are answered. Decide and record, and any setting in an unattended run, freeze the recorded assumptions instead.');
     }
     // reviewer tunes flag-back intensity (spot-and-report to the orchestrator, never fix,
     // never gate-failing). Testers/verifiers carry the balanced protocol without a knob.
@@ -7047,6 +7097,7 @@ function updateConfig() {
           }
         }
         node.config[key] = val;
+        if (key === 'prompt' && node.type === 'agent') refreshAgentPromptStatus(fields, node);   // the status line and Reset control follow the edit live
       }
       // Re-bake research agent prompts when the option slot or bias changes.
       if ((key === 'options' || key === 'evaluationBias') && node.type === 'parallel' && node.config.researchMode) {
@@ -7153,23 +7204,7 @@ function updateConfig() {
 
   // Tools grid
   if (node.type === 'agent') {
-    // Read-only "Preview full prompt" toggle. Display-only: never calls updateConfig,
-    // so the editable Agent Prompt textarea value is preserved when toggling.
-    const previewToggle = fields.querySelector('.agent-prompt-preview-toggle');
-    const previewBlock = fields.querySelector('.agent-prompt-preview');
-    if (previewToggle && previewBlock) {
-      const togglePreview = () => {
-        const open = previewBlock.classList.toggle('open');
-        previewToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      };
-      previewToggle.addEventListener('click', togglePreview);
-      previewToggle.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-          e.preventDefault();
-          togglePreview();
-        }
-      });
-    }
+    bindAgentPromptControls(fields, node);
     // Expand-on-focus for the Agent Prompt textarea. Toggles ONLY the .focused class
     // (CSS min-height transition). Never calls updateConfig and never touches .value,
     // so the editable prompt is preserved across focus/blur; blur always collapses.
@@ -7177,24 +7212,6 @@ function updateConfig() {
     if (promptTextarea) {
       promptTextarea.addEventListener('focus', () => promptTextarea.classList.add('focused'));
       promptTextarea.addEventListener('blur', () => promptTextarea.classList.remove('focused'));
-    }
-    // Reset-to-template control (shown only when the prompt is edited). Instant, no dialog,
-    // undoable via the existing undo stack (pushUndo snapshots before mutating).
-    const resetBtn = fields.querySelector('.agent-prompt-reset');
-    if (resetBtn) {
-      const doReset = () => {
-        pushUndo();
-        node.config.prompt = getEffectivePrompt({ ...node, config: { ...node.config, prompt: '' } });
-        updateConfig();
-        render();
-      };
-      resetBtn.addEventListener('click', doReset);
-      resetBtn.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-          e.preventDefault();
-          doReset();
-        }
-      });
     }
     const grid = $('toolsGrid');
     if (grid) {
@@ -7282,7 +7299,8 @@ function configTextarea(label, key, value, placeholder, attrs, tip) {
 }
 // Display-only status line + read-only preview for an agent node's effective prompt.
 // Renders directly under the Agent Prompt textarea. Does NOT affect generation.
-function agentPromptStatusBlock(node) {
+// The status line and the Reset control for one node, shared by the block builder and the live refresh.
+function agentPromptStatusParts(node) {
   const info = classifyAgentPrompt(node);
   let status;
   if (info.state === 'empty') {
@@ -7294,10 +7312,14 @@ function agentPromptStatusBlock(node) {
   } else {
     status = `Edited from the ${info.role} template (${info.lines} lines).`;
   }
-  const hint = `Two ways to steer this agent: edit the Agent Prompt above to change the template in place, or leave it as the role template and add extra context in Agent Context below.`;
   const resetBtn = (info.state === 'custom' || info.state === 'foreign-template')
     ? `<button type="button" class="agent-prompt-reset" data-role="${escHtml(info.role)}">Reset to ${escHtml(info.role)} template</button>`
     : '';
+  return { info, status, resetBtn };
+}
+function agentPromptStatusBlock(node) {
+  const { info, status, resetBtn } = agentPromptStatusParts(node);
+  const hint = `Two ways to steer this agent: edit the Agent Prompt above to change the template in place, or leave it as the role template and add extra context in Agent Context below.`;
   return `<div class="config-field agent-prompt-field" style="margin-top:0">
     <div class="agent-prompt-status">${escHtml(status)}</div>
     <button type="button" class="agent-prompt-preview-toggle" aria-expanded="false">
@@ -7307,6 +7329,67 @@ function agentPromptStatusBlock(node) {
     ${resetBtn}
     <div class="agent-prompt-hint">${escHtml(hint)}</div>
   </div>`;
+}
+// The status block's controls. Bound when the panel is built and again when a live edit of the
+// Agent Prompt rebuilds the block in place (refreshAgentPromptStatus), so the Reset control
+// appears the moment the text leaves the template instead of on the next re-select.
+function bindAgentPromptControls(fields, node) {
+  // Read-only "Preview full prompt" toggle. Display-only: never calls updateConfig,
+  // so the editable Agent Prompt textarea value is preserved when toggling.
+  const previewToggle = fields.querySelector('.agent-prompt-preview-toggle');
+  const previewBlock = fields.querySelector('.agent-prompt-preview');
+  if (previewToggle && previewBlock && !previewToggle._bound) {
+    previewToggle._bound = true;
+    const togglePreview = () => {
+      const open = previewBlock.classList.toggle('open');
+      previewToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    previewToggle.addEventListener('click', togglePreview);
+    previewToggle.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        togglePreview();
+      }
+    });
+  }
+  // Reset-to-template control (shown only when the prompt is edited). Instant, no dialog,
+  // undoable via the existing undo stack (pushUndo snapshots before mutating).
+  const resetBtn = fields.querySelector('.agent-prompt-reset');
+  if (resetBtn && !resetBtn._bound) {
+    resetBtn._bound = true;
+    const doReset = () => {
+      pushUndo();
+      node.config.prompt = getEffectivePrompt({ ...node, config: { ...node.config, prompt: '' } });
+      updateConfig();
+      render();
+    };
+    resetBtn.addEventListener('click', doReset);
+    resetBtn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        doReset();
+      }
+    });
+  }
+}
+// Update the status block in place after a live edit of the Agent Prompt (the panel is not
+// rebuilt per keystroke, and the textarea must keep focus and caret): the status text, the
+// Reset control added or removed, and the preview body re-rendered only while it is open.
+function refreshAgentPromptStatus(fields, node) {
+  const block = fields.querySelector('.agent-prompt-field');
+  if (!block) return;
+  const { info, status, resetBtn } = agentPromptStatusParts(node);
+  const statusEl = block.querySelector('.agent-prompt-status');
+  if (statusEl) statusEl.textContent = status;
+  const have = block.querySelector('.agent-prompt-reset');
+  if (have && !resetBtn) have.remove();
+  else if (!have && resetBtn) {
+    const tmp = document.createElement('div'); tmp.innerHTML = resetBtn;
+    block.insertBefore(tmp.firstElementChild, block.querySelector('.agent-prompt-hint'));
+    bindAgentPromptControls(fields, node);   // the preview toggle is already bound; the new control is not
+  }
+  const preview = block.querySelector('.agent-prompt-preview');
+  if (preview && preview.classList.contains('open')) preview.querySelector('.agent-prompt-preview-body').innerHTML = renderMarkdown(info.text);
 }
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
@@ -7721,8 +7804,18 @@ document.addEventListener('mousedown', e => {
 // dispatches 'change' so every inline handler and every programmatic .value assignment keeps
 // working untouched (the expand-to-modal remote-control pattern, applied to selects). Node-config
 // dropdowns (configSelect) and #defaultModelSelect are already custom-selects and stay as they are.
+// One popup open at a time, across every dropdown species. Closing a skin here also resets
+// the ARIA state its own close path sets (a combobox trigger that still said expanded read
+// as a second open popup to assistive tech), and opening a skin (except given) closes the
+// Export, Import and run menus, whose own openers close the skins in return.
 function closeAllCustomSelects(except) {
-  document.querySelectorAll('.custom-select.open').forEach(cs => { if (cs !== except) cs.classList.remove('open'); });
+  document.querySelectorAll('.custom-select.open').forEach(cs => {
+    if (cs === except) return;
+    cs.classList.remove('open');
+    const t = cs.querySelector('.custom-select-trigger[aria-expanded]');
+    if (t) { t.setAttribute('aria-expanded', 'false'); t.removeAttribute('aria-activedescendant'); }
+  });
+  if (except) { closeExportMenu(); closeImportMenu(); if (typeof closeMonitorRunMenu === 'function') closeMonitorRunMenu(); }
 }
 function refreshEnhancedSelect(sel) {
   // Re-sync the skin from the native's current options + value (call after programmatic changes).
@@ -11611,8 +11704,12 @@ function explainAgentNode(node, format) {
   const fd = foundDefectNote(node);
   const _fdType = node.config.agentType;
   let _fdStatus;
-  if (fd && _fdType === 'reviewer') {
-    _fdStatus = 'reviewer flag-back posture \'' + nodeDefectPosture(node) + '\' - pre-existing defects it spots are ' + (nodeDefectPosture(node) === 'aggressive' ? 'actively swept near the diff and flagged to the orchestrator' : 'ignored unless they interact with the change') + '; flags never fix anything and never fail the gate. The lever: this node\'s Defect Posture selector.';
+  const _fdProducers = _fdType === 'reviewer' ? reviewedProducers(node) : [];
+  const _fdProducerTail = _fdProducers.length ? ' It is also told the declared posture of the step' + (_fdProducers.length > 1 ? 's' : '') + ' it reviews (' + _fdProducers.map(x => x.label + ': ' + coderPosture(x)).join(', ') + ') so declared fixes are judged against it.' : '';
+  if (fd && _fdType === 'reviewer' && nodeDefectPosture(node) === 'balanced') {
+    _fdStatus = 'reviewer at the balanced default: pre-existing defects it spots become non-blocking notes for the record\'s Found bugs section, never gate failures.' + _fdProducerTail;
+  } else if (fd && _fdType === 'reviewer') {
+    _fdStatus = 'reviewer flag-back posture \'' + nodeDefectPosture(node) + '\' - pre-existing defects it spots are ' + (nodeDefectPosture(node) === 'aggressive' ? 'actively swept near the diff and flagged to the orchestrator' : 'ignored unless they interact with the change') + '; flags never fix anything and never fail the gate. The lever: this node\'s Defect Posture selector.' + _fdProducerTail;
   } else if (fd) {
     _fdStatus = DEFECT_KNOB_ROLES.has(_fdType)
       ? 'code-changing role at posture \'' + nodeDefectPosture(node) + '\' (balanced = fix blockers + low-hanging in-path; record-only = surgical, report everything; aggressive = heal the working area, tested + declared) - the lever: the node\'s Defect Posture selector'
@@ -16127,6 +16224,7 @@ function toggleMonitorRunMenu(e) {
   if (e) e.stopPropagation();
   if (typeof closeExportMenu === 'function') closeExportMenu();   // one dropdown open at a time
   if (typeof closeImportMenu === 'function') closeImportMenu();
+  if (typeof closeAllCustomSelects === 'function') closeAllCustomSelects(null);
   runMonitor._runMenuOpen = !runMonitor._runMenuOpen;
   const m = $('monitorRunMenu'), b = $('monitorRunBtn');
   if (m) m.style.display = runMonitor._runMenuOpen ? 'block' : 'none';

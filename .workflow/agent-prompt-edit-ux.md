@@ -19,7 +19,7 @@ R2 - The status wording and a two-box hint MUST make the replace-vs-add model cl
 - Given the panel renders, Then a concise hint explains the two boxes (edit the Agent Prompt directly, or leave it and add extra context in Custom Notes); the Custom Notes helper names its appended-for-this-agent job. [test: "the two-box hint is present and the Custom Notes helper names its appended job" - assert .agent-prompt-hint exists and toContain 'Custom Notes'; assert [data-key="notes"] placeholder toContain 'appended to this agent']
 
 R3 - A Reset-to-template affordance MUST appear only when edited and restore the pristine template, instantly and undoably.
-- Given the prompt is edited, Then a "Reset to {Role} template" control is shown; Given it is empty or the unmodified template, Then the control is absent. [test: "Reset control appears only when the prompt is edited" - custom-prompt node: .agent-prompt-reset exists; empty-prompt node: querySelector('.agent-prompt-reset') toBeNull; unmodified-template node: toBeNull]
+- Given the prompt is edited, Then a "Reset to {Role} template" control is shown (since 2026-11-01 live, as the text is typed: should show the Reset control and the edited status while typing without rebuilding the panel); Given it is empty or the unmodified template, Then the control is absent. [test: "Reset control appears only when the prompt is edited" - custom-prompt node: .agent-prompt-reset exists; empty-prompt node: querySelector('.agent-prompt-reset') toBeNull; unmodified-template node: toBeNull]
 - Given the user clicks Reset, Then config.prompt is set to the current role template for that agent type, the status refreshes to the unmodified-template state, and NO confirmation dialog is shown. [test: "clicking Reset restores the role template and refreshes status with no dialog" - click .agent-prompt-reset; assert node.config.prompt === getEffectivePrompt(template-resolved) i.e. equals PROMPTS.implementer; status now toContain 'Full Coder role template attached'; .agent-prompt-reset now toBeNull; no window.confirm/modal invoked]
 - Given the user clicks Reset then undo (the existing undo/redo), Then the prior edited text is restored. [test: "Reset is undoable via the existing undo - undo restores the edited text" - edit prompt to X, click Reset, call win.undo(), assert the selected node's config.prompt === X again"]
 
@@ -112,3 +112,7 @@ Produced by the workflow "Agent prompt edit UX" (Sub-Agents form, Feature shape)
 - Work item: none (dogfood)
 - Branch: main
 - PR: TBD
+
+## History
+
+- 2026-11-01: the status line and the Reset control follow a live edit (`refreshAgentPromptStatus` rebuilds the status block in place on a prompt input, `bindAgentPromptControls` binds the preview toggle and the Reset control for both the panel build and the rebuild; an open preview stays open). Found by the Eval Author backtest: a blind eval of this record's R3 read "is shown" as live, and the shipped control appeared only after re-selecting the node. (by direct session)

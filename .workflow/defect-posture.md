@@ -21,7 +21,7 @@ The found-defect protocol shipped with one intensity. Different workflows legiti
 3. Posture MUST be per-node in generated output. (Test: posture is per-node in generated output: each sub-agent carries its own)
 4. The select MUST render only for carrying roles. (Test: Defect Posture select renders only for carrying roles)
 5. Explicit postures MUST round-trip serialization; absent keys MUST stay absent and resolve balanced. (Test: explicit posture round-trips through serialize/deserialize; absent stays balanced)
-6. The reviewer MUST judge declared fixes against the producing step's declared posture. (Test: reviewer clause judges declared fixes against the producing step posture)
+6. The reviewer MUST judge declared fixes against the producing step's declared posture. (Test: reviewer clause judges declared fixes against the producing step posture; since 2026-11-01 the brief also names the reviewed step's declared posture at generation time: should tell the reviewer the reviewed step posture only when that posture is not balanced)
 7. Explain MUST show the active posture, name the lever, and agree with the live helper. (Test: Explain row reflects the active posture, names the selector, and its probe equals the live helper)
 
 ## Success criteria
@@ -86,3 +86,4 @@ Workflow `defect-posture`: executed directly by Claude (Fable) as a single imple
 
 - Grounds on / touches: grounds on `.workflow/agent-craft-batch.md` (the found-defect protocol + reviewer clause this feature parameterizes); amended `.workflow/agent-craft-batch.md` (Current behavior gains the posture knob; History line added).
 - Branch: main (uncommitted delivery for the director).
+- 2026-11-01: the reviewer brief names the declared posture of the step it reviews (`coderPosture` resolves a coder-family step's effective posture, record-only or aggressive else balanced, for its own brief and for `reviewedProducers` / `reviewedProducersNote`: upstream coder-family steps via getDepNodes whose effective posture is not balanced, a headed sentence appended to every reviewer variant), appended to every reviewer variant; balanced everywhere still emits nothing. Found by the Eval Author backtest, where a blind eval of this record's R6 failed on the shipped work because the reviewer was told the rule, not the fact. The Explain row's reason names the reviewed posture too. (by direct session)
