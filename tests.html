@@ -18313,6 +18313,19 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
     FORMATS.forEach(f => expect(win[f]().indexOf('eval executor')).toBe(-1));
     expect(win.explainNode(v, 'prompt').find(r => r.part === 'Pre-registered eval step hint').status).toBe('skipped');
   });
+  it('should brief the Eval Author with the resolved ticket, child stories included, when the requirements are a Jira URL', () => {
+    resetState(); win.loadPreset('feature'); win.addPreRegisteredEval(inputNode().id);
+    const story = win.document.getElementById('storyInput');
+    story.value = 'Build the export widget.';
+    expect(win.evalHint().indexOf('RESOLVED ticket content')).toBe(-1);
+    story.value = 'https://example.atlassian.net/browse/PROJ-123';
+    const hint = win.evalHint();
+    expect(hint).toContain('RESOLVED ticket content you fetched up front');
+    expect(hint).toContain('If the ticket is an epic, fetch its child stories');
+    expect(win.genWorkflow()).toContain('fetch its child stories and include them');
+    expect(win.PROMPTS.evalAuthor).toContain('for an epic, every child story');
+    story.value = '';
+  });
   it('should warn when the executing Verifier runs before a later build step, and stay quiet when it runs last', () => {
     resetState(); win.loadPreset('feature');
     const coder = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'coder');
@@ -18506,11 +18519,11 @@ describe('Pre-registered eval: an Eval Author writes a frozen, build-blind eval 
     const inp = inputNode();
     win.selectNode(inp.id); win.showContextMenu(10, 10);
     const item = win.document.getElementById('ctxEval');
-    expect(item.style.display).toBe('flex'); expect(item.textContent).toBe('Add eval author');
+    expect(item.style.display).toBe('flex'); expect(item.textContent).toBe('Add eval');
     win.hideContextMenu();
     win.addPreRegisteredEval(inp.id);
     win.selectNode(author().id); win.showContextMenu(10, 10);
-    expect(item.style.display).toBe('flex'); expect(item.textContent).toBe('Remove eval author');
+    expect(item.style.display).toBe('flex'); expect(item.textContent).toBe('Remove eval');
     expect(item.getAttribute('title')).toContain('A Verifier stays');
     win.hideContextMenu();
     const coder = win.state.nodes.find(n => n.type === 'agent' && n.config.agentType === 'coder');
