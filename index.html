@@ -1280,7 +1280,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <li><strong>Skeptic</strong> tries to <em>refute</em> the work by inspection - a role-aware adversarial critic that only sends work back for material Critical/High defects, never nitpicks.</li>
   <li><strong>Verifier</strong> <em>proves</em> the outcome meets the objective with evidence - it runs the code, calls the API, or drives a browser instead of just reading it.</li>
 </ul>
-<p><strong>Pre-registered eval.</strong> Right-click the <strong>Input</strong> node and pick <strong>Add eval</strong>: an <strong>Eval Author</strong> lands right after the requirements and, when the workflow has no Verifier, a Verifier loop lands on the last build step. The Eval Author sees the requirements and the repository only, never a plan, and writes the eval before anyone builds: numbered criteria with the requirement each serves, its kind (automated, manual, rubric), the exact check, and the pass condition; executable checks are written as real tests that are expected to fail until the work exists. The eval is frozen with a hash and lives inside the durable record (one concise artifact: a line per criterion with its check, the results as a dated block of verdicts); for an eval that outgrows the record, <strong>Defaults &gt; Eval</strong> (or the Eval Author node, per workflow) can move it to a file beside the record. Without a record it lives in the memory directory. The Verifier executes every criterion and reports pass, fail, or blocked with evidence, on top of its own verification; its gate fails when any criterion fails. The node's <strong>Open questions</strong> select says what the author does with a question the requirements leave open: by default it decides what it can defend and asks the director only when the answer moves the pass bar; a team can make it always ask, or never interrupt. An Eval Author without a Verifier is a validation error with a one-click fix, and the prompt tells the orchestrator to stop until it is fixed. Requirements with no executable surface get a model-graded rubric: still pre-registered and build-blind, a smaller win than on code with a test runner.</p>
+<p><strong>Pre-registered eval.</strong> Right-click the <strong>Input</strong> node and pick <strong>Add eval</strong>: an <strong>Eval Author</strong> lands right after the requirements and, when the workflow has no Verifier, a Verifier loop lands on the last build step. Every Verifier loop, from the menu or the one-click, starts with its "Not verified" edge pointed at the nearest upstream step that changes the deliverable (the Implementer, not the Tester it wraps; the fork when that step is one branch of a parallel group); change the target on the gate. The Eval Author sees the requirements and the repository only, never a plan, and writes the eval before anyone builds: numbered criteria with the requirement each serves, its kind (automated, manual, rubric), the exact check, and the pass condition; executable checks are written as real tests that are expected to fail until the work exists. The eval is frozen with a hash and lives inside the durable record (one concise artifact: a line per criterion with its check, the results as a dated block of verdicts); for an eval that outgrows the record, <strong>Defaults &gt; Eval</strong> (or the Eval Author node, per workflow) can move it to a file beside the record. Without a record it lives in the memory directory. The Verifier executes every criterion and reports pass, fail, or blocked with evidence, on top of its own verification; its gate fails when any criterion fails. The node's <strong>Open questions</strong> select says what the author does with a question the requirements leave open: by default it decides what it can defend and asks the director only when the answer moves the pass bar; a team can make it always ask, or never interrupt. An Eval Author without a Verifier is a validation error with a one-click fix, and the prompt tells the orchestrator to stop until it is fixed. Requirements with no executable surface get a model-graded rubric: still pre-registered and build-blind, a smaller win than on code with a test runner.</p>
 <p><strong>Using it well.</strong> Add one when the definition of done is clear and cheap to get wrong (a feature with acceptance criteria, an API, a CLI, a migration); skip it for exploration and research. It is the acceptance eval for this run's deliverable, one trial graded on outcome, not a test suite for the agent across many tasks; the pass rate across runs lands in Run Reports. The Verifier executes it the way it verifies anything: curl against a local or dev instance, a browser when the Browser MCP toggle is on, a CLI with real arguments; what the environment cannot support is reported BLOCKED with the reason, never faked. The eval never widens what a run may touch: criteria belong in environments the run owns (the working tree, an ephemeral database or container, a disposable dev instance); anything that would need a shared or production environment is a manual procedure with an exact observation or BLOCKED by design, never a destructive command. The runner's permission mode and allowlist remain the enforcement layer.</p>
 <p><strong>When to use which.</strong> Reach for a <strong>Skeptic</strong> on high-stakes or expensive-to-undo steps where a confident-but-wrong output is costly: the plan (a wrong direction is the most expensive mistake to make), security-sensitive code, or anything subtle. Reach for a <strong>Verifier</strong> on any step with a runnable outcome - a built feature, an API integration, a UI, a data migration - placed late, right before delivery.</p>
 <p><strong>Why they're powerful.</strong> They are complementary: the Skeptic catches what reasoning can see (logic, design, security), the Verifier catches what only execution reveals (it reads fine - but does it actually run?). Together they give defense in depth - doubt early, prove late - which is exactly how a careful senior engineer works. One click drops in the whole reviewer + Decision gate + back-edge that routes failures back to the step to fix, with a bounded revision count so it retries and then stops rather than spinning. It reuses the same loop machinery the presets use, so it renders correctly in every export format. Right-click again to <strong>Remove</strong> it, or use the Decision node's <strong>send-back target</strong> dropdown to re-point the failure branch to a different node. The <strong>Delivery Swarm</strong> preset shows both in one flow.</p>
@@ -2517,7 +2517,9 @@ function approvalCheckpoint() {
       const roleOf = n => AGENT_TYPES.some(a => a.id === n.config.agentType) ? n.config.agentType : 'general';   // unknown or missing role = General, as the rest of the app treats it
       let idx = agents.findIndex(n => APPROVAL_BUILD_ROLES.has(roleOf(n)));
       const builds = idx !== -1;   // any reachable step builds: the gate's wording, even when the pause moves earlier
-      if (idx === -1) { idx = agents.findIndex(n => !approvalIsReviewNode(n)); if (idx === -1) idx = 0; }   // no build role: the first step that can own a plan, never an Eval Author or a critic
+      if (idx === -1) idx = agents.findIndex(n => !approvalIsReviewNode(n));   // no build role: the first step that can own a plan
+      if (idx === -1) idx = agents.findIndex(n => n.config.agentType !== EVAL_AUTHOR_ROLE);   // review-only shape: approve the approach before its first step, which is never the Eval Author (it runs before any plan)
+      if (idx === -1) idx = 0;
       // Inside a per-repository lane the pause moves to the lane's FIRST step: one approval
       // covers every repository, and every format (the SDK fans the lane out as one unit)
       // pauses at the same place.
@@ -2903,19 +2905,20 @@ function evalBlockedRule() {
     : 'A BLOCKED criterion (one that could not be executed here) is reported with its reason and does not fail the gate - the report-only posture; turn on "Unmet required verifications fail the run" under Verification instructions to make it fail.';
 }
 // Steps that run before an Eval Author and are not the Input: they would hand it work it must not see.
-function evalAuthorUpstreamSteps(author) {
-  const seen = new Set(); const out = []; const stack = [author.id];
+// Every node before one, along forward edges in reverse (revise back-edges excluded: a gate
+// looping back to a step is not something that runs before it). Shared by the author's
+// upstream check and the eval route.
+function upstreamIds(nodeId) {
+  const seen = new Set(); const stack = [nodeId];
   while (stack.length) {
     const id = stack.pop();
-    state.connections.filter(c => c.to === id && !isReviseBackEdge(c)).forEach(c => {   // a gate looping back to the author is not an upstream step
-      if (seen.has(c.from)) return; seen.add(c.from);
-      const n = state.nodes.find(x => x.id === c.from);
-      if (!n) return;
-      if (n.type === 'agent') out.push(n);   // a fork, a gate, or a task produces nothing the author could see; keep walking past it
-      stack.push(n.id);
-    });
+    state.connections.filter(c => c.to === id && !isReviseBackEdge(c)).forEach(c => { if (!seen.has(c.from)) { seen.add(c.from); stack.push(c.from); } });
   }
-  return out;
+  return seen;
+}
+function evalAuthorUpstreamSteps(author) {
+  const up = upstreamIds(author.id);   // insertion order is discovery order: the nearest step first, which the Review warning names
+  return [...up].map(id => state.nodes.find(n => n.id === id)).filter(n => n && n.type === 'agent');   // a fork, a gate, or a task produces nothing the author could see
 }
 // Workflow-level preamble: the contract the orchestrator enforces around the eval.
 function evalHint(atlUrls) {
@@ -3943,7 +3946,8 @@ function syncDurableUI() {
 function syncEvalHomeUI() {
   const ef = $('defaultEvalField');
   if (ef) ef.style.display = state.durableRecord ? 'block' : 'none';
-  updateConfig();
+  const sel = state.nodes.find(n => n.id === state.selectedId);
+  if (sel && sel.config && sel.config.agentType === EVAL_AUTHOR_ROLE) updateConfig();   // only the Eval Author's panel carries the record-home select; anyone else keeps focus and caret
 }
 
 function toggleMcpAtlassian() {
@@ -5819,7 +5823,7 @@ function genDurableRecordProtocol(fmt) {
   if (state.openSpecArtifacts) p.push('- (d2) **OpenSpec artifacts (enabled for this run - FAITHFUL, team-committable)**: this run also leaves first-class OpenSpec artifacts, indistinguishable from OpenSpec-native work, for teams whose repos commit `openspec/` and not `.workflow/`. Never stamp them as generated and never point them at the record - they stand on their own, hand-edits to them are team truth, and future runs (ours and OpenSpec\'s) ground on them as normal OpenSpec documents. The change under `openspec/changes/{change-slug}/` was created at kickoff and kept current during the run (see the kickoff step); its spec deltas are written the way this repository\'s other changes express them (existing `openspec/` files ALWAYS outrank the shapes described here). NOW, AT FINALIZE, two halves - BOTH mandatory, spec first, and finalize is incomplete until both are done: (1) APPLY the change to `openspec/specs/{capability-slug}/spec.md` as DELTAS - modify ONLY the `### Requirement:` sections (with their `#### Scenario:` Given/When/Then blocks) your change touches, preserving every other line of an existing spec verbatim (a finalize merges into team-owned specs, it never rewrites them); when NO spec file exists yet (greenfield), CREATE `openspec/specs/{capability-slug}/spec.md` with a `## Purpose` line and the full `## Requirements` this change delivers - the spec directory is the capability\'s current truth and this change just created the capability. (2) THEN archive the change exactly the way this repository archives changes (openspec\'s convention moves it under the changes archive with a date prefix). The `openspec` CLI\'s own `archive` command performs the spec-apply itself - prefer it when available, and treat a validation failure as a completion-gate failure; a MANUAL archive must do BOTH halves explicitly. Moving the change to the archive without updating `openspec/specs/` leaves the capability\'s truth trapped in the archive - that is drift, not delivery, and an OpenSpec teammate reading `specs/` would see nothing shipped. Decisions with rejected alternatives, verify evidence, the owner-tagged checklist, and history remain in the record; the OpenSpec artifacts carry what OpenSpec carries. Multi-repo: the full lifecycle runs in each repository whose record you wrote.');
   p.push('- (e) Make it the best durable artifact - fill the gaps a cold reader would hit: add any Success criterion, assumption, Risk, follow-up, or navigational aid the work revealed but no single step recorded, and strengthen the Why or a decision\'s rationale if it is thinner than a future maintainer would need. Adding durable context here is as valid as removing transcript noise.');
   p.push('- (f) BEFORE stripping, sweep the sections you are about to remove for stranded durable content - manual verification procedures, decisions, gotchas that an agent parked in Resume / handoff - and MOVE each to its durable home (procedures for unrun checks into Verify, with their cross-references updated), because stripping deletes whatever remains. Then strip the in-progress scaffolding (the "Current state / next action" line and the "Resume / handoff" section) and compress the transcript accretion - distilling rather than deleting anything that tells a future reader why a choice was made or shows the work was independently checked. The committed artifact is the requirements (with verifying tests), the approach and decisions, the completed checklist, the Verify results, and the outcome. In short, the orchestrator compresses Verify and Gotchas from running commentary into the durable facts: collapse a verbose per-agent verdict to a single durable line - that an independent review or verification ran, and what it confirmed or changed - rather than dropping it (the fact the work was adversarially checked is durable signal, not noise); collapse duplicate scan-line restatements to one line each; soften line-number references to durable anchors (the symbol, function, or section name, which does not rot as the file changes); distill any transient implementation scaffolding (paste-ready strings, a pre-implementation test plan, step-by-step working notes) into the durable section it belongs in - the file map into Surface area, the decisions into Approach, the realized tests into Verify - and drop whatever the committed code now carries verbatim, so no paste-ready working scaffolding survives; and keep the final facts plus the Built-with provenance line. Compress the transcript accretion, not the reasoning: the committed record must still read like an authored spec (as clean and complete as an OpenSpec or spec-kit document), so a maintainer reading it cold can see what changed and why; never compress away the Why, the decisions and their rejected alternatives, or the durable gotchas. When a detail sits between noise and context, keep it in distilled form - a future agent re-deriving the why costs far more than a couple of retained lines.');
-  p.push('- (g) Completion gate - finalize is not done until ALL of these are true: no in-progress scaffolding remains (no "Current state / next action", no "Resume / handoff") AND nothing durable was stranded in a stripped section (manual procedures for unrun checks now live in Verify, with cross-references intact); the status line reads finalized or committable, NOT "in progress"; every Task checklist item is ticked or explicitly marked deferred with a reason; the Outcome is filled; each Requirement scenario names its verifying test; no bare line numbers remain (every code reference is a durable anchor - a symbol, function, or section name); no transient or paste-ready scaffolding remains (it has been distilled into the durable sections or dropped where the committed code now carries it); the `awd:record` fence is present with a status consistent with the checklist and record body; the Current behavior section reads as present-tense truth of the shipped behavior; the History section is present and its latest line covers this run (the created line for a new record, an amendment line for an update - including a line in any OTHER record this run amended); the append-only sections were never rewritten, only extended (see Section mutability rules); the Found bugs section is consistent with the step handoffs (every deferred defect a step reported appears there, none invented)' + (hasLedger ? '; the Verification ledger is consistent with the verifying steps\' handoffs (every reported act appears, blocked required items visibly unticked with their reasons)' : '') + (hasEval ? (evalInRecord() ? '; the Pre-registered eval section\'s criteria still match their frozen hash and its Eval results block reports every criterion for this run' : '; the eval file (`' + evalFilePath() + '`) still matches its frozen hash, its Eval results block reports every criterion for this run, and the record\'s Pre-registered eval section carries this run\'s results line') : '') + '; the fence\'s `verify` commands were ACTUALLY run this session with their real results in the Verify section; no companion documents were created (record + index + timeline are the only durable surfaces)' + (state.openSpecArtifacts ? ' beyond the sanctioned OpenSpec artifacts, whose change is archived and whose spec deltas are applied for this capability' : '') + (hasEval && !evalInRecord() ? ' beyond the sanctioned eval file beside the record' : '') + '; and the `.workflow/_index.md` capability entry is written AND a one-line entry is prepended to the chronological `.workflow/_timeline.md`. This applies to UPDATES of an existing record too: an Update section always gets its own `_timeline.md` line, and the record\'s `_index.md` intent line is REWRITTEN whenever the update changes what a scanner should know - the timeline is the history lens, the index line is current truth, and a stale index line silently hides the newest capability from every future grounding scan. If any is false, finalize is incomplete - finish it. A half-finalized record is a failure: it misleads a future reader into thinking the work is still underway. There is no external validator for this system - the agent IS the linter, and this gate is the validation.');
+  p.push('- (g) Completion gate - finalize is not done until ALL of these are true: no in-progress scaffolding remains (no "Current state / next action", no "Resume / handoff") AND nothing durable was stranded in a stripped section (manual procedures for unrun checks now live in Verify, with cross-references intact); the status line reads finalized or committable, NOT "in progress"; every Task checklist item is ticked or explicitly marked deferred with a reason; the Outcome is filled; each Requirement scenario names its verifying test; no bare line numbers remain (every code reference is a durable anchor - a symbol, function, or section name); no transient or paste-ready scaffolding remains (it has been distilled into the durable sections or dropped where the committed code now carries it); the `awd:record` fence is present with a status consistent with the checklist and record body; the Current behavior section reads as present-tense truth of the shipped behavior; the History section is present and its latest line covers this run (the created line for a new record, an amendment line for an update - including a line in any OTHER record this run amended); the append-only sections were never rewritten, only extended (see Section mutability rules); the Found bugs section is consistent with the step handoffs (every deferred defect a step reported appears there, none invented)' + (hasLedger ? '; the Verification ledger is consistent with the verifying steps\' handoffs (every reported act appears, blocked required items visibly unticked with their reasons)' : '') + (hasEval ? (evalInRecord() ? '; the Pre-registered eval section\'s criteria still match their frozen hash and its Eval results block reports every criterion for this run' : '; the eval file (`' + evalFilePath() + '`) still matches its frozen hash, its Eval results block reports every criterion for this run, and the record\'s Pre-registered eval section carries this run\'s results line') : '') + '; the fence\'s `verify` commands were ACTUALLY run this session with their real results in the Verify section; no companion documents were created (record + index + timeline are the only durable surfaces)' + (state.openSpecArtifacts ? ' beyond the sanctioned OpenSpec artifacts, whose change is archived and whose spec deltas are applied for this capability' : '') + (hasEval && !evalInRecord() ? (state.openSpecArtifacts ? ', and beyond' : ' beyond') + ' the sanctioned eval file beside the record' : '') + '; and the `.workflow/_index.md` capability entry is written AND a one-line entry is prepended to the chronological `.workflow/_timeline.md`. This applies to UPDATES of an existing record too: an Update section always gets its own `_timeline.md` line, and the record\'s `_index.md` intent line is REWRITTEN whenever the update changes what a scanner should know - the timeline is the history lens, the index line is current truth, and a stale index line silently hides the newest capability from every future grounding scan. If any is false, finalize is incomplete - finish it. A half-finalized record is a failure: it misleads a future reader into thinking the work is still underway. There is no external validator for this system - the agent IS the linter, and this gate is the validation.');
   p.push('');
   p.push('### Where it lives');
   p.push('- **Single repository**: write it to `' + apath + '` in that repo so it versions with the code (the change to this file lands in the same PR as the implementation).');
@@ -6807,16 +6811,64 @@ function setReviewLoopBackTarget(decisionId, targetNodeId) {
   render();
   updateConfig();
 }
+// Where a Verifier loop's "Not verified" sends the work, whoever attached it (the context menu,
+// the eval one-click, the Attach Verifier fix). A Verifier proves an outcome, and the step that
+// can fix a failed outcome is the one that produced the deliverable, not whichever step sits
+// last: on the Feature presets the one-click wraps the Tester, which writes tests and cannot
+// change what failed. So the route goes to the nearest upstream step that changes the
+// deliverable (the build roles minus the Tester),
+// the last one in execution order when several qualify (a gate has one No edge); when that
+// step is one branch of a parallel group (a direct child of a fork with more than one agent
+// branch), the route goes to the fork, so a failure in any branch re-runs the whole section
+// rather than one sibling; when the wrapped step changes the deliverable itself, or nothing
+// upstream does (a research workflow ending in an Analyst), the wrapped step keeps the route,
+// as any hand-built loop does.
+// Two tiers: the roles that change code (the debugger included, which fixes what it finds) win
+// over the writer, so a docs step between the Implementer and the Tester never takes a failed
+// code check; the writer is the fixer only when nothing upstream changes code (a docs workflow).
+const VERIFIER_CODE_ROLES = new Set([...APPROVAL_BUILD_ROLES].filter(r => r !== 'tester' && r !== 'writer').concat(['debugger']));
+const VERIFIER_FIX_ROLES = new Set([...VERIFIER_CODE_ROLES, 'writer']);
+function verifierRouteBackTarget(wrappedId) {
+  const wrapped = state.nodes.find(n => n.id === wrappedId);
+  if (!wrapped || wrapped.type !== 'agent' || !wrapped.config) return wrappedId;
+  if (VERIFIER_FIX_ROLES.has(wrapped.config.agentType)) return wrappedId;
+  const upstream = upstreamIds(wrappedId);   // every step before the wrapped one, through gates and forks, revise edges excluded
+  const candidates = runSortedNodes().filter(n => n.type === 'agent' && n.config && upstream.has(n.id) && VERIFIER_FIX_ROLES.has(n.config.agentType) && !approvalIsReviewNode(n));
+  const coders = candidates.filter(n => VERIFIER_CODE_ROLES.has(n.config.agentType));
+  const fixers = coders.length ? coders : candidates;
+  if (!fixers.length) return wrappedId;
+  const fixer = fixers[fixers.length - 1];
+  const fork = state.connections.filter(c => c.to === fixer.id && !isReviseBackEdge(c)).map(c => state.nodes.find(n => n.id === c.from))
+    .find(n => n && n.type === 'parallel' && state.connections.filter(c => c.from === n.id).map(c => state.nodes.find(x => x.id === c.to)).filter(x => x && x.type === 'agent').length > 1);
+  return fork ? fork.id : fixer.id;
+}
+// Attach a Verifier loop on a step and point its No edge at the step that can fix a failure
+// (a Skeptic keeps its loop on the step whose output it critiques). Returns the route target
+// so the caller can name it.
+function attachVerifierLoop(targetId) {
+  const target = state.nodes.find(n => n.id === targetId);
+  if (!canAttachReviewLoop(target) || hasReviewLoop(targetId)) return targetId;   // nothing attached: never re-point a loop someone else built
+  attachReviewLoop(targetId, 'verifier');
+  const verifier = state.nodes.find(n => n.config && n.config.reviewLoopFor === targetId && n.config.reviewLoopKind === 'verifier');
+  const decision = verifier && state.nodes.find(n => n.type === 'decision' && n.config && n.config.reviewLoopDecisionFor === targetId);
+  const route = verifierRouteBackTarget(targetId);
+  if (decision && route !== targetId) setReviewLoopBackTarget(decision.id, route);
+  return route;
+}
 // One click adds the pre-registered eval: the Eval Author right after the Input node (its only
 // upstream is the requirements, so it can never see a plan), and, when the workflow has no
 // Verifier, a verification loop on the last build step so the eval has an executor and a gate
-// to route back from. One undo step, whatever it adds.
+// to route back from, its No edge pointed at the step that can fix a failure. One undo step,
+// whatever it adds.
 function addPreRegisteredEval(inputId) {
   const input = state.nodes.find(n => n.id === inputId && n.type === 'input');
   if (!input || evalAuthorsOnCanvas().length) return;
   const outs = state.connections.filter(c => c.from === inputId);
   let author;
-  let outcome = 'existing';
+  let outcome = 'existing', route = null, wrapped = null;
+  // An Input not wired yet: the run's first steps, read BEFORE the Input gains an edge (that edge
+  // flips the connected set to Input-anchored reachability, which would strand the chain).
+  const heads = outs.length ? [] : (() => { const run = runSortedNodes().filter(n => n.type === 'agent'); return run.filter(n => !state.connections.some(c => c.to === n.id && !isReviseBackEdge(c) && run.some(x => x.id === c.from))); })();
   batchUndo(() => {   // the author, the Verifier loop, and the re-flow are ONE undo step
     // Provisional spot right after the Input; Auto Layout below re-flows the canvas.
     author = addNode('agent', input.x + 240, input.y - 110, 'Eval Author', {   // the full template in the prompt, as the presets do, so it can be read and edited in place
@@ -6826,10 +6878,11 @@ function addPreRegisteredEval(inputId) {
     const outIds = new Set(outs.map(c => c.id));
     state.connections = state.connections.filter(c => !outIds.has(c.id));
     addConnection(inputId, author.id, undefined, outs.length ? outs[0].fromPort : undefined);   // the Input keeps the port its first edge left from
-    outs.forEach(c => addConnection(author.id, c.to, c.label));
+    if (outs.length) outs.forEach(c => addConnection(author.id, c.to, c.label));
+    else heads.forEach(n => addConnection(author.id, n.id));   // the author precedes the chain's first steps, so the chain joins the run
     if (evalExecutorId() === null) {
       const t = lastBuildStepId();
-      if (t) { attachReviewLoop(t, 'verifier'); outcome = 'added'; } else outcome = 'none';
+      if (t) { wrapped = t; route = attachVerifierLoop(t); outcome = 'added'; } else outcome = 'none';
     }
     // The canvas re-flows around the new branch (director: a hand-placed author above the row
     // looked odd next to a laid-out preset); the user's own layout is one Undo away.
@@ -6838,7 +6891,8 @@ function addPreRegisteredEval(inputId) {
   selectNode(author.id, true);
   render();
   updateConfig();
-  showToast(outcome === 'added' ? 'Eval Author added after the requirements, and a Verifier loop added to execute the eval'
+  const routeNote = outcome === 'added' && route !== wrapped ? '; "Not verified" routes back to "' + (state.nodes.find(n => n.id === route) || {}).label + '" (change it on the gate)' : '';
+  showToast(outcome === 'added' ? 'Eval Author added after the requirements, and a Verifier loop added to execute the eval' + routeNote
     : outcome === 'existing' ? 'Eval Author added after the requirements; the Verifier executes the eval'
     : 'Eval Author added, but no step after the build can take a Verifier loop - the eval has no executor yet (see Review)', 5000);
 }
@@ -6885,8 +6939,9 @@ function advisorAttachVerifier(nodeId) {
   const n = state.nodes.find(x => x.id === nodeId);
   if (!n || !canAttachReviewLoop(n) || hasReviewLoop(nodeId)) return;
   closeValidation();
-  attachReviewLoop(nodeId, 'verifier');
-  showToast('Verifier loop attached to "' + n.label + '" - it executes the pre-registered eval');
+  let route = nodeId;
+  batchUndo(() => { route = attachVerifierLoop(nodeId); });   // the loop and its route are one undo step
+  showToast('Verifier loop attached to "' + n.label + '" - it executes the pre-registered eval' + (route !== nodeId ? '; "Not verified" routes back to "' + (state.nodes.find(x => x.id === route) || {}).label + '" (change it on the gate)' : ''));
 }
 // Context-menu entry point: toggles a review loop of `kind` on the selected node.
 // One loop per node, so if any loop is already attached this detaches it.
@@ -6894,8 +6949,11 @@ function toggleReviewLoop(kind) {
   hideContextMenu();
   const node = state.nodes.find(n => n.id === state.selectedId);
   if (!canAttachReviewLoop(node)) return;
-  if (hasReviewLoop(node.id)) detachReviewLoop(node.id);
-  else attachReviewLoop(node.id, kind);
+  if (hasReviewLoop(node.id)) { detachReviewLoop(node.id); return; }
+  if (kind !== 'verifier') { attachReviewLoop(node.id, kind); return; }
+  let route = node.id;
+  batchUndo(() => { route = attachVerifierLoop(node.id); });   // the loop and its route are one undo step
+  if (route !== node.id) showToast('Verifier loop attached to "' + node.label + '"; "Not verified" routes back to "' + (state.nodes.find(x => x.id === route) || {}).label + '" (change it on the gate)', 5000);
 }
 // Backward-compatible aliases (the Skeptic shipped under these names first).
 function hasAdversaryAttached(targetId) { return hasReviewLoop(targetId); }
@@ -6960,7 +7018,7 @@ function updateConfig() {
       if (state.durableRecord) H[H.length] = configSelect('Eval lives in', 'evalHome', (node.config.evalHome === 'record' || node.config.evalHome === 'file') ? node.config.evalHome : 'default',
         [{ value: 'default', label: escHtml('Default (' + evalHomeLabel(state.defaultEvalHome) + ')'), tip: 'Follows the sidebar\'s Eval default (Defaults section). Pick another option to override it for this workflow only.' }]
           .concat(EVAL_HOME_OPTIONS.map(o => ({ value: o.value, label: o.label, tip: o.tip }))),
-        'Where this workflow\'s eval lives when a durable record is kept. Default follows the sidebar (the record, one concise artifact, unless a team changed it); a file beside the record is the escape hatch for a large eval.');
+        'Where this workflow\'s eval lives when a durable record is kept. Default follows the sidebar (the record, one concise artifact, unless a team changed it); a file beside the record is the escape hatch for a large eval. With more than one Eval Author the first connected one decides (the Review warns about a second author).');
       H[H.length] = configSelect('Open questions', 'evalAmbiguity', evalAmbiguityOf(node),
         EVAL_AMBIGUITY_OPTIONS.map(o => ({ value: o.value, label: o.label, tip: o.tip })),
         'What the Eval Author does with a question the requirements leave open. It decides and records what it can defend, asks the director only as this setting allows, and freezes only after the questions it raised are answered. Decide and record, and any setting in an unattended run, freeze the recorded assumptions instead.');
@@ -7022,7 +7080,7 @@ function updateConfig() {
             : 'Agent step (' + getAgentTypeName(n.config && n.config.agentType) + '): the work returns here with the gate\'s findings.' }));
         if (candidates.length) {
           H[H.length] = configSelect(`On "${escHtml(noLabel)}", route back to`, 'reviewLoopBackTo', currentTarget, candidates,
-            'The step that receives the work when this gate says no. Re-points the gate\'s No edge; only non-review steps are offered, so a loop never sends work to another reviewer.');
+            'The step that receives the work when this gate says no. Re-points the gate\'s No edge; only non-review steps are offered, so a loop never sends work to another reviewer. A Verifier loop starts pointed at the nearest upstream step that changes the deliverable (an Implementer rather than the Tester it wraps), because a Tester cannot fix what the Verifier failed; when that step is one branch of a parallel group, it points at the fork so the whole section re-runs. A Skeptic loop stays on the step whose output it critiques.');
         }
       }
     }
@@ -11938,7 +11996,7 @@ function orchestratorRunPlan(format) {
   format = format || state.exportFormat;
   const ordered = runSortedNodes();
   const agents = ordered.filter(nd => nd.type === 'agent');
-  const decisions = state.nodes.filter(nd => nd.type === 'decision');
+  const decisions = ordered.filter(nd => nd.type === 'decision');
   const verb = format === 'subagent' ? 'Spawn' : format === 'teams' ? 'Delegate to' : 'Run';
   const lines = [];
   let num = 1;
@@ -12074,7 +12132,7 @@ function explainWorkflow(format) {
   rows.push(exRow('UI Context', !!uiN, uiN ? 'UI/styling constraints set' : 'no UI context set - add notes in the App & UI Context sidebar section (UI Context area); Design Analyzer and UI-building steps consume it', uiN));
   const dfmts = deliveryFormats();
   const dwinner = dfmts.includes('pr') ? 'Pull Request Creation' : dfmts.includes('commit') ? 'Commit' : dfmts.includes('report') ? 'Report' : dfmts.includes('docs') ? 'Documentation' : 'no-commit discipline';
-  const _ddOuts = state.nodes.filter(n => n.type === 'output' && outputOnDefault(n));
+  const _ddOuts = runOutputs().filter(n => outputOnDefault(n));
   const _ddEff = effectiveDelivery(state.defaultDelivery);
   rows.push(exRow('Default Delivery', _ddOuts.length > 0 && _ddEff.format !== 'code',
     _ddOuts.length === 0 ? 'no Output node follows the sidebar default - every Output node picks its own Format'
@@ -12130,7 +12188,7 @@ function explainWorkflow(format) {
       : 'no step is set to exhaustive depth - every step runs as one pass; set Depth per step in Node Configuration where one pass misses things';
   rows.push(exRow('Depth', format !== 'claude' && _dnW.length > 0, dhReason, dh || ''));
   const _bpW = workflowBranching();
-  const _bpOff = state.nodes.some(n => n.type === 'output' && outputBranching(n) !== 'single');
+  const _bpOff = runOutputs().some(n => outputBranching(n) !== 'single');
   rows.push(exRow('Branching', !!_bpW, _bpW
     ? 'an Output node delivering by ' + (_bpW.pr ? 'Pull Request' : 'Commit') + ' is set to one branch per ' + branchUnitWord(_bpW) + ' (lever: Branching on the Output node' + (outputOnDefault(_bpW.node) ? ', inherited from the sidebar\'s Default Delivery' : '') + ') - ' + (branchPlanOwner() ? branchPlanOwner().label : 'the orchestrator') + ' writes the branch plan from the work items and each repository\'s convention, ' + (state.approvePlan ? 'the director approves it at the plan gate' : 'the director sees it before any branch exists (Approve plan before build is off)') + ', every builder works on its row'
     : _bpOff ? 'an Output node sets a branching strategy but its format creates no branches - switch it to Commit or Pull Request, or set Branching to Single'
@@ -12474,7 +12532,7 @@ function branchPlanDeliveryLines(bp, pr) {
   return lines;
 }
 function prBlock(heading) {
-  const outputs = state.nodes.filter(n => n.type === 'output' && outCfg(n).format === 'pr');
+  const outputs = runOutputs().filter(n => outCfg(n).format === 'pr');
   if (outputs.length === 0) return [];
   const h = heading || '### Pull Request Creation';
   const lines = [h, ''];
@@ -12520,7 +12578,7 @@ function noCommitBlock(heading) {
   return [ h, '', 'Do not commit, push, or open a PR. Leave all changes uncommitted on the current branch for the director to review and commit.', '' ];
 }
 function commitBlock(heading) {
-  const outputs = state.nodes.filter(n => n.type === 'output' && outCfg(n).format === 'commit');
+  const outputs = runOutputs().filter(n => outCfg(n).format === 'commit');
   const h = heading || '### Commit';
   const lines = [h, ''];
   lines.push('**CRITICAL: NEVER commit or push directly to the target branch.** Always work on a feature branch.');
@@ -12551,7 +12609,7 @@ function commitBlock(heading) {
   return lines;
 }
 function reportBlock(heading) {
-  const outputs = state.nodes.filter(n => n.type === 'output' && outCfg(n).format === 'report');
+  const outputs = runOutputs().filter(n => outCfg(n).format === 'report');
   const h = heading || '### Report';
   const deliverable = outputs.map(o => o.config.deliverable).filter(Boolean)[0];
   const lines = [h, ''];
@@ -12567,7 +12625,7 @@ function reportBlock(heading) {
   return lines;
 }
 function docsBlock(heading) {
-  const outputs = state.nodes.filter(n => n.type === 'output' && outCfg(n).format === 'docs');
+  const outputs = runOutputs().filter(n => outCfg(n).format === 'docs');
   const h = heading || '### Documentation';
   const deliverable = outputs.map(o => o.config.deliverable).filter(Boolean)[0];
   const lines = [h, ''];
@@ -14750,7 +14808,7 @@ function buildOpenSpecSchema() {
 
   // apply: the final implementation step, enriched with the output nodes' deliverable intent.
   const lastId = arts[arts.length - 1].id;
-  const outputs = state.nodes.filter(n => n.type === 'output');
+  const outputs = runOutputs();
   // apply.requires = the work artifacts that actually feed the output node(s), resolved THROUGH parallel/
   // decision routers (same helper the artifacts use). This makes the terminal gate faithful - a divergent
   // apply (one that depends on a mid-chain step, not the last one) is preserved and round-trips - instead
@@ -15101,7 +15159,13 @@ function reviseContinuity(format) {
 
 // The run's execution order: the topological sort limited to the connected set, so a stray
 // agent is never emitted as a step.
-function runSortedNodes() { const reach = evalReachableIds(); return topologicalSort().filter(n => reach.has(n.id)); }
+const _runSortMemo = { sig: null, ids: null };   // asked per node per generation by the hints, the status line, and the route; ids only, as the other memos (node objects are replaced by undo, import, and a rebuilt canvas)
+function runSortedNodes() {
+  const sig = graphShapeSig(false);
+  if (_runSortMemo.sig !== sig) { const reach = evalReachableIds(); _runSortMemo.sig = sig; _runSortMemo.ids = topologicalSort().filter(n => reach.has(n.id)).map(n => n.id); }
+  const byId = {}; state.nodes.forEach(n => { byId[n.id] = n; });
+  return _runSortMemo.ids.map(id => byId[id]).filter(Boolean);
+}
 function topologicalSort() {
   const adj = {};
   const inDeg = {};

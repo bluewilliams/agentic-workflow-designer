@@ -137,6 +137,7 @@ Frozen: sha256 c8f79ba3bcadf0723526cc509f2b5946457a2bd2cf81eccf2d1df62f062fbb64 
 ## Found bugs
 
 - FIXED after the run (house review, 2026-11-01): Explain's run plan and the OpenSpec export now read `runSortedNodes()`; a stray Eval Author no longer emits the eval contract (`evalAuthorNodes` is the authors in the run, `evalAuthorsOnCanvas` drives the one-click and its menu); a loose Output no longer drives delivery or branching (`runOutputs`); a stray Verifier no longer switches the record into ledger mode.
+- validateWorkflow and adviseWorkflow still enumerate every Output on the canvas for their format and branching checks (house review, 2026-11-01); left as is for now because their warnings describe the canvas, loose nodes included, and the loose-node warning already fires beside them.
 - Remaining attribute leaks: a stray's effort, a duplicate label (which changes the connected step's slug), an aggressive stray reviewer, or a stray Atlassian URL can still change workflow-level prompt text without the stray being a step (Design Analyzer, 2026-11-01; the selectors are shared with the Review, Explain, and the run monitor).
 
 ## Outcome
