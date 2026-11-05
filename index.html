@@ -7479,6 +7479,7 @@ function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 // ═══════════════════════════════════════════════════════════
 const wrap = $('canvasWrap');
 
+const NODE_DBLCLICK_MS = 400;   // two presses on the same node within this window reveal its settings
 wrap.addEventListener('mousedown', e => {
   hideContextMenu();
   const pt = svgPoint(e);
@@ -7538,7 +7539,13 @@ wrap.addEventListener('mousedown', e => {
   if (target) {
     const nodeId = target.dataset.id;
     const node = state.nodes.find(n => n.id === nodeId);
+    let twice = false;
     if (node) {
+      // Double-click, counted here by node id and time: the click's own re-render replaces the
+      // node element between the two presses, so the browser's dblclick never fires on a node.
+      const now = Date.now();
+      twice = !!(state._lastNodePress && state._lastNodePress.id === nodeId && now - state._lastNodePress.at <= NODE_DBLCLICK_MS);
+      state._lastNodePress = twice ? null : { id: nodeId, at: now };
       // Set up drag BEFORE selectNode re-renders (which destroys target element).
       // Snapshot is captured now but committed at drag-END, and only if the node
       // actually moved - a bare select-click must not consume an undo slot.
@@ -7548,6 +7555,7 @@ wrap.addEventListener('mousedown', e => {
       state.dragNodeStart = { x: node.x, y: node.y };
     }
     selectNode(nodeId);
+    if (twice) revealNodeConfig(nodeId);   // the second press of a double-click reveals Node Configuration
   } else if (conn) {
     state.selectedId = conn.dataset.id;
     render();
@@ -7643,14 +7651,6 @@ wrap.addEventListener('wheel', e => {
 }, { passive: false });
 
 wrap.addEventListener('contextmenu', e => e.preventDefault());
-
-// Double-click a node: reveal its settings (the single click selects without moving the sidebar).
-wrap.addEventListener('dblclick', e => {
-  const target = e.target.closest('.node-group') || e.target.closest('.node-instance');
-  if (!target || state.mode !== 'select') return;
-  const node = state.nodes.find(n => n.id === target.dataset.id);
-  if (node) revealNodeConfig(node.id);
-});
 
 // Keyboard
 document.addEventListener('keydown', e => {
