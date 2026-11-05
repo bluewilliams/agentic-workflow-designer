@@ -165,6 +165,8 @@ Environment capability survey (2026-11-04): macOS, Python 3 and Google Chrome pr
 
 ## Risks / trade-offs
 
+- Review follow-up note (2026-11-04): the facade rebinds the global undo and redo to carry sidebar values on a step. A later refactor could move that into the app's own snapshot (one applySnapshot used by undo, redo and rollback); until then any code that captures undo or redo by reference before the facade block binds the app's bare function.
+
 - Known limit in the new code (Low, found by the Verifier, not fixed in this run, the director's call): `_awdConfig` does not type-check `config.tools`. `addNode` or `updateNode` with a `tools` value that is not an array of strings is accepted on a node no generator reads; a later connect to that node then fails with an internal message (`awd: connect: tools.join is not a function`, rolled back), and a UI drag to it throws until one Undo. Tool NAMES must stay unchecked. Suggested fix: reject a non-array or non-string `tools` value in `_awdConfig`, say so in the catalog text, add one test. The same class, lower value: a non-string `prompt` or `notes`.
 - Documentation gap (Low): the README says a batch `tool` is a method name; `batch` rejects batch, undo, and redo. The catalog says so; the README does not.
 - Code added later that stores a reference to the original `undo` or `redo` would skip the hook. Mitigation: no such reference exists today, and facade suite tests drive the real toolbar buttons and the keyboard on a facade step.
@@ -189,8 +191,8 @@ Environment capability survey (2026-11-04): macOS, Python 3 and Google Chrome pr
 
 ## Found bugs
 
-- The app's `loadPreset(preset, _confirmed)` with an id that has no builder pushes an undo step, sets `_undoBatch = true`, clears the canvas, and never resets `_undoBatch` (the reset sits inside the `if (presets[preset])` branch), so every later undo push is suppressed. Evidence: read by the Implementer and the Skeptic. Deferred: not reachable from the UI (only the preset tiles call it) and not through the facade (the id is validated first); outside this change.
-- A keydown with key "Z" (upper case, the value the UI Events specification gives for Ctrl+Shift+Z on Windows and Linux) does not redo: the keydown listener tests `e.key === 'z'` in its redo branch. Ctrl+Y and the macOS form work. Evidence: the Verifier's UI-only session left the stacks unchanged for that key on HEAD and on the working tree. Not confirmed on a physical Windows or Linux keyboard. Deferred: pre-existing, outside this change.
+- The app's `loadPreset(preset, _confirmed)` with an id that has no builder pushes an undo step, sets `_undoBatch = true`, clears the canvas, and never resets `_undoBatch` (the reset sits inside the `if (presets[preset])` branch), so every later undo push is suppressed. Evidence: read by the Implementer and the Skeptic. Fixed 2026-11-04 in the review follow-up: the reset moved outside the builder branch; one test pins it: not reachable from the UI (only the preset tiles call it) and not through the facade (the id is validated first); outside this change.
+- A keydown with key "Z" (upper case, the value the UI Events specification gives for Ctrl+Shift+Z on Windows and Linux) does not redo: the keydown listener tests `e.key === 'z'` in its redo branch. Ctrl+Y and the macOS form work. Evidence: the Verifier's UI-only session left the stacks unchanged for that key on HEAD and on the working tree. Not confirmed on a physical Windows or Linux keyboard. Fixed 2026-11-04 in the review follow-up: the undo and redo branches accept z or Z; one test pins it: pre-existing, outside this change.
 
 ## Pre-registered eval
 
@@ -382,6 +384,9 @@ Terms: "state unchanged" = JSON.stringify(state) plus the name, Requirements, an
 - 2026-11-04: Requirements replaced with the director's full text after a clipped paste (by webmcp-and-mcp-facade)
 - 2026-11-04: requirement 4 gained its reach note from clarify C2: facade undo steps restore the sidebar (by webmcp-and-mcp-facade)
 - 2026-11-04: finalized after a verified run: eval 74 of 74 passed, suite 2041 to 2138 (by webmcp-and-mcp-facade)
+
+- 2026-11-04: review follow-up (direct session) - the two Found bugs fixed in place (loadPreset undo flag; upper-case Z redo) with one test each, 2138 -> 2140; the CLAUDE.md test-title rule rewritten (one sentence of behavior, should optional)
+- 2026-11-04: house review round (code-review high, all findings; direct session) - 13 findings, 10 acted on: tools validated as an array of names on addNode and updateNode; _awdNextSpot guards x, y and w from hand-written setWorkflow nodes; addEval takes an optional inputId and names the ambiguity when more than one Input has edges (the one-click path uses the selected Input for the same reason); getWorkflow described as serializeWorkflow's object (the frozen eval pins it; Export wraps it in an envelope); README batch row names the three excluded tools; one capture after a step instead of three; the catalog built once; verifyPaths applied as one assignment and one render; setText regenerates once; the catch-side undo-flag reset explained. Declined: pan and zoom in the undo payload (the app's own undo never restores the viewport); replacing the undo and redo rebinding with a shared applySnapshot (a redesign the Skeptic already weighed as H1; noted under Risks); two titles without 'should' (the title rule changed the same evening). 2140 -> 2143
 
 ## Outcome
 

@@ -430,7 +430,7 @@ An agent that reaches the designer's page builds and reads workflows through one
 | Method | Input | Returns |
 |---|---|---|
 | `listPresets()` | none | `[{ id, name, description }]` in sidebar order |
-| `getWorkflow()` | none | the workflow JSON that Export writes |
+| `getWorkflow()` | none | the workflow JSON as `serializeWorkflow` builds it (what `setWorkflow` restores; the Export file wraps the same object in a format envelope) |
 | `listNodes()` | none | `[{ id, type, label, x, y, config }]` |
 | `listConnections()` | none | `[{ id, from, to, label, fromPort }]` |
 | `generate(format)` | `prompt`, `subagent`, `teams`, `sdk`, or `claude` | the text Copy ships for that format (`""` with no nodes); the format tab and the state do not change |
@@ -445,7 +445,7 @@ An agent that reaches the designer's page builds and reads workflows through one
 | `deleteNode(id)` | a node id | the workflow summary |
 | `connect(from, to, label)` | two node ids | the connection summary (an existing edge comes back unchanged) |
 | `disconnect(from, to)` | two node ids | the workflow summary |
-| `addEval()` | none | the Eval Author node summary |
+| `addEval(inputId)` | optional: the Input to anchor on, needed only when more than one Input has edges | the Eval Author node summary |
 | `removeEval()` | none | the workflow summary |
 | `attachVerifier(nodeId)` | a step id | `{ verifier, gate, routeBack }` node summaries |
 | `attachSkeptic(nodeId)` | a step id | `{ skeptic, gate }` node summaries |
@@ -456,7 +456,7 @@ An agent that reaches the designer's page builds and reads workflows through one
 | `setOptions({ ... })` | any of exportFormat, memoryEnabled, durableRecord, consumeRecords, approvePlan, clarifyFirst, defaultModel, effort, verifyPaths, verifyNotes | the workflow summary |
 | `undo()` | none | the workflow summary |
 | `redo()` | none | the workflow summary |
-| `batch(ops)` | `[{ tool, input }]`, where `tool` is a method name | one result per entry |
+| `batch(ops)` | `[{ tool, input }]`, where `tool` is a method name other than `batch`, `undo`, or `redo` | one result per entry |
 
 The workflow summary is `{ name, slug, preset, nodes, connections, warnings }`: node and connection counts, and the Review warnings as `{ type, msg }`. Read methods return plain JSON copies, so changing a returned object never changes the canvas.
 

@@ -21984,6 +21984,75 @@ describe('Eval results tick live: the executor owns the block, the orchestrator 
   });
 });
 
+describe('Found bugs from the facade run: the preset undo flag and the upper-case Z', () => {
+  afterEach(() => { win.clearUndo(); resetState(); });
+
+  it('loadPreset with an id that has no builder leaves later undo pushes working', () => {
+    resetState(); win.clearUndo();
+    win.loadPreset('no-such-preset', true);
+    const depth = win.undoDepth();
+    win.addNode('agent', 100, 100, 'After Unknown', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 2 });
+    expect(win.undoDepth()).toBe(depth + 1);   // the push went through: the batch flag was reset
+  });
+
+  it('Ctrl+Shift+Z with an upper-case Z redoes, as Windows and Linux report the chord', () => {
+    resetState(); win.clearUndo();
+    const n = win.addNode('agent', 100, 100, 'Redo Me', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 2 });
+    win.undo();
+    expect(win.state.nodes.some(x => x.id === n.id)).toBe(false);
+    win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Z', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+    expect(win.state.nodes.some(x => x.id === n.id)).toBe(true);
+    win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Z', ctrlKey: true, bubbles: true, cancelable: true }));
+    expect(win.state.nodes.some(x => x.id === n.id)).toBe(false);   // upper-case Z without shift still undoes
+  });
+});
+
+describe('Agent API facade: review follow-up', () => {
+  const AG = (label) => ({ type: 'agent', label, config: { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 2 } });
+  afterEach(() => { win.clearUndo(); resetState(); });
+
+  it('addNode and updateNode reject a tools value that is not an array of names and leave the canvas unchanged', () => {
+    resetState(); win.clearUndo();
+    const before = JSON.stringify(win.state.nodes);
+    let msg = ''; try { win.awd.addNode({ type: 'agent', config: { tools: 'Read' } }); } catch (e) { msg = e.message; }
+    expect(msg).toContain('awd: addNode: tools must be an array of tool names');
+    expect(JSON.stringify(win.state.nodes)).toBe(before);
+    const n = win.awd.addNode(AG('Keep Tools'));
+    msg = ''; try { win.awd.updateNode(n.id, { config: { tools: null } }); } catch (e) { msg = e.message; }
+    expect(msg).toContain('awd: updateNode: tools must be an array of tool names');
+    expect(JSON.stringify(win.awd.listNodes()[0].config.tools)).toBe('["Read"]');
+    expect(win.awd.generate('sdk').length > 0).toBe(true);   // the node still generates
+  });
+
+  it('addNode without x and y lands at finite coordinates after setWorkflow restored nodes that lack x, y, and w', () => {
+    resetState(); win.clearUndo();
+    win.awd.setWorkflow({ canvas: { nodes: [{ id: 'n1', type: 'input', label: 'In', config: {} }], connections: [] } });
+    const added = win.awd.addNode(AG('After Bare Input'));
+    expect(typeof added.x === 'number' && isFinite(added.x) && typeof added.y === 'number' && isFinite(added.y)).toBe(true);
+    expect(added.x > 0).toBe(true);
+  });
+
+  it('addEval names the ambiguity when more than one Input has edges, and inputId chooses', () => {
+    resetState(); win.clearUndo();
+    const a = win.addNode('input', 0, 100, 'In A', {}); const b = win.addNode('input', 0, 400, 'In B', {});
+    const p = win.addNode('agent', 300, 100, 'Planner A', { agentType: 'planner', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 2 });
+    const q = win.addNode('agent', 300, 400, 'Researcher B', { agentType: 'researcher', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 2 });
+    win.addConnection(a.id, p.id); win.addConnection(b.id, q.id);
+    let msg = ''; try { win.awd.addEval(); } catch (e) { msg = e.message; }
+    expect(msg).toContain('awd: addEval: more than one Input has edges');
+    expect(msg).toContain('pass inputId');
+    expect(win.evalAuthorsOnCanvas().length).toBe(0);
+    msg = ''; try { win.awd.addEval(p.id); } catch (e) { msg = e.message; }
+    expect(msg).toContain('is not an Input node');
+    const author = win.awd.addEval(b.id);
+    expect(win.state.connections.some(c => c.from === b.id && c.to === author.id)).toBe(true);
+    expect(win.state.connections.some(c => c.from === a.id && c.to === p.id)).toBe(true);   // the other chain is untouched
+    const entry = win.awd.describe().find(e => e.name === 'addEval');
+    expect(Object.keys(entry.inputSchema.properties).join(',')).toBe('inputId');
+    expect((entry.inputSchema.required || []).length).toBe(0);
+  });
+});
+
 document.getElementById('app').addEventListener('load', function() {
   win = this.contentWindow;
   // Expose let-scoped 'state' as a window property so tests can access it.

@@ -7659,8 +7659,9 @@ document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || (e.target.closest && e.target.closest('.custom-select'))) return;
   if (typeof textExpandIsOpen === 'function' && textExpandIsOpen()) return;   // the expand dialog owns the keyboard while open (its own listener handles Escape)
   // Undo/redo for canvas operations (not active when typing in fields)
-  if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
-  if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) { e.preventDefault(); redo(); return; }
+  const _zKey = e.key === 'z' || e.key === 'Z';   // Windows and Linux report Ctrl+Shift+Z with an upper-case Z
+  if ((e.metaKey || e.ctrlKey) && _zKey && !e.shiftKey) { e.preventDefault(); undo(); return; }
+  if ((e.metaKey || e.ctrlKey) && _zKey && e.shiftKey) { e.preventDefault(); redo(); return; }
   if ((e.metaKey || e.ctrlKey) && e.key === 'y') { e.preventDefault(); redo(); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); e.preventDefault(); }
   if (e.key === 'Escape') {
@@ -10857,8 +10858,8 @@ function loadPreset(preset, _confirmed) {
     const manyAgents = state.nodes.filter(n => n.type === 'agent').length >= 5;
     if (hasParallel || hasDecision || manyAgents) setMemoryEnabled(true);
     ensureWorkflowName();
-    _undoBatch = false;
   }
+  _undoBatch = false;   // unconditional: an unknown id must not leave undo pushes suppressed
 }
 
 const STORY_PLACEHOLDERS = {
@@ -17139,8 +17140,8 @@ function _awdCaptureSidebar() {
   Object.keys(_AWD_FIELDS).forEach(k => { const f = $(_AWD_FIELDS[k]); values[k] = f ? f.value : ''; });
   return values;
 }
-function _awdChangedKeys(before) {
-  const now = _awdCaptureSidebar();
+function _awdChangedKeys(before, now) {
+  now = now || _awdCaptureSidebar();
   return Object.keys(before).filter(k => JSON.stringify(before[k]) !== JSON.stringify(now[k]));
 }
 // A text field set the way typing sets it: its input handlers run.
@@ -17167,7 +17168,7 @@ function _awdApplySidebar(values) {
   if (has('clarifyFirst')) { check('clarifyFirstToggle', values.clarifyFirst); toggleClarifyFirst(); }
   if (has('defaultModel')) setDefaultModel(values.defaultModel);
   if (has('effort')) setEffort(values.effort);
-  if (has('verifyPaths')) { clearVerifyPaths(); (values.verifyPaths || []).forEach(p => addVerifyPath(p)); }
+  if (has('verifyPaths')) { state.verifyPaths = normalizePathList(values.verifyPaths || []); renderVerifyRows(); }   // one assignment and one render, as applyWorkflowContext does
   if (has('verifyNotes')) { const notes = $('verifyNotesInput'); if (notes) notes.value = values.verifyNotes || ''; setVerifyNotes(values.verifyNotes || ''); }
   if (has('repositories')) { state.repositories = _awdCopy(values.repositories); renderRepoRows(); }
   if (has('rulesPaths')) { state.rulesPaths = _awdCopy(values.rulesPaths); renderRulesRows(); }
@@ -17205,16 +17206,19 @@ function _awdStep(fn) {
   try {
     result = fn();
   } catch (e) {
-    _undoBatch = was;
+    _undoBatch = was;   // restored BEFORE the rollback: the rollback's own undo must not run suppressed (the finally below repeats it for the normal path)
     if (_awdSignature() !== signature) _awdRollback(canvas, side);
     throw e;
   } finally {
     _undoBatch = was;
   }
-  if (!was && _awdSignature() !== signature) {
-    const changed = _awdChangedKeys(side);
-    if (changed.length) canvas.awdSide = _awdPick(side, changed);
-    pushUndo(canvas);
+  if (!was) {
+    const after = [_snapshotState(), _awdCaptureSidebar()];   // one capture serves the change check and the changed-key list
+    if (JSON.stringify(after) !== signature) {
+      const changed = _awdChangedKeys(side, after[1]);
+      if (changed.length) canvas.awdSide = _awdPick(side, changed);
+      pushUndo(canvas);
+    }
   }
   return result;
 }
@@ -17262,12 +17266,15 @@ function _awdConfig(method, type, config) {
   if (type !== 'agent') return;
   if (config.agentType !== undefined && !AGENT_TYPES.some(t => t.id === config.agentType)) _awdFail(method, 'unknown agentType ' + _awdShow(config.agentType) + ' (one of ' + AGENT_TYPES.map(t => t.id).join(', ') + ')');
   if (config.model !== undefined && !MODELS.some(m => m.value === config.model)) _awdFail(method, 'unknown model ' + _awdShow(config.model) + ' (one of ' + MODELS.map(m => m.value).join(', ') + ')');
+  if (config.tools !== undefined && !(Array.isArray(config.tools) && config.tools.every(t => typeof t === 'string'))) _awdFail(method, 'tools must be an array of tool names, got ' + _awdShow(config.tools));
 }
 // Right of the rightmost node, level with it; the presets' first spot on an empty canvas.
 function _awdNextSpot() {
   if (!state.nodes.length) return { x: 80, y: 250 };
-  const right = state.nodes.reduce((a, n) => (n.x + n.w > a.x + a.w ? n : a));
-  return { x: right.x + right.w + 80, y: right.y };
+  const num = v => typeof v === 'number' && isFinite(v);   // a hand-written setWorkflow node may lack x, y, or w
+  const edge = n => (num(n.x) ? n.x : 0) + (num(n.w) ? n.w : NODE_DEFAULTS[n.type].w);
+  const right = state.nodes.reduce((a, n) => (edge(n) > edge(a) ? n : a));
+  return { x: edge(right) + 80, y: num(right.y) ? right.y : 250 };
 }
 function _awdAddNode(spec) {
   if (!_awdIsObject(spec)) _awdFail('addNode', 'expects { type, label, x, y, config }, got ' + _awdShow(spec));
@@ -17283,7 +17290,7 @@ function _awdAddNode(spec) {
 }
 function _awdSetText(method, id, text) {
   _awdText(method, text);
-  return _awdStep(() => { _awdType(id, text); updatePrompt(); return _awdSummary(); });
+  return _awdStep(() => { _awdType(id, text); if (['workflowName'].indexOf(id) === -1) updatePrompt(); return _awdSummary(); });   // the other fields' input handlers already regenerate the prompt
 }
 function _awdFormat(method, format) {
   if (typeof format !== 'string' || !Object.prototype.hasOwnProperty.call(EXPLAIN_FORMATS, format)) _awdFail(method, 'unknown format ' + _awdShow(format) + ' (one of ' + Object.keys(EXPLAIN_FORMATS).join(', ') + ')');
@@ -17354,13 +17361,23 @@ function _awdDisconnect(from, to) {
   return _awdStep(() => { deleteConnection(edge.id); return _awdSummary(); });
 }
 // The Input that anchors the run: one with edges, else the only one.
-function _awdAddEval() {
+// The Input that anchors the run: the one with edges, else the only one; when more than one Input
+// has edges the caller names it (the one-click path uses the selected Input for the same reason).
+function _awdAddEval(inputId) {
   const inputs = state.nodes.filter(n => n.type === 'input');
   if (!inputs.length) _awdFail('addEval', 'the canvas has no Input node to anchor the eval on');
   const authors = evalAuthorsOnCanvas();
   if (authors.length) _awdFail('addEval', 'an Eval Author already exists (' + _awdShow(authors[0].id) + ')');
-  const anchor = inputs.find(i => state.connections.some(c => c.from === i.id || c.to === i.id)) || (inputs.length === 1 ? inputs[0] : null);
-  if (!anchor) _awdFail('addEval', 'no Input has edges, and there are ' + inputs.length + ' Inputs to choose from');
+  let anchor;
+  if (inputId !== undefined) {
+    anchor = inputs.find(i => i.id === inputId);
+    if (!anchor) _awdFail('addEval', 'inputId ' + _awdShow(inputId) + ' is not an Input node (one of ' + inputs.map(i => i.id).join(', ') + ')');
+  } else {
+    const wired = inputs.filter(i => state.connections.some(c => c.from === i.id || c.to === i.id));
+    if (wired.length > 1) _awdFail('addEval', 'more than one Input has edges (' + wired.map(i => i.id).join(', ') + '); pass inputId to choose');
+    anchor = wired[0] || (inputs.length === 1 ? inputs[0] : null);
+    if (!anchor) _awdFail('addEval', 'no Input has edges, and there are ' + inputs.length + ' Inputs to choose from; pass inputId to choose');
+  }
   return _awdStep(() => { addPreRegisteredEval(anchor.id); return _awdNode(evalAuthorsOnCanvas()[0]); });
 }
 function _awdRemoveEval() {
@@ -17442,7 +17459,9 @@ function _awdBatch(ops) {
 
 // The catalog: one entry per method. describe() and WebMCP publish name, description, and
 // inputSchema; args maps the one tool input object to the method's arguments.
-function _awdCatalog() {
+let _awdCatalogMemo = null;   // built from constants only, so once per page
+function _awdCatalog() { if (!_awdCatalogMemo) _awdCatalogMemo = _awdBuildCatalog(); return _awdCatalogMemo; }
+function _awdBuildCatalog() {
   const none = () => ({ type: 'object', properties: {} });
   const one = (key, schema) => ({ type: 'object', properties: { [key]: schema }, required: [key] });
   const nodeId = what => ({ type: 'string', description: 'The id of ' + what + ', as listNodes returns it.' });
@@ -17462,7 +17481,7 @@ function _awdCatalog() {
   };
   return [
     { name: 'listPresets', description: 'List the presets the sidebar offers, in sidebar order, as [{ id, name, description }].', inputSchema: none(), args: () => [] },
-    { name: 'getWorkflow', description: 'Return the versioned workflow JSON (the object Export writes and setWorkflow restores).', inputSchema: none(), args: () => [] },
+    { name: 'getWorkflow', description: 'Return the workflow JSON as serializeWorkflow builds it (the object setWorkflow restores; the Export file wraps this same object in a format envelope).', inputSchema: none(), args: () => [] },
     { name: 'listNodes', description: 'List every node as { id, type, label, x, y, config }.', inputSchema: none(), args: () => [] },
     { name: 'listConnections', description: 'List every edge as { id, from, to, label, fromPort }.', inputSchema: none(), args: () => [] },
     { name: 'generate', description: 'Return the generated text for a format exactly as Copy ships it ("" with no nodes). Changes nothing, not even the format the UI shows.', inputSchema: one('format', format), args: i => [i.format] },
@@ -17481,7 +17500,7 @@ function _awdCatalog() {
       inputSchema: { type: 'object', properties: { from: nodeId('the source node'), to: nodeId('the target node'), label: { type: 'string', description: 'The edge label, for example a Decision branch.' } }, required: ['from', 'to'] }, args: i => [i.from, i.to, i.label] },
     { name: 'disconnect', description: 'Remove the edge from one node to another. Returns the workflow summary.',
       inputSchema: { type: 'object', properties: { from: nodeId('the source node'), to: nodeId('the target node') }, required: ['from', 'to'] }, args: i => [i.from, i.to] },
-    { name: 'addEval', description: 'Add the pre-registered eval on the Input that anchors the run. Returns the Eval Author node summary.', inputSchema: none(), args: () => [] },
+    { name: 'addEval', description: 'Add the pre-registered eval on the Input that anchors the run (the Input with edges, else the only Input; inputId chooses when several have edges). Returns the Eval Author node summary.', inputSchema: { type: 'object', properties: { inputId: nodeId('the Input to anchor on (optional)') } }, args: i => [i.inputId] },
     { name: 'removeEval', description: 'Remove the pre-registered eval. Returns the workflow summary.', inputSchema: none(), args: () => [] },
     { name: 'attachVerifier', description: 'Attach a Verifier loop to a step with the route-back rule. Returns { verifier, gate, routeBack } as node summaries.', inputSchema: one('nodeId', nodeId('an Agent or Task step')), args: i => [i.nodeId] },
     { name: 'attachSkeptic', description: 'Attach a Skeptic loop to a step. Returns { skeptic, gate } as node summaries.', inputSchema: one('nodeId', nodeId('an Agent or Task step')), args: i => [i.nodeId] },
