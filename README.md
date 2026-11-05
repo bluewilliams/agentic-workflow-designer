@@ -456,11 +456,22 @@ An agent that reaches the designer's page builds and reads workflows through one
 | `setOptions({ ... })` | any of exportFormat, memoryEnabled, durableRecord, consumeRecords, approvePlan, clarifyFirst, defaultModel, effort, verifyPaths, verifyNotes | the workflow summary |
 | `undo()` | none | the workflow summary |
 | `redo()` | none | the workflow summary |
-| `batch(ops)` | `[{ tool, input }]`, where `tool` is a method name other than `batch`, `undo`, or `redo` | one result per entry |
+| `batch(ops)` | `[{ tool, input }]`, where `tool` is a method name other than `batch`, `undo`, `redo`, `pushAgents`, `pushPrompts`, or `importTeamSettings` | one result per entry |
+| `catalog()` | none | the vocabularies: node types with config defaults, agent types with default tools, models, tools, effort and depth levels, formats, writing styles, input sources, parallel strategies, delivery formats, branching, eval options, the option and source keys, presets |
+| `autoWorkflow(text)` | optional requirement text; without it the Requirements box is used | the workflow summary (the Auto Workflow button: builds a canvas by intent, replacing the current one) |
+| `setSources({ ... })` | any of repositories `[{ path, branch }]`, rulesPaths, productDocPaths, appSourcePath, appSourceBranch, appSourceAccess, uiContextNotes | the workflow summary |
+| `listAgents()` | none | the Agent Library as `[{ id, name, source, pack, version, updated, config }]` |
+| `listPrompts()` | none | the user-authored Prompt Library as `[{ id, title, desc, prompt, source }]` |
+| `pushAgents({ pack, agents })` | an org pack name and `[{ name, config, version }]` | `{ pack, added, updated, skipped, ids }`, plus `coerced` for config keys the library filled or dropped |
+| `pushPrompts(prompts)` | `[{ title, desc, prompt }]` | `{ added, skipped }` (an existing title is skipped, never overwritten) |
+| `getTeamSettings()` | none | the team settings object the Export menu writes |
+| `importTeamSettings(settings)` | a team settings object | `{ adopted, workflows, agents, prompts, summary }` |
 
 The workflow summary is `{ name, slug, preset, nodes, connections, warnings }`: node and connection counts, and the Review warnings as `{ type, msg }`. Read methods return plain JSON copies, so changing a returned object never changes the canvas.
 
 Every mutating call is one undo step. The toolbar Undo and Redo, Ctrl+Z, Ctrl+Shift+Z, and `awd.undo()`/`awd.redo()` all restore a facade step fully: the canvas and the sidebar fields the call changed (name, Requirements, Workflow Context, options). A call that changes nothing, such as `connect` on an edge that already exists, takes no undo step. A `batch` runs its entries in order as a single undo step; when an entry throws, the batch stops, nothing from it stays applied, and the error names the failing index and tool.
+
+**Additions since the first release (the version stays `"1"`: nothing was removed or reshaped, and `describe()` lists what is there).** `catalog()` gives an agent every vocabulary it needs to build a workflow without reading the source. `autoWorkflow` and `setSources` reach the Auto Workflow button and the repository, context-path and App Under Test sections through the same handlers the sidebar uses. The two libraries are readable, and pushes follow the app's own namespace rules: `pushAgents` lands in the named org pack (a higher version updates, an equal or lower one is skipped), never in a user's own entries; `pushPrompts` never overwrites an existing title; `importTeamSettings` adopts only settings still at their defaults and adds only what is not here yet, exactly as the Import menu does, minus the confirm dialog. Library pushes are persisted storage, not canvas state, so they are not undo steps and cannot run inside a `batch` (a batch rollback could not take them back); the settings an import adopts are one undo step. Path lists follow one rule everywhere: entries are trimmed, and a duplicate is an error. A reply carries `coerced: [{ key, requested, actual }]` when the app applied a value differently from the request (a trimmed or deduplicated path list, a migrated node config); the key is absent when nothing was changed, so earlier callers see the same shape.
 
 Errors are `Error` instances whose message starts with `awd:` and names the method and the bad value (for example `awd: loadPreset: unknown preset id "nope" (one of feature, ...)`), so an agent can repair its call. A call that throws changes nothing.
 

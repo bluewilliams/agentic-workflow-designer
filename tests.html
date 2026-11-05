@@ -21329,8 +21329,8 @@ describe('Eval: agent API facade and WebMCP registration (pre-registered eval)',
 
 describe('Agent API facade (window.awd)', () => {
   const FORMATS = { prompt: 'genWorkflow', subagent: 'genSubAgents', teams: 'genAgentTeams', sdk: 'genAgentSDK', claude: 'genClaudePrompt' };
-  const READS = ['listPresets', 'getWorkflow', 'listNodes', 'listConnections', 'generate', 'explain', 'validate', 'describe'];
-  const MUTATORS = ['newWorkflow', 'loadPreset', 'setWorkflow', 'addNode', 'updateNode', 'deleteNode', 'connect', 'disconnect', 'addEval', 'removeEval', 'attachVerifier', 'attachSkeptic', 'detachLoop', 'setRequirements', 'setContext', 'setName', 'setOptions', 'undo', 'redo'];
+  const READS = ['listPresets', 'getWorkflow', 'listNodes', 'listConnections', 'generate', 'explain', 'validate', 'describe', 'catalog', 'listAgents', 'listPrompts', 'getTeamSettings'];   // 1.1 added the last four
+  const MUTATORS = ['newWorkflow', 'loadPreset', 'setWorkflow', 'addNode', 'updateNode', 'deleteNode', 'connect', 'disconnect', 'addEval', 'removeEval', 'attachVerifier', 'attachSkeptic', 'detachLoop', 'setRequirements', 'setContext', 'setName', 'setOptions', 'undo', 'redo', 'autoWorkflow', 'setSources', 'pushAgents', 'pushPrompts', 'importTeamSettings'];   // 1.1 added the last five
   const SUMMARY_KEYS = 'connections,name,nodes,preset,slug,warnings';
   const NODE_KEYS = 'config,id,label,type,x,y';
   const CONN_KEYS = 'from,fromPort,id,label,to';
@@ -21380,10 +21380,10 @@ describe('Agent API facade (window.awd)', () => {
     expect(win.awd.version).toBe('1');
   }));
 
-  it('should list 28 unique catalog entries whose names are the facade methods and whose input schemas are objects', clean(() => {
+  it('should list 37 unique catalog entries whose names are the facade methods and whose input schemas are objects', clean(() => {
     const cat = win.awd.describe();
     const methods = Object.keys(win.awd).filter(k => typeof win.awd[k] === 'function').sort();
-    expect(cat.length).toBe(28);
+    expect(cat.length).toBe(37);
     expect(cat.map(e => e.name).sort().join(',')).toBe(methods.join(','));
     expect(methods.join(',')).toBe(READS.concat(MUTATORS, ['batch']).sort().join(','));
     cat.forEach(e => {
@@ -22050,6 +22050,197 @@ describe('Agent API facade: review follow-up', () => {
     const entry = win.awd.describe().find(e => e.name === 'addEval');
     expect(Object.keys(entry.inputSchema.properties).join(',')).toBe('inputId');
     expect((entry.inputSchema.required || []).length).toBe(0);
+  });
+});
+
+describe('Agent API facade 1.1: vocabulary, Auto Workflow, sources, libraries, coercions', () => {
+  const A = () => win.awd;
+  const LIB_KEYS = ['awd_custom_agents', 'awd_custom_prompts', 'awd_agent_favs', 'awd_workflows'];
+  function wipe() {
+    LIB_KEYS.forEach(k => win.localStorage.removeItem(k));
+    Object.keys(win.localStorage).filter(k => k.indexOf('awd_wf_') === 0).forEach(k => win.localStorage.removeItem(k));
+    win.clearUndo(); resetState();
+    win.document.getElementById('storyInput').value = '';
+    win.state.repositories = []; win.state.rulesPaths = []; win.state.productDocPaths = [];
+    ['appSourcePath', 'appSourceBranch', 'uiContextNotes'].forEach(id => { const f = win.document.getElementById(id); if (f) f.value = ''; });
+    const acc = win.document.getElementById('appSourceAccess'); if (acc) acc.value = 'readonly';
+    win.setDefaultModel('opus-5', true); win.render();
+  }
+  beforeEach(wipe); afterEach(wipe);
+  const agentCfg = () => ({ agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'x', maxTurns: 2 });
+
+  it('catalog returns the vocabularies as plain JSON that matches the app constants', () => {
+    const c = A().catalog();
+    expect(c.version).toBe('1');
+    expect(c.defaults.model + '|' + c.defaults.effort).toBe(win.state.defaultModel + '|' + win.state.effort);
+    expect(c.agentTypes.map(t => t.id).join(',')).toBe(win.AGENT_TYPES.map(t => t.id).join(','));
+    expect(c.models.map(m => m.value).join(',')).toBe(win.MODELS.map(m => m.value).join(','));
+    expect(c.tools.map(t => t.name).join(',')).toBe(win.ALL_TOOLS.join(','));
+    expect(c.tools.every(t => t.description.length > 0)).toBe(true);
+    expect(c.formats.map(f => f.id).join(',')).toBe('prompt,subagent,teams,sdk,claude');
+    expect(c.nodeTypes.map(n => n.id).join(',')).toBe(Object.keys(win.NODE_DEFAULTS).join(','));
+    expect(c.nodeTypes.find(n => n.id === 'agent').configDefaults.agentType).toBe('general');
+    expect(c.agentTypes.find(t => t.id === 'planner').defaultTools.join(',')).toBe(win.AGENT_TYPE_TOOL_DEFAULTS.planner.join(','));
+    expect(c.effortLevels[0] === '' && c.effortLevels.length === win.EFFORT_LEVELS.length + 1).toBe(true);
+    expect(c.deliveryFormats.join(',')).toBe('default,code,commit,pr');
+    expect(c.appSourceAccess.indexOf('readonly') !== -1).toBe(true);
+    expect(c.options.indexOf('exportFormat') !== -1 && c.sources.indexOf('repositories') !== -1).toBe(true);
+    expect(JSON.stringify(c.presets)).toBe(JSON.stringify(A().listPresets()));
+    c.models[0].value = 'mutated';
+    expect(win.MODELS[0].value === 'mutated').toBe(false);
+  });
+
+  it('autoWorkflow builds a canvas from the given text as one undo step and refuses text it cannot build from', () => {
+    const depth = win.undoDepth();
+    const r = A().autoWorkflow('Add a CSV export to the report page with tests and a code review.');
+    expect(r.nodes > 2 && win.state.nodes.some(n => n.type === 'agent')).toBe(true);
+    expect(win.document.getElementById('storyInput').value).toContain('CSV export');
+    expect(win.undoDepth()).toBe(depth + 1);
+    win.awd.undo();
+    expect(win.state.nodes.length).toBe(0);
+    expect(win.document.getElementById('storyInput').value).toBe('');
+    const before = JSON.stringify(win.state.nodes); const d2 = win.undoDepth();
+    const bad = [['', 'is empty'], ['https://example.atlassian.net/browse/PROJ-7', 'URL only'], ['PROJ-7', 'bare ticket key']];
+    bad.forEach(([text, needle]) => {
+      let msg = ''; try { A().autoWorkflow(text); } catch (e) { msg = e.message; }
+      expect(msg.indexOf('awd: autoWorkflow:') === 0 && msg.indexOf(needle) !== -1).toBe(true);
+    });
+    expect(JSON.stringify(win.state.nodes) === before && win.undoDepth() === d2).toBe(true);
+  });
+
+  it('setSources applies repositories, paths and the app under test through the sidebar as one undo step, and a bad value applies nothing', () => {
+    const depth = win.undoDepth();
+    const r = A().setSources({ repositories: [{ path: '/work/alpha', branch: 'main' }, { path: '/work/beta' }], rulesPaths: ['.claude/rules'], productDocPaths: ['docs/product'], appSourcePath: '/work/app', appSourceBranch: 'develop', appSourceAccess: 'writable', uiContextNotes: 'Tailwind only' });
+    expect(JSON.stringify(win.state.repositories)).toBe(JSON.stringify([{ path: '/work/alpha', branch: 'main' }, { path: '/work/beta', branch: '' }]));
+    expect(win.document.querySelectorAll('#repoList .repo-row').length).toBe(2);
+    expect(win.state.rulesPaths.join(',') + '|' + win.state.productDocPaths.join(',')).toBe('.claude/rules|docs/product');
+    expect(win.document.getElementById('appSourcePath').value + '|' + win.document.getElementById('appSourceBranch').value + '|' + win.document.getElementById('appSourceAccess').value + '|' + win.document.getElementById('uiContextNotes').value).toBe('/work/app|develop|writable|Tailwind only');
+    expect(r.coerced === undefined).toBe(true);
+    expect(win.undoDepth()).toBe(depth + 1);
+    win.awd.undo();
+    expect(win.state.repositories.length + win.state.rulesPaths.length + win.state.productDocPaths.length).toBe(0);
+    expect(win.document.getElementById('appSourcePath').value + win.document.getElementById('appSourceAccess').value).toBe('readonly');
+    const d2 = win.undoDepth();
+    let msg = ''; try { A().setSources({ rulesPaths: ['ok'], appSourceAccess: 'nope' }); } catch (e) { msg = e.message; }
+    expect(msg).toContain('awd: setSources: unknown appSourceAccess');
+    expect(win.state.rulesPaths.length === 0 && win.undoDepth() === d2).toBe(true);
+    msg = ''; try { A().setSources({ repositories: [{ branch: 'main' }] }); } catch (e) { msg = e.message; }
+    expect(msg).toContain('non-empty path');
+    msg = ''; try { A().setSources({ telemetry: true }); } catch (e) { msg = e.message; }
+    expect(msg).toContain('unknown source');
+  });
+
+  it('a reply carries coerced only when the app applied a value differently from the request, keyed by id or by position', () => {
+    const clean = A().setOptions({ verifyPaths: ['tests.html'] });
+    expect(clean.coerced === undefined).toBe(true);
+    const trimmed = A().setSources({ rulesPaths: ['  a/rules  '] });
+    expect(trimmed.coerced === undefined && win.state.rulesPaths.join(',') === 'a/rules').toBe(true);   // trimming is the request's own rule, not a coercion
+    const added = A().addNode({ type: 'agent', config: agentCfg() });
+    expect(added.coerced === undefined).toBe(true);
+    const untouched = A().updateNode(added.id, { config: { prompt: undefined, notes: 'n' } });
+    expect(untouched.coerced === undefined && win.state.nodes.find(n => n.id === added.id).config.prompt === 'x').toBe(true);   // an undefined request leaves the key alone and reports nothing
+    const wf = A().setWorkflow({ canvas: { nodes: [{ id: 'o1', type: 'output', label: 'Out', x: 0, y: 0, config: { deliverable: '', format: 'code', branching: 'nope' } }], connections: [] } });
+    expect(wf.coerced.length).toBe(1);
+    expect(wf.coerced[0].key + ':' + wf.coerced[0].requested + ':' + wf.coerced[0].actual).toBe('canvas.nodes.o1.config.branching:nope:null');
+    const bare = A().setWorkflow({ canvas: { nodes: [{ type: 'input', label: 'In', x: 0, y: 0, config: {} }, { type: 'output', label: 'Out', x: 0, y: 0, config: { format: 'code', branching: 'nope' } }], connections: [] } });
+    expect(bare.coerced.map(c => c.key).join(',')).toBe('canvas.nodes.1.config.branching');   // an id-less node is its position
+  });
+
+  it('path lists follow one rule on setOptions and setSources: trimmed, and a duplicate is an error that applies nothing', () => {
+    let msg = ''; try { A().setSources({ rulesPaths: ['a/rules', ' a/rules '] }); } catch (e) { msg = e.message; }
+    expect(msg).toContain('awd: setSources: rulesPaths entry " a/rules " is a duplicate');
+    expect(win.state.rulesPaths.length).toBe(0);
+    msg = ''; try { A().setOptions({ verifyPaths: ['v', 'v'] }); } catch (e) { msg = e.message; }
+    expect(msg).toContain('is a duplicate');
+  });
+
+  it('the three persisted-storage methods cannot run inside a batch, so a batch rollback is always complete', () => {
+    ['pushAgents', 'pushPrompts', 'importTeamSettings'].forEach(tool => {
+      let msg = ''; try { A().batch([{ tool: tool, input: {} }]); } catch (e) { msg = e.message; }
+      expect(msg).toContain('awd: batch: entry 0 (' + tool + ') failed: ' + tool + ' cannot run inside a batch');
+    });
+    expect(win.localStorage.getItem('awd_custom_agents')).toBe(null);
+  });
+
+  it('pushAgents reports the config keys the library filled or dropped as coerced', () => {
+    const r = A().pushAgents({ pack: 'P', agents: [{ name: 'Lean', config: { agentType: 'coder', custom: 1 } }] });
+    expect(r.added).toBe(1);
+    const keys = r.coerced.map(c => c.key);
+    expect(keys.join(',')).toBe('agents.0.config.custom');   // the library keeps its own key set; the omitted keys were never requested
+    expect(r.coerced[0].actual).toBe(null);
+  });
+
+  it('a team settings import that adopts only telemetry or pins is still one undo step that restores them', () => {
+    const depth = win.undoDepth();
+    const r = A().importTeamSettings({ format: 'awd-team-settings', version: 1, settings: { telemetryEnabled: true, telemetryEndpoint: 'https://otel.example.test' } });
+    expect(r.adopted.join(',')).toBe('telemetryEnabled,telemetryEndpoint');
+    expect(win.state.telemetryEnabled === true && win.state.telemetryEndpoint === 'https://otel.example.test').toBe(true);
+    expect(win.undoDepth()).toBe(depth + 1);
+    win.awd.undo();
+    expect(win.state.telemetryEnabled === false && win.state.telemetryEndpoint === '').toBe(true);
+    win.awd.redo();
+    expect(win.state.telemetryEnabled).toBe(true);
+  });
+
+  it('pushAgents lands in an org pack, never touches a user entry, updates only on a higher version, and takes no undo step', () => {
+    win.saveCustomAgents([{ id: win.newAgentId('user', 'Scout', ''), name: 'Scout', source: 'user', pack: '', version: '', updated: '', config: Object.assign(agentCfg(), { prompt: 'mine' }) }]);
+    const depth = win.undoDepth();
+    const r = A().pushAgents({ pack: 'Pilot Pack', agents: [{ name: 'Scout', version: '1.0', config: Object.assign(agentCfg(), { prompt: 'org' }), source: 'user', id: 'user:scout' }, { name: 'Fixer', config: agentCfg() }] });
+    expect(r.pack + '|' + r.added + '|' + r.updated + '|' + r.skipped).toBe('Pilot Pack|2|0|0');
+    expect(r.ids.join(',')).toBe('org:pilot-pack/scout,org:pilot-pack/fixer');
+    const lib = A().listAgents();
+    expect(lib.find(a => a.id === 'user:scout').config.prompt).toBe('mine');
+    expect(lib.find(a => a.id === 'org:pilot-pack/scout').source + '|' + lib.find(a => a.id === 'org:pilot-pack/scout').pack).toBe('org|Pilot Pack');
+    expect(win.undoDepth()).toBe(depth);
+    const again = A().pushAgents({ pack: 'Pilot Pack', agents: [{ name: 'Scout', version: '1.0', config: agentCfg() }] });
+    expect(again.added + '|' + again.updated + '|' + again.skipped).toBe('0|0|1');
+    const newer = A().pushAgents({ pack: 'Pilot Pack', agents: [{ name: 'Scout', version: '1.1', config: Object.assign(agentCfg(), { prompt: 'org v1.1' }) }] });
+    expect(newer.updated).toBe(1);
+    expect(A().listAgents().find(a => a.id === 'org:pilot-pack/scout').config.prompt).toBe('org v1.1');
+    let msg = ''; try { A().pushAgents({ pack: '', agents: [{ name: 'X', config: agentCfg() }] }); } catch (e) { msg = e.message; }
+    expect(msg).toContain('awd: pushAgents: pack must be a non-empty string');
+    msg = ''; try { A().pushAgents({ pack: 'P', agents: [{ name: 'X', config: { agentType: 'nope' } }] }); } catch (e) { msg = e.message; }
+    expect(msg).toContain('unknown agentType');
+  });
+
+  it('pushPrompts adds new titles, skips an existing title without touching its text, and listPrompts reflects the library', () => {
+    win.saveCustomPrompts([{ id: 'cp_1', title: 'Release notes', desc: 'd', prompt: 'original text' }]);
+    const r = A().pushPrompts([{ title: 'Release notes', prompt: 'replacement' }, { title: 'Incident summary', desc: 'ops', prompt: 'Summarize the incident.' }]);
+    expect(r.added + '|' + r.skipped.join(',')).toBe('1|Release notes');
+    const lib = A().listPrompts();
+    expect(lib.find(x => x.title === 'Release notes').prompt).toBe('original text');
+    expect(lib.find(x => x.title === 'Incident summary').desc + '|' + lib.find(x => x.title === 'Incident summary').source).toBe('ops|user');
+    let msg = ''; try { A().pushPrompts([{ title: 'No body' }]); } catch (e) { msg = e.message; }
+    expect(msg).toContain('needs a non-empty prompt');
+  });
+
+  it('getTeamSettings returns the export object and importTeamSettings applies the app rules as one undo step', () => {
+    const t = A().getTeamSettings();
+    expect(t.format + '|' + t.version + '|' + Array.isArray(t.agents) + '|' + Array.isArray(t.prompts)).toBe('awd-team-settings|1|true|true');
+    const depth = win.undoDepth();
+    const r = A().importTeamSettings({ format: 'awd-team-settings', version: 1, settings: { defaultModel: 'sonnet-5' }, agents: [{ name: 'Pack Reviewer', pack: 'pilot', config: agentCfg() }], prompts: [{ title: 'Pushed prompt', prompt: 'body' }] });
+    expect(r.adopted.join(',') + '|' + r.agents + '|' + r.prompts + '|' + r.workflows).toBe('defaultModel|1|1|0');
+    expect(win.state.defaultModel).toBe('sonnet-5');
+    expect(A().listAgents().some(a => a.id === 'org:pilot/pack-reviewer') && A().listPrompts().some(x => x.title === 'Pushed prompt')).toBe(true);
+    expect(win.undoDepth()).toBe(depth + 1);
+    win.awd.undo();
+    expect(win.state.defaultModel).toBe('opus-5');
+    win.awd.redo();
+    const again = A().importTeamSettings({ format: 'awd-team-settings', version: 1, settings: { defaultModel: 'haiku' }, agents: [{ name: 'Pack Reviewer', pack: 'pilot', config: agentCfg() }] });
+    expect(again.adopted.length + again.agents + again.prompts).toBe(0);   // a set value is never changed; a known agent is not re-added
+    expect(win.undoDepth()).toBe(depth + 1);   // nothing to adopt: no step
+    let msg = ''; try { A().importTeamSettings({ format: 'other', settings: {} }); } catch (e) { msg = e.message; }
+    expect(msg).toContain('awd: importTeamSettings: format must be');
+  });
+
+  it('describe and WebMCP registration carry the nine 1.1 methods', () => {
+    const names = A().describe().map(e => e.name);
+    ['catalog', 'autoWorkflow', 'setSources', 'listAgents', 'listPrompts', 'pushAgents', 'pushPrompts', 'getTeamSettings', 'importTeamSettings'].forEach(n => expect(n + ':' + names.includes(n)).toBe(n + ':true'));
+    const registered = [];
+    win.awdRegisterWebMCP({ registerTool: t => { registered.push(t.name); } });
+    expect(registered.length).toBe(names.length);
+    const tool = A().describe().find(e => e.name === 'setSources');
+    expect(tool.inputSchema.additionalProperties).toBe(false);
   });
 });
 

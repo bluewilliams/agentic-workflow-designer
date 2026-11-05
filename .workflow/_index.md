@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## agent-api-facade-1-1
+
+- record: .workflow/agent-api-facade-1-1.md
+- intent: nine additive methods on `window.awd` (version stays "1"): catalog (every vocabulary), autoWorkflow, setSources (repositories, context paths, app under test), listAgents and listPrompts, pushAgents (org pack, never a user entry) and pushPrompts (never overwrite a title), getTeamSettings and importTeamSettings (the app's own adopt and add rules, no confirm); replies carry `coerced: [{ key, requested, actual }]` when the app applied a value differently
+- files: index.html (facade block: _awdCoerced and _awdWithCoerced, _awdVocabulary, _awdAutoWorkflow, _awdSetSources, _awdListAgents, _awdListPrompts, _awdPushAgents, _awdPushPrompts, _awdGetTeamSettings, _awdImportTeamSettings, nine catalog entries), tests.html (Agent API facade 1.1 suite; the facade suite's method pin migrated 28 -> 37), README.md (nine table rows and the additions paragraph)
+- status: current | date: 2026-11-04 | related: .workflow/webmcp-and-mcp-facade.md (the first release this extends; no supersession)
+
 ## webmcp-and-mcp-facade
 
 - record: .workflow/webmcp-and-mcp-facade.md

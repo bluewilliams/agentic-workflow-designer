@@ -5237,10 +5237,12 @@ function applyTeamSetting(k, v) {
     }
   }
 }
+function teamSettingsTooNew(data) { return typeof data.version === 'number' && data.version > 1; }
+function teamImportTotal(plan) { return plan.adopt.length + plan.workflows.length + plan.agents.length + plan.prompts.length; }
 function importTeamSettings(data, fileName) {
-  if (typeof data.version === 'number' && data.version > 1) { showToast('This team settings file is from a newer version of the designer (format ' + data.version + '); update before importing it'); return; }
+  if (teamSettingsTooNew(data)) { showToast('This team settings file is from a newer version of the designer (format ' + data.version + '); update before importing it'); return; }
   const plan = planTeamSettingsImport(data);
-  const total = plan.adopt.length + plan.workflows.length + plan.agents.length + plan.prompts.length;
+  const total = teamImportTotal(plan);
   if (!total) { showToast('Team settings: nothing new to adopt, everything in the file is already set here'); return; }
   const parts = [];
   if (plan.adopt.length) parts.push('Adopts ' + plural(plan.adopt.length, 'setting') + ' you have not set: ' + plan.adopt.map(k => TEAM_SETTING_LABELS[k] || k).join(', ') + '.');
@@ -17133,7 +17135,8 @@ function _awdSummary() {
 // reads. A facade undo step carries the before-values of the ones its call changed.
 const _AWD_FIELDS = { name: 'workflowName', story: 'storyInput', plan: 'planInput', appSourcePath: 'appSourcePath', appSourceBranch: 'appSourceBranch', appSourceAccess: 'appSourceAccess', uiContextNotes: 'uiContextNotes' };
 const _AWD_STATE_KEYS = ['memoryEnabled', 'durableRecord', 'openSpecArtifacts', 'artifactPath', 'consumeRecords', 'approvePlan', 'clarifyFirst', 'defaultModel', 'effort', 'verifyPaths', 'verifyNotes',
-  'repositories', 'rulesPaths', 'productDocPaths', 'verifyFailRun', 'mcpAtlassian', 'mcpCodeSearch', 'mcpDatadog', 'mcpBrowser', 'mcpGithub', 'mcpCustom', 'defaultDelivery', 'defaultEvalHome', 'activePreset', 'exportFormat'];
+  'repositories', 'rulesPaths', 'productDocPaths', 'verifyFailRun', 'mcpAtlassian', 'mcpCodeSearch', 'mcpDatadog', 'mcpBrowser', 'mcpGithub', 'mcpCustom', 'defaultDelivery', 'defaultEvalHome', 'activePreset', 'exportFormat',
+  'pins', 'telemetryEnabled', 'telemetryEndpoint', 'telemetryService', 'telemetryTags'];   // adopted by a team settings import; applyTeamSetting renders them
 function _awdCaptureSidebar() {
   const values = {};
   _AWD_STATE_KEYS.forEach(k => { values[k] = _awdCopy(state[k]); });
@@ -17171,8 +17174,8 @@ function _awdApplySidebar(values) {
   if (has('verifyPaths')) { state.verifyPaths = normalizePathList(values.verifyPaths || []); renderVerifyRows(); }   // one assignment and one render, as applyWorkflowContext does
   if (has('verifyNotes')) { const notes = $('verifyNotesInput'); if (notes) notes.value = values.verifyNotes || ''; setVerifyNotes(values.verifyNotes || ''); }
   if (has('repositories')) { state.repositories = _awdCopy(values.repositories); renderRepoRows(); }
-  if (has('rulesPaths')) { state.rulesPaths = _awdCopy(values.rulesPaths); renderRulesRows(); }
-  if (has('productDocPaths')) { state.productDocPaths = _awdCopy(values.productDocPaths); renderProductDocRows(); }
+  if (has('rulesPaths')) { state.rulesPaths = normalizePathList(values.rulesPaths); renderRulesRows(); }   // trimmed and deduplicated, as every app path setter stores them
+  if (has('productDocPaths')) { state.productDocPaths = normalizePathList(values.productDocPaths); renderProductDocRows(); }
   if (has('verifyFailRun')) { state.verifyFailRun = values.verifyFailRun; check('verifyFailRunToggle', values.verifyFailRun); syncVerifyFailRunUI(); }
   ['mcpAtlassian', 'mcpCodeSearch', 'mcpDatadog', 'mcpBrowser', 'mcpGithub'].forEach(k => { if (has(k)) { state[k] = values[k]; check(k + 'Toggle', values[k]); } });
   if (has('mcpCustom')) { state.mcpCustom = values.mcpCustom; const notes = $('mcpCustomNotes'); if (notes) notes.value = values.mcpCustom || ''; }
@@ -17182,6 +17185,7 @@ function _awdApplySidebar(values) {
     renderDefaultDelivery();
   }
   if (has('activePreset')) state.activePreset = values.activePreset;
+  ['pins', 'telemetryEnabled', 'telemetryEndpoint', 'telemetryService', 'telemetryTags'].forEach(k => { if (has(k)) applyTeamSetting(k, values[k]); });
   ['appSourcePath', 'appSourceBranch', 'uiContextNotes'].forEach(k => { if (has(k)) { const f = $(_AWD_FIELDS[k]); if (f) f.value = values[k]; } });
   if (has('appSourceAccess')) { const f = $('appSourceAccess'); if (f) { f.value = values.appSourceAccess; refreshEnhancedSelect(f); } }
   ['name', 'story', 'plan'].forEach(k => { if (has(k)) _awdType(_AWD_FIELDS[k], values[k]); });
@@ -17286,7 +17290,7 @@ function _awdAddNode(spec) {
   const spot = _awdNextSpot();
   const x = spec.x === undefined ? spot.x : spec.x;
   const y = spec.y === undefined ? spot.y : spec.y;
-  return _awdStep(() => _awdNode(addNode(type, x, y, spec.label, _awdCopy(spec.config))));
+  return _awdStep(() => { const node = addNode(type, x, y, spec.label, _awdCopy(spec.config)); return _awdWithCoerced(_awdNode(node), _awdNodeCoerced(node, spec.config)); });
 }
 function _awdSetText(method, id, text) {
   _awdText(method, text);
@@ -17322,7 +17326,7 @@ function _awdSetWorkflow(workflow) {
   const copy = _awdCopy(workflow);
   return _awdStep(() => {
     if (!deserializeWorkflow(copy, { context: 'restore' })) _awdFail('setWorkflow', 'the workflow was rejected: it needs a canvas whose nodes are all of a known type (' + Object.keys(NODE_DEFAULTS).join(', ') + ')');
-    return _awdSummary();
+    return _awdWithCoerced(_awdSummary(), _awdWorkflowCoerced(workflow));
   });
 }
 function _awdUpdateNode(id, patch) {
@@ -17338,7 +17342,7 @@ function _awdUpdateNode(id, patch) {
     }
     render();
     if (state.selectedId === id) updateConfig();
-    return _awdNode(node);
+    return _awdWithCoerced(_awdNode(node), _awdNodeCoerced(node, patch.config));
   });
 }
 function _awdNodeById(method, id) {
@@ -17440,15 +17444,22 @@ function _awdSetOptions(options) {
   });
   const memoryAfter = values.memoryEnabled !== undefined ? values.memoryEnabled : state.memoryEnabled;
   if (values.durableRecord === true && !memoryAfter) fail('durableRecord true needs memoryEnabled true (the record is a superset of memory)');
-  return _awdStep(() => { _awdApplySidebar(values); return _awdSummary(); });
+  return _awdApplyValuesStep(values);
 }
-const _AWD_NOT_IN_BATCH = ['batch', 'undo', 'redo'];
+// One undo step that applies sidebar values and reports what the app held differently afterwards.
+function _awdApplyValuesStep(values) {
+  return _awdStep(() => {
+    _awdApplySidebar(values);
+    return _awdWithCoerced(_awdSummary(), _awdCoerced(values, _awdPick(_awdCaptureSidebar(), Object.keys(values))));
+  });
+}
+const _AWD_NOT_IN_BATCH = ['batch', 'undo', 'redo', 'pushAgents', 'pushPrompts', 'importTeamSettings'];   // the last three write persisted storage a batch rollback cannot undo
 function _awdBatchError(index, tool, text) { return 'awd: batch: entry ' + index + ' (' + tool + ') failed: ' + text; }
 function _awdBatch(ops) {
   if (!Array.isArray(ops)) _awdFail('batch', 'ops must be an array of { tool, input }, got ' + _awdShow(ops));
   ops.forEach((op, i) => {
     const tool = _awdIsObject(op) ? op.tool : undefined;
-    if (typeof tool !== 'string' || !_awdCatalog().some(e => e.name === tool)) throw new Error(_awdBatchError(i, tool, 'unknown tool'));
+    if (typeof tool !== 'string' || !_awdMethods().some(e => e.name === tool)) throw new Error(_awdBatchError(i, tool, 'unknown tool'));
     if (_AWD_NOT_IN_BATCH.indexOf(tool) !== -1) throw new Error(_awdBatchError(i, tool, tool + ' cannot run inside a batch'));
   });
   return _awdStep(() => ops.map((op, i) => {
@@ -17457,11 +17468,172 @@ function _awdBatch(ops) {
   }));
 }
 
-// The catalog: one entry per method. describe() and WebMCP publish name, description, and
+// ── 1.1 additions: coercion report, vocabulary, Auto Workflow, sources, libraries ──
+// Additive: no method above changes shape, so the version stays "1"; describe() carries the new entries.
+// A coercion is a value the app applied differently from what the call asked (a trimmed or deduplicated
+// path list, a migrated node config). It rides the reply as `coerced: [{ key, requested, actual }]`,
+// present only when the list is not empty, so an existing caller sees the same shape as before.
+function _awdCoerced(requested, actual, prefix) {
+  const out = [];
+  Object.keys(requested).forEach(k => {
+    const r = requested[k], a = actual[k];
+    if (r === undefined) return;   // an undefined request leaves the key alone; nothing was coerced
+    if (JSON.stringify(r) !== JSON.stringify(a)) out.push({ key: (prefix || '') + k, requested: _awdCopy(r), actual: a === undefined ? null : _awdCopy(a) });
+  });
+  return out;
+}
+function _awdWithCoerced(result, coerced) { if (coerced.length) result.coerced = coerced; return result; }
+function _awdNodeCoerced(node, requestedConfig) {
+  return requestedConfig ? _awdCoerced(requestedConfig, node.config || {}, 'config.') : [];
+}
+function _awdWorkflowCoerced(requested) {
+  const nodes = requested && requested.canvas && Array.isArray(requested.canvas.nodes) ? requested.canvas.nodes : [];
+  const out = [];
+  nodes.forEach((n, i) => {
+    if (!n || typeof n !== 'object' || !_awdIsObject(n.config)) return;
+    const byId = typeof n.id === 'string';
+    const now = byId ? state.nodes.find(x => x.id === n.id) : state.nodes[i];   // deserializeWorkflow keeps the array order, so an id-less node is its position
+    const key = 'canvas.nodes.' + (byId ? n.id : i);
+    if (!now) { out.push({ key: key, requested: _awdCopy(n), actual: null }); return; }
+    out.push.apply(out, _awdCoerced(n.config, now.config || {}, key + '.config.'));
+  });
+  return out;
+}
+
+// catalog(): the vocabularies an agent needs to build a workflow without reading the source.
+function _awdAccessValues() { return Array.from(($('appSourceAccess') || { options: [] }).options || []).map(o => o.value); }
+function _awdVocabulary() {
+  return _awdCopy({
+    version: window.awd.version,
+    defaults: { model: state.defaultModel, effort: state.effort },   // the sidebar defaults a preset seeds its nodes with; configDefaults below are what addNode fills in for an omitted key
+    nodeTypes: Object.keys(NODE_DEFAULTS).map(id => ({ id: id, label: NODE_DEFAULTS[id].label, width: NODE_DEFAULTS[id].w, height: NODE_DEFAULTS[id].h, configDefaults: NODE_DEFAULTS[id].config })),
+    agentTypes: AGENT_TYPES.map(t => ({ id: t.id, name: t.name, description: t.desc, defaultTools: AGENT_TYPE_TOOL_DEFAULTS[t.id] || null })),
+    models: MODELS.map(m => ({ value: m.value, label: m.label, family: m.family })),
+    tools: ALL_TOOLS.map(name => ({ name: name, description: TOOL_TIPS[name] || '' })),
+    effortLevels: [''].concat(EFFORT_LEVELS),
+    depthLevels: [''].concat(DEPTH_LEVELS),
+    formats: Object.keys(EXPLAIN_FORMATS).map(id => ({ id: id, label: EXPLAIN_FORMATS[id] })),
+    writingStyles: WRITING_STYLES.map(w => ({ id: w.id, name: w.name, description: w.desc })),
+    inputSources: Object.keys(SOURCE_TIPS),
+    parallelStrategies: Object.keys(STRATEGY_TIPS),
+    deliveryFormats: ['default'].concat(DELIVERY_FORMATS),
+    branchingStrategies: BRANCHING_STRATEGIES,
+    integrationChoices: INTEGRATION_CHOICES,
+    evalHomes: ['record', 'file'],
+    evalAmbiguity: EVAL_AMBIGUITY_OPTIONS.map(o => ({ value: o.value, label: o.label })),
+    appSourceAccess: _awdAccessValues(),
+    options: _AWD_OPTION_KEYS,
+    sources: _AWD_SOURCE_KEYS,
+    presets: _awdListPresets()
+  });
+}
+
+// autoWorkflow(text): the Auto Workflow button, from the Requirements box or from the given text.
+function _awdAutoWorkflow(text) {
+  if (text !== undefined) _awdText('autoWorkflow', text);
+  const story = String(text !== undefined ? text : $('storyInput').value).trim();
+  if (!story) _awdFail('autoWorkflow', 'the Requirements box is empty; pass text, or call setRequirements first');
+  if (isUrlOnly(story)) _awdFail('autoWorkflow', 'the requirements are a URL only; Auto Workflow needs requirement text (load a preset for a ticket link)');
+  if (isJiraKeyOnly(story)) _awdFail('autoWorkflow', 'the requirements are a bare ticket key; pass the requirement text or the full ticket URL');
+  return _awdStep(() => { if (text !== undefined) _awdType('storyInput', text); generateFromStory(true); updatePrompt(); return _awdSummary(); });
+}
+
+// setSources({ ... }): what the run reads from. Every key and value is checked before any applies.
+const _AWD_SOURCE_KEYS = ['repositories', 'rulesPaths', 'productDocPaths', 'appSourcePath', 'appSourceBranch', 'appSourceAccess', 'uiContextNotes'];
+function _awdSetSources(sources) {
+  const fail = text => _awdFail('setSources', text);
+  if (!_awdIsObject(sources)) fail('expects an object of sources, got ' + _awdShow(sources));
+  const values = {};
+  const pathList = (k, v) => {   // the setOptions verifyPaths rule: trimmed, a duplicate is an error
+    if (!Array.isArray(v)) fail(k + ' must be an array of paths, got ' + _awdShow(v));
+    const seen = [];
+    v.forEach(x => {
+      if (typeof x !== 'string' || !x.trim()) fail(k + ' entry must be a non-empty string, got ' + _awdShow(x));
+      if (seen.indexOf(x.trim()) !== -1) fail(k + ' entry ' + _awdShow(x) + ' is a duplicate');
+      seen.push(x.trim());
+    });
+    return seen;
+  };
+  Object.keys(sources).forEach(k => {
+    const v = sources[k];
+    if (_AWD_SOURCE_KEYS.indexOf(k) === -1) fail('unknown source ' + _awdShow(k) + ' (one of ' + _AWD_SOURCE_KEYS.join(', ') + ')');
+    if (k === 'repositories') {
+      if (!Array.isArray(v)) fail('repositories must be an array of { path, branch }, got ' + _awdShow(v));
+      values[k] = v.map(r => {
+        if (!_awdIsObject(r) || typeof r.path !== 'string' || !r.path.trim()) fail('repositories entry must be { path, branch } with a non-empty path, got ' + _awdShow(r));
+        if (r.branch !== undefined && typeof r.branch !== 'string') fail('repositories entry branch must be a string, got ' + _awdShow(r.branch));
+        return { path: r.path.trim(), branch: (r.branch || '').trim() };
+      });
+    } else if (k === 'rulesPaths' || k === 'productDocPaths') values[k] = pathList(k, v);
+    else if (k === 'appSourceAccess') {
+      const allowed = _awdAccessValues();
+      if (allowed.indexOf(v) === -1) fail('unknown appSourceAccess ' + _awdShow(v) + ' (one of ' + allowed.join(', ') + ')');
+      values[k] = v;
+    } else { if (typeof v !== 'string') fail(k + ' must be a string, got ' + _awdShow(v)); values[k] = v; }
+  });
+  return _awdApplyValuesStep(values);
+}
+
+// Libraries: reads carry the namespace, pushes land in an org pack and never touch a user entry.
+function _awdAgentEntry(a) { return { id: a.id, name: a.name, source: a.source || 'user', pack: a.pack || '', version: a.version || '', updated: a.updated || '', config: a.config }; }
+function _awdListAgents() { return _awdCopy(getCustomAgents().map(_awdAgentEntry)); }
+function _awdListPrompts() { return _awdCopy(getCustomPrompts().map(x => ({ id: x.id, title: x.title, desc: x.desc || '', prompt: x.prompt, source: 'user' }))); }
+function _awdPushAgents(input) {
+  const fail = text => _awdFail('pushAgents', text);
+  if (!_awdIsObject(input)) fail('expects { pack, agents: [{ name, config, version }] }, got ' + _awdShow(input));
+  const pack = input.pack;
+  if (typeof pack !== 'string' || !pack.trim()) fail('pack must be a non-empty string (the org pack the agents land in), got ' + _awdShow(pack));
+  if (!Array.isArray(input.agents) || !input.agents.length) fail('agents must be a non-empty array of { name, config, version }, got ' + _awdShow(input.agents));
+  const agents = input.agents.map(a => {
+    if (!_awdIsObject(a) || typeof a.name !== 'string' || !a.name.trim()) fail('agents entry needs a non-empty name, got ' + _awdShow(a));
+    if (!_awdIsObject(a.config)) fail('agents entry ' + _awdShow(a.name) + ' needs a config object, got ' + _awdShow(a.config));
+    if (a.version !== undefined && typeof a.version !== 'string') fail('agents entry ' + _awdShow(a.name) + ' version must be a string, got ' + _awdShow(a.version));
+    _awdConfig('pushAgents', 'agent', a.config);
+    return { name: a.name.trim(), version: a.version || '', config: _awdCopy(a.config) };   // name, version, config only: a carried id or source cannot aim at a user entry or another pack
+  });
+  const result = mergeImportedAgents({ source: 'org', pack: pack.trim(), agents: agents });
+  rerenderAgentLib(); renderAgentPalette();
+  const ids = agents.map(a => newAgentId('org', a.name, pack.trim()));
+  const stored = getCustomAgents();
+  const coerced = [];
+  agents.forEach((a, i) => { const now = stored.find(x => x.id === ids[i]); if (now) coerced.push.apply(coerced, _awdCoerced(a.config, now.config || {}, 'agents.' + i + '.config.')); });   // normalizeAgentConfig fills and drops keys; say which
+  return _awdWithCoerced({ pack: pack.trim(), added: result.added, updated: result.updated, skipped: result.skipped, ids: ids }, coerced);
+}
+function _awdPushPrompts(prompts) {
+  const fail = text => _awdFail('pushPrompts', text);
+  if (!Array.isArray(prompts) || !prompts.length) fail('expects a non-empty array of { title, desc, prompt }, got ' + _awdShow(prompts));
+  const clean = prompts.map(x => {
+    if (!_awdIsObject(x) || typeof x.title !== 'string' || !x.title.trim()) fail('prompts entry needs a non-empty title, got ' + _awdShow(x));
+    if (typeof x.prompt !== 'string' || !x.prompt.trim()) fail('prompts entry ' + _awdShow(x.title) + ' needs a non-empty prompt, got ' + _awdShow(x.prompt));
+    if (x.desc !== undefined && typeof x.desc !== 'string') fail('prompts entry ' + _awdShow(x.title) + ' desc must be a string, got ' + _awdShow(x.desc));
+    return { title: x.title.trim(), desc: x.desc || '', prompt: x.prompt };
+  });
+  const have = new Set(getCustomPrompts().map(x => x.title));
+  const fresh = [], skipped = [];
+  clean.forEach(x => { if (have.has(x.title)) skipped.push(x.title); else { have.add(x.title); fresh.push(x); } });   // an existing title is never overwritten by a push
+  if (fresh.length) { mergeImportedPrompts({ prompts: fresh }); rerenderPromptLib(); }
+  const stored = getCustomPrompts();
+  const coerced = [];
+  fresh.forEach((x, i) => { const now = stored.find(y => y.title === x.title); if (now) coerced.push.apply(coerced, _awdCoerced({ desc: x.desc, prompt: x.prompt }, now, 'prompts.' + i + '.')); });
+  return _awdWithCoerced({ added: fresh.length, skipped: skipped }, coerced);
+}
+function _awdGetTeamSettings() { return _awdCopy(buildTeamSettings()); }
+function _awdImportTeamSettings(data) {
+  const fail = text => _awdFail('importTeamSettings', text);
+  if (!_awdIsObject(data)) fail('expects a team settings object (getTeamSettings returns one), got ' + _awdShow(data));
+  if (data.format !== TEAM_SETTINGS_FORMAT) fail('format must be ' + _awdShow(TEAM_SETTINGS_FORMAT) + ', got ' + _awdShow(data.format));
+  if (teamSettingsTooNew(data)) fail('version ' + data.version + ' is newer than this designer understands (1)');
+  const plan = planTeamSettingsImport(data);
+  const report = () => ({ adopted: plan.adopt.slice(), workflows: plan.workflows.length, agents: plan.agents.length, prompts: plan.prompts.length });
+  if (!teamImportTotal(plan)) return Object.assign(report(), { summary: _awdSummary() });   // nothing to adopt: no step (the Import menu says the same)
+  return _awdStep(() => { applyTeamSettingsImport(data, plan); return Object.assign(report(), { summary: _awdSummary() }); });
+}
+
+// The method registry: one entry per method. describe() and WebMCP publish name, description, and
 // inputSchema; args maps the one tool input object to the method's arguments.
-let _awdCatalogMemo = null;   // built from constants only, so once per page
-function _awdCatalog() { if (!_awdCatalogMemo) _awdCatalogMemo = _awdBuildCatalog(); return _awdCatalogMemo; }
-function _awdBuildCatalog() {
+let _awdMethodsMemo = null;   // built from constants only, so once per page
+function _awdMethods() { if (!_awdMethodsMemo) _awdMethodsMemo = _awdBuildMethods(); return _awdMethodsMemo; }
+function _awdBuildMethods() {
   const none = () => ({ type: 'object', properties: {} });
   const one = (key, schema) => ({ type: 'object', properties: { [key]: schema }, required: [key] });
   const nodeId = what => ({ type: 'string', description: 'The id of ' + what + ', as listNodes returns it.' });
@@ -17512,14 +17684,26 @@ function _awdBuildCatalog() {
       inputSchema: { type: 'object', properties: optionProps, additionalProperties: false }, args: i => [i] },
     { name: 'undo', description: 'Undo the last step (one facade call is one step). Returns the workflow summary.', inputSchema: none(), args: () => [] },
     { name: 'redo', description: 'Redo the last undone step. Returns the workflow summary.', inputSchema: none(), args: () => [] },
-    { name: 'batch', description: 'Run [{ tool, input }] entries in order as one undo step and return their results; when an entry throws, nothing from the batch stays applied.',
-      inputSchema: one('ops', { type: 'array', items: { type: 'object', properties: { tool: { type: 'string', description: 'A method name other than batch, undo, or redo.' }, input: { type: 'object' } }, required: ['tool'] } }), args: i => [i.ops] }
+    { name: 'catalog', description: 'Return the vocabularies: node types with config defaults, agent types with default tools, models, tools, effort and depth levels, formats, writing styles, input sources, parallel strategies, delivery formats, branching, eval options, option and source keys, presets.', inputSchema: none(), args: () => [] },
+    { name: 'autoWorkflow', description: 'Build a workflow from requirement text by intent (the Auto Workflow button): from the given text, else from the Requirements box. Replaces the canvas. Returns the workflow summary.', inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'Requirement text; when given it is written to the Requirements box first.' } } }, args: i => [i.text] },
+    { name: 'setSources', description: 'Set what the run reads from: repositories [{ path, branch }], rulesPaths, productDocPaths, appSourcePath, appSourceBranch, appSourceAccess, uiContextNotes. An unknown key or an invalid value applies nothing. Returns the workflow summary.',
+      inputSchema: { type: 'object', properties: { repositories: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, branch: { type: 'string' } }, required: ['path'] } }, rulesPaths: { type: 'array', items: { type: 'string' } }, productDocPaths: { type: 'array', items: { type: 'string' } }, appSourcePath: { type: 'string' }, appSourceBranch: { type: 'string' }, appSourceAccess: { type: 'string', description: 'One of the values catalog() lists under appSourceAccess.' }, uiContextNotes: { type: 'string' } }, additionalProperties: false }, args: i => [i] },
+    { name: 'listAgents', description: 'List the Agent Library as [{ id, name, source, pack, version, updated, config }]; source is user, org, or builtin.', inputSchema: none(), args: () => [] },
+    { name: 'listPrompts', description: 'List the user-authored Prompt Library as [{ id, title, desc, prompt, source }].', inputSchema: none(), args: () => [] },
+    { name: 'pushAgents', description: 'Add or update agents in an org pack of the Agent Library (never a user entry; a higher version updates, an equal or lower one is skipped). Returns { pack, added, updated, skipped, ids } plus coerced for config keys the library filled or dropped. Not an undo step and not allowed inside a batch: the library is persisted storage.',
+      inputSchema: { type: 'object', properties: { pack: { type: 'string', description: 'The org pack name the agents land in.' }, agents: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, version: { type: 'string' }, config: { type: 'object' } }, required: ['name', 'config'] } } }, required: ['pack', 'agents'] }, args: i => [i] },
+    { name: 'pushPrompts', description: 'Add prompts to the Prompt Library; an existing title is skipped, never overwritten. Returns { added, skipped: [titles] }. Not an undo step and not allowed inside a batch.',
+      inputSchema: one('prompts', { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, desc: { type: 'string' }, prompt: { type: 'string' } }, required: ['title', 'prompt'] } }), args: i => [i.prompts] },
+    { name: 'getTeamSettings', description: 'Return the team settings object the Export menu writes: settings, saved workflows, org and user agents, prompts.', inputSchema: none(), args: () => [] },
+    { name: 'importTeamSettings', description: 'Import a team settings object (format awd-team-settings) with the app rules: adopts only settings still at their defaults, adds workflows, agents and prompts that are not here yet, changes nothing a user already set. Returns { adopted, workflows, agents, prompts, summary }; the adopted settings are one undo step, the added library entries persist. Not allowed inside a batch.', inputSchema: one('settings', { type: 'object', description: 'A team settings object as getTeamSettings returns it.' }), args: i => [i.settings] },
+    { name: 'batch', description: 'Run [{ tool, input }] entries in order as one undo step and return their results; when an entry throws, nothing from the batch stays applied. Not allowed inside: batch, undo, redo, pushAgents, pushPrompts, importTeamSettings.',
+      inputSchema: one('ops', { type: 'array', items: { type: 'object', properties: { tool: { type: 'string', description: 'A method name other than batch, undo, redo, pushAgents, pushPrompts, or importTeamSettings.' }, input: { type: 'object' } }, required: ['tool'] } }), args: i => [i.ops] }
   ];
 }
 // One dispatcher for batch entries and WebMCP tools: the tool input object becomes the method arguments.
 // Both callers pass catalog names only (batch checks them first; WebMCP registers only catalog entries).
 function _awdInvoke(name, input) {
-  const entry = _awdCatalog().find(e => e.name === name);
+  const entry = _awdMethods().find(e => e.name === name);
   if (input === undefined || input === null) input = {};
   if (!_awdIsObject(input)) _awdFail(name, 'the tool input must be an object, got ' + _awdShow(input));
   return window.awd[name].apply(null, entry.args(input));
@@ -17534,7 +17718,7 @@ window.awd = {
   generate: _awdMethod('generate', _awdGenerate),
   explain: _awdMethod('explain', _awdExplain),
   validate: _awdMethod('validate', _awdWarnings),
-  describe: _awdMethod('describe', () => _awdCatalog().map(e => _awdCopy({ name: e.name, description: e.description, inputSchema: e.inputSchema }))),
+  describe: _awdMethod('describe', () => _awdMethods().map(e => _awdCopy({ name: e.name, description: e.description, inputSchema: e.inputSchema }))),
   newWorkflow: _awdMethod('newWorkflow', () => _awdStep(() => { clearCanvas(true); return _awdSummary(); })),
   loadPreset: _awdMethod('loadPreset', _awdLoadPreset),
   setWorkflow: _awdMethod('setWorkflow', _awdSetWorkflow),
@@ -17554,7 +17738,17 @@ window.awd = {
   setOptions: _awdMethod('setOptions', _awdSetOptions),
   undo: _awdMethod('undo', () => { undo(); return _awdSummary(); }),
   redo: _awdMethod('redo', () => { redo(); return _awdSummary(); }),
-  batch: _awdMethod('batch', _awdBatch)
+  batch: _awdMethod('batch', _awdBatch),
+  // 1.1 additions (additive; see describe())
+  catalog: _awdMethod('catalog', _awdVocabulary),
+  autoWorkflow: _awdMethod('autoWorkflow', _awdAutoWorkflow),
+  setSources: _awdMethod('setSources', _awdSetSources),
+  listAgents: _awdMethod('listAgents', _awdListAgents),
+  listPrompts: _awdMethod('listPrompts', _awdListPrompts),
+  pushAgents: _awdMethod('pushAgents', _awdPushAgents),
+  pushPrompts: _awdMethod('pushPrompts', _awdPushPrompts),
+  getTeamSettings: _awdMethod('getTeamSettings', _awdGetTeamSettings),
+  importTeamSettings: _awdMethod('importTeamSettings', _awdImportTeamSettings)
 };
 
 // WebMCP: every catalog entry becomes a tool when the page's model context offers registerTool

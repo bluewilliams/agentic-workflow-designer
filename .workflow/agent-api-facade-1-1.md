@@ -1,0 +1,31 @@
+# Agent API facade 1.1 (vocabulary, Auto Workflow, sources, libraries, coercions)
+
+Context: direct session, director-requested the same evening the facade landed (webmcp-and-mcp-facade), for a headless MCP bridge that boots the page and proxies the facade as tools. Branch: main. Status: current. Repo: agentic-workflow-designer.
+
+## Current behavior
+
+- `window.awd` gains nine methods, all additive (the version stays "1"; `describe()` and the WebMCP registration carry them): `catalog()` (every vocabulary an agent needs: node types with config defaults, agent types with default tools, models, tools with descriptions, effort and depth levels, formats, writing styles, input sources, parallel strategies, delivery formats, branching and integration choices, eval homes and ambiguity options, app-source access values, the option and source keys, presets), `autoWorkflow(text)` (the Auto Workflow button from the given text or the Requirements box; refuses an empty box, a URL-only paste, or a bare ticket key with an `awd:` error and no step), `setSources({ repositories, rulesPaths, productDocPaths, appSourcePath, appSourceBranch, appSourceAccess, uiContextNotes })` (all-or-nothing validation, applied through the sidebar's own handlers, path lists trimmed and deduplicated as the app stores them), `listAgents()` and `listPrompts()` (reads that carry the namespace), `pushAgents({ pack, agents })` (lands in the named org pack through mergeImportedAgents; entries travel as name, version, config only, so a carried id or source can never aim at a user entry; a higher version updates, an equal or lower one is skipped), `pushPrompts(prompts)` (an existing title is skipped and reported, never overwritten), `getTeamSettings()` (buildTeamSettings without the download) and `importTeamSettings(settings)` (planTeamSettingsImport plus applyTeamSettingsImport without the confirm: adopts only settings still at their defaults, adds only what is not here yet; nothing to adopt means no step).
+- Coercion report: `setOptions`, `setSources`, `addNode`, `updateNode` and `setWorkflow` replies carry `coerced: [{ key, requested, actual }]` when the app applied a value differently from the request (deduplicated paths, a node config key a migration dropped or changed). The key is absent when the list is empty, so every first-release shape is unchanged.
+- Undo: `autoWorkflow`, `setSources` and `importTeamSettings` are one undo step each (the sidebar values they change ride the step as the first release's setters do). Library pushes write persisted storage and are not undo steps; the catalog and the README say so.
+
+## Why and scope
+
+The first release covered the core verbs. A headless bridge that builds workflows for other people also needs the vocabularies (an unknown agent type is otherwise a guessing game), the repository and context sections a run reads from, a way to share agents and prompts across a team through a connection instead of a file drop, and honesty about silent changes (the bridge's own design asks for a requested-versus-applied report on every reply). Scope: the facade block only, plus tests, README, and this record. Non-goals: OpenSpec export through the facade (the durable record is the primary artifact; decided this evening), token estimate, the Explain report text, a parallel-group helper (addNode and connect build a fork).
+
+## Approach and decisions
+
+- Additive, not a version bump: nothing removed or reshaped; `describe()` is the discovery surface. A caller pinned to the first release sees identical replies.
+- Pushes reuse the app's merge rules rather than writing storage directly, so the namespace guarantees (an org pack never overwrites a user agent; a title is never clobbered) hold by construction. The team-settings path reuses the plan and apply functions, minus the confirm, so the facade and the Import menu agree on every rule.
+- Coercions are computed by comparing the request with what the app holds afterwards, key by key, instead of enumerating the app's migrations; a new migration is reported without a facade change.
+- `setSources` is its own method rather than more `setOptions` keys: the frozen eval pins the ten option keys, and the two groups read differently (how the run behaves versus what it reads from).
+
+## Verify
+
+- `./run-tests.sh`: 2143 -> 2155 (catalog matches the constants and is a copy; autoWorkflow builds as one step and refuses the three unbuildable inputs; setSources applies all seven through the sidebar, one step, all-or-nothing; coerced present only on a real change, including a setWorkflow migration; pushAgents namespace, version and no-step rules; pushPrompts skip rule; getTeamSettings marker and importTeamSettings adopt, add, undo and nothing-to-adopt behavior; describe and WebMCP carry the nine). The facade suite's method pin migrated deliberately from 28 to 37.
+- Content lint clean; no em or en dashes; the 110-output regression probe byte-identical to origin.
+
+## History
+
+- 2026-11-04 (late): house review round (code-review high, all findings) - 13 findings, 11 acted on: pushAgents, pushPrompts and importTeamSettings cannot run inside a batch (a rollback could not take persisted storage back); pins and the telemetry fields ride the undo step so a team import that adopts only them is a reversible step; setSources follows the setOptions path rule (trimmed, a duplicate is an error) so one rule holds across the facade; a requested undefined is never a coercion; an id-less setWorkflow node is keyed by its position; catalog() adds the sidebar defaults beside the per-type config defaults; the pushes report coerced config keys; one access-values helper and one apply-values step shared; the app importer and the facade share the version gate and the nothing-to-adopt total; the internal method registry renamed so catalog means one thing. No change needed: the title rule (rewritten and committed earlier this evening). 2151 -> 2155
+
+- 2026-11-04: created (by direct session) - nine methods, the coercion report, tests, README. One defect found by its own test and fixed before landing: setSources stored duplicate paths unnormalized where every app path setter deduplicates.
