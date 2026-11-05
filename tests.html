@@ -9473,29 +9473,60 @@ describe('Per-repository lanes', () => {
   });
 });
 
-// ─── Preset load never scroll-jacks the sidebar ────
-describe('Preset load leaves the sidebar where the user is', () => {
-  it('loading a preset selects no node and never scrolls to Node Configuration; a real selection still does', () => {
-    resetState();
+// ─── Selection never scroll-jacks the sidebar; a double-click reveals the settings ────
+describe('Selecting a node leaves the sidebar where the user is', () => {
+  function withScrollSpy(fn) {
     const panel = win.document.getElementById('configPanel');
     let scrolls = 0;
     const orig = panel.scrollIntoView;
     panel.scrollIntoView = () => { scrolls++; };
-    try {
+    try { fn(() => scrolls); } finally { panel.scrollIntoView = orig; resetState(); }
+  }
+  it('loading a preset and selecting a node fill the panel without scrolling to Node Configuration', () => {
+    resetState();
+    withScrollSpy(scrolls => {
       win.loadPreset('feature');
       expect(win.state.selectedId).toBe(null);
-      expect(scrolls).toBe(0);
-      win.loadPreset('bugfix');                       // switching presets stays put too
-      expect(win.state.selectedId).toBe(null);
-      expect(scrolls).toBe(0);
+      expect(scrolls()).toBe(0);
       const agent = win.state.nodes.find(n => n.type === 'agent');
-      win.selectNode(agent.id);                       // positive control: a genuine selection reveals the panel
+      win.selectNode(agent.id);
       expect(win.state.selectedId).toBe(agent.id);
-      expect(scrolls).toBe(1);
-    } finally {
-      panel.scrollIntoView = orig;
-      resetState();
-    }
+      expect(win.document.getElementById('configPanel').classList.contains('visible')).toBe(true);
+      expect(scrolls()).toBe(0);                                   // the click filled the panel and left the sidebar alone
+      const other = win.state.nodes.filter(n => n.type === 'agent')[1];
+      win.selectNode(other.id);
+      expect(scrolls()).toBe(0);                                   // a selection change does not scroll either
+    });
+  });
+  it('a double-click on a node reveals Node Configuration, expanding the section first, and selects the node when it was not selected', () => {
+    resetState();
+    withScrollSpy(scrolls => {
+      win.loadPreset('feature');
+      const agent = win.state.nodes.find(n => n.type === 'agent');
+      win.setSectionCollapsed('node-config', true);
+      const dbl = () => win.document.querySelector('.node-group[data-id="' + agent.id + '"]').dispatchEvent(new win.MouseEvent('dblclick', { bubbles: true, cancelable: true, view: win }));   // re-query: a reveal re-renders the canvas
+      dbl();
+      expect(win.state.selectedId).toBe(agent.id);
+      expect(win.sectionEl('node-config').classList.contains('collapsed')).toBe(false);
+      expect(scrolls()).toBe(1);
+      dbl();
+      expect(scrolls()).toBe(2);                                   // an explicit ask always reveals, selected or not
+      win.setMode('connect');
+      dbl();
+      expect(scrolls()).toBe(2);                                   // connect and delete modes keep the double-click inert
+      win.setMode('select');
+    });
+  });
+  it('selectNode reveals only when asked to', () => {
+    resetState();
+    withScrollSpy(scrolls => {
+      win.loadPreset('bugfix');
+      const agent = win.state.nodes.find(n => n.type === 'agent');
+      win.selectNode(agent.id, true, true);
+      expect(scrolls()).toBe(1);
+      win.revealNodeConfig(agent.id);
+      expect(scrolls()).toBe(2);
+    });
   });
 });
 

@@ -1017,7 +1017,7 @@ svg.canvas{width:100%;height:100%;display:block}
   </div>
 
   <div class="sidebar-section config-panel" id="configPanel" data-collapse-id="node-config">
-    <h3 title="The selected node's settings: role, model, tools (suggestions, never restrictions), prompt, turns, and Agent Context. Opens automatically when you select a node on the canvas.">Node Configuration</h3>
+    <h3 title="The selected node's settings: role, model, tools (suggestions, never restrictions), prompt, turns, and Agent Context. Fills when you select a node on the canvas; double-click the node to scroll it into view.">Node Configuration</h3>
     <div id="configFields"></div>
     <div class="btn-row mt">
       <button class="btn danger sm" onclick="deleteSelected()" title="Delete the selected node and its connections (Delete key works too)">Delete Node</button>
@@ -1028,7 +1028,7 @@ svg.canvas{width:100%;height:100%;display:block}
 <!-- Main Canvas -->
 <div class="main-area">
   <div class="toolbar">
-    <button aria-label="Select" class="btn sm active" id="modeSelect" onclick="setMode('select')" title="Select mode (1): click a node to select it, drag to move it">
+    <button aria-label="Select" class="btn sm active" id="modeSelect" onclick="setMode('select')" title="Select mode (1): click a node to select it, drag to move it, double-click to open its settings">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
       <span class="lbl">Select</span>
     </button>
@@ -6525,25 +6525,34 @@ function deleteConnection(id) {
   render();
 }
 
-function selectNode(id, skipRender) {
-  // Selecting a node must give visible feedback: the config panel sits far down the
-  // sidebar, so scroll it into view - but only on a genuine selection CHANGE (never on
-  // re-selects or drag-start of the already-selected node, which would scroll-jack).
+function selectNode(id, skipRender, reveal) {
+  // Selecting a node fills the config panel but never moves the sidebar: while a workflow is
+  // being laid out, every click used to scroll the sidebar down to Node Configuration, which
+  // scroll-jacked the person away from the section they were working in (director, 2026-11-05).
+  // The panel is revealed only on an explicit ask: a double-click on the node (the canvas
+  // handler passes reveal) or revealNodeConfig(id) from any other deliberate path.
   const changed = state.selectedId !== id;
   state.selectedId = id;
   if (!skipRender) render();
   updateConfig();
-  if (changed && id !== null && !_bulkBuild) {
-    // Auto-expand the Node Configuration section before revealing it, so a user who
-    // collapsed it still sees the fields on a genuine selection change (reveal-path guard).
-    expandSection('node-config');
-    const panel = $('configPanel');
-    if (panel && panel.classList.contains('visible') && panel.scrollIntoView) {
-      // Smooth for humans; instant when the test rig asks (__instantScroll, the __autoConfirm
-      // precedent - headless smooth-scroll flakes) or the user prefers reduced motion.
-      const _smoothOk = !window.__instantScroll && !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-      panel.scrollIntoView({ block: 'nearest', behavior: _smoothOk ? 'smooth' : 'auto' });
-    }
+  // A genuine selection change still auto-expands a collapsed Node Configuration (the fields
+  // must be visible when the person looks for them); only the scroll waits for the double-click.
+  if (changed && id !== null && !_bulkBuild) expandSection('node-config');
+  if (reveal && id !== null && !_bulkBuild) revealNodeConfig(id);
+  return changed;
+}
+// Scrolls Node Configuration into view for the given node, expanding the section first so a
+// person who collapsed it still sees the fields (reveal-path guard). Selects the node when it is
+// not the selection already.
+function revealNodeConfig(id) {
+  if (state.selectedId !== id) selectNode(id);
+  expandSection('node-config');
+  const panel = $('configPanel');
+  if (panel && panel.classList.contains('visible') && panel.scrollIntoView) {
+    // Smooth for humans; instant when the test rig asks (__instantScroll, the __autoConfirm
+    // precedent - headless smooth-scroll flakes) or the user prefers reduced motion.
+    const _smoothOk = !window.__instantScroll && !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+    panel.scrollIntoView({ block: 'nearest', behavior: _smoothOk ? 'smooth' : 'auto' });
   }
 }
 
@@ -7634,6 +7643,14 @@ wrap.addEventListener('wheel', e => {
 }, { passive: false });
 
 wrap.addEventListener('contextmenu', e => e.preventDefault());
+
+// Double-click a node: reveal its settings (the single click selects without moving the sidebar).
+wrap.addEventListener('dblclick', e => {
+  const target = e.target.closest('.node-group') || e.target.closest('.node-instance');
+  if (!target || state.mode !== 'select') return;
+  const node = state.nodes.find(n => n.id === target.dataset.id);
+  if (node) revealNodeConfig(node.id);
+});
 
 // Keyboard
 document.addEventListener('keydown', e => {
