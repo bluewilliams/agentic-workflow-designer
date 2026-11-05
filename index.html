@@ -1427,6 +1427,7 @@ svg.canvas{width:100%;height:100%;display:block}
 
 <h3>Team settings (share the shop)</h3>
 <p><strong>Export, Team settings</strong> writes one file with everything a team agrees on: the Defaults (Model, Effort, Delivery), the section pins, the repo context paths, the memory and MCP switches, the telemetry collector (endpoint, service, tags), plus every saved workflow, agent preset, and custom prompt. Machine-local values never travel: repository and app paths, and the telemetry user. A teammate brings it in through <strong>Import, From file</strong>. The import is adopt-only: a setting is taken only while it still sits at the app default, a workflow only when no saved workflow shares its slug (the saved name made file-safe), an agent as an org preset that can never replace a personal one, a prompt only when its title is new. The confirm names exactly what will be adopted and added, and nothing already set is changed. Commit the file to the team's fork, and every new install starts from the same place.</p>
+<p><strong>Agent API (window.awd)</strong>: an agent that reaches this page can build and read workflows through <code>window.awd</code>, a versioned facade over the designer's own actions (presets, nodes, edges, loops, sidebar options, the five generated formats), where each call is one undo step. When the browser offers WebMCP, the same methods are registered as tools. The README section "Agent API facade" lists every method.</p>
 <h3>Agent Library</h3>
 <p>Click the <strong>Agents</strong> button in the toolbar to open the Agent Library - reusable <em>agent presets</em>. Where the Prompt Library holds copy-paste text, an agent preset is a saved snapshot of an agent node's whole config (role, model, tools, prompt, and Agent Context) that you drop onto the canvas pre-wired. Build an agent that knows your API conventions once, reuse it in every workflow.</p>
 <p>Select an agent node on the canvas and click <strong>+ Save selected agent</strong> to save it (give it a name and an optional <em>version</em> you control). Saved agents are grouped by source - <strong>My Agents</strong> (yours, with Edit/Delete) and <strong>Org</strong> packs (shared, Add-only). Click <strong>Add to canvas</strong> to instantiate one as a normal agent node. Use the search box to filter by name once your library grows. <strong>Star</strong> an agent (the pin icon on its card) to add it to a <strong>Custom Agents</strong> group in the sidebar's <strong>Node &amp; Agent Palette</strong>, so your go-to agents are one click away while you build - works for your own agents and org ones alike, and the pin is your own preference (it survives org pack re-imports).</p>
@@ -17110,6 +17111,463 @@ function copyPrompt() {
   }).catch(() => showToast('Could not copy - check clipboard permissions'));
 }
 
+// === Agent API facade (window.awd) - REMOVABLE ===
+// One documented, versioned surface for agents (README, "Agent API facade"). Every method wraps the
+// app's own entry points. Removing this block and the awdRegisterWebMCP boot call at the end of INIT
+// removes the facade completely, the undo and redo rebinding below included.
+function _awdFail(method, text) { throw new Error('awd: ' + method + ': ' + text); }
+function _awdShow(value) { const s = JSON.stringify(value); return s === undefined ? String(value) : s; }
+function _awdCopy(value) { return value === undefined ? undefined : JSON.parse(JSON.stringify(value)); }
+function _awdIsObject(value) { return !!value && typeof value === 'object' && !Array.isArray(value); }
+function _awdPick(values, keys) { const out = {}; keys.forEach(k => { out[k] = values[k]; }); return out; }
+function _awdOrNull(value) { return value === undefined ? null : value; }
+function _awdNode(n) { return _awdCopy({ id: n.id, type: n.type, label: _awdOrNull(n.label), x: _awdOrNull(n.x), y: _awdOrNull(n.y), config: _awdOrNull(n.config) }); }
+function _awdConnection(c) { return _awdCopy({ id: c.id, from: c.from, to: c.to, label: _awdOrNull(c.label), fromPort: _awdOrNull(c.fromPort) }); }
+function _awdWarnings() { return validateWorkflow().map(w => ({ type: w.type, msg: String(w.msg) })); }
+function _awdSummary() {
+  return { name: getName(), slug: effectiveNameSlug(), preset: _awdOrNull(state.activePreset), nodes: state.nodes.length, connections: state.connections.length, warnings: _awdWarnings() };
+}
+
+// The values outside the canvas that a facade call can change and that the prompt or the summary
+// reads. A facade undo step carries the before-values of the ones its call changed.
+const _AWD_FIELDS = { name: 'workflowName', story: 'storyInput', plan: 'planInput', appSourcePath: 'appSourcePath', appSourceBranch: 'appSourceBranch', appSourceAccess: 'appSourceAccess', uiContextNotes: 'uiContextNotes' };
+const _AWD_STATE_KEYS = ['memoryEnabled', 'durableRecord', 'openSpecArtifacts', 'artifactPath', 'consumeRecords', 'approvePlan', 'clarifyFirst', 'defaultModel', 'effort', 'verifyPaths', 'verifyNotes',
+  'repositories', 'rulesPaths', 'productDocPaths', 'verifyFailRun', 'mcpAtlassian', 'mcpCodeSearch', 'mcpDatadog', 'mcpBrowser', 'mcpGithub', 'mcpCustom', 'defaultDelivery', 'defaultEvalHome', 'activePreset', 'exportFormat'];
+function _awdCaptureSidebar() {
+  const values = {};
+  _AWD_STATE_KEYS.forEach(k => { values[k] = _awdCopy(state[k]); });
+  Object.keys(_AWD_FIELDS).forEach(k => { const f = $(_AWD_FIELDS[k]); values[k] = f ? f.value : ''; });
+  return values;
+}
+function _awdChangedKeys(before) {
+  const now = _awdCaptureSidebar();
+  return Object.keys(before).filter(k => JSON.stringify(before[k]) !== JSON.stringify(now[k]));
+}
+// A text field set the way typing sets it: its input handlers run.
+function _awdType(id, text) {
+  const f = $(id);
+  f.value = text;
+  f.dispatchEvent(new Event('input', { bubbles: true }));
+}
+// Applies the given values through the sidebar's own handlers, so each control and the state agree.
+// Order matters: memory before the record (the record needs memory), the format last.
+function _awdApplySidebar(values) {
+  const has = k => Object.prototype.hasOwnProperty.call(values, k);
+  const check = (id, on) => { const t = $(id); if (t) t.checked = !!on; };
+  if (!Object.keys(values).length) return;
+  if (has('memoryEnabled')) { check('memoryToggle', values.memoryEnabled); toggleMemory(); }
+  if (has('durableRecord')) { check('durableRecordToggle', values.durableRecord); toggleDurableRecord(); }
+  if (has('openSpecArtifacts') || has('artifactPath')) {
+    if (has('openSpecArtifacts')) state.openSpecArtifacts = values.openSpecArtifacts;
+    if (has('artifactPath')) state.artifactPath = values.artifactPath;
+    syncDurableUI();
+  }
+  if (has('consumeRecords')) { check('consumeRecordsToggle', values.consumeRecords); toggleConsumeRecords(); }
+  if (has('approvePlan')) { check('approvePlanToggle', values.approvePlan); toggleApprovePlan(); }
+  if (has('clarifyFirst')) { check('clarifyFirstToggle', values.clarifyFirst); toggleClarifyFirst(); }
+  if (has('defaultModel')) setDefaultModel(values.defaultModel);
+  if (has('effort')) setEffort(values.effort);
+  if (has('verifyPaths')) { clearVerifyPaths(); (values.verifyPaths || []).forEach(p => addVerifyPath(p)); }
+  if (has('verifyNotes')) { const notes = $('verifyNotesInput'); if (notes) notes.value = values.verifyNotes || ''; setVerifyNotes(values.verifyNotes || ''); }
+  if (has('repositories')) { state.repositories = _awdCopy(values.repositories); renderRepoRows(); }
+  if (has('rulesPaths')) { state.rulesPaths = _awdCopy(values.rulesPaths); renderRulesRows(); }
+  if (has('productDocPaths')) { state.productDocPaths = _awdCopy(values.productDocPaths); renderProductDocRows(); }
+  if (has('verifyFailRun')) { state.verifyFailRun = values.verifyFailRun; check('verifyFailRunToggle', values.verifyFailRun); syncVerifyFailRunUI(); }
+  ['mcpAtlassian', 'mcpCodeSearch', 'mcpDatadog', 'mcpBrowser', 'mcpGithub'].forEach(k => { if (has(k)) { state[k] = values[k]; check(k + 'Toggle', values[k]); } });
+  if (has('mcpCustom')) { state.mcpCustom = values.mcpCustom; const notes = $('mcpCustomNotes'); if (notes) notes.value = values.mcpCustom || ''; }
+  if (has('defaultDelivery') || has('defaultEvalHome')) {
+    if (has('defaultDelivery')) state.defaultDelivery = _awdCopy(values.defaultDelivery);
+    if (has('defaultEvalHome')) state.defaultEvalHome = values.defaultEvalHome;
+    renderDefaultDelivery();
+  }
+  if (has('activePreset')) state.activePreset = values.activePreset;
+  ['appSourcePath', 'appSourceBranch', 'uiContextNotes'].forEach(k => { if (has(k)) { const f = $(_AWD_FIELDS[k]); if (f) f.value = values[k]; } });
+  if (has('appSourceAccess')) { const f = $('appSourceAccess'); if (f) { f.value = values.appSourceAccess; refreshEnhancedSelect(f); } }
+  ['name', 'story', 'plan'].forEach(k => { if (has(k)) _awdType(_AWD_FIELDS[k], values[k]); });
+  if (has('exportFormat')) setExportFormat(values.exportFormat);
+  savePrefsDebounced();
+  render();
+}
+
+// One facade call is one undo step. The app's own pushUndo calls inside fn are suppressed, and the
+// step pushes one canvas snapshot only when something changed; it carries the before-values of
+// the sidebar keys the call changed. A nested step (a batch entry) pushes nothing. A call that
+// throws after a change is rolled back. The finally also repairs loadPreset, which ends with an
+// unconditional `_undoBatch = false`.
+function _awdSignature() { return JSON.stringify([_snapshotState(), _awdCaptureSidebar()]); }
+function _awdStep(fn) {
+  const canvas = _snapshotState();
+  const side = _awdCaptureSidebar();
+  const signature = JSON.stringify([canvas, side]);
+  const was = _undoBatch;
+  _undoBatch = true;
+  let result;
+  try {
+    result = fn();
+  } catch (e) {
+    _undoBatch = was;
+    if (_awdSignature() !== signature) _awdRollback(canvas, side);
+    throw e;
+  } finally {
+    _undoBatch = was;
+  }
+  if (!was && _awdSignature() !== signature) {
+    const changed = _awdChangedKeys(side);
+    if (changed.length) canvas.awdSide = _awdPick(side, changed);
+    pushUndo(canvas);
+  }
+  return result;
+}
+// Restores the state before a failed call and leaves both stacks as they were (pushUndo would
+// clear the redo stack, so the snapshot goes onto the undo stack directly).
+function _awdRollback(canvas, side) {
+  _undoStack.push(canvas);
+  _awdAppUndo();
+  _redoStack.pop();
+  const changed = _awdChangedKeys(side);
+  if (changed.length) _awdApplySidebar(_awdPick(side, changed));
+}
+// The toolbar buttons, the keyboard shortcuts, and awd.undo/awd.redo all call the global undo and
+// redo by name, so rebinding them here lets every path restore the sidebar values a facade step
+// carries. A step without them (every step the UI pushes) runs the app's function alone.
+const _awdAppUndo = undo, _awdAppRedo = redo;
+function _awdMove(from, to, original) {
+  const top = from[from.length - 1];
+  const side = top && top.awdSide;
+  if (!side) return original();
+  const now = _awdPick(_awdCaptureSidebar(), Object.keys(side));
+  original();
+  to[to.length - 1].awdSide = now;
+  _awdApplySidebar(side);
+}
+undo = function () { return _awdMove(_undoStack, _redoStack, _awdAppUndo); };
+redo = function () { return _awdMove(_redoStack, _undoStack, _awdAppRedo); };
+
+// Every error a method lets out starts with "awd:", so an agent can repair its call.
+function _awdMethod(name, fn) {
+  return function () {
+    try {
+      return fn.apply(null, arguments);
+    } catch (e) {
+      if (e instanceof Error && String(e.message).indexOf('awd:') === 0) throw e;
+      throw new Error('awd: ' + name + ': ' + (e && e.message ? e.message : String(e)), { cause: e });
+    }
+  };
+}
+function _awdText(method, text) { if (typeof text !== 'string') _awdFail(method, 'text must be a string, got ' + _awdShow(text)); }
+function _awdLabel(method, label) { if (label !== undefined && typeof label !== 'string') _awdFail(method, 'label must be a string, got ' + _awdShow(label)); }
+function _awdConfig(method, type, config) {
+  if (config === undefined) return;
+  if (!_awdIsObject(config)) _awdFail(method, 'config must be an object, got ' + _awdShow(config));
+  if (type !== 'agent') return;
+  if (config.agentType !== undefined && !AGENT_TYPES.some(t => t.id === config.agentType)) _awdFail(method, 'unknown agentType ' + _awdShow(config.agentType) + ' (one of ' + AGENT_TYPES.map(t => t.id).join(', ') + ')');
+  if (config.model !== undefined && !MODELS.some(m => m.value === config.model)) _awdFail(method, 'unknown model ' + _awdShow(config.model) + ' (one of ' + MODELS.map(m => m.value).join(', ') + ')');
+}
+// Right of the rightmost node, level with it; the presets' first spot on an empty canvas.
+function _awdNextSpot() {
+  if (!state.nodes.length) return { x: 80, y: 250 };
+  const right = state.nodes.reduce((a, n) => (n.x + n.w > a.x + a.w ? n : a));
+  return { x: right.x + right.w + 80, y: right.y };
+}
+function _awdAddNode(spec) {
+  if (!_awdIsObject(spec)) _awdFail('addNode', 'expects { type, label, x, y, config }, got ' + _awdShow(spec));
+  const type = spec.type;
+  if (typeof type !== 'string' || !Object.prototype.hasOwnProperty.call(NODE_DEFAULTS, type)) _awdFail('addNode', 'unknown type ' + _awdShow(type) + ' (one of ' + Object.keys(NODE_DEFAULTS).join(', ') + ')');
+  _awdLabel('addNode', spec.label);
+  ['x', 'y'].forEach(k => { if (spec[k] !== undefined && !(typeof spec[k] === 'number' && isFinite(spec[k]))) _awdFail('addNode', k + ' must be a finite number, got ' + _awdShow(spec[k])); });
+  _awdConfig('addNode', type, spec.config);
+  const spot = _awdNextSpot();
+  const x = spec.x === undefined ? spot.x : spec.x;
+  const y = spec.y === undefined ? spot.y : spec.y;
+  return _awdStep(() => _awdNode(addNode(type, x, y, spec.label, _awdCopy(spec.config))));
+}
+function _awdSetText(method, id, text) {
+  _awdText(method, text);
+  return _awdStep(() => { _awdType(id, text); updatePrompt(); return _awdSummary(); });
+}
+function _awdFormat(method, format) {
+  if (typeof format !== 'string' || !Object.prototype.hasOwnProperty.call(EXPLAIN_FORMATS, format)) _awdFail(method, 'unknown format ' + _awdShow(format) + ' (one of ' + Object.keys(EXPLAIN_FORMATS).join(', ') + ')');
+}
+function _awdListPresets() {
+  return Array.from(document.querySelectorAll('.preset-item[data-preset]')).map(p => {
+    const text = sel => { const e = p.querySelector(sel); return e ? e.textContent.trim() : ''; };
+    return { id: p.dataset.preset, name: text('.preset-name'), description: text('.preset-desc') };
+  });
+}
+// The text the Copy button ships for a format, read with the format swapped in and out again:
+// setExportFormat would move the tab, render, and save the preference.
+function _awdGenerate(format) {
+  _awdFormat('generate', format);
+  const shown = state.exportFormat;
+  state.exportFormat = format;
+  try { return getActivePromptText(); } finally { state.exportFormat = shown; }
+}
+function _awdExplain(format) {
+  _awdFormat('explain', format);
+  return explainWorkflow(format).map(r => ({ part: _awdOrNull(r.part), status: _awdOrNull(r.status), reason: _awdOrNull(r.reason), snippet: _awdOrNull(r.snippet) }));
+}
+function _awdLoadPreset(id) {
+  if (!_awdListPresets().some(p => p.id === id)) _awdFail('loadPreset', 'unknown preset id ' + _awdShow(id) + ' (one of ' + _awdListPresets().map(p => p.id).join(', ') + ')');
+  return _awdStep(() => { loadPreset(id, true); return _awdSummary(); });
+}
+function _awdSetWorkflow(workflow) {
+  if (!_awdIsObject(workflow)) _awdFail('setWorkflow', 'expects a workflow object as getWorkflow returns it, got ' + _awdShow(workflow));
+  const copy = _awdCopy(workflow);
+  return _awdStep(() => {
+    if (!deserializeWorkflow(copy, { context: 'restore' })) _awdFail('setWorkflow', 'the workflow was rejected: it needs a canvas whose nodes are all of a known type (' + Object.keys(NODE_DEFAULTS).join(', ') + ')');
+    return _awdSummary();
+  });
+}
+function _awdUpdateNode(id, patch) {
+  const node = _awdNodeById('updateNode', id);
+  if (!_awdIsObject(patch)) _awdFail('updateNode', 'expects a patch { label, config }, got ' + _awdShow(patch));
+  _awdLabel('updateNode', patch.label);
+  _awdConfig('updateNode', node.type, patch.config);
+  return _awdStep(() => {
+    if (patch.label !== undefined) node.label = patch.label;
+    if (patch.config !== undefined) {
+      node.config = { ...node.config, ..._awdCopy(patch.config) };   // spread, as addNode builds a config: a parsed own __proto__ key stays a plain key
+      if (Array.isArray(node.config.tools)) node.config.tools = node.config.tools.slice();
+    }
+    render();
+    if (state.selectedId === id) updateConfig();
+    return _awdNode(node);
+  });
+}
+function _awdNodeById(method, id) {
+  const node = typeof id === 'string' ? state.nodes.find(n => n.id === id) : null;
+  if (!node) _awdFail(method, 'unknown node id ' + _awdShow(id));
+  return node;
+}
+function _awdConnect(from, to, label) {
+  _awdNodeById('connect', from);
+  _awdNodeById('connect', to);
+  if (from === to) _awdFail('connect', 'from and to are the same node ' + _awdShow(from));
+  _awdLabel('connect', label);
+  const existing = state.connections.find(c => c.from === from && c.to === to);
+  if (existing) return _awdConnection(existing);
+  return _awdStep(() => _awdConnection(addConnection(from, to, label)));
+}
+function _awdDisconnect(from, to) {
+  const edge = state.connections.find(c => c.from === from && c.to === to);
+  if (!edge) _awdFail('disconnect', 'no edge from ' + _awdShow(from) + ' to ' + _awdShow(to));
+  return _awdStep(() => { deleteConnection(edge.id); return _awdSummary(); });
+}
+// The Input that anchors the run: one with edges, else the only one.
+function _awdAddEval() {
+  const inputs = state.nodes.filter(n => n.type === 'input');
+  if (!inputs.length) _awdFail('addEval', 'the canvas has no Input node to anchor the eval on');
+  const authors = evalAuthorsOnCanvas();
+  if (authors.length) _awdFail('addEval', 'an Eval Author already exists (' + _awdShow(authors[0].id) + ')');
+  const anchor = inputs.find(i => state.connections.some(c => c.from === i.id || c.to === i.id)) || (inputs.length === 1 ? inputs[0] : null);
+  if (!anchor) _awdFail('addEval', 'no Input has edges, and there are ' + inputs.length + ' Inputs to choose from');
+  return _awdStep(() => { addPreRegisteredEval(anchor.id); return _awdNode(evalAuthorsOnCanvas()[0]); });
+}
+function _awdRemoveEval() {
+  if (!evalAuthorsOnCanvas().length) _awdFail('removeEval', 'the canvas has no Eval Author');
+  return _awdStep(() => { removePreRegisteredEval(); return _awdSummary(); });
+}
+function _awdLoopTarget(method, nodeId) {
+  const node = _awdNodeById(method, nodeId);
+  if (!canAttachReviewLoop(node)) _awdFail(method, 'node ' + _awdShow(nodeId) + ' cannot take a loop (only an Agent or Task that is not itself a Skeptic or Verifier can)');
+  if (hasReviewLoop(nodeId)) _awdFail(method, 'node ' + _awdShow(nodeId) + ' already has a loop');
+}
+function _awdLoopGate(targetId) { return state.nodes.find(n => n.type === 'decision' && n.config && n.config.reviewLoopDecisionFor === targetId); }
+function _awdAttachVerifier(nodeId) {
+  _awdLoopTarget('attachVerifier', nodeId);
+  return _awdStep(() => {
+    const route = attachVerifierLoop(nodeId);
+    const verifier = state.nodes.find(n => n.config && n.config.reviewLoopFor === nodeId && n.config.reviewLoopKind === 'verifier');
+    return { verifier: _awdNode(verifier), gate: _awdNode(_awdLoopGate(nodeId)), routeBack: _awdNode(state.nodes.find(n => n.id === route)) };
+  });
+}
+function _awdAttachSkeptic(nodeId) {
+  _awdLoopTarget('attachSkeptic', nodeId);
+  return _awdStep(() => {
+    attachReviewLoop(nodeId, 'adversary');
+    return { skeptic: _awdNode(getReviewLoop(nodeId).node), gate: _awdNode(_awdLoopGate(nodeId)) };
+  });
+}
+function _awdDetachLoop(nodeId) {
+  _awdNodeById('detachLoop', nodeId);
+  if (!hasReviewLoop(nodeId)) _awdFail('detachLoop', 'node ' + _awdShow(nodeId) + ' has no loop');
+  return _awdStep(() => { detachReviewLoop(nodeId); return _awdSummary(); });
+}
+const _AWD_SWITCHES = ['memoryEnabled', 'durableRecord', 'consumeRecords', 'approvePlan', 'clarifyFirst'];
+const _AWD_OPTION_KEYS = ['exportFormat'].concat(_AWD_SWITCHES, ['defaultModel', 'effort', 'verifyPaths', 'verifyNotes']);
+// Every key and value is checked before any applies, so a bad call changes nothing.
+function _awdSetOptions(options) {
+  const fail = text => _awdFail('setOptions', text);
+  if (!_awdIsObject(options)) fail('expects an object of options, got ' + _awdShow(options));
+  const values = {};
+  Object.keys(options).forEach(k => {
+    const v = options[k];
+    if (_AWD_OPTION_KEYS.indexOf(k) === -1) fail('unknown option ' + _awdShow(k) + ' (one of ' + _AWD_OPTION_KEYS.join(', ') + ')');
+    if (k === 'exportFormat') _awdFormat('setOptions', v);
+    else if (_AWD_SWITCHES.indexOf(k) !== -1) { if (typeof v !== 'boolean') fail(k + ' must be true or false, got ' + _awdShow(v)); }
+    else if (k === 'defaultModel') { if (!MODELS.some(m => m.value === v)) fail('unknown defaultModel ' + _awdShow(v) + ' (one of ' + MODELS.map(m => m.value).join(', ') + ')'); }
+    else if (k === 'effort') { if (v !== '' && EFFORT_LEVELS.indexOf(v) === -1) fail('unknown effort ' + _awdShow(v) + ' (one of "", ' + EFFORT_LEVELS.join(', ') + ')'); }
+    else if (k === 'verifyNotes') { if (typeof v !== 'string') fail('verifyNotes must be a string, got ' + _awdShow(v)); }
+    else if (k === 'verifyPaths') {
+      if (!Array.isArray(v)) fail('verifyPaths must be an array of paths, got ' + _awdShow(v));
+      const seen = [];
+      v.forEach(p => {
+        if (typeof p !== 'string' || !p.trim()) fail('verifyPaths entry must be a non-empty string, got ' + _awdShow(p));
+        if (seen.indexOf(p.trim()) !== -1) fail('verifyPaths entry ' + _awdShow(p) + ' is a duplicate');
+        seen.push(p.trim());
+      });
+      values[k] = seen;
+      return;
+    }
+    values[k] = v;
+  });
+  const memoryAfter = values.memoryEnabled !== undefined ? values.memoryEnabled : state.memoryEnabled;
+  if (values.durableRecord === true && !memoryAfter) fail('durableRecord true needs memoryEnabled true (the record is a superset of memory)');
+  return _awdStep(() => { _awdApplySidebar(values); return _awdSummary(); });
+}
+const _AWD_NOT_IN_BATCH = ['batch', 'undo', 'redo'];
+function _awdBatchError(index, tool, text) { return 'awd: batch: entry ' + index + ' (' + tool + ') failed: ' + text; }
+function _awdBatch(ops) {
+  if (!Array.isArray(ops)) _awdFail('batch', 'ops must be an array of { tool, input }, got ' + _awdShow(ops));
+  ops.forEach((op, i) => {
+    const tool = _awdIsObject(op) ? op.tool : undefined;
+    if (typeof tool !== 'string' || !_awdCatalog().some(e => e.name === tool)) throw new Error(_awdBatchError(i, tool, 'unknown tool'));
+    if (_AWD_NOT_IN_BATCH.indexOf(tool) !== -1) throw new Error(_awdBatchError(i, tool, tool + ' cannot run inside a batch'));
+  });
+  return _awdStep(() => ops.map((op, i) => {
+    try { return _awdInvoke(op.tool, op.input); }
+    catch (e) { throw new Error(_awdBatchError(i, op.tool, String(e && e.message || e).replace(/^awd: /, '')), { cause: e }); }
+  }));
+}
+
+// The catalog: one entry per method. describe() and WebMCP publish name, description, and
+// inputSchema; args maps the one tool input object to the method's arguments.
+function _awdCatalog() {
+  const none = () => ({ type: 'object', properties: {} });
+  const one = (key, schema) => ({ type: 'object', properties: { [key]: schema }, required: [key] });
+  const nodeId = what => ({ type: 'string', description: 'The id of ' + what + ', as listNodes returns it.' });
+  const format = { type: 'string', enum: Object.keys(EXPLAIN_FORMATS), description: 'The export format.' };
+  const text = what => one('text', { type: 'string', description: what });
+  const nodeFields = {
+    label: { type: 'string', description: 'The node label.' },
+    config: { type: 'object', description: 'Node config. For an agent: agentType (an agent type id), model (a model value), tools (suggested tool names), prompt, notes, maxTurns. Omitted keys take the node type defaults.' }
+  };
+  const optionProps = {
+    exportFormat: format,
+    memoryEnabled: { type: 'boolean' }, durableRecord: { type: 'boolean', description: 'Needs memoryEnabled true.' }, consumeRecords: { type: 'boolean' }, approvePlan: { type: 'boolean' }, clarifyFirst: { type: 'boolean' },
+    defaultModel: { type: 'string', enum: MODELS.map(m => m.value) },
+    effort: { type: 'string', enum: [''].concat(EFFORT_LEVELS) },
+    verifyPaths: { type: 'array', items: { type: 'string' }, description: 'Replaces the verification paths.' },
+    verifyNotes: { type: 'string' }
+  };
+  return [
+    { name: 'listPresets', description: 'List the presets the sidebar offers, in sidebar order, as [{ id, name, description }].', inputSchema: none(), args: () => [] },
+    { name: 'getWorkflow', description: 'Return the versioned workflow JSON (the object Export writes and setWorkflow restores).', inputSchema: none(), args: () => [] },
+    { name: 'listNodes', description: 'List every node as { id, type, label, x, y, config }.', inputSchema: none(), args: () => [] },
+    { name: 'listConnections', description: 'List every edge as { id, from, to, label, fromPort }.', inputSchema: none(), args: () => [] },
+    { name: 'generate', description: 'Return the generated text for a format exactly as Copy ships it ("" with no nodes). Changes nothing, not even the format the UI shows.', inputSchema: one('format', format), args: i => [i.format] },
+    { name: 'explain', description: 'Return the Explain rows for a format as [{ part, status, reason, snippet }].', inputSchema: one('format', format), args: i => [i.format] },
+    { name: 'validate', description: 'Return the Workflow Review warnings as [{ type, msg }] ([] when the Review is clean).', inputSchema: none(), args: () => [] },
+    { name: 'describe', description: 'Return this catalog: one { name, description, inputSchema } entry per method.', inputSchema: none(), args: () => [] },
+    { name: 'newWorkflow', description: 'Clear the canvas and the unpinned sidebar sections without a confirm dialog. Returns the workflow summary.', inputSchema: none(), args: () => [] },
+    { name: 'loadPreset', description: 'Load a preset by id (see listPresets) without a confirm dialog. Returns the workflow summary.', inputSchema: one('id', { type: 'string', description: 'A preset id.' }), args: i => [i.id] },
+    { name: 'setWorkflow', description: 'Restore a workflow object of the shape getWorkflow returns. Returns the workflow summary.', inputSchema: one('workflow', { type: 'object', description: 'A workflow object as getWorkflow returns it.' }), args: i => [i.workflow] },
+    { name: 'addNode', description: 'Add a node; without x and y it goes right of the rightmost node. Returns the node summary with its new id.',
+      inputSchema: { type: 'object', properties: Object.assign({ type: { type: 'string', enum: Object.keys(NODE_DEFAULTS) } }, nodeFields, { x: { type: 'number' }, y: { type: 'number' } }), required: ['type'] }, args: i => [i] },
+    { name: 'updateNode', description: 'Merge a label and a config patch into a node, with the addNode checks. Returns the node summary.',
+      inputSchema: { type: 'object', properties: Object.assign({ id: nodeId('the node') }, nodeFields), required: ['id'] }, args: i => [i.id, _awdPick(i, ['label', 'config'].filter(k => i[k] !== undefined))] },
+    { name: 'deleteNode', description: 'Remove a node and its edges. Returns the workflow summary.', inputSchema: one('id', nodeId('the node')), args: i => [i.id] },
+    { name: 'connect', description: 'Add an edge from one node to another (an existing edge is returned unchanged). Returns the connection summary.',
+      inputSchema: { type: 'object', properties: { from: nodeId('the source node'), to: nodeId('the target node'), label: { type: 'string', description: 'The edge label, for example a Decision branch.' } }, required: ['from', 'to'] }, args: i => [i.from, i.to, i.label] },
+    { name: 'disconnect', description: 'Remove the edge from one node to another. Returns the workflow summary.',
+      inputSchema: { type: 'object', properties: { from: nodeId('the source node'), to: nodeId('the target node') }, required: ['from', 'to'] }, args: i => [i.from, i.to] },
+    { name: 'addEval', description: 'Add the pre-registered eval on the Input that anchors the run. Returns the Eval Author node summary.', inputSchema: none(), args: () => [] },
+    { name: 'removeEval', description: 'Remove the pre-registered eval. Returns the workflow summary.', inputSchema: none(), args: () => [] },
+    { name: 'attachVerifier', description: 'Attach a Verifier loop to a step with the route-back rule. Returns { verifier, gate, routeBack } as node summaries.', inputSchema: one('nodeId', nodeId('an Agent or Task step')), args: i => [i.nodeId] },
+    { name: 'attachSkeptic', description: 'Attach a Skeptic loop to a step. Returns { skeptic, gate } as node summaries.', inputSchema: one('nodeId', nodeId('an Agent or Task step')), args: i => [i.nodeId] },
+    { name: 'detachLoop', description: 'Remove the Skeptic or Verifier loop on a step. Returns the workflow summary.', inputSchema: one('nodeId', nodeId('the step that has the loop')), args: i => [i.nodeId] },
+    { name: 'setRequirements', description: 'Set the Requirements box as typing would. Returns the workflow summary.', inputSchema: text('The requirements text.'), args: i => [i.text] },
+    { name: 'setContext', description: 'Set the Workflow Context box as typing would. Returns the workflow summary.', inputSchema: text('The workflow context text.'), args: i => [i.text] },
+    { name: 'setName', description: 'Set the workflow name as typing would. Returns the workflow summary.', inputSchema: text('The workflow name.'), args: i => [i.text] },
+    { name: 'setOptions', description: 'Set sidebar options through their own handlers; an unknown key or an invalid value applies nothing. Returns the workflow summary.',
+      inputSchema: { type: 'object', properties: optionProps, additionalProperties: false }, args: i => [i] },
+    { name: 'undo', description: 'Undo the last step (one facade call is one step). Returns the workflow summary.', inputSchema: none(), args: () => [] },
+    { name: 'redo', description: 'Redo the last undone step. Returns the workflow summary.', inputSchema: none(), args: () => [] },
+    { name: 'batch', description: 'Run [{ tool, input }] entries in order as one undo step and return their results; when an entry throws, nothing from the batch stays applied.',
+      inputSchema: one('ops', { type: 'array', items: { type: 'object', properties: { tool: { type: 'string', description: 'A method name other than batch, undo, or redo.' }, input: { type: 'object' } }, required: ['tool'] } }), args: i => [i.ops] }
+  ];
+}
+// One dispatcher for batch entries and WebMCP tools: the tool input object becomes the method arguments.
+// Both callers pass catalog names only (batch checks them first; WebMCP registers only catalog entries).
+function _awdInvoke(name, input) {
+  const entry = _awdCatalog().find(e => e.name === name);
+  if (input === undefined || input === null) input = {};
+  if (!_awdIsObject(input)) _awdFail(name, 'the tool input must be an object, got ' + _awdShow(input));
+  return window.awd[name].apply(null, entry.args(input));
+}
+
+window.awd = {
+  version: '1',
+  listPresets: _awdMethod('listPresets', _awdListPresets),
+  getWorkflow: _awdMethod('getWorkflow', () => _awdCopy(serializeWorkflow())),
+  listNodes: _awdMethod('listNodes', () => state.nodes.map(_awdNode)),
+  listConnections: _awdMethod('listConnections', () => state.connections.map(_awdConnection)),
+  generate: _awdMethod('generate', _awdGenerate),
+  explain: _awdMethod('explain', _awdExplain),
+  validate: _awdMethod('validate', _awdWarnings),
+  describe: _awdMethod('describe', () => _awdCatalog().map(e => _awdCopy({ name: e.name, description: e.description, inputSchema: e.inputSchema }))),
+  newWorkflow: _awdMethod('newWorkflow', () => _awdStep(() => { clearCanvas(true); return _awdSummary(); })),
+  loadPreset: _awdMethod('loadPreset', _awdLoadPreset),
+  setWorkflow: _awdMethod('setWorkflow', _awdSetWorkflow),
+  addNode: _awdMethod('addNode', _awdAddNode),
+  updateNode: _awdMethod('updateNode', _awdUpdateNode),
+  deleteNode: _awdMethod('deleteNode', id => { _awdNodeById('deleteNode', id); return _awdStep(() => { deleteNode(id); return _awdSummary(); }); }),
+  connect: _awdMethod('connect', _awdConnect),
+  disconnect: _awdMethod('disconnect', _awdDisconnect),
+  addEval: _awdMethod('addEval', _awdAddEval),
+  removeEval: _awdMethod('removeEval', _awdRemoveEval),
+  attachVerifier: _awdMethod('attachVerifier', _awdAttachVerifier),
+  attachSkeptic: _awdMethod('attachSkeptic', _awdAttachSkeptic),
+  detachLoop: _awdMethod('detachLoop', _awdDetachLoop),
+  setRequirements: _awdMethod('setRequirements', text => _awdSetText('setRequirements', 'storyInput', text)),
+  setContext: _awdMethod('setContext', text => _awdSetText('setContext', 'planInput', text)),
+  setName: _awdMethod('setName', text => _awdSetText('setName', 'workflowName', text)),
+  setOptions: _awdMethod('setOptions', _awdSetOptions),
+  undo: _awdMethod('undo', () => { undo(); return _awdSummary(); }),
+  redo: _awdMethod('redo', () => { redo(); return _awdSummary(); }),
+  batch: _awdMethod('batch', _awdBatch)
+};
+
+// WebMCP: every catalog entry becomes a tool when the page's model context offers registerTool
+// (or, failing that, provideContext). The context is a parameter so a caller can pass any object.
+function _awdToolResult(name, input) {
+  try {
+    const result = _awdInvoke(name, input);
+    return { content: [{ type: 'text', text: JSON.stringify(result === undefined ? null : result) }] };
+  } catch (e) {
+    return { content: [{ type: 'text', text: String(e && e.message || e) }], isError: true };
+  }
+}
+function awdRegisterWebMCP(context) {
+  if (!context) return;
+  const register = typeof context.registerTool === 'function';
+  if (!register && typeof context.provideContext !== 'function') return;
+  const warn = e => console.warn('awd: WebMCP registration failed: ' + (e && e.message || e));
+  try {
+    const tools = window.awd.describe().map(e => ({ name: e.name, description: e.description, inputSchema: e.inputSchema, execute: input => _awdToolResult(e.name, input) }));
+    const settle = r => { if (r && typeof r.catch === 'function') r.catch(warn); };
+    if (register) tools.forEach(t => { try { settle(context.registerTool(t)); } catch (e) { warn(e); } });   // one refused tool does not drop the rest
+    else settle(context.provideContext({ tools: tools }));
+  } catch (e) { warn(e); }
+}
+function _awdModelContext() {
+  const offers = c => !!c && (typeof c.registerTool === 'function' || typeof c.provideContext === 'function');
+  if (offers(document.modelContext)) return document.modelContext;
+  if (offers(navigator.modelContext)) return navigator.modelContext;
+  return null;
+}
+// === end Agent API facade ===
+
 // ═══════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════
@@ -17160,6 +17618,7 @@ if (typeof renderAgentPalette === 'function') renderAgentPalette();
 if (typeof initRepoConnect === 'function') initRepoConnect();
 if (typeof initRunMonitor === 'function') initRunMonitor();
 validateStoryInput();
+awdRegisterWebMCP(_awdModelContext());
 </script>
 </body>
 </html>

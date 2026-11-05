@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## webmcp-and-mcp-facade
+
+- record: .workflow/webmcp-and-mcp-facade.md
+- intent: one documented, versioned agent surface on the page, `window.awd` version "1" (28 methods: 8 plain-JSON reads incl. `generate(format)` that returns the Copy text of any format without a UI or state change, and 20 calls that drive the app's own entry points), with the same catalog registered as WebMCP tools at boot (`registerTool`, else `provideContext`, nothing without a model context). Every mutating call is ONE undo step that also carries the sidebar values it changed; the block reassigns the global `undo` and `redo` to a hook, so the toolbar, the shortcuts, and `awd.undo()` restore a facade step in full while a UI step moves the canvas only, as before. A no-op takes no step, a throw applies nothing, `batch(ops)` is atomic, errors read `awd: <method>: <bad value>`. Additive and removable: one block plus one boot call; no app function edited; every preset byte-identical in all five formats.
+- files: index.html (facade block: window.awd, _awdStep, _awdRollback, _awdMove + reassigned global undo/redo, _awdMethod, _awdInvoke, _awdConfig, _awdCaptureSidebar, _awdApplySidebar, awdRegisterWebMCP, _awdModelContext; boot call at the end of INIT; help modal paragraph), tests.html (describe Agent API facade (window.awd); the frozen eval describe), README.md (section Agent API facade (window.awd))
+- status: current | date: 2026-11-04 | note: third live run with a pre-registered eval (74 criteria, all passed; native WebMCP proven in Chrome 156 behind its feature flag); director decided the undo reach; one plan revise cycle (the plan had narrowed that decision), review approved first pass, verified first pass. Known Low follow-ups: `config.tools` is not type-checked; the README batch sentence. Found bugs: app `loadPreset` with an id that has no builder leaves `_undoBatch` true; key "Z" does not redo. 2041 -> 2138.
+
 ## strays-never-run
 
 - record: .workflow/strays-never-run.md

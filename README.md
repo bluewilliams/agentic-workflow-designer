@@ -423,6 +423,49 @@ Click **Export .json** to download the workflow as a portable file. Click **Impo
 ### Preferences
 Your default model, memory toggle, output format tab, app source path/branch, and repositories are remembered automatically. No explicit save needed. Just change a setting and it persists across sessions.
 
+## Agent API facade (window.awd)
+
+An agent that reaches the designer's page builds and reads workflows through one documented surface: the global `window.awd`. Its `version` is the string `"1"`. Removing or renaming a method, or changing a return shape, moves the version. Every method is synchronous and wraps the app's own entry points, so the canvas, the sidebar, the generated prompt, and the autosave behave exactly as they do for a click.
+
+| Method | Input | Returns |
+|---|---|---|
+| `listPresets()` | none | `[{ id, name, description }]` in sidebar order |
+| `getWorkflow()` | none | the workflow JSON that Export writes |
+| `listNodes()` | none | `[{ id, type, label, x, y, config }]` |
+| `listConnections()` | none | `[{ id, from, to, label, fromPort }]` |
+| `generate(format)` | `prompt`, `subagent`, `teams`, `sdk`, or `claude` | the text Copy ships for that format (`""` with no nodes); the format tab and the state do not change |
+| `explain(format)` | a format id | `[{ part, status, reason, snippet }]` |
+| `validate()` | none | the Review warnings as `[{ type, msg }]` |
+| `describe()` | none | the tool catalog: `[{ name, description, inputSchema }]` |
+| `newWorkflow()` | none | the workflow summary (no confirm dialog) |
+| `loadPreset(id)` | a preset id | the workflow summary (no confirm dialog) |
+| `setWorkflow(json)` | an object as `getWorkflow()` returns it | the workflow summary |
+| `addNode({ type, label, x, y, config })` | `type` from the node types; omitted x and y place it right of the rightmost node | the node summary with its new id |
+| `updateNode(id, { label, config })` | a node id and a patch | the node summary |
+| `deleteNode(id)` | a node id | the workflow summary |
+| `connect(from, to, label)` | two node ids | the connection summary (an existing edge comes back unchanged) |
+| `disconnect(from, to)` | two node ids | the workflow summary |
+| `addEval()` | none | the Eval Author node summary |
+| `removeEval()` | none | the workflow summary |
+| `attachVerifier(nodeId)` | a step id | `{ verifier, gate, routeBack }` node summaries |
+| `attachSkeptic(nodeId)` | a step id | `{ skeptic, gate }` node summaries |
+| `detachLoop(nodeId)` | a step id | the workflow summary |
+| `setRequirements(text)` | text | the workflow summary |
+| `setContext(text)` | text | the workflow summary |
+| `setName(text)` | text | the workflow summary |
+| `setOptions({ ... })` | any of exportFormat, memoryEnabled, durableRecord, consumeRecords, approvePlan, clarifyFirst, defaultModel, effort, verifyPaths, verifyNotes | the workflow summary |
+| `undo()` | none | the workflow summary |
+| `redo()` | none | the workflow summary |
+| `batch(ops)` | `[{ tool, input }]`, where `tool` is a method name | one result per entry |
+
+The workflow summary is `{ name, slug, preset, nodes, connections, warnings }`: node and connection counts, and the Review warnings as `{ type, msg }`. Read methods return plain JSON copies, so changing a returned object never changes the canvas.
+
+Every mutating call is one undo step. The toolbar Undo and Redo, Ctrl+Z, Ctrl+Shift+Z, and `awd.undo()`/`awd.redo()` all restore a facade step fully: the canvas and the sidebar fields the call changed (name, Requirements, Workflow Context, options). A call that changes nothing, such as `connect` on an edge that already exists, takes no undo step. A `batch` runs its entries in order as a single undo step; when an entry throws, the batch stops, nothing from it stays applied, and the error names the failing index and tool.
+
+Errors are `Error` instances whose message starts with `awd:` and names the method and the bad value (for example `awd: loadPreset: unknown preset id "nope" (one of feature, ...)`), so an agent can repair its call. A call that throws changes nothing.
+
+WebMCP: at boot, when the browser offers WebMCP (`document.modelContext`, or `navigator.modelContext` as a fallback) with `registerTool`, every `describe()` entry is registered as a tool whose `execute(input)` runs the method and returns `{ content: [{ type: "text", text }] }` with the JSON result as text (`isError: true` and the message when the method throws). A context that offers only `provideContext` gets the same tools through it. Without either, nothing is registered. This reaches an agent inside a browser that offers WebMCP. An agent outside the browser reaches the facade through browser automation (for example a script that evaluates `window.awd.addNode(...)` in the page), or writes the workflow JSON that Import accepts. There is no server process.
+
 ## Testing
 
 Open `tests.html` in any browser. That's it. Zero dependencies, zero build step. Tests load `index.html` in a hidden iframe and exercise everything: utilities, state management, persistence, memory protocol, all 5 prompt output generators, workflow generation, preset loading, format recommendations, input validation, the prompt library, and more. Green/red results render instantly.

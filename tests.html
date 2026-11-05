@@ -20189,6 +20189,1662 @@ describe('Eval: strays never run (pre-registered eval)', () => {
   });
 });
 
+describe('Eval: agent API facade and WebMCP registration (pre-registered eval)', () => {
+  // Frozen eval, written from the requirements before any plan existed. No later step edits it.
+  // Structural assumptions (each is named again at the check that rests on it):
+  //  (a) facade methods are synchronous: they return a value or throw, they return no promise;
+  //  (b) a catalog entry's `name` is the facade method name, and batch takes that name as `tool`;
+  //  (c) a tool input is one object: the method's own object argument (addNode, setOptions), its named parameters (connect: from, to, label), or one property for a method with one parameter (the check reads the property name from the inputSchema);
+  //  (d) the registration function is a function property of window.awd that is not a catalog entry, or a global function, whose name holds "webmcp", or "modelcontext" with "regist" or "provide" (any case);
+  //  (e) the app's confirm dialog is #confirmOverlay with the class "show", or the native confirm;
+  //  (f) run-tests.sh serves the suite over http, so index.html and README.md can be fetched;
+  //  (g) nodes and edges render as [data-id] elements inside #canvas; a help paragraph is a <p> inside #helpOverlay.
+  const FIVE = ['genWorkflow', 'genSubAgents', 'genAgentTeams', 'genClaudePrompt', 'genAgentSDK'];
+  const FORMATS = { prompt: 'genWorkflow', subagent: 'genSubAgents', teams: 'genAgentTeams', sdk: 'genAgentSDK', claude: 'genClaudePrompt' };
+  const FORMAT_IDS = Object.keys(FORMATS);
+  const READS = ['listPresets', 'getWorkflow', 'listNodes', 'listConnections', 'generate', 'explain', 'validate', 'describe'];
+  const MUTATORS = ['newWorkflow', 'loadPreset', 'setWorkflow', 'addNode', 'updateNode', 'deleteNode', 'connect', 'disconnect', 'addEval', 'removeEval', 'attachVerifier', 'attachSkeptic', 'detachLoop', 'setRequirements', 'setContext', 'setName', 'setOptions', 'undo', 'redo'];
+  const METHODS = READS.concat(MUTATORS, ['batch']);
+  const OPTION_KEYS = ['exportFormat', 'memoryEnabled', 'durableRecord', 'consumeRecords', 'approvePlan', 'clarifyFirst', 'defaultModel', 'effort', 'verifyPaths', 'verifyNotes'];
+  const NODE_KEYS = 'config,id,label,type,x,y';
+  const CONN_KEYS = 'from,fromPort,id,label,to';
+  const SUMMARY_KEYS = 'connections,name,nodes,preset,slug,warnings';
+  const frames = [];
+  let savedConsoleError = null;
+
+  // window.awd is read through the iframe window: no exposure line exists for it.
+  function A() { if (!win.awd) throw new Error('window.awd is not defined'); return win.awd; }
+  function el(id) { return win.document.getElementById(id); }
+  function h53(str, seed) {
+    let h1 = 0xdeadbeef ^ (seed || 0), h2 = 0x41c6ce57 ^ (seed || 0);
+    for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  }
+  // JSON with sorted keys, so two objects with the same content compare equal whatever their key order.
+  function canon(v) {
+    if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+    if (v && typeof v === 'object') return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}';
+    return JSON.stringify(v === undefined ? null : v);
+  }
+  function keysOf(o) { return o && typeof o === 'object' ? Object.keys(o).sort().join(',') : 'not an object'; }
+  // Plain JSON: null, strings, booleans, finite numbers, arrays, and plain objects of those. No function, no undefined, no DOM node, no class instance.
+  function plainJson(v) {
+    if (v === null) return true;
+    const t = typeof v;
+    if (t === 'string' || t === 'boolean') return true;
+    if (t === 'number') return isFinite(v);
+    if (t !== 'object') return false;
+    if (typeof win.Node === 'function' && v instanceof win.Node) return false;
+    if (Array.isArray(v)) { for (let k = 0; k < v.length; k++) if (!plainJson(v[k])) return false; return true; }
+    if (Object.prototype.toString.call(v) !== '[object Object]') return false;
+    const proto = Object.getPrototypeOf(v);
+    if (proto !== null && proto !== win.Object.prototype && proto !== Object.prototype) return false;
+    return Object.keys(v).every(k => plainJson(v[k]));
+  }
+  function plainObject(v) { return !!v && typeof v === 'object' && plainJson(v); }
+  function isErr(e) { return (e instanceof win.Error) || (e instanceof Error); }
+  // The error a facade call throws, or null. Only a facade error counts (requirement 6: the message starts with "awd:"):
+  // a missing facade or a missing method fails the test with its own error instead of passing as a throw.
+  function caught(fn) {
+    A();
+    try { fn(); } catch (e) { if (isErr(e) && String(e.message).indexOf('awd:') === 0) return e; throw e; }
+    return null;
+  }
+  function storageSnapshot() { const o = {}; for (let k = 0; k < localStorage.length; k++) { const key = localStorage.key(k); o[key] = localStorage.getItem(key); } return o; }
+  function storageRestore(o) {
+    Object.keys(storageSnapshot()).forEach(k => { if (!(k in o)) localStorage.removeItem(k); });
+    Object.keys(o).forEach(k => { if (localStorage.getItem(k) !== o[k]) localStorage.setItem(k, o[k]); });
+  }
+
+  // Back to the rig's baseline: the state resetState gives, the app defaults it does not touch, and the controls in step with them.
+  function tidy() {
+    win.__autoConfirm = true; win.confirm = () => true;                              // the rig's values (the boot block sets them)
+    if (typeof win.confirmModalResolve === 'function') win.confirmModalResolve(false);   // closes a dialog a failed check left open
+    if (savedConsoleError) { win.console.error = savedConsoleError; savedConsoleError = null; }
+    frames.splice(0).forEach(f => f.remove());
+    resetState();
+    win.selectNode(null, true);                                                      // no selection: the config panel holds no stale fields
+    Object.assign(win.state, { approvePlan: false, clarifyFirst: false, mcpAtlassian: true, consumeRecords: true, defaultEvalHome: 'record', mcpCustom: '' });   // app defaults that resetState does not touch
+    [['consumeRecordsToggle', true], ['approvePlanToggle', false], ['clarifyFirstToggle', false]].forEach(p => { const t = el(p[0]); if (t) t.checked = p[1]; });
+    ['planInput', 'appSourcePath', 'appSourceBranch', 'uiContextNotes', 'mcpCustomNotes'].forEach(id => { const f = el(id); if (f) f.value = ''; });
+    const acc = el('appSourceAccess'); if (acc) { acc.value = 'readonly'; if (typeof win.refreshEnhancedSelect === 'function') win.refreshEnhancedSelect(acc); }
+    win.setDefaultModel('opus-5', true); win.setEffort('', true);
+    win.renderRepoRows(); win.renderRulesRows(); win.renderProductDocRows(); win.renderVerifyRows();
+    win.setExportFormat('prompt');                                                   // the tab follows the state; this renders the empty canvas
+    win.clearUndo();
+    win.cancelPendingSaves();
+    try { ['awd_prefs', 'awd_autosave', 'awd_run_reports'].forEach(k => win.localStorage.removeItem(k)); } catch (e) { /* storage may be unavailable */ }
+  }
+  function fresh() {
+    tidy();
+    el('workflowName').value = 'eval-fixture';   // a blank name is auto-generated at random
+  }
+  // The harness skips afterEach when a test throws, and most of these tests throw until the work exists: every test tidies in a finally.
+  function guarded(fn) { return async () => { fresh(); try { await fn(); } finally { tidy(); } }; }
+  afterEach(tidy);
+
+  function agent(x, y, label, type) { return win.addNode('agent', x, y, label, { agentType: type, model: 'opus-5', tools: ['Read'], prompt: 'Do the ' + type + ' work.', maxTurns: 10 }); }
+  function link(ids) { for (let k = 0; k + 1 < ids.length; k++) win.addConnection(ids[k], ids[k + 1]); }
+  function settle() { win.selectNode(null); win.render(); win.clearUndo(); }
+  // In -> Alpha Planner -> Beta Coder -> Gamma Tester -> Done, built with the app's own functions. Its Review is clean.
+  function chain() {
+    const i = win.addNode('input', 0, 100, 'In', {}); const a = agent(300, 100, 'Alpha Planner', 'planner'); const b = agent(600, 100, 'Beta Coder', 'coder'); const t = agent(900, 100, 'Gamma Tester', 'tester');
+    const o = win.addNode('output', 1200, 100, 'Done', { deliverable: '', format: 'code', targetBranch: '', branchName: '' });
+    link([i.id, a.id, b.id, t.id, o.id]);
+    settle();
+    return { i: i.id, a: a.id, b: b.id, t: t.id, o: o.id };
+  }
+  function node(id) { return win.state.nodes.find(n => n.id === id); }
+  function nodeSummary(n) { return { id: n.id, type: n.type, label: n.label, x: n.x, y: n.y, config: n.config }; }
+  function connSummary(c) { return { id: c.id, from: c.from, to: c.to, label: c.label, fromPort: c.fromPort }; }
+  function authors() { return win.state.nodes.filter(n => n.config && n.config.agentType === 'evalAuthor'); }
+  function drawn(id) { return !!win.document.querySelector('#canvas [data-id="' + id + '"]'); }
+  function presetKeys() { return [...win.document.querySelectorAll('.preset-item[data-preset]')].map(p => p.dataset.preset); }
+  function typeInto(id, text) { el(id).value = text; el(id).dispatchEvent(new win.Event('input', { bubbles: true })); }
+  function dialogShown() { return el('confirmOverlay').classList.contains('show'); }
+
+  function canvasSig() { return JSON.stringify([win.state.nodes, win.state.connections]); }
+  function fieldVals() { return { name: el('workflowName').value, story: el('storyInput').value, plan: el('planInput').value }; }
+  function optVals() { const o = {}; OPTION_KEYS.forEach(k => { o[k] = win.state[k]; }); return o; }
+  function stateSig() { return JSON.stringify(win.state) + JSON.stringify(fieldVals()); }
+  // What the sidebar controls show for the ten options.
+  function controls() {
+    const tab = win.document.querySelector('.format-tab.active');
+    const picked = id => { const o = win.document.querySelector('#' + id + ' .custom-select-option.selected'); return o ? o.dataset.value : null; };
+    return JSON.stringify({ tab: tab ? tab.dataset.format : null, memory: el('memoryToggle').checked, record: el('durableRecordToggle').checked, consume: el('consumeRecordsToggle').checked,
+      approve: el('approvePlanToggle').checked, clarify: el('clarifyFirstToggle').checked, model: picked('defaultModelOptions'), effort: picked('effortOptions'),
+      paths: [...el('verifyPathChips').children].map(c => c.textContent.replace(/×/g, '').trim()), notes: el('verifyNotesInput').value });
+  }
+  // The five generated formats (hashed). A blank name is auto-generated at random, so they are read only when a name is set.
+  function gens() { return win.state.nodes.length && el('workflowName').value.trim() ? FIVE.map(f => h53(win[f]())) : []; }
+  // Everything requirement 4 and the director's undo answer name: nodes, connections, the generated prompt (the five formats and the Copy text), and the sidebar fields the prompt depends on.
+  function snap() { return JSON.stringify({ nodes: win.state.nodes, conns: win.state.connections, gen: gens(), raw: h53(win.getRawPrompt()), fields: fieldVals(), opts: optVals() }); }
+  function snapUi() { return snap() + controls(); }
+  // Everything generate() and explain() must leave alone.
+  function watch() {
+    const tab = win.document.querySelector('.format-tab.active');
+    return JSON.stringify({ state: stateSig(), tab: tab ? tab.dataset.format : null, raw: h53(win.getRawPrompt()), panel: h53(el('promptOutput').innerHTML), undo: win.undoDepth(), storage: h53(canon(storageSnapshot())) });
+  }
+  function sizeOf(v) { return Array.isArray(v) ? v.length : v; }
+  // The workflow summary { name, slug, preset, nodes, connections, warnings }. nodes, connections, and warnings may be counts or lists: the requirement does not say which.
+  function isSummary(s) {
+    if (!s || typeof s !== 'object' || !plainJson(s) || keysOf(s) !== SUMMARY_KEYS) return false;
+    const name = el('workflowName').value.trim();
+    if (name && (s.name !== name || s.slug !== win.serializeWorkflow().slug)) return false;
+    return typeof s.slug === 'string' && sizeOf(s.nodes) === win.state.nodes.length && sizeOf(s.connections) === win.state.connections.length && sizeOf(s.warnings) === win.validateWorkflow().length;
+  }
+  // Assumption (c): the input object for a method with one parameter, its property name read from the catalog.
+  function one(name, value) {
+    const e = A().describe().find(x => x.name === name); const s = (e && e.inputSchema) || {};
+    const props = Object.keys(s.properties || {}); const req = Array.isArray(s.required) ? s.required : [];
+    const key = req.length === 1 ? req[0] : (props.length === 1 ? props[0] : null);
+    if (!key) throw new Error('structural assumption (c) does not hold for ' + name + ': its inputSchema does not declare one parameter');
+    const o = {}; o[key] = value; return o;
+  }
+  // Assumption (d): find the registration function.
+  function registrar() {
+    const a = A(); const cat = new Set(a.describe().map(e => e.name));
+    const named = k => /web_?mcp/i.test(k) || (/model_?context/i.test(k) && /regist|provide/i.test(k));
+    const own = []; for (let o = a; o && o !== win.Object.prototype && o !== Object.prototype; o = Object.getPrototypeOf(o)) Object.getOwnPropertyNames(o).forEach(k => { if (own.indexOf(k) === -1) own.push(k); });
+    const mine = own.filter(k => k !== 'constructor' && !cat.has(k) && typeof a[k] === 'function' && (named(k) || /^regist/i.test(k)));
+    if (mine.length) return ctx => a[mine[0]](ctx);
+    const glob = Object.getOwnPropertyNames(win).filter(k => { try { return named(k) && typeof win[k] === 'function'; } catch (e) { return false; } });
+    glob.sort((x, y) => (/regist/i.test(y) ? 1 : 0) - (/regist/i.test(x) ? 1 : 0));
+    if (glob.length) return ctx => win[glob[0]](ctx);
+    throw new Error('structural assumption (d) does not hold: no registration function on window.awd or among the global functions');
+  }
+  // The tools a fake context with registerTool receives, by name.
+  async function registered() {
+    const got = {}; await registrar()({ registerTool(tool) { got[tool.name] = tool; } });
+    return got;
+  }
+  function resultShape(r) { return !!r && typeof r === 'object' && Array.isArray(r.content) && r.content.length === 1 && !!r.content[0] && r.content[0].type === 'text' && typeof r.content[0].text === 'string'; }
+  function pause(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+  // Assumption (f): boot a second copy of the app in its own frame, with the fakes in place before any app script runs.
+  async function boot(setup) {
+    const res = await fetch('index.html');
+    if (!res.ok) throw new Error('structural assumption (f) does not hold: index.html cannot be fetched (run through ./run-tests.sh)');
+    const html = await res.text();
+    const f = document.createElement('iframe'); f.style.display = 'none'; document.body.appendChild(f); frames.push(f);
+    const w = f.contentWindow, d = f.contentDocument; const log = { errors: 0, uncaught: [] };
+    d.open();
+    w.console.error = () => { log.errors++; };
+    w.addEventListener('error', e => { log.uncaught.push(String(e.message)); });
+    // A browser with its own model context would hide the absent case: a native entry point is masked, then the setup adds its fakes.
+    if ('modelContext' in d) Object.defineProperty(d, 'modelContext', { value: undefined, configurable: true, writable: true });
+    if ('modelContext' in w.navigator) Object.defineProperty(w.navigator, 'modelContext', { value: undefined, configurable: true, writable: true });
+    setup(w, d);
+    d.write(html); d.close();
+    await pause(50);   // a boot call that waits for DOMContentLoaded or load has run by now
+    return { w: f.contentWindow, log };
+  }
+  // The app's own way and the facade's way from the same starting canvas: the two canvases must be equal.
+  function sameAsApp(setup, viaApp, viaFacade) {
+    fresh(); let ctx = setup(); settle(); viaApp(ctx); const want = canvasSig();
+    fresh(); ctx = setup(); settle(); const ret = viaFacade(ctx);
+    return { same: canvasSig() === want, ret: ret, ctx: ctx };
+  }
+  // One undo step, shown by behavior: a UI step (the marker) sits under the facade step. One undo gives the state
+  // before the call, one redo the state after it, and a second undo removes the marker, so the call pushed one step, not two.
+  function oneStep(tag, setup, call) {
+    fresh(); const ctx = setup(); settle();
+    const s0 = snap();
+    win.addNode('task', 40, 900, 'Marker', {});
+    const s1 = snap();
+    call(ctx);
+    const s2 = snap();
+    expect(tag + ':changed:' + (s2 !== s1)).toBe(tag + ':changed:true');
+    A().undo(); expect(tag + ':undo:' + (snap() === s1)).toBe(tag + ':undo:true');
+    A().redo(); expect(tag + ':redo:' + (snap() === s2)).toBe(tag + ':redo:true');
+    A().undo(); A().undo(); expect(tag + ':second undo:' + (snap() === s0)).toBe(tag + ':second undo:true');
+  }
+  // Variant 0 = plain; 1 = mandates; 2 = one-click eval; 3 = memory and record; 4 = approval checkpoint with memory and record.
+  function presetVariant(k, v) {
+    fresh(); win.loadPreset(k);
+    el('workflowName').value = 'eval-fixture';
+    Object.assign(win.state, { memoryEnabled: false, durableRecord: false, verifyPaths: [] });   // loadPreset switches memory on for the larger presets
+    if (v === 1) win.state.verifyPaths = ['docs/verify.md'];
+    if (v >= 3) { win.state.memoryEnabled = true; win.state.durableRecord = true; }
+    if (v === 4) win.state.approvePlan = true;
+    if (v === 2) win.addPreRegisteredEval(win.state.nodes.find(n => n.type === 'input').id);
+  }
+  function anatomySig() {
+    const rows = r => [r.part, r.status, r.reason, r.snippet];
+    return h53(JSON.stringify([win.validateWorkflow().map(w => [w.type, String(w.msg)]), FORMAT_IDS.map(f => win.explainWorkflow(f).map(rows)),
+      win.state.nodes.filter(n => n.type === 'agent').map(n => ['prompt', 'subagent', 'teams'].map(f => win.explainNode(n, f).map(rows)))]));
+  }
+  // The static markup of index.html: the sidebar's sections and controls, and the menu entries. Read from the served source, so no test before this one can move it.
+  async function uiSig() {
+    const res = await fetch('index.html');
+    if (!res.ok) throw new Error('structural assumption (f) does not hold: index.html cannot be fetched (run through ./run-tests.sh)');
+    const html = await res.text();
+    const from = html.indexOf('<div class="sidebar" id="sidebar">'); const to = html.indexOf('<div class="toolbar">');
+    if (from === -1 || to < from) throw new Error('structural assumption (g) does not hold: the sidebar markup runs from <div class="sidebar" id="sidebar"> to <div class="toolbar">');
+    const side = html.slice(from, to); const count = (text, re) => (text.match(re) || []).length;
+    return ['sections:' + count(side, /class="sidebar-section/g), 'input:' + count(side, /<input[\s>]/g), 'select:' + count(side, /<select[\s>]/g), 'textarea:' + count(side, /<textarea[\s>]/g), 'button:' + count(side, /<button[\s>]/g),
+      'menuitem:' + count(html, /role="menuitem"/g), 'context:' + count(html, /class="context-menu-item/g)].join(',');
+  }
+
+  // Today's values, captured before the work existed (the definition of "byte-identical to today" and "as before").
+  const GOLD = {"preset":{"feature|0":"166c7ya50bg,ilefc8ry1c,1t8i75xp5a2,25mypjux5mu,3utha8kpsz","feature|1":"1ap4yjq67ua,1s2aqqha3n3,1axca6nfdwv,3dii7g302j,1b91fx6brec","feature|2":"1zlokb0cfc7,npxicie2dr,1qxun52joc4,1crzqnyjktm,po5rxj0esj","feature|3":"14zi7r4a80t,wniog7pc4h,22923bbfb8,24gpjrpyaoa,5mg5h4e32b","feature|4":"1382slbhjxa,112ici9ux2h,r16zrq2h7v,sfotzbhy1g,1datzydj9ol","bugfix|0":"2a7hbmw4rf4,28ji8ub4cys,18zw9gyk8v,ch7yt2lyqm,21f0ihj3n5v","bugfix|1":"2csaa51sw2k,25dr8jxazqs,2e9nnrednti,29xc99c8bxa,5rg4peo633","bugfix|2":"mkcu7rjd5q,z92q61r4ax,1ab8lvckxr9,1xdg1rcdyvv,7428d0ui0q","bugfix|3":"9umox3o3w8,pkib0oj6gr,2gmj76xw69,19igmdhbgcy,4ph4n832eo","bugfix|4":"1jd7lzphu1a,1dlcksumj5b,22l9aqok62i,1rhv3dxs3ts,20yt1ydymjy","fullstack|0":"1yhxl1m3mw3,k8550wendm,s6gkapubrf,5htxtlu2di,2gb861gd2fl","fullstack|1":"clczuqyse6,zdgcdzeezi,100s359zoyz,1dcgp2wudy0,1x2vcgs8lwq","fullstack|2":"12jdhffow8y,5m7d82fryv,15dj1838icz,12uolnu78u4,807g27oxv0","fullstack|3":"dme5lgd3ll,138ubv0185s,27ragxynk82,18rs2ky0lwa,sx0d08lqyx","fullstack|4":"2bh3e5hupph,7a3esldrz4,17bboezqdzq,rvsxza18vq,l7swmipwgd","new_project|0":"11tkgjasosz,137qiw39nat,1vtjmlwsv4c,x966qyccpl,qfktuc80nk","new_project|1":"2512xudhu4v,2dxrf5yfydn,ordxs7s2vf,5fjck24oi1,2114gv1uiyl","new_project|2":"17wme7wamt2,2gmi9ecv84a,l916d54mr7,1aleq8t8gxf,15ghhjrmmbz","new_project|3":"1yg39oslwv,11usnk52064,7xwrgw3cbv,23aptfluf4l,2g1y1ktp9zs","new_project|4":"ta56jts45j,1jbyxiuzo2u,gtgb0j1g8y,2f80rrz5vvp,1b9ktwe4dnd","ui_component|0":"1h14u3s3i2o,2aipth1pfm,33fmudlq79,28ptgo73dmw,bcybuaxny8","ui_component|1":"hxcjc5z253,sv4o4mjl8k,o4air7zyox,4i0edwfvt2,22g8m6xtdia","ui_component|2":"9pyaw1kyjx,1d5kdjf1xsj,21rruh3j04s,1poxcadge46,s496ajvt1y","ui_component|3":"b1cyofzy84,1qf3uka07yv,1ilse54dr06,18c0zip3atv,pceilzn8fx","ui_component|4":"1wnbqdyzf9,1qt5q1pn91,p6aakdjxd3,1ii66j1335m,1a7wa4d2pjh","refactoring|0":"1x88dhsyyao,fzxntdqapn,27d1uh3dsz8,8d7et1dpkq,20w5xmiml7w","refactoring|1":"1jhpjmfwk7r,23logrlf0w7,10febomsk4z,1z4xm8e3igh,cew9nji4ae","refactoring|2":"1w0u9fzljuk,8adiz3b231,2214hf5hrcr,24ln933diw2,2baxjd5oka3","refactoring|3":"20ta0a0qv5g,w4xoeda2mm,158sgjwxmrh,q62oxz91gz,r8gu5ai0jy","refactoring|4":"1ct50bf3y4t,18k1ajs21s3,19hrmyy2ywn,24xvkq7gjx4,1n7vdowgq91","documentation|0":"8illudxqt8,1ghetjwth9p,1r490freal6,g4n0dp2vjq,11wrsozipfl","documentation|1":"1e0xauchv5d,1jr26hvw1nd,vrruywklcx,19m26z94lvc,1qb06d7wo0r","documentation|2":"pq1vz31536,1zj6jzpfjpw,18jgut7p41r,2ebyy1ampl2,5sqsrz04po","documentation|3":"nrn8didd4b,1ruwf4rq39d,2abcdu08zxy,264q8fg87fw,1kps7mfzyyc","documentation|4":"24h6vlaz1e0,1s5yhjtc6dg,1wg2owwu8ft,pt8dwa61pq,21lbsxisqq3","feature_fast|0":"1y5jef9pzv2,bzam5ysxml,1fs67snql6v,1hcwz374qsv,1j8qqsjzp1c","feature_fast|1":"y60zihehl3,28pj3av5pi5,1daqh1a4vmi,1p9jrc1givu,1by28438sco","feature_fast|2":"b20fcph0qf,pqdok9ky5k,1e7sevhlu5n,128cp2k09ym,1ap4yvcr22w","feature_fast|3":"8tih1fcioy,12so8ytlopy,n9semu5ilt,ue38otqn09,36auea02af","feature_fast|4":"6s2iu7d1r0,1vh3ftuy0oj,bn59marbpl,12rlbvyf01t,1tuy1e176c3","devops|0":"kxubizi4mr,8y3gp1z66j,b4vbzr6pml,1fogx6vzti2,xx04bdxqru","devops|1":"1g6nlah72b5,22x8tyqvhoe,262o30fugid,1drkwigf616,4szyuaiwsq","devops|2":"5kq417r0ze,166d6dxkfjp,qosl6oy8kb,h5tjvgod66,1ptoe067jtg","devops|3":"ly13q28w4,yxw929ed7e,fngaw24r02,a61y83unyg,1qi5k17f3m3","devops|4":"12phxwn0onm,1p3lvw0vref,1op4webn3a3,yxuh442cqx,1xi212abqvn","platform_provisioning|0":"bgcsjbxqlu,2b7qk5b0usf,1d9buw64jfn,1g5x5sp6v2,1d3nfvqs7az","platform_provisioning|1":"1njxnb6dkli,6jcy4nppb0,1djsfowi9sf,kb1wuliex5,61tlk7ad94","platform_provisioning|2":"26gfp0e4jnm,5c0ikvn0lb,1kjc1km3yff,2gmtn2t8x04,123mihxkuoh","platform_provisioning|3":"k6pr87pc46,2acr3k7uaji,15stgncpy82,1o69mqbar4g,2cna3k2455p","platform_provisioning|4":"2ciz7v6c8ny,1pw9w0yt8p9,1dr0uhlsrrd,1kerbx2rjfn,o4o0wtb7zb","cross_repo|0":"8s6q8pgsp9,1ivg23s8l4p,27ge1tdego9,1jt8njlh2m8,12lpvdz5pzc","cross_repo|1":"ch1ohbbcwf,gzaqz4f6lw,1azo9dqg9lh,13265tf3aio,z1o6k9j3yo","cross_repo|2":"a224in7d0f,n1g1os6yh7,1ry68yahdq5,1437pgpqfs8,1h3zkb49ug0","cross_repo|3":"2g40o3660mi,1kfhln4ww0b,1vqz081i09v,2ams1iuz5mj,215rweo0ipp","cross_repo|4":"17av2h5oiv1,1an42xua5u0,3yrcy9ues2,ozao1ql86q,4dxp1wxu9s","performance|0":"v6ogjzj399,266cngopsxz,s3fi4e27d5,14p5bp31g3e,aqyhsjqya7","performance|1":"9i6wlxdoly,iiy8vz9j1s,nzo2ri41yd,13ajhkgbs38,259ytets6fw","performance|2":"1p54yb242cd,egqbtxx11c,iqm2dc77a6,1ink2azfzkx,232y87ugucf","performance|3":"1nz53icldxp,pwy60b7ueh,vxmqhi8sn6,16ntwprb6pw,mfucdcbkne","performance|4":"dj92x3ftb,2fu5oshn1bn,1ewvq1icle4,76rka5p8ac,7z4nnt00bi","data_migration|0":"qfakyt6foh,1npfqwsoiz8,2c2rquz4nq2,2e3tm8f8ob0,1d625s7nlat","data_migration|1":"l5a1t6qnq8,hip2vhuf0t,2d1ebakvvfu,o7qf60sxon,13ig7kss9re","data_migration|2":"3jqt71ikfo,d2l3jx494n,o0iiv8pkmw,3m238anxws,wyx7fta2rq","data_migration|3":"1gnsmw2z3b,xwrguc14s8,nuu2p2tpul,2d7sf2gqqpi,8od21cwm05","data_migration|4":"1w4ujo2h5qj,heuoi0o97m,2glkvn9o9c6,y6pxfb1awx,1v6bks6ry5l","testing|0":"2cbmgmtxdma,lcrua5njtr,akpfdgwnh3,fjmrzapa7y,11p8wku38rg","testing|1":"27956hnugf6,29tn1mcn2ij,xu9fvvbuh8,262el8pfri7,1xo8kn5rqew","testing|2":"sf2trrxes2,eutv4xvgeh,25udqiihb2f,10mgn1cveka,dmevb8v4on","testing|3":"29slasxfv40,5j1rvw5nli,7y9psqiogf,2808gnd7rbk,159yneej706","testing|4":"1nu8hpndxgm,2eyafy834g6,1lbrs34jej9,795cw4s107,1tmuuqdzi2r","test_automation|0":"1ub29qlo8gz,zwy3oglod7,jzu3rw4xyo,1eplswxacuk,1pcrex2st7k","test_automation|1":"9bvdz2zx2e,12mthht1860,xx8137ug38,c0noqoc9c6,ecx9sly3cz","test_automation|2":"2a7002q6zim,1sdu3osy1rh,21asxpsyp63,ibfy26sro5,2bn0wn1hdn7","test_automation|3":"y32fawywc0,1ihgav3lbob,22mltmtg8em,1xjxq28mvyc,8lpefqqha7","test_automation|4":"2awn4l87n6t,j194217ins,1un1fpqh75a,1o0nta8lb7d,13lq63wrmi","review|0":"20jshq8guh0,1fu10lyl0sy,17q6r2fk27y,10xhhi684oa,yft8ipu5fq","review|1":"20fittpjkip,1dzzia5azrp,gmhwpmf98s,299shlsnnou,2cmp3mrqfds","review|2":"eqx20bh82u,1i5saxroj9j,1yl633prnij,10aoa0zg4dg,v1pzeuynkh","review|3":"1rzx9yb3b79,yx1ohrj1vy,1cfsfk407pj,crlnbxqydw,1p6b1lnx31i","review|4":"fdgd6dyrxn,f71tp5jclp,z44tyrb8p4,18ug1wbyg5g,75bazvx1h8","parallel_research|0":"8gknehwpis,l5e2xa6n8a,16ou9msxf9a,hlffswnoxk,k8b52x30le","parallel_research|1":"10jz7brtohv,1vl2alyg1rd,10k814ilcat,slj2lxaxhg,oiv2fonee0","parallel_research|2":"27yjpau78sa,15qfw0mt5rt,26diukewxd9,1rewhmnqpyd,muesewusa9","parallel_research|3":"26xho09e71l,9yy24syhok,hraycgks9i,1g4lxw1tn97,1eu99vj6y8q","parallel_research|4":"1427lshx7l7,122l8jwvrnq,13cahkalsum,8h9t998eal,294zou3gppa","swarm|0":"2amkztxc9hj,2a6upmot5ck,1mpoycccm0k,1nkhcgxn7qw,m350vdwfb0","swarm|1":"1mbd3ewzqy3,1h4aegxpuzv,13qorniz5n7,1znuco02lrv,26h75n7n1xn","swarm|2":"11b7f7ou1en,1dlgcvtcrt6,1zhus0nh3qu,hqkpb7ix3a,l2cq4uxwy5","swarm|3":"1u0vht7a81f,av2pzzulhy,243brwsibnj,1nq6kp9nemw,hrnwcf7tkq","swarm|4":"tcy7146ios,2c3liqipdim,hn2f7b62s4,mmn5p8h30n,1iq0vuz9gpv","analysis_forecast|0":"ynsscft62d,12zz0sr4k30,eix00qppf6,16mf4wp786v,fuz64lwz9i","analysis_forecast|1":"1p3svi3llw2,vb4d4shq3,12giardr9vf,j88twwsrda,28k6wl8wvm6","analysis_forecast|2":"1wn6n1nshnm,17rkhbgcoka,22e7qt8gmcq,1auutaqcqzb,19em7tvlm21","analysis_forecast|3":"c6qi3bpdh6,16203xk7nzz,ffp12rc6im,hwyhq5hr10,175c4y8azoo","analysis_forecast|4":"1aqdrl6veio,24rqxco9bea,rn0slx9do9,pt7hmzpiiu,npfwat6z04","incident_rca|0":"y3hru4j2h4,146w53azqyg,12oeytkrhvq,5hvpu1aacv,sn0vz1z41l","incident_rca|1":"16j08ldodpj,28casmx96ti,fsnjof91w9,8dq6r0qg31,4iumwllqff","incident_rca|2":"25hwjlpaw09,ntps4ul5mk,2dlqnyct0ja,smi8kg5py0,6ww3xegzqi","incident_rca|3":"ohoph77l6l,jvvnn1sknb,29jb2ici50q,ebrgusw5gt,19gdud1z7fd","incident_rca|4":"cm0i517b0e,1qv1aze2ata,1ps3zilkrg7,1ifg66rx94t,oto58akaqp","delivery_swarm|0":"1nvrfo0rfsn,1dujl5psj40,1czkmnh9hor,ta31zkshd0,yl2w0he04f","delivery_swarm|1":"2bozbnieb63,1807o4ux09c,xdzd34eknt,23pxbcpujiv,12yh9lupodb","delivery_swarm|2":"1zq7fv4bwhi,2d7j3fts8sg,1rw72ejakqo,j82ju3218,152e6z8k53m","delivery_swarm|3":"jgmphewizt,1gtnt4wsyya,2dxlpmz1xto,culjyavqsh,1lu2uyw9i1v","delivery_swarm|4":"zh0j3jde36,1q76nev2iu2,28q3jo3zycm,1kbowpw1dna,srnsc5y7nq","touchup|0":"2dfeec0z87f,1eeb7a6is2g,1du0pbovubf,1eazrfbwspw,7y7ici11ls","touchup|1":"10i5yo85jhn,z560c1vsk7,w3dr3ow8al,1h3b8lt4wgm,15px4kp059u","touchup|2":"wbtfehovil,rxtwa81ukc,itvreb3eor,2fk69hiu0h4,ug6av5w5ee","touchup|3":"a1krj4mu14,1u2u2ptoluu,17x3x4v9x3,u2ohj79vyg,8j41ghg4na","touchup|4":"1769igyth0b,4rxolm3ozy,fjwyb5zfhz,221jh1kjwbn,5qbxr1orpf","record_sync|0":"1xpdtiisxwd,elhj64tykj,5kqdagtphj,26ck5keds0q,1buhg72n5eg","record_sync|1":"1wc5nbxsokn,ijdpdin0l0,xwyy9kxuvu,1dqoa1vmoiy,18j97fzxr0j","record_sync|2":"1gpauhdq7lx,tg21ve7mhq,2ervyyowt1e,1iu8lkmqntq,17qstp0t34y","record_sync|3":"1iiysyoc1z3,1my7khiqhu,osfp2ckq2m,ngmgngsop6,u9ptniwkaj","record_sync|4":"1k0uz63om2l,z300rn2ame,svphnc504b,1ojt6l18lnk,wdf1woyfuo"},"anatomy":{"feature|0":"1l7y9uuaxkv","feature|4":"2ancuknvt7t","bugfix|0":"25akm66tu87","bugfix|4":"szbxnzena7","fullstack|0":"1romca57i7j","fullstack|4":"x9c6y7ob0y","new_project|0":"2uuxi8xxic","new_project|4":"2e309byw6ba","ui_component|0":"221lzzpa0v8","ui_component|4":"1oj35kth16t","refactoring|0":"256jiet6gt5","refactoring|4":"1ag8g56m97b","documentation|0":"28yxkjfyzjc","documentation|4":"bwgx0vrvmw","feature_fast|0":"18m3ea9r06g","feature_fast|4":"kx2u2nq3rs","devops|0":"1hcmn99yexy","devops|4":"rw7jvjljxc","platform_provisioning|0":"uo98t0r209","platform_provisioning|4":"ijyy7c1dsq","cross_repo|0":"1wyub0nyqfl","cross_repo|4":"1dbfstdegcf","performance|0":"24ti3q9sm4j","performance|4":"205pyhhpuqt","data_migration|0":"1jl0b50tvsp","data_migration|4":"wy2j5lhvxy","testing|0":"1ycwyw3uux7","testing|4":"2gfn8hpgjp1","test_automation|0":"1v64re6a5b2","test_automation|4":"1a57nytpgud","review|0":"1sd5rkener6","review|4":"17r94uiy30l","parallel_research|0":"120ou5xrfjt","parallel_research|4":"18uod83ezzh","swarm|0":"2g0r1elyyac","swarm|4":"1nkd3dtpimo","analysis_forecast|0":"12ozumwnpkr","analysis_forecast|4":"1jierkdya46","incident_rca|0":"113oraqrm5o","incident_rca|4":"1f9heimu5dc","delivery_swarm|0":"2c7zqkc12af","delivery_swarm|4":"f2nr0odzlj","touchup|0":"mcjcxlup2j","touchup|4":"1xqb6ori1pu","record_sync|0":"2d7gsren5v5","record_sync|4":"lplkuhnynk"},"ui":"sections:12,input:25,select:1,textarea:5,button:53,menuitem:7,context:7","autosaveKeys":"appSourceAccess,appSourceBranch,appSourcePath,approvePlan,artifactPath,canvas,clarifyFirst,durableRecord,memoryEnabled,name,openSpecArtifacts,plan,productDocPaths,repositories,rulesPaths,savedAt,slug,story,uiContextNotes,verifyFailRun,verifyNotes,verifyPaths,version","prefs":"appSourceAccess,appSourceBranch,appSourcePath,approvePlan,artifactPath,clarifyFirst,consumeRecords,defaultDelivery,defaultEvalHome,defaultModel,durableRecord,effort,exportFormat,mcpAtlassian,mcpBrowser,mcpCodeSearch,mcpCustom,mcpDatadog,mcpGithub,memoryEnabled,openSpecArtifacts,pins,plibFavs,plibOpen,productDocPaths,repositories,rulesPaths,telemetryEnabled,telemetryEndpoint,telemetryService,telemetryTags,telemetryUser,uiContextNotes,verifyFailRun,verifyNotes,verifyPaths","nodeTypes":"agent,task,decision,parallel,input,output"};
+
+  // ---- Requirement 1: the global and its version ----
+  it('should expose window.awd after boot with the string version "1" (E1)', guarded(() => {
+    expect(typeof win.awd).toBe('object');
+    expect(win.awd === null).toBe(false);
+    expect(typeof win.awd.version).toBe('string');
+    expect(win.awd.version).toBe('1');
+  }));
+
+  // ---- Requirement 2: read methods ----
+  it('should return plain JSON from every read method and leave the canvas unchanged when a returned object is mutated (E2)', guarded(() => {
+    const a = A();
+    win.loadPreset('feature'); el('storyInput').value = 'Add a CSV export to the report page.';
+    win.state.verifyPaths = ['docs/verify.md']; win.state.rulesPaths = ['rules/style.md'];
+    settle();
+    const reads = { listPresets: a.listPresets(), getWorkflow: a.getWorkflow(), listNodes: a.listNodes(), listConnections: a.listConnections(), generate: a.generate('prompt'), explain: a.explain('prompt'), validate: a.validate(), describe: a.describe() };
+    READS.forEach(k => expect(k + ':' + plainJson(reads[k])).toBe(k + ':true'));
+    const again = () => canon([a.listPresets(), a.getWorkflow().canvas, a.getWorkflow().verifyPaths, a.getWorkflow().rulesPaths, a.getWorkflow().name, a.listNodes(), a.listConnections(), a.explain('prompt'), a.validate(), a.describe()]);
+    const before = stateSig(); const want = again();
+    const n0 = reads.listNodes.find(n => Array.isArray(n.config.tools));
+    n0.label = 'MUTATED'; n0.x = -9999; n0.config.mutated = true; n0.config.tools.push('MUTATED'); reads.listNodes.push({ id: 'mutated' });
+    reads.listConnections[0].to = 'MUTATED'; reads.listConnections.pop();
+    const w = reads.getWorkflow; w.canvas.nodes[0].label = 'MUTATED'; w.canvas.nodes.pop(); w.canvas.connections.length = 0; w.verifyPaths.push('MUTATED'); w.rulesPaths.push('MUTATED'); w.name = 'MUTATED';
+    reads.validate.push({ type: 'error', msg: 'MUTATED' }); reads.explain[0].part = 'MUTATED'; reads.listPresets[0].id = 'MUTATED';
+    reads.describe[0].name = 'MUTATED'; reads.describe[0].inputSchema.mutated = true;
+    expect(stateSig() === before).toBe(true);
+    expect(again() === want).toBe(true);
+  }));
+  it('should list the presets the sidebar offers, in sidebar order, each as { id, name, description } (E3)', guarded(() => {
+    const want = [...win.document.querySelectorAll('.preset-item[data-preset]')].map(p => ({ id: p.dataset.preset, name: p.querySelector('.preset-name').textContent.trim() }));
+    const got = A().listPresets();
+    expect(Array.isArray(got)).toBe(true);
+    expect(want.length > 0).toBe(true);
+    expect(JSON.stringify(got.map(p => ({ id: p.id, name: p.name })))).toBe(JSON.stringify(want));
+    got.forEach(p => {
+      expect(p.id + ':' + keysOf(p)).toBe(p.id + ':description,id,name');
+      expect(p.id + ':' + (typeof p.description === 'string' && p.description.trim().length > 0)).toBe(p.id + ':true');
+    });
+  }));
+  it('should return from getWorkflow what serializeWorkflow returns, on an empty canvas and on a preset with sidebar text (E4)', guarded(() => {
+    // savedAt is a clock reading taken at each call, so it is compared by type only.
+    const strip = o => { const c = JSON.parse(JSON.stringify(o)); delete c.savedAt; return canon(c); };
+    [() => {}, () => { win.loadPreset('bugfix'); el('storyInput').value = 'Fix the login bug.'; el('planInput').value = 'Start in auth.js.'; win.state.verifyPaths = ['docs/verify.md']; settle(); }].forEach((setup, k) => {
+      fresh(); setup();
+      const got = A().getWorkflow();
+      expect(k + ':' + typeof got.savedAt).toBe(k + ':string');
+      expect(k + ':' + (strip(got) === strip(win.serializeWorkflow()))).toBe(k + ':true');
+    });
+  }));
+  it('should list every node as { id, type, label, x, y, config } and every connection as { id, from, to, label, fromPort } (E5)', guarded(() => {
+    expect(JSON.stringify(A().listNodes())).toBe('[]');
+    expect(JSON.stringify(A().listConnections())).toBe('[]');
+    win.loadPreset('feature'); settle();
+    const byId = (x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0);
+    const gotN = A().listNodes(); const gotC = A().listConnections();
+    expect(gotN.length).toBe(win.state.nodes.length);
+    expect(gotC.length).toBe(win.state.connections.length);
+    gotN.forEach(n => expect(n.id + ':' + keysOf(n)).toBe(n.id + ':' + NODE_KEYS));
+    gotC.forEach(c => expect(c.id + ':' + keysOf(c)).toBe(c.id + ':' + CONN_KEYS));
+    expect(canon(gotN.slice().sort(byId)) === canon(win.state.nodes.map(nodeSummary).sort(byId))).toBe(true);
+    expect(canon(gotC.slice().sort(byId)) === canon(win.state.connections.map(connSummary).sort(byId))).toBe(true);
+  }));
+  it('should generate each of the five formats exactly as the Copy button ships it, without changing the format the UI shows or any state (E6)', guarded(() => {
+    [0, 1].forEach(v => {
+      fresh(); win.loadPreset('feature'); el('storyInput').value = 'Add a CSV export to the report page.'; el('planInput').value = 'Start in report.js.';
+      if (v) { win.state.memoryEnabled = true; win.state.durableRecord = true; win.state.approvePlan = true; win.state.verifyPaths = ['docs/verify.md']; }
+      settle();
+      const want = {}; FORMAT_IDS.forEach(f => { win.setExportFormat(f); want[f] = win.getRawPrompt(); });   // the Copy path: select the format, read _rawPrompt
+      expect(v + ':distinct:' + new Set(FORMAT_IDS.map(f => want[f])).size).toBe(v + ':distinct:5');
+      win.setExportFormat('teams'); win.cancelPendingSaves();   // the UI shows Agent Teams while the facade generates all five
+      const before = watch();
+      FORMAT_IDS.forEach(f => {
+        const got = A().generate(f);
+        expect(v + ':' + f + ':' + (typeof got === 'string' && got.length > 0 && got === want[f])).toBe(v + ':' + f + ':true');
+        expect(v + ':' + f + ':untouched:' + (watch() === before)).toBe(v + ':' + f + ':untouched:true');
+      });
+      expect(win.state.exportFormat).toBe('teams');
+    });
+  }));
+  it('should generate an empty string for every format when the canvas has no nodes (E7)', guarded(() => {
+    const before = watch();
+    FORMAT_IDS.forEach(f => expect(f + ':' + JSON.stringify(A().generate(f))).toBe(f + ':""'));
+    expect(watch() === before).toBe(true);
+  }));
+  it('should return the Explain rows for each format as { part, status, reason, snippet } without changing the format the UI shows (E8)', guarded(() => {
+    // The Explain rows for a format are the workflow-level rows the Explain button shows: explainWorkflow(format).
+    win.loadPreset('feature'); el('storyInput').value = 'Add a CSV export to the report page.'; win.state.memoryEnabled = true; settle();
+    win.setExportFormat('teams'); win.cancelPendingSaves();
+    const before = watch();
+    FORMAT_IDS.forEach(f => {
+      const want = win.explainWorkflow(f).map(r => ({ part: r.part, status: r.status, reason: r.reason, snippet: r.snippet }));
+      const got = A().explain(f);
+      expect(f + ':' + (Array.isArray(got) && got.length > 0 && got.length === want.length)).toBe(f + ':true');
+      got.forEach(r => expect(f + ':' + keysOf(r)).toBe(f + ':part,reason,snippet,status'));
+      expect(f + ':' + (canon(got) === canon(want))).toBe(f + ':true');
+    });
+    expect(watch() === before).toBe(true);
+  }));
+  it('should return the Review warnings as { type, msg }, and an empty array when the Review is clean (E9)', guarded(() => {
+    expect(JSON.stringify(A().validate())).toBe('[]');                    // an empty canvas
+    chain();
+    expect(win.validateWorkflow().length).toBe(0);                        // the fixture's Review is clean
+    expect(JSON.stringify(A().validate())).toBe('[]');
+    agent(300, 500, 'Loose Coder', 'coder'); settle();
+    const want = win.validateWorkflow().map(w => ({ type: w.type, msg: w.msg }));
+    const got = A().validate();
+    expect(want.length > 0).toBe(true);
+    got.forEach(w => expect(keysOf(w)).toBe('msg,type'));
+    expect(JSON.stringify(got)).toBe(JSON.stringify(want));
+  }));
+  it('should describe one catalog entry per method with a name, a description, and a JSON Schema inputSchema (E10)', guarded(() => {
+    // Assumptions (b) and (c).
+    const a = A(); const cat = a.describe();
+    expect(Array.isArray(cat)).toBe(true);
+    METHODS.forEach(m => expect(m + ':' + typeof a[m]).toBe(m + ':function'));
+    METHODS.forEach(m => expect(m + ':' + cat.filter(e => e.name === m).length).toBe(m + ':1'));
+    expect(new Set(cat.map(e => e.name)).size).toBe(cat.length);
+    cat.forEach(e => {
+      expect(e.name + ':method:' + typeof a[e.name]).toBe(e.name + ':method:function');
+      expect(e.name + ':description:' + (typeof e.description === 'string' && e.description.trim().length > 0)).toBe(e.name + ':description:true');
+      const s = e.inputSchema;
+      expect(e.name + ':schema:' + (plainObject(s) && s.type === 'object')).toBe(e.name + ':schema:true');
+    });
+    const props = name => Object.keys(cat.find(e => e.name === name).inputSchema.properties || {});
+    ['type', 'label', 'x', 'y', 'config'].forEach(k => expect('addNode.' + k + ':' + props('addNode').includes(k)).toBe('addNode.' + k + ':true'));
+    OPTION_KEYS.forEach(k => expect('setOptions.' + k + ':' + props('setOptions').includes(k)).toBe('setOptions.' + k + ':true'));
+    ['from', 'to', 'label'].forEach(k => expect('connect.' + k + ':' + props('connect').includes(k)).toBe('connect.' + k + ':true'));
+  }));
+
+  // ---- Requirement 3: mutating methods ----
+  it('should clear the canvas with newWorkflow without a confirm dialog and return the workflow summary (E11)', guarded(() => {
+    // Assumption (e).
+    const c = chain();
+    delete win.__autoConfirm; let asked = 0; win.confirm = () => { asked++; return false; };
+    const ret = A().newWorkflow();
+    expect(win.state.nodes.length + ':' + win.state.connections.length).toBe('0:0');
+    expect(asked).toBe(0);
+    expect(dialogShown()).toBe(false);
+    expect(isSummary(ret)).toBe(true);
+    expect(drawn(c.b)).toBe(false);          // re-rendered: the node is off the canvas
+    expect(win.getRawPrompt()).toBe('');     // and the Copy text is empty
+  }));
+  it('should load every preset by id to the same canvas the app builds and return the workflow summary (E12)', guarded(() => {
+    presetKeys().forEach(k => {
+      fresh(); win.loadPreset(k); const want = canvasSig();
+      fresh(); const ret = A().loadPreset(k);
+      expect(k + ':nodes:' + (win.state.nodes.length > 0)).toBe(k + ':nodes:true');
+      expect(k + ':' + (canvasSig() === want)).toBe(k + ':true');
+      expect(k + ':summary:' + isSummary(ret)).toBe(k + ':summary:true');
+      expect(k + ':preset:' + ret.preset).toBe(k + ':preset:' + k);   // the summary's preset is the id of the preset on the canvas
+      expect(k + ':drawn:' + drawn(win.state.nodes[0].id)).toBe(k + ':drawn:true');
+    });
+  }));
+  it('should replace a canvas that has nodes with a preset without a confirm dialog (E13)', guarded(() => {
+    // Assumption (e).
+    chain();
+    delete win.__autoConfirm; let asked = 0; win.confirm = () => { asked++; return false; };
+    A().loadPreset('bugfix');
+    expect(asked).toBe(0);
+    expect(dialogShown()).toBe(false);
+    expect(win.state.nodes.some(n => n.label === 'Alpha Planner')).toBe(false);
+    expect(win.state.activePreset).toBe('bugfix');
+    win.__autoConfirm = true; fresh(); win.loadPreset('bugfix'); const want = win.state.nodes.map(n => n.label).join('|');
+    fresh(); chain(); delete win.__autoConfirm; A().loadPreset('bugfix');
+    expect(win.state.nodes.map(n => n.label).join('|')).toBe(want);
+  }));
+  it('should throw on an unknown preset id and leave the canvas and the sidebar unchanged (E14)', guarded(() => {
+    chain(); const before = stateSig();
+    const e = caught(() => A().loadPreset('no_such_preset'));
+    expect(!!e).toBe(true);
+    expect(stateSig() === before).toBe(true);
+  }));
+  it('should restore with setWorkflow a workflow object that getWorkflow returned (E15)', guarded(() => {
+    win.loadPreset('bugfix'); el('workflowName').value = 'saved-flow'; el('storyInput').value = 'Fix the login bug.'; settle();
+    const saved = A().getWorkflow(); const wantCanvas = canvasSig(); const wantGen = FIVE.map(f => win[f]());
+    win.loadPreset('documentation'); el('workflowName').value = 'other-flow'; el('storyInput').value = 'Write the docs.'; settle();
+    expect(canvasSig() === wantCanvas).toBe(false);
+    const ret = A().setWorkflow(saved);
+    expect(canvasSig() === wantCanvas).toBe(true);
+    expect(el('workflowName').value + '|' + el('storyInput').value).toBe('saved-flow|Fix the login bug.');
+    FIVE.forEach((f, j) => expect(f + ':' + (win[f]() === wantGen[j])).toBe(f + ':true'));
+    expect(isSummary(ret)).toBe(true);
+    expect(win.getRawPrompt() === win.getActivePromptText()).toBe(true);   // re-rendered: the Copy text is the restored workflow's prompt
+    expect(drawn(win.state.nodes[0].id)).toBe(true);
+  }));
+  it('should throw on a workflow object that deserializeWorkflow rejects and leave the canvas unchanged (E16)', guarded(() => {
+    chain(); el('storyInput').value = 'Keep me.'; const before = stateSig();
+    const bad = [{}, { name: 'no canvas' }, { canvas: { nodes: [{ id: 'n1', type: 'no_such_type', label: 'X', x: 0, y: 0, w: 100, h: 50, config: {} }], connections: [], nextId: 2 } }];
+    bad.forEach((b, k) => {
+      const e = caught(() => A().setWorkflow(b));
+      expect(k + ':throws:' + !!e).toBe(k + ':throws:true');
+      expect(k + ':unchanged:' + (stateSig() === before)).toBe(k + ':unchanged:true');
+    });
+  }));
+  it('should add a node with the given type, label, position, and config, and return its summary with the new id (E17)', guarded(() => {
+    const c = chain();
+    const ret = A().addNode({ type: 'agent', label: 'Delta Reviewer', x: 640, y: 420, config: { agentType: 'reviewer', model: 'sonnet-5', maxTurns: 7 } });
+    expect(keysOf(ret)).toBe(NODE_KEYS);
+    expect(plainJson(ret)).toBe(true);
+    expect(Object.keys(c).map(k => c[k]).indexOf(ret.id)).toBe(-1);
+    const n = node(ret.id);
+    expect(!!n).toBe(true);
+    expect([ret.type, ret.label, ret.x, ret.y, ret.config.agentType, ret.config.model, ret.config.maxTurns].join('|')).toBe('agent|Delta Reviewer|640|420|reviewer|sonnet-5|7');
+    expect(canon(ret) === canon(nodeSummary(n))).toBe(true);
+    expect(win.state.nodes.length).toBe(6);
+    expect(drawn(ret.id)).toBe(true);        // re-rendered: the node is on the canvas
+    ret.label = 'MUTATED'; ret.config.maxTurns = 99;
+    expect(node(ret.id).label + '|' + node(ret.id).config.maxTurns).toBe('Delta Reviewer|7');
+  }));
+  it('should give an added node the node type defaults for every config key the call omits (E18)', guarded(() => {
+    const D = win.NODE_DEFAULTS;
+    ['task', 'decision', 'parallel', 'input', 'output'].forEach(t => {
+      const r = A().addNode({ type: t, label: 'Plain ' + t, x: 100, y: 700 });
+      expect(t + ':' + (canon(r.config) === canon(D[t].config))).toBe(t + ':true');
+    });
+    const g = A().addNode({ type: 'agent', label: 'Plain agent', x: 100, y: 900 });   // the default model here is also the sidebar default
+    Object.keys(D.agent.config).forEach(k => expect('agent.' + k + ':' + canon(g.config[k])).toBe('agent.' + k + ':' + canon(D.agent.config[k])));
+    const p = A().addNode({ type: 'agent', label: 'Partial agent', x: 100, y: 1100, config: { agentType: 'coder', maxTurns: 3 } });
+    expect(p.config.agentType + '|' + p.config.maxTurns + '|' + canon(p.config.tools) + '|' + canon(p.config.notes)).toBe('coder|3|' + canon(D.agent.config.tools) + '|' + canon(D.agent.config.notes));
+  }));
+  it('should throw on an unknown node type, agent type, or model, and accept every AGENT_TYPES id and every MODELS value (E19)', guarded(() => {
+    chain(); const before = stateSig();
+    const bad = [{ type: 'no_such_type', label: 'X' }, { type: 'agent', label: 'X', config: { agentType: 'no_such_role' } }, { type: 'agent', label: 'X', config: { agentType: 'coder', model: 'no-such-model' } }];
+    bad.forEach((b, k) => {
+      const e = caught(() => A().addNode(b));
+      expect(k + ':throws:' + !!e).toBe(k + ':throws:true');
+      expect(k + ':unchanged:' + (stateSig() === before)).toBe(k + ':unchanged:true');
+    });
+    win.AGENT_TYPES.forEach(t => { const r = A().addNode({ type: 'agent', label: 'Role ' + t.id, x: 0, y: 1000, config: { agentType: t.id } }); expect(t.id + ':' + r.config.agentType).toBe(t.id + ':' + t.id); });
+    win.MODELS.forEach(m => { const r = A().addNode({ type: 'agent', label: 'Model ' + m.value, x: 0, y: 1200, config: { agentType: 'coder', model: m.value } }); expect(m.value + ':' + r.config.model).toBe(m.value + ':' + m.value); });
+  }));
+  it('should place a node added without x and y to the right of the rightmost node (E20)', guarded(() => {
+    chain();
+    const rightmost = () => Math.max.apply(null, win.state.nodes.map(n => n.x));
+    let edge = rightmost(); let r = A().addNode({ type: 'task', label: 'Auto One' });
+    expect(typeof r.x === 'number' && typeof r.y === 'number' && isFinite(r.x) && isFinite(r.y)).toBe(true);
+    expect(r.x > edge).toBe(true);
+    edge = rightmost(); r = A().addNode({ type: 'agent', label: 'Auto Two', config: { agentType: 'coder' } });
+    expect(r.x > edge).toBe(true);
+    fresh(); r = A().addNode({ type: 'input', label: 'First' });   // an empty canvas has no rightmost node: any finite position passes
+    expect(typeof r.x === 'number' && typeof r.y === 'number' && isFinite(r.x) && isFinite(r.y)).toBe(true);
+  }));
+  it('should merge a label and config patch into a node with updateNode and return its summary (E21)', guarded(() => {
+    const c = chain();
+    const ret = A().updateNode(c.b, { label: 'Beta Builder', config: { maxTurns: 4, model: 'sonnet-5' } });
+    const n = node(c.b);
+    expect([n.label, n.config.maxTurns, n.config.model, n.config.agentType, n.config.prompt].join('|')).toBe('Beta Builder|4|sonnet-5|coder|Do the coder work.');
+    expect(keysOf(ret)).toBe(NODE_KEYS);
+    expect(ret.id).toBe(c.b);
+    expect(canon(ret) === canon(nodeSummary(n))).toBe(true);
+    expect(win.getRawPrompt().indexOf('Beta Builder') !== -1).toBe(true);   // re-rendered: the Copy text names the new label
+    A().updateNode(c.a, { config: { notes: 'Read the ADRs first.' } });
+    expect(node(c.a).label + '|' + node(c.a).config.notes).toBe('Alpha Planner|Read the ADRs first.');
+    A().updateNode(c.a, { label: 'Alpha Architect' });
+    expect(node(c.a).label + '|' + node(c.a).config.notes + '|' + node(c.a).config.agentType).toBe('Alpha Architect|Read the ADRs first.|planner');
+    expect(win.state.nodes.length + ':' + win.state.connections.length).toBe('5:4');
+  }));
+  it('should throw from updateNode on an unknown id, agent type, or model and leave the node unchanged (E22)', guarded(() => {
+    const c = chain(); const before = stateSig();
+    const bad = [['n404', { label: 'X' }], [c.b, { config: { agentType: 'no_such_role' } }], [c.b, { label: 'Half', config: { model: 'no-such-model' } }]];
+    bad.forEach((b, k) => {
+      const e = caught(() => A().updateNode(b[0], b[1]));
+      expect(k + ':throws:' + !!e).toBe(k + ':throws:true');
+      expect(k + ':unchanged:' + (stateSig() === before)).toBe(k + ':unchanged:true');
+    });
+  }));
+  it('should remove a node and its edges with deleteNode, and throw on an unknown id (E23)', guarded(() => {
+    const c = chain();
+    const ret = A().deleteNode(c.b);
+    expect(!!node(c.b)).toBe(false);
+    expect(win.state.connections.some(x => x.from === c.b || x.to === c.b)).toBe(false);
+    expect(win.state.nodes.length + ':' + win.state.connections.length).toBe('4:2');
+    expect(plainObject(ret)).toBe(true);
+    expect(drawn(c.b)).toBe(false);
+    const before = stateSig();
+    const e = caught(() => A().deleteNode('n404'));
+    expect(!!e).toBe(true);
+    expect(stateSig() === before).toBe(true);
+  }));
+  it('should add an edge with connect, return its summary, and return the existing edge when one already runs from the first node to the second (E24)', guarded(() => {
+    const c = chain();
+    const ret = A().connect(c.i, c.o, 'direct');
+    expect(keysOf(ret)).toBe(CONN_KEYS);
+    const edge = win.state.connections.find(x => x.id === ret.id);
+    expect(!!edge && edge.from === c.i && edge.to === c.o && edge.label === 'direct').toBe(true);
+    expect(canon(ret) === canon(connSummary(edge))).toBe(true);
+    expect(win.state.connections.length).toBe(5);
+    expect(drawn(ret.id)).toBe(true);
+    const again = A().connect(c.i, c.o, 'direct');
+    expect(again.id).toBe(ret.id);
+    expect(keysOf(again)).toBe(CONN_KEYS);
+    expect(win.state.connections.length).toBe(5);
+    const bare = A().connect(c.a, c.t);   // the label is optional
+    expect(bare.from + '>' + bare.to).toBe(c.a + '>' + c.t);
+    expect(win.state.connections.length).toBe(6);
+  }));
+  it('should throw from connect on an unknown id or when from equals to (E25)', guarded(() => {
+    const c = chain(); const before = stateSig();
+    [['n404', c.o], [c.i, 'n404'], [c.a, c.a]].forEach((b, k) => {
+      const e = caught(() => A().connect(b[0], b[1]));
+      expect(k + ':throws:' + !!e).toBe(k + ':throws:true');
+      expect(k + ':unchanged:' + (stateSig() === before)).toBe(k + ':unchanged:true');
+    });
+  }));
+  it('should remove an edge with disconnect and throw when no such edge exists (E26)', guarded(() => {
+    const c = chain();
+    const ret = A().disconnect(c.a, c.b);
+    expect(win.state.connections.some(x => x.from === c.a && x.to === c.b)).toBe(false);
+    expect(win.state.nodes.length + ':' + win.state.connections.length).toBe('5:3');
+    expect(plainObject(ret)).toBe(true);
+    const before = stateSig();
+    [[c.a, c.b], [c.t, c.b], ['n404', c.b]].forEach((b, k) => {   // the edge is gone; the reverse edge never existed; an unknown id has no edge
+      const e = caught(() => A().disconnect(b[0], b[1]));
+      expect(k + ':throws:' + !!e).toBe(k + ':throws:true');
+      expect(k + ':unchanged:' + (stateSig() === before)).toBe(k + ':unchanged:true');
+    });
+  }));
+  it('should add the pre-registered eval exactly as the app one-click does (E27)', guarded(() => {
+    let r = sameAsApp(chain, c => win.addPreRegisteredEval(c.i), () => A().addEval());
+    expect('chain:' + r.same).toBe('chain:true');
+    expect(authors().length).toBe(1);
+    expect(plainObject(r.ret)).toBe(true);
+    expect(drawn(authors()[0].id)).toBe(true);
+    ['feature', 'bugfix', 'parallel_research', 'documentation'].forEach(k => {
+      r = sameAsApp(() => { win.loadPreset(k); return { i: win.state.nodes.find(n => n.type === 'input').id }; }, c => win.addPreRegisteredEval(c.i), () => A().addEval());
+      expect(k + ':' + r.same + ':' + authors().length).toBe(k + ':true:1');
+    });
+  }));
+  it('should anchor the eval on the Input that has edges, else on the only Input (E28)', guarded(() => {
+    const spare = win.addNode('input', 0, 600, 'Spare In', {});   // first in node order, no edges
+    const c = chain();
+    A().addEval();
+    expect(authors().length).toBe(1);
+    expect(win.state.connections.some(x => x.from === c.i && x.to === authors()[0].id)).toBe(true);
+    expect(win.state.connections.some(x => x.from === spare.id)).toBe(false);
+    const r = sameAsApp(() => { const lone = win.addNode('input', 0, 100, 'Lone In', {}); agent(300, 100, 'Solo Coder', 'coder'); return { i: lone.id }; }, c2 => win.addPreRegisteredEval(c2.i), () => A().addEval());
+    expect(r.same).toBe(true);
+    expect(win.state.connections.some(x => x.from === r.ctx.i && x.to === authors()[0].id)).toBe(true);
+  }));
+  it('should throw from addEval when the canvas has no Input or already has an Eval Author (E29)', guarded(() => {
+    agent(300, 100, 'Solo Coder', 'coder'); settle();
+    let before = stateSig();
+    let e = caught(() => A().addEval());
+    expect('no input:' + !!e).toBe('no input:true');
+    expect(stateSig() === before).toBe(true);
+    fresh(); const c = chain(); win.addPreRegisteredEval(c.i); settle();
+    before = stateSig();
+    e = caught(() => A().addEval());
+    expect('author exists:' + !!e).toBe('author exists:true');
+    expect(stateSig() === before).toBe(true);
+    expect(authors().length).toBe(1);
+  }));
+  it('should remove the pre-registered eval exactly as the app does (E30)', guarded(() => {
+    const r = sameAsApp(() => { const c = chain(); win.addPreRegisteredEval(c.i); return c; }, () => win.removePreRegisteredEval(), () => A().removeEval());
+    expect(r.same).toBe(true);
+    expect(authors().length).toBe(0);
+    expect(plainObject(r.ret)).toBe(true);
+  }));
+  it('should attach a Verifier loop with the app route-back rule and return { verifier, gate, routeBack } as node summaries (E31)', guarded(() => {
+    // On the Tester the app rule routes a failed check to the nearest upstream step that changes the deliverable: the coder.
+    let r = sameAsApp(chain, c => win.batchUndo(() => win.attachVerifierLoop(c.t)), c => A().attachVerifier(c.t));
+    expect(r.same).toBe(true);
+    expect(keysOf(r.ret)).toBe('gate,routeBack,verifier');
+    ['verifier', 'gate', 'routeBack'].forEach(k => {
+      expect(k + ':' + keysOf(r.ret[k])).toBe(k + ':' + NODE_KEYS);
+      expect(k + ':' + (canon(r.ret[k]) === canon(nodeSummary(node(r.ret[k].id))))).toBe(k + ':true');
+    });
+    const v = node(r.ret.verifier.id); const g = node(r.ret.gate.id);
+    expect(v.config.reviewLoopFor + '|' + v.config.reviewLoopKind + '|' + g.type + '|' + g.config.reviewLoopDecisionFor).toBe(r.ctx.t + '|verifier|decision|' + r.ctx.t);
+    expect(r.ret.routeBack.id).toBe(r.ctx.b);
+    expect(win.state.connections.some(x => x.from === g.id && x.to === r.ctx.b)).toBe(true);
+    // On the coder itself the wrapped step keeps the route.
+    r = sameAsApp(chain, c => win.batchUndo(() => win.attachVerifierLoop(c.b)), c => A().attachVerifier(c.b));
+    expect(r.same).toBe(true);
+    expect(r.ret.routeBack.id).toBe(r.ctx.b);
+  }));
+  it('should attach a Skeptic loop and detach a loop exactly as the app does (E32)', guarded(() => {
+    let r = sameAsApp(chain, c => win.attachReviewLoop(c.a, 'adversary'), c => A().attachSkeptic(c.a));
+    expect('attach:' + r.same).toBe('attach:true');
+    expect(win.hasReviewLoop(r.ctx.a)).toBe(true);
+    expect(plainObject(r.ret)).toBe(true);
+    const loop = win.state.nodes.find(n => n.config && n.config.reviewLoopFor === r.ctx.a);
+    expect(loop.config.reviewLoopKind).toBe('adversary');
+    expect(drawn(loop.id)).toBe(true);
+    r = sameAsApp(() => { const c = chain(); win.attachReviewLoop(c.a, 'adversary'); return c; }, c => win.detachReviewLoop(c.a), c => A().detachLoop(c.a));
+    expect('detach skeptic:' + r.same + ':' + win.hasReviewLoop(r.ctx.a)).toBe('detach skeptic:true:false');
+    expect(plainObject(r.ret)).toBe(true);
+    r = sameAsApp(() => { const c = chain(); win.batchUndo(() => win.attachVerifierLoop(c.t)); return c; }, c => win.detachReviewLoop(c.t), c => A().detachLoop(c.t));
+    expect('detach verifier:' + r.same + ':' + win.hasReviewLoop(r.ctx.t)).toBe('detach verifier:true:false');
+  }));
+  it('should throw when a node cannot take a loop or already has one (E33)', guarded(() => {
+    const c = chain(); win.attachReviewLoop(c.a, 'adversary'); settle();
+    const skeptic = win.state.nodes.find(n => n.config && n.config.reviewLoopFor === c.a);
+    const before = stateSig();
+    const cases = [['attachVerifier', c.i, 'an Input'], ['attachSkeptic', c.o, 'an Output'], ['attachVerifier', skeptic.id, 'a Skeptic node'], ['attachSkeptic', skeptic.id, 'a Skeptic node'],
+      ['attachVerifier', 'n404', 'an unknown id'], ['attachSkeptic', 'n404', 'an unknown id'], ['attachVerifier', c.a, 'a step with a loop'], ['attachSkeptic', c.a, 'a step with a loop']];
+    cases.forEach(k => {
+      const e = caught(() => A()[k[0]](k[1]));
+      expect(k[0] + ' on ' + k[2] + ':throws:' + !!e).toBe(k[0] + ' on ' + k[2] + ':throws:true');
+      expect(k[0] + ' on ' + k[2] + ':unchanged:' + (stateSig() === before)).toBe(k[0] + ' on ' + k[2] + ':unchanged:true');
+    });
+  }));
+  it('should set the Requirements box, the Workflow Context box, and the name through the path typing takes (E34)', guarded(() => {
+    const TEXT = { storyInput: 'Customers need a CSV export on the report page with every visible column.', planInput: 'Start in report.js and reuse the table model.', workflowName: 'csv-export-flow' };
+    const CALL = { storyInput: 'setRequirements', planInput: 'setContext', workflowName: 'setName' };
+    // What the field's input handlers leave behind: the validation state of the Requirements buttons, the memory path, and the autosave.
+    const before = () => { win.validateStoryInput(); win.cancelPendingSaves(); win.localStorage.removeItem('awd_autosave'); };
+    const after = id => {
+      win.flushPendingSaves();
+      const auto = JSON.parse(win.localStorage.getItem('awd_autosave') || 'null'); if (auto) delete auto.savedAt;
+      return JSON.stringify({ value: el(id).value, auto: auto, generate: el('generateBtn').disabled, refine: el('refineBtn').disabled, plan: el('planBtn').disabled, memory: el('memoryPathDisplay').textContent });
+    };
+    Object.keys(TEXT).forEach(id => {
+      fresh(); chain(); before(); typeInto(id, TEXT[id]); const typed = after(id);
+      fresh(); chain(); before(); const ret = A()[CALL[id]](TEXT[id]); const called = after(id);
+      expect(CALL[id] + ':value:' + el(id).value).toBe(CALL[id] + ':value:' + TEXT[id]);
+      expect(CALL[id] + ':autosaved:' + (JSON.parse(called).auto !== null)).toBe(CALL[id] + ':autosaved:true');
+      expect(CALL[id] + ':as typed:' + (called === typed)).toBe(CALL[id] + ':as typed:true');
+      expect(CALL[id] + ':summary:' + isSummary(ret)).toBe(CALL[id] + ':summary:true');
+    });
+  }));
+  it('should show the new requirements, context, and name in the generated prompt and in the Copy text after each setter (E35)', guarded(() => {
+    // The requirement names the prompt as updating. Typing in the Requirements and Workflow Context boxes does not refresh the Copy text today, so the facade refreshes it.
+    chain();
+    const check = (tag, word) => {
+      FIVE.forEach(f => expect(tag + ':' + f + ':' + (win[f]().indexOf(word) !== -1)).toBe(tag + ':' + f + ':true'));
+      expect(tag + ':copy text:' + (win.getRawPrompt() === win.getActivePromptText() && win.getRawPrompt().indexOf(word) !== -1)).toBe(tag + ':copy text:true');
+      expect(tag + ':panel:' + (el('promptOutput').textContent.indexOf(word) !== -1)).toBe(tag + ':panel:true');
+      expect(tag + ':generate:' + (A().generate('prompt') === win.getRawPrompt())).toBe(tag + ':generate:true');
+    };
+    A().setRequirements('ZEBRACORN requirement: export the report as CSV with every visible column.'); check('setRequirements', 'ZEBRACORN');
+    A().setContext('YAKETY context: start in report.js.'); check('setContext', 'YAKETY');
+    A().setName('quagga-flow'); check('setName', 'quagga-flow');
+    expect(A().getWorkflow().name + '|' + (A().getWorkflow().story.indexOf('ZEBRACORN') !== -1) + '|' + (A().getWorkflow().plan.indexOf('YAKETY') !== -1)).toBe('quagga-flow|true|true');
+  }));
+  it('should set each of the ten options through the sidebar handler, so the control, the state, and the saved preferences agree (E36)', guarded(() => {
+    chain();
+    const want = { exportFormat: 'teams', memoryEnabled: true, durableRecord: true, consumeRecords: false, approvePlan: true, clarifyFirst: true, defaultModel: 'sonnet-5', effort: 'high', verifyPaths: ['docs/verify.md', 'rules/E2E.md'], verifyNotes: 'The checkout flow MUST pass.' };
+    const ret = A().setOptions(want);
+    OPTION_KEYS.forEach(k => expect(k + ':' + canon(win.state[k])).toBe(k + ':' + canon(want[k])));
+    expect(controls()).toBe(JSON.stringify({ tab: 'teams', memory: true, record: true, consume: false, approve: true, clarify: true, model: 'sonnet-5', effort: 'high', paths: ['docs/verify.md', 'rules/E2E.md'], notes: 'The checkout flow MUST pass.' }));
+    expect(isSummary(ret)).toBe(true);
+    expect(win.getRawPrompt() === win.genAgentTeams()).toBe(true);   // the handlers re-rendered the prompt in the new format
+    win.flushPendingSaves();
+    const prefs = JSON.parse(win.localStorage.getItem('awd_prefs') || '{}');
+    OPTION_KEYS.forEach(k => expect('prefs.' + k + ':' + canon(prefs[k])).toBe('prefs.' + k + ':' + canon(want[k])));
+    A().setOptions({ verifyPaths: ['only.md'], durableRecord: false });   // a list is set, not appended; keys not named keep their value
+    expect(canon(win.state.verifyPaths) + '|' + win.state.durableRecord + '|' + el('durableRecordToggle').checked + '|' + win.state.approvePlan + '|' + win.state.effort + '|' + win.state.exportFormat).toBe('["only.md"]|false|false|true|high|teams');
+    expect(JSON.parse(controls()).paths.join(',')).toBe('only.md');
+  }));
+  it('should throw from setOptions on an unknown key or an invalid value and apply no key of that call (E37)', guarded(() => {
+    chain(); const before = stateSig() + controls();
+    const bad = [{ approvePlan: true, noSuchOption: 1 }, { approvePlan: true, exportFormat: 'pdf' }, { approvePlan: true, defaultModel: 'no-such-model' }, { approvePlan: true, effort: 'turbo' }, { approvePlan: true, clarifyFirst: 'yes' }, { approvePlan: true, verifyPaths: 42 }];
+    bad.forEach((b, k) => {
+      const e = caught(() => A().setOptions(b));
+      expect(k + ':throws:' + !!e).toBe(k + ':throws:true');
+      expect(k + ':unchanged:' + (stateSig() + controls() === before)).toBe(k + ':unchanged:true');
+    });
+    expect(win.state.approvePlan + ':' + el('approvePlanToggle').checked).toBe('false:false');
+  }));
+  it('should undo and redo through the app with undo() and redo(), and return the workflow summary (E38)', guarded(() => {
+    chain(); const s0 = snap();
+    agent(300, 500, 'Extra Coder', 'coder');   // a step the UI pushed
+    const s1 = snap();
+    let ret = A().undo();
+    expect(snap() === s0).toBe(true);
+    expect(isSummary(ret)).toBe(true);
+    ret = A().redo();
+    expect(snap() === s1).toBe(true);
+    expect(isSummary(ret)).toBe(true);
+    win.clearUndo();
+    A().undo(); A().redo();   // nothing to undo or redo: no change, no throw
+    expect(snap() === s1).toBe(true);
+  }));
+
+  // ---- Requirement 4: one undo step per mutating call ----
+  it('should make each canvas edit (addNode, updateNode, deleteNode, connect, disconnect) exactly one undo step (E39)', guarded(() => {
+    oneStep('addNode', chain, () => A().addNode({ type: 'agent', label: 'Delta Reviewer', x: 640, y: 420, config: { agentType: 'reviewer' } }));
+    oneStep('addNode without x and y', chain, () => A().addNode({ type: 'task', label: 'Auto Placed' }));
+    oneStep('updateNode', chain, c => A().updateNode(c.b, { label: 'Beta Builder', config: { maxTurns: 4 } }));
+    oneStep('deleteNode', chain, c => A().deleteNode(c.b));
+    oneStep('connect', chain, c => A().connect(c.i, c.o, 'direct'));
+    oneStep('disconnect', chain, c => A().disconnect(c.a, c.b));
+  }));
+  it('should make newWorkflow, loadPreset, and setWorkflow exactly one undo step each, the sidebar fields included (E40)', guarded(() => {
+    // The director's answer: an undo step a facade call pushed also restores the name, the requirements, the context, and the options.
+    const withText = () => { const c = chain(); el('storyInput').value = 'Fix the login bug.'; el('planInput').value = 'Start in auth.js.'; return c; };
+    oneStep('newWorkflow', withText, () => A().newWorkflow());
+    oneStep('loadPreset', withText, () => A().loadPreset('bugfix'));
+    let saved = null;
+    oneStep('setWorkflow', () => {
+      win.loadPreset('documentation'); el('workflowName').value = 'saved-flow'; el('storyInput').value = 'Write the docs.'; el('planInput').value = 'Start in docs/.';
+      win.state.approvePlan = true; win.state.verifyPaths = ['docs/verify.md']; settle();
+      saved = JSON.parse(JSON.stringify(win.serializeWorkflow()));
+      fresh(); return withText();
+    }, () => A().setWorkflow(saved));
+  }));
+  it('should make addEval, removeEval, attachVerifier, attachSkeptic, and detachLoop exactly one undo step each (E41)', guarded(() => {
+    oneStep('addEval', chain, () => A().addEval());
+    oneStep('removeEval', () => { const c = chain(); win.addPreRegisteredEval(c.i); return c; }, () => A().removeEval());
+    oneStep('attachVerifier', chain, c => A().attachVerifier(c.t));
+    oneStep('attachSkeptic', chain, c => A().attachSkeptic(c.a));
+    oneStep('detachLoop', () => { const c = chain(); win.attachReviewLoop(c.a, 'adversary'); return c; }, c => A().detachLoop(c.a));
+  }));
+  it('should make each sidebar setter exactly one undo step, and restore the controls with the state (E42)', guarded(() => {
+    oneStep('setRequirements', chain, () => A().setRequirements('Customers need a CSV export on the report page.'));
+    oneStep('setContext', chain, () => A().setContext('Start in report.js.'));
+    oneStep('setName', chain, () => A().setName('csv-export-flow'));
+    oneStep('setOptions', chain, () => A().setOptions({ exportFormat: 'sdk', memoryEnabled: true, durableRecord: true, consumeRecords: false, approvePlan: true, clarifyFirst: true, defaultModel: 'sonnet-5', effort: 'high', verifyPaths: ['docs/verify.md'], verifyNotes: 'The checkout flow MUST pass.' }));
+    fresh(); chain(); const u0 = snapUi();
+    A().setOptions({ exportFormat: 'sdk', memoryEnabled: true, durableRecord: true, consumeRecords: false, approvePlan: true, clarifyFirst: true, defaultModel: 'sonnet-5', effort: 'high', verifyPaths: ['docs/verify.md'], verifyNotes: 'The checkout flow MUST pass.' });
+    const u1 = snapUi();
+    expect(u1 !== u0).toBe(true);
+    A().undo(); expect('controls after undo:' + (snapUi() === u0)).toBe('controls after undo:true');
+    A().redo(); expect('controls after redo:' + (snapUi() === u1)).toBe('controls after redo:true');
+  }));
+  it('should leave the sidebar alone when undo() and redo() move over a step the UI pushed (E43)', guarded(() => {
+    chain();
+    typeInto('workflowName', 'ui-typed-name'); typeInto('storyInput', 'Typed by the user.');
+    el('approvePlanToggle').checked = true; win.toggleApprovePlan();
+    const extra = agent(300, 500, 'Extra Coder', 'coder');   // the UI step
+    typeInto('workflowName', 'ui-typed-later');
+    const sidebar = () => [el('workflowName').value, el('storyInput').value, win.state.approvePlan, el('approvePlanToggle').checked].join('|');
+    A().undo();
+    expect(!!node(extra.id)).toBe(false);
+    expect(sidebar()).toBe('ui-typed-later|Typed by the user.|true|true');
+    A().redo();
+    expect(!!node(extra.id)).toBe(true);
+    expect(sidebar()).toBe('ui-typed-later|Typed by the user.|true|true');
+  }));
+  it('should consume no undo step for connect on an edge that already exists (E44)', guarded(() => {
+    const c = chain(); const s0 = snap();
+    win.addNode('task', 40, 900, 'Marker', {});
+    const s1 = snap();
+    const first = win.state.connections.find(x => x.from === c.a && x.to === c.b);
+    const ret = A().connect(c.a, c.b);
+    expect(ret.id).toBe(first.id);
+    expect(snap() === s1).toBe(true);
+    A().undo();
+    expect(snap() === s0).toBe(true);   // the one undo removed the marker: the call took no step
+  }));
+  it('should consume no undo step for a call that throws (E45)', guarded(() => {
+    const c = chain(); const s0 = snap();
+    win.addNode('task', 40, 900, 'Marker', {});
+    const s1 = snap();
+    const calls = [() => A().addNode({ type: 'no_such_type', label: 'X' }), () => A().deleteNode('n404'), () => A().connect(c.a, c.a), () => A().loadPreset('no_such_preset'), () => A().setWorkflow({}), () => A().setOptions({ approvePlan: true, effort: 'turbo' })];
+    calls.forEach((fn, k) => { expect(k + ':throws:' + !!caught(fn)).toBe(k + ':throws:true'); expect(k + ':unchanged:' + (snap() === s1)).toBe(k + ':unchanged:true'); });
+    A().undo();
+    expect(snap() === s0).toBe(true);   // the one undo removed the marker: no failed call took a step
+  }));
+
+  // ---- Requirement 5: batch ----
+  it('should run a batch in order as one undo step and return one result per entry (E46)', guarded(() => {
+    // Assumptions (b) and (c).
+    const c = chain(); const s0 = snapUi();
+    win.addNode('task', 40, 900, 'Marker', {});
+    const s1 = snapUi();
+    const ops = [{ tool: 'setName', input: one('setName', 'batch-flow') }, { tool: 'addNode', input: { type: 'agent', label: 'Batch Reviewer', x: 640, y: 420, config: { agentType: 'reviewer' } } },
+      { tool: 'connect', input: { from: c.i, to: c.o, label: 'direct' } }, { tool: 'setOptions', input: { approvePlan: true } }];
+    const out = A().batch(ops);
+    expect(Array.isArray(out) && out.length === ops.length).toBe(true);
+    expect(plainJson(out)).toBe(true);
+    expect(out[0].name).toBe('batch-flow');
+    expect(out[1].label + '|' + !!node(out[1].id)).toBe('Batch Reviewer|true');
+    expect(out[2].from + '>' + out[2].to + '|' + out[2].label).toBe(c.i + '>' + c.o + '|direct');
+    expect(el('workflowName').value + '|' + win.state.approvePlan + '|' + win.state.nodes.length + '|' + win.state.connections.length).toBe('batch-flow|true|7|5');
+    const s2 = snapUi();
+    A().undo(); expect('undo:' + (snapUi() === s1)).toBe('undo:true');
+    A().redo(); expect('redo:' + (snapUi() === s2)).toBe('redo:true');
+    A().undo(); A().undo(); expect('second undo:' + (snapUi() === s0)).toBe('second undo:true');
+  }));
+  it('should stop a batch at the entry that throws, leave nothing from the batch applied, and name the failing index and tool (E47)', guarded(() => {
+    // Assumptions (b) and (c). The index is the zero-based position in the array.
+    const c = chain();
+    win.addNode('task', 40, 900, 'Marker', {});
+    const s1 = snapUi();
+    const ops = [{ tool: 'setName', input: one('setName', 'half-applied') }, { tool: 'addNode', input: { type: 'agent', label: 'Half Applied', x: 640, y: 420, config: { agentType: 'coder' } } },
+      { tool: 'connect', input: { from: c.a, to: 'n404' } }, { tool: 'setOptions', input: { approvePlan: true } }];
+    const e = caught(() => A().batch(ops));
+    expect(!!e && isErr(e)).toBe(true);
+    expect(e.message.indexOf('awd:')).toBe(0);
+    expect(/\b2\b/.test(e.message)).toBe(true);
+    expect(e.message.indexOf('connect') !== -1).toBe(true);
+    expect(snapUi() === s1).toBe(true);          // the name and the node the first two entries made are gone
+    expect(win.state.approvePlan).toBe(false);   // the entry after the failure never ran
+    expect(win.state.nodes.some(n => n.label === 'Half Applied')).toBe(false);
+  }));
+  it('should reject a batch entry that names an unknown tool, and return an empty array for an empty batch without taking an undo step (E48)', guarded(() => {
+    chain(); const s0 = snapUi();
+    win.addNode('task', 40, 900, 'Marker', {});
+    const s1 = snapUi();
+    const e = caught(() => A().batch([{ tool: 'setName', input: one('setName', 'half-applied') }, { tool: 'noSuchTool', input: {} }]));
+    expect(!!e && isErr(e)).toBe(true);
+    expect(e.message.indexOf('awd:')).toBe(0);
+    expect(/\b1\b/.test(e.message) && e.message.indexOf('noSuchTool') !== -1).toBe(true);
+    expect(snapUi() === s1).toBe(true);
+    expect(JSON.stringify(A().batch([]))).toBe('[]');
+    expect(snapUi() === s1).toBe(true);
+    A().undo();
+    expect(snapUi() === s0).toBe(true);   // the one undo removed the marker: the empty batch took no step
+  }));
+
+  // ---- Requirement 6: errors ----
+  it('should throw Error instances whose message starts with "awd:" and names the method and the bad value (E49)', guarded(() => {
+    const c = chain(); win.attachReviewLoop(c.a, 'adversary'); win.addPreRegisteredEval(c.i); settle();
+    // [method, the bad values the message must name, the call]
+    const cases = [
+      ['loadPreset', ['no_such_preset'], () => A().loadPreset('no_such_preset')],
+      ['setWorkflow', [], () => A().setWorkflow({})],
+      ['addNode', ['no_such_type'], () => A().addNode({ type: 'no_such_type', label: 'X' })],
+      ['addNode', ['no_such_role'], () => A().addNode({ type: 'agent', label: 'X', config: { agentType: 'no_such_role' } })],
+      ['addNode', ['no-such-model'], () => A().addNode({ type: 'agent', label: 'X', config: { agentType: 'coder', model: 'no-such-model' } })],
+      ['updateNode', ['n404'], () => A().updateNode('n404', { label: 'X' })],
+      ['updateNode', ['no_such_role'], () => A().updateNode(c.b, { config: { agentType: 'no_such_role' } })],
+      ['deleteNode', ['n404'], () => A().deleteNode('n404')],
+      ['connect', ['n404'], () => A().connect('n404', c.o)],
+      ['connect', [c.b], () => A().connect(c.b, c.b)],
+      ['disconnect', [c.o, c.i], () => A().disconnect(c.o, c.i)],
+      ['addEval', [], () => A().addEval()],
+      ['attachVerifier', [c.i], () => A().attachVerifier(c.i)],
+      ['attachSkeptic', [c.a], () => A().attachSkeptic(c.a)],
+      ['setOptions', ['noSuchOption'], () => A().setOptions({ noSuchOption: 1 })],
+      ['setOptions', ['turbo'], () => A().setOptions({ effort: 'turbo' })]
+    ];
+    cases.forEach((k, j) => {
+      const tag = j + ':' + k[0];
+      const e = caught(k[2]);
+      expect(tag + ':throws:' + !!e).toBe(tag + ':throws:true');
+      expect(tag + ':Error:' + isErr(e)).toBe(tag + ':Error:true');
+      expect(tag + ':prefix:' + String(e.message).indexOf('awd:')).toBe(tag + ':prefix:0');
+      expect(tag + ':method:' + (e.message.indexOf(k[0]) !== -1)).toBe(tag + ':method:true');
+      k[1].forEach(v => expect(tag + ':value ' + v + ':' + (e.message.indexOf(v) !== -1)).toBe(tag + ':value ' + v + ':true'));
+    });
+  }));
+
+  // ---- Requirement 7: WebMCP registration ----
+  it('should register every catalog entry as a tool through a context that offers registerTool (E50)', guarded(async () => {
+    // Assumption (d).
+    const reg = registrar(); const cat = A().describe();
+    const got = []; let provided = 0;
+    await reg({ registerTool(tool) { got.push(tool); } });
+    expect(got.length).toBe(cat.length);
+    expect(got.map(t => t.name).sort().join(',')).toBe(cat.map(e => e.name).sort().join(','));
+    got.forEach(t => {
+      const e = cat.find(x => x.name === t.name);
+      expect(t.name + ':' + (t.description === e.description && canon(t.inputSchema) === canon(e.inputSchema) && typeof t.execute === 'function')).toBe(t.name + ':true');
+    });
+    const both = []; await reg({ registerTool(tool) { both.push(tool.name); }, provideContext() { provided++; } });   // registerTool is used when a context offers both
+    expect(both.sort().join(',')).toBe(cat.map(e => e.name).sort().join(','));
+  }));
+  it('should run the facade method from a tool and return { content: [{ type: "text", text }] } with the JSON result as text (E51)', guarded(async () => {
+    // Assumptions (c) and (d). Only object and array results are read back: the requirement does not say how a string result is written as text.
+    const c = chain(); const tools = await registered();
+    let r = await tools.listNodes.execute({});
+    expect('listNodes:' + resultShape(r) + ':' + (r.isError === true)).toBe('listNodes:true:false');
+    expect(canon(JSON.parse(r.content[0].text)) === canon(A().listNodes())).toBe(true);
+    r = await tools.validate.execute({});
+    expect('validate:' + resultShape(r)).toBe('validate:true');
+    expect(canon(JSON.parse(r.content[0].text)) === canon(A().validate())).toBe(true);
+    r = await tools.addNode.execute({ type: 'task', label: 'Via Tool', x: 50, y: 500 });
+    expect('addNode:' + resultShape(r) + ':' + (r.isError === true)).toBe('addNode:true:false');
+    const made = JSON.parse(r.content[0].text);
+    expect(made.label + '|' + !!node(made.id)).toBe('Via Tool|true');
+    r = await tools.connect.execute({ from: c.i, to: c.o, label: 'direct' });
+    expect('connect:' + resultShape(r)).toBe('connect:true');
+    expect(win.state.connections.some(x => x.from === c.i && x.to === c.o && x.label === 'direct')).toBe(true);
+    r = await tools.setName.execute(one('setName', 'tool-flow'));
+    expect('setName:' + resultShape(r)).toBe('setName:true');
+    expect(el('workflowName').value).toBe('tool-flow');
+  }));
+  it('should return the same shape with isError true and the message when the facade method throws (E52)', guarded(async () => {
+    // Assumptions (c) and (d).
+    const c = chain(); const tools = await registered(); const before = stateSig();
+    const msg = caught(() => A().loadPreset('no_such_preset')).message;
+    let r = null, threw = null;
+    try { r = await tools.loadPreset.execute(one('loadPreset', 'no_such_preset')); } catch (e) { threw = e; }
+    expect(threw === null).toBe(true);
+    expect(resultShape(r)).toBe(true);
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text.indexOf(msg) !== -1 && msg.indexOf('awd:') === 0).toBe(true);
+    try { r = await tools.connect.execute({ from: c.a, to: c.a }); } catch (e) { threw = e; }
+    expect(threw === null).toBe(true);
+    expect(resultShape(r) && r.isError === true && r.content[0].text.indexOf('awd:') !== -1).toBe(true);
+    expect(stateSig() === before).toBe(true);
+  }));
+  it('should provide the same tools through provideContext when the context offers no registerTool (E53)', guarded(async () => {
+    // Assumption (d). provideContext receives an object whose tools array carries the tools, as the WebMCP API defines it.
+    chain(); const reg = registrar(); const cat = A().describe();
+    const calls = [];
+    await reg({ provideContext(arg) { calls.push(arg); } });
+    expect(calls.length > 0).toBe(true);
+    const tools = [].concat.apply([], calls.map(arg => (arg && Array.isArray(arg.tools)) ? arg.tools : []));
+    expect(tools.map(t => t.name).sort().join(',')).toBe(cat.map(e => e.name).sort().join(','));
+    tools.forEach(t => {
+      const e = cat.find(x => x.name === t.name);
+      expect(t.name + ':' + (t.description === e.description && canon(t.inputSchema) === canon(e.inputSchema) && typeof t.execute === 'function')).toBe(t.name + ':true');
+    });
+    const r = await tools.find(t => t.name === 'listNodes').execute({});
+    expect(resultShape(r)).toBe(true);
+    expect(canon(JSON.parse(r.content[0].text)) === canon(A().listNodes())).toBe(true);
+  }));
+  it('should register nothing, throw nothing, and log no error when the context is absent or offers neither function (E54)', guarded(async () => {
+    // Assumption (d).
+    chain(); const reg = registrar(); const before = stateSig();
+    let errors = 0; savedConsoleError = win.console.error; win.console.error = () => { errors++; };
+    const contexts = [undefined, null, {}, { registerTool: null, provideContext: undefined }];
+    for (let k = 0; k < contexts.length; k++) {
+      let threw = null;
+      try { await reg(contexts[k]); } catch (e) { threw = e; }
+      expect(k + ':' + (threw === null)).toBe(k + ':true');
+    }
+    expect(errors).toBe(0);
+    expect(stateSig() === before).toBe(true);
+  }));
+  it('should register the catalog at boot on document.modelContext, ahead of navigator.modelContext (E55)', guarded(async () => {
+    // Assumption (f).
+    const keep = storageSnapshot();
+    try {
+      const onDocument = [], onNavigator = [];
+      const b = await boot((w, d) => {
+        Object.defineProperty(d, 'modelContext', { value: { registerTool(t) { onDocument.push(t); } }, configurable: true });
+        Object.defineProperty(w.navigator, 'modelContext', { value: { registerTool(t) { onNavigator.push(t); } }, configurable: true });
+      });
+      expect(typeof b.w.loadPreset).toBe('function');   // the second copy of the app booted
+      expect(typeof b.w.awd).toBe('object');
+      const names = b.w.awd.describe().map(e => e.name).sort().join(',');
+      expect(names.length > 0).toBe(true);
+      expect(onDocument.map(t => t.name).sort().join(',')).toBe(names);
+      expect(onNavigator.length).toBe(0);
+      const r = await onDocument.find(t => t.name === 'listNodes').execute({});
+      expect(resultShape(r)).toBe(true);
+    } finally { frames.splice(0).forEach(f => f.remove()); storageRestore(keep); }
+  }));
+  it('should register the catalog at boot on navigator.modelContext when document.modelContext is absent (E56)', guarded(async () => {
+    // Assumption (f).
+    const keep = storageSnapshot();
+    try {
+      const onNavigator = [];
+      const b = await boot((w, d) => {
+        Object.defineProperty(w.navigator, 'modelContext', { value: { registerTool(t) { onNavigator.push(t); } }, configurable: true });
+      });
+      expect(typeof b.w.awd).toBe('object');
+      const names = b.w.awd.describe().map(e => e.name).sort().join(',');
+      expect(names.length > 0).toBe(true);
+      expect(onNavigator.map(t => t.name).sort().join(',')).toBe(names);
+    } finally { frames.splice(0).forEach(f => f.remove()); storageRestore(keep); }
+  }));
+  it('should boot with the facade in place and log no error when neither model context exists (E57)', guarded(async () => {
+    // Assumption (f).
+    const keep = storageSnapshot();
+    try {
+      const b = await boot(() => {});
+      expect(typeof b.w.loadPreset).toBe('function');
+      expect(typeof b.w.awd).toBe('object');
+      expect(b.w.awd.version).toBe('1');
+      expect(b.log.errors).toBe(0);
+      expect(b.log.uncaught.length).toBe(0);
+    } finally { frames.splice(0).forEach(f => f.remove()); storageRestore(keep); }
+  }));
+
+  // ---- Requirement 8 and the non-goals: existing behavior is untouched ----
+  it('should generate byte-identical output in all five formats for every preset in five variants, with no facade call made [guard] (E58)', guarded(() => {
+    presetKeys().forEach(k => [0, 1, 2, 3, 4].forEach(v => {
+      presetVariant(k, v);
+      expect(k + '|' + v + ':' + FIVE.map(f => h53(win[f]())).join(',')).toBe(k + '|' + v + ':' + GOLD.preset[k + '|' + v]);
+    }));
+  }));
+  it('should leave the Review entries and the Explain rows of every preset unchanged [guard] (E59)', guarded(() => {
+    presetKeys().forEach(k => [0, 4].forEach(v => {
+      presetVariant(k, v);
+      expect(k + '|' + v + ':' + anatomySig()).toBe(k + '|' + v + ':' + GOLD.anatomy[k + '|' + v]);
+    }));
+  }));
+  it('should keep an undo step the UI pushed to the canvas only, with the sidebar left alone [guard] (E60)', guarded(() => {
+    chain();
+    typeInto('workflowName', 'ui-typed-name'); typeInto('storyInput', 'Typed by the user.');
+    el('approvePlanToggle').checked = true; win.toggleApprovePlan();
+    win.clearUndo(); const d0 = win.undoDepth();
+    const extra = agent(300, 500, 'Extra Coder', 'coder');
+    expect(win.undoDepth()).toBe(d0 + 1);                 // one canvas edit, one step
+    typeInto('workflowName', 'ui-typed-later');
+    expect(win.undoDepth()).toBe(d0 + 1);                 // typing in the sidebar pushes no step
+    win.loadPreset('bugfix');
+    expect(win.undoDepth()).toBe(d0 + 2);                 // a preset load is one step
+    const sidebar = () => [el('workflowName').value, el('storyInput').value, win.state.approvePlan, el('approvePlanToggle').checked].join('|');
+    win.undo();
+    expect(!!node(extra.id) && win.state.nodes.some(n => n.label === 'Alpha Planner')).toBe(true);
+    win.undo();
+    expect(!!node(extra.id)).toBe(false);
+    expect(win.state.nodes.length + ':' + win.state.connections.length).toBe('5:4');
+    expect(sidebar()).toBe('ui-typed-later|Typed by the user.|true|true');
+    win.redo();
+    expect(!!node(extra.id)).toBe(true);
+    expect(sidebar()).toBe('ui-typed-later|Typed by the user.|true|true');
+    expect(win.getRawPrompt() === win.getActivePromptText()).toBe(true);
+  }));
+  it('should autosave a canvas edit after the debounce with the same keys, clear the autosave on New Workflow, and keep the same preference keys [guard] (E61)', guarded(() => {
+    chain(); win.cancelPendingSaves(); win.localStorage.removeItem('awd_autosave');
+    agent(300, 500, 'Saved Coder', 'coder');
+    expect(win.localStorage.getItem('awd_autosave')).toBe(null);   // debounced: nothing is written yet
+    win.flushPendingSaves();
+    const auto = JSON.parse(win.localStorage.getItem('awd_autosave'));
+    expect(Object.keys(auto).sort().join(',')).toBe(GOLD.autosaveKeys);
+    expect(auto.canvas.nodes.length + ':' + auto.name).toBe('6:eval-fixture');
+    win.clearCanvas(true);
+    expect(win.localStorage.getItem('awd_autosave')).toBe(null);
+    win.savePrefs();
+    expect(Object.keys(JSON.parse(win.localStorage.getItem('awd_prefs'))).sort().join(',')).toBe(GOLD.prefs);
+  }));
+  it('should add no sidebar section, no sidebar control, and no menu item [guard] (E62)', guarded(async () => {
+    // Assumptions (f) and (g).
+    expect(await uiSig()).toBe(GOLD.ui);
+  }));
+  it('should keep the node types as they are [guard] (E63)', guarded(() => {
+    expect(Object.keys(win.NODE_DEFAULTS).join(',')).toBe(GOLD.nodeTypes);
+  }));
+  it('should generate from a canvas built through the facade the same five outputs as from the same canvas built by the app (E64)', guarded(() => {
+    chain(); el('storyInput').value = 'Add a CSV export to the report page.';
+    const want = FIVE.map(f => win[f]());
+    fresh(); el('storyInput').value = 'Add a CSV export to the report page.';
+    const a = A();
+    const cfg = type => ({ agentType: type, model: 'opus-5', tools: ['Read'], prompt: 'Do the ' + type + ' work.', maxTurns: 10 });
+    const i = a.addNode({ type: 'input', label: 'In', x: 0, y: 100, config: {} });
+    const p = a.addNode({ type: 'agent', label: 'Alpha Planner', x: 300, y: 100, config: cfg('planner') });
+    const b = a.addNode({ type: 'agent', label: 'Beta Coder', x: 600, y: 100, config: cfg('coder') });
+    const t = a.addNode({ type: 'agent', label: 'Gamma Tester', x: 900, y: 100, config: cfg('tester') });
+    const o = a.addNode({ type: 'output', label: 'Done', x: 1200, y: 100, config: { deliverable: '', format: 'code', targetBranch: '', branchName: '' } });
+    [[i, p], [p, b], [b, t], [t, o]].forEach(e => a.connect(e[0].id, e[1].id));
+    expect(win.state.nodes.length + ':' + win.state.connections.length).toBe('5:4');
+    FIVE.forEach((f, j) => expect(f + ':' + (win[f]() === want[j])).toBe(f + ':true'));
+    FORMAT_IDS.forEach(f => expect(f + ':' + (a.generate(f) === want[FIVE.indexOf(FORMATS[f])])).toBe(f + ':true'));
+  }));
+  it('should accept any tool name in a node config, so the facade never forbids a tool (E65)', guarded(() => {
+    const tools = ['Read', 'mcp__custom__lookup', 'NotInTheToolList'];
+    expect(tools.every(t => win.ALL_TOOLS.indexOf(t) !== -1)).toBe(false);   // the fixture holds names outside the app's list
+    const r = A().addNode({ type: 'agent', label: 'Tooled Coder', x: 0, y: 0, config: { agentType: 'coder', tools: tools } });
+    expect(JSON.stringify(node(r.id).config.tools)).toBe(JSON.stringify(tools));
+    A().updateNode(r.id, { config: { tools: ['AnotherTool'] } });
+    expect(JSON.stringify(node(r.id).config.tools)).toBe('["AnotherTool"]');
+    A().updateNode(r.id, { config: { tools: [] } });
+    expect(JSON.stringify(node(r.id).config.tools)).toBe('[]');
+  }));
+  it('should persist nothing beyond the autosave and the preferences the app already writes (E66)', guarded(() => {
+    // The same session runs twice from an empty store: once through the app's own functions, once through the facade.
+    // The facade run may leave the keys the app run leaves, the autosave, and the preferences, and no other key.
+    A();
+    const keep = storageSnapshot(); const session = sessionStorage.length + ':' + win.sessionStorage.length;
+    try {
+      const keysAfter = run => { fresh(); win.cancelPendingSaves(); localStorage.clear(); run(); win.flushPendingSaves(); return Object.keys(storageSnapshot()); };
+      const viaApp = keysAfter(() => {
+        win.loadPreset('feature'); win.addNode('task', 0, 900, 'Stored Task', {});
+        typeInto('workflowName', 'stored-flow'); typeInto('storyInput', 'Store nothing new.'); typeInto('planInput', 'No new keys.');
+        el('approvePlanToggle').checked = true; win.toggleApprovePlan(); win.setEffort('high');
+        win.addPreRegisteredEval(win.state.nodes.find(n => n.type === 'input').id); win.undo(); win.redo(); win.clearCanvas(true); win.undo();
+      });
+      const viaFacade = keysAfter(() => {
+        const a = A();
+        a.loadPreset('feature'); const n = a.addNode({ type: 'task', label: 'Stored Task', x: 0, y: 900 }); a.updateNode(n.id, { label: 'Stored Task 2' });
+        a.setName('stored-flow'); a.setRequirements('Store nothing new.'); a.setContext('No new keys.'); a.setOptions({ approvePlan: true, effort: 'high' });
+        a.batch([{ tool: 'addNode', input: { type: 'task', label: 'Batch Task', x: 0, y: 1000 } }]);
+        a.addEval(); a.undo(); a.redo(); a.generate('sdk'); a.describe(); a.newWorkflow(); a.undo();
+      });
+      const extra = viaFacade.filter(k => viaApp.indexOf(k) === -1 && k !== 'awd_autosave' && k !== 'awd_prefs').sort().join(',');
+      expect(extra).toBe('');
+      expect(sessionStorage.length + ':' + win.sessionStorage.length).toBe(session);
+    } finally { storageRestore(keep); }
+  }));
+
+  // ---- Requirement 10: documentation ----
+  it('should document the facade in one README section: the version, every method in one table, the one-undo-step rule, the error convention, and the reach of WebMCP registration (E67)', guarded(async () => {
+    // Assumption (f).
+    const res = await fetch('README.md');
+    if (!res.ok) throw new Error('structural assumption (f) does not hold: README.md cannot be fetched (run through ./run-tests.sh)');
+    const lines = (await res.text()).split('\n');
+    // A section is a heading and the lines down to the next heading of the same or a higher level.
+    const heads = []; let fence = false;
+    lines.forEach((l, k) => { if (/^\s*```/.test(l)) fence = !fence; const m = !fence && /^(#{1,6})\s+\S/.exec(l); if (m) heads.push({ k: k, level: m[1].length }); });
+    const sections = heads.map((h, j) => { let end = lines.length; for (let q = j + 1; q < heads.length; q++) if (heads[q].level <= h.level) { end = heads[q].k; break; } return lines.slice(h.k, end).join('\n'); });
+    const tables = s => { const out = []; let cur = null; s.split('\n').forEach(l => { if (/^\s*\|/.test(l)) { cur = cur || []; cur.push(l); } else if (cur) { out.push(cur.join('\n')); cur = null; } }); if (cur) out.push(cur.join('\n')); return out; };
+    const listsAll = t => METHODS.every(m => new RegExp('\\b' + m + '\\b').test(t));
+    const found = sections.filter(s => s.indexOf('window.awd') !== -1 && tables(s).some(listsAll)).sort((x, y) => x.length - y.length);
+    expect('a section that names window.awd and lists every method in one table:' + (found.length > 0)).toBe('a section that names window.awd and lists every method in one table:true');
+    const sec = found[0];
+    expect('version:' + (/version[^\n]{0,80}\b1\b/i.test(sec) || /\b1\b[^\n]{0,80}version/i.test(sec))).toBe('version:true');
+    expect('one undo step:' + (/\b(one|single)\b[^\n]{0,60}\bundo\b/i.test(sec) || /\bundo\b[^\n]{0,60}\b(one|single)\b/i.test(sec))).toBe('one undo step:true');
+    expect('error convention:' + (sec.indexOf('awd:') !== -1 && /\berrors?\b/i.test(sec))).toBe('error convention:true');
+    expect('WebMCP:' + /WebMCP/.test(sec)).toBe('WebMCP:true');
+    expect('outside the browser, automation:' + /automat/i.test(sec)).toBe('outside the browser, automation:true');
+    expect('outside the browser, Import and the workflow JSON:' + (/\bimport/i.test(sec) && /JSON/.test(sec))).toBe('outside the browser, Import and the workflow JSON:true');
+  }));
+  it('should point at the README from one paragraph in the help modal (E68)', guarded(() => {
+    // Assumption (g).
+    const ps = [...win.document.querySelectorAll('#helpOverlay p')].filter(p => p.textContent.indexOf('window.awd') !== -1);
+    expect(ps.length).toBe(1);
+    expect(/README/.test(ps[0].textContent)).toBe(true);
+  }));
+});
+
+describe('Agent API facade (window.awd)', () => {
+  const FORMATS = { prompt: 'genWorkflow', subagent: 'genSubAgents', teams: 'genAgentTeams', sdk: 'genAgentSDK', claude: 'genClaudePrompt' };
+  const READS = ['listPresets', 'getWorkflow', 'listNodes', 'listConnections', 'generate', 'explain', 'validate', 'describe'];
+  const MUTATORS = ['newWorkflow', 'loadPreset', 'setWorkflow', 'addNode', 'updateNode', 'deleteNode', 'connect', 'disconnect', 'addEval', 'removeEval', 'attachVerifier', 'attachSkeptic', 'detachLoop', 'setRequirements', 'setContext', 'setName', 'setOptions', 'undo', 'redo'];
+  const SUMMARY_KEYS = 'connections,name,nodes,preset,slug,warnings';
+  const NODE_KEYS = 'config,id,label,type,x,y';
+  const CONN_KEYS = 'from,fromPort,id,label,to';
+  let savedConsole = null;
+
+  function el(id) { return win.document.getElementById(id); }
+  function keysOf(o) { return o && typeof o === 'object' ? Object.keys(o).sort().join(',') : 'not an object'; }
+  function thrown(fn) { try { fn(); } catch (e) { return e; } return null; }
+  function tidy() {
+    win.__autoConfirm = true; win.confirm = () => true;
+    if (savedConsole) { win.console.error = savedConsole.error; win.console.warn = savedConsole.warn; savedConsole = null; }
+    resetState();
+    win.selectNode(null, true);
+    Object.assign(win.state, { approvePlan: false, clarifyFirst: false, mcpAtlassian: true, consumeRecords: true, defaultEvalHome: 'record', mcpCustom: '' });
+    [['consumeRecordsToggle', true], ['approvePlanToggle', false], ['clarifyFirstToggle', false], ['memoryToggle', false], ['durableRecordToggle', false]].forEach(p => { el(p[0]).checked = p[1]; });
+    ['workflowName', 'storyInput', 'planInput', 'appSourcePath', 'appSourceBranch', 'uiContextNotes', 'mcpCustomNotes', 'verifyNotesInput'].forEach(id => { el(id).value = ''; });
+    win.setDefaultModel('opus-5', true); win.setEffort('', true);
+    win.renderRepoRows(); win.renderRulesRows(); win.renderProductDocRows(); win.renderVerifyRows();
+    win.setExportFormat('prompt');
+    win.clearUndo();
+    win.cancelPendingSaves();
+    ['awd_prefs', 'awd_autosave', 'awd_run_reports'].forEach(k => win.localStorage.removeItem(k));
+  }
+  function fresh() { tidy(); el('workflowName').value = 'facade-fixture'; }
+  // The harness skips afterEach when a test throws, so every test also tidies in a finally.
+  function clean(fn) { return async () => { fresh(); try { await fn(); } finally { tidy(); } }; }
+  afterEach(tidy);
+
+  // In -> Plan -> Code -> Test -> Done, built with the app's own functions.
+  function chain() {
+    const agent = (x, label, type) => win.addNode('agent', x, 100, label, { agentType: type, model: 'opus-5', tools: ['Read'], prompt: 'Do the ' + type + ' work.', maxTurns: 10 });
+    const i = win.addNode('input', 0, 100, 'In', {}); const p = agent(300, 'Plan', 'planner'); const c = agent(600, 'Code', 'coder'); const t = agent(900, 'Test', 'tester');
+    const o = win.addNode('output', 1200, 100, 'Done', { deliverable: '', format: 'code', targetBranch: '', branchName: '' });
+    [[i, p], [p, c], [c, t], [t, o]].forEach(e => win.addConnection(e[0].id, e[1].id));
+    win.selectNode(null); win.render(); win.clearUndo();
+    return { i: i.id, p: p.id, c: c.id, t: t.id, o: o.id };
+  }
+  function optionValues() { const o = {}; ['exportFormat', 'memoryEnabled', 'durableRecord', 'consumeRecords', 'approvePlan', 'clarifyFirst', 'defaultModel', 'effort', 'verifyPaths', 'verifyNotes'].forEach(k => { o[k] = win.state[k]; }); return o; }
+  function snap() {
+    return JSON.stringify({ nodes: win.state.nodes, conns: win.state.connections, raw: win.getRawPrompt(), name: el('workflowName').value, story: el('storyInput').value, plan: el('planInput').value,
+      opts: optionValues(), memory: el('memoryToggle').checked, approve: el('approvePlanToggle').checked, tab: win.document.querySelector('.format-tab.active').dataset.format });
+  }
+  function depth() { return String(win.undoDepth()); }
+
+  it('should expose the facade version "1" as a string', clean(() => {
+    expect(typeof win.awd.version).toBe('string');
+    expect(win.awd.version).toBe('1');
+  }));
+
+  it('should list 28 unique catalog entries whose names are the facade methods and whose input schemas are objects', clean(() => {
+    const cat = win.awd.describe();
+    const methods = Object.keys(win.awd).filter(k => typeof win.awd[k] === 'function').sort();
+    expect(cat.length).toBe(28);
+    expect(cat.map(e => e.name).sort().join(',')).toBe(methods.join(','));
+    expect(methods.join(',')).toBe(READS.concat(MUTATORS, ['batch']).sort().join(','));
+    cat.forEach(e => {
+      expect(e.name + ':' + keysOf(e)).toBe(e.name + ':description,inputSchema,name');
+      expect(e.name + ':' + e.inputSchema.type).toBe(e.name + ':object');
+      (e.inputSchema.required || []).forEach(k => expect(e.name + '.' + k + ':' + (k in e.inputSchema.properties)).toBe(e.name + '.' + k + ':true'));
+    });
+    cat[0].description = 'changed'; cat[0].inputSchema.properties.changed = true;
+    expect(win.awd.describe()[0].description === 'changed' || 'changed' in win.awd.describe()[0].inputSchema.properties).toBe(false);
+  }));
+
+  it('should return plain JSON copies from each read method, empty on an empty canvas', clean(() => {
+    const a = win.awd;
+    expect(JSON.stringify([a.listNodes(), a.listConnections(), a.validate()])).toBe('[[],[],[]]');
+    Object.keys(FORMATS).forEach(f => expect(f + ':' + JSON.stringify(a.generate(f))).toBe(f + ':""'));
+    a.listPresets().forEach(p => expect(p.id + ':' + keysOf(p)).toBe(p.id + ':description,id,name'));
+    const c = chain();
+    a.listNodes().forEach(n => expect(n.id + ':' + keysOf(n)).toBe(n.id + ':' + NODE_KEYS));
+    a.listConnections().forEach(x => expect(x.id + ':' + keysOf(x)).toBe(x.id + ':' + CONN_KEYS));
+    a.explain('teams').forEach(r => expect(keysOf(r)).toBe('part,reason,snippet,status'));
+    expect(a.getWorkflow().canvas.nodes.length).toBe(5);
+    const before = JSON.stringify(win.state.nodes);
+    const nodes = a.listNodes(); nodes[0].config.changed = true; nodes[0].label = 'changed';
+    const wf = a.getWorkflow(); wf.canvas.nodes.length = 0; wf.verifyPaths.push('changed.md');
+    expect(JSON.stringify(win.state.nodes)).toBe(before);
+    expect(JSON.stringify(win.state.verifyPaths)).toBe('[]');
+    expect(a.listNodes().find(n => n.id === c.i).label).toBe('In');
+  }));
+
+  it('should generate each format equal to the Copy text without moving the format tab, and throw on an unknown format', clean(() => {
+    win.loadPreset('feature'); el('storyInput').value = 'Add a CSV export.'; win.state.approvePlan = true; win.render();
+    const copy = {}; Object.keys(FORMATS).forEach(f => { win.setExportFormat(f); copy[f] = win.getRawPrompt(); });
+    win.setExportFormat('subagent');
+    const raw = win.getRawPrompt();
+    Object.keys(FORMATS).forEach(f => expect(f + ':' + (win.awd.generate(f) === copy[f])).toBe(f + ':true'));
+    expect(win.state.exportFormat + '|' + win.document.querySelector('.format-tab.active').dataset.format).toBe('subagent|subagent');
+    expect(win.getRawPrompt() === raw).toBe(true);
+    ['pdf', '', undefined].forEach(f => {
+      [() => win.awd.generate(f), () => win.awd.explain(f)].forEach(call => { const e = thrown(call); expect(String(f) + ':' + (e && e.message.indexOf('awd:') === 0)).toBe(String(f) + ':true'); });
+    });
+    expect(win.state.exportFormat).toBe('subagent');
+  }));
+
+  it('should return a node summary, a connection summary, a loop result, or the workflow summary from each mutator and an array from batch', clean(() => {
+    const a = win.awd; const isSummary = s => keysOf(s) + '|' + s.nodes + '|' + s.connections === SUMMARY_KEYS + '|' + win.state.nodes.length + '|' + win.state.connections.length;
+    const first = a.addNode({ type: 'input', label: 'First' });   // an empty canvas: the presets' first spot
+    expect(keysOf(first) + '|' + first.x + '|' + first.y).toBe(NODE_KEYS + '|80|250');
+    fresh();
+    const c = chain();
+    expect(isSummary(a.setName('result-flow')) && isSummary(a.setRequirements('Ship it.')) && isSummary(a.setContext('Start here.'))).toBe(true);
+    expect(isSummary(a.setOptions({ approvePlan: true }))).toBe(true);
+    const placed = a.addNode({ type: 'task', label: 'Placed' });
+    expect(keysOf(placed) + '|' + (placed.x > 1200) + '|' + placed.y).toBe(NODE_KEYS + '|true|100');
+    const updated = a.updateNode(placed.id, { label: 'Renamed' });
+    expect(updated.id + '|' + updated.label).toBe(placed.id + '|Renamed');
+    const edge = a.connect(c.t, placed.id, 'extra');
+    expect(keysOf(edge) + '|' + edge.label).toBe(CONN_KEYS + '|extra');
+    expect(isSummary(a.disconnect(c.t, placed.id)) && isSummary(a.deleteNode(placed.id))).toBe(true);
+    const verifier = a.attachVerifier(c.t);
+    expect(keysOf(verifier) + '|' + verifier.verifier.config.reviewLoopFor + '|' + verifier.gate.type + '|' + verifier.routeBack.id).toBe('gate,routeBack,verifier|' + c.t + '|decision|' + c.c);
+    const skeptic = a.attachSkeptic(c.p);
+    expect(keysOf(skeptic) + '|' + skeptic.skeptic.config.reviewLoopKind + '|' + skeptic.gate.config.reviewLoopDecisionFor).toBe('gate,skeptic|adversary|' + c.p);
+    expect(isSummary(a.detachLoop(c.p)) && isSummary(a.undo()) && isSummary(a.redo())).toBe(true);
+    const author = a.addEval();   // the Verifier on the tester executes the eval, so no second loop is added
+    expect(keysOf(author) + '|' + author.config.agentType).toBe(NODE_KEYS + '|evalAuthor');
+    expect(isSummary(a.removeEval())).toBe(true);
+    const saved = a.getWorkflow();
+    expect(isSummary(a.loadPreset('bugfix')) && a.loadPreset('bugfix').preset === 'bugfix').toBe(true);
+    expect(isSummary(a.setWorkflow(saved)) && el('workflowName').value === 'result-flow').toBe(true);
+    const out = a.batch([{ tool: 'listNodes' }, { tool: 'setName', input: { text: 'batched' } }]);
+    expect(out.length + '|' + out[0].length + '|' + out[1].name).toBe('2|' + win.state.nodes.length + '|batched');
+    const cleared = a.newWorkflow();
+    expect(isSummary(cleared) && cleared.nodes === 0).toBe(true);
+  }));
+
+  it('should restore the canvas and the sidebar with one undo after each mutator and the result with one redo', clean(() => {
+    const a = win.awd;
+    const probe = (tag, setup, call) => {
+      fresh(); const c = setup(); const s0 = snap();
+      win.addNode('task', 40, 900, 'Marker', {}); const s1 = snap();
+      call(c); const s2 = snap();
+      expect(tag + ':changed:' + (s2 !== s1)).toBe(tag + ':changed:true');
+      a.undo(); expect(tag + ':undo:' + (snap() === s1)).toBe(tag + ':undo:true');
+      a.redo(); expect(tag + ':redo:' + (snap() === s2)).toBe(tag + ':redo:true');
+      a.undo(); a.undo(); expect(tag + ':marker:' + (snap() === s0)).toBe(tag + ':marker:true');
+    };
+    const withLoop = () => { const c = chain(); win.attachReviewLoop(c.p, 'adversary'); win.clearUndo(); return c; };
+    const withEval = () => { const c = chain(); win.addPreRegisteredEval(c.i); win.clearUndo(); return c; };
+    probe('newWorkflow', chain, () => a.newWorkflow());
+    probe('loadPreset', chain, () => a.loadPreset('feature'));
+    probe('setWorkflow', chain, () => a.setWorkflow({ name: 'other', story: 'Other story.', approvePlan: true, canvas: { nodes: [], connections: [], nextId: 1 } }));
+    probe('addNode', chain, () => a.addNode({ type: 'task', label: 'Added' }));
+    probe('updateNode', chain, c => a.updateNode(c.c, { label: 'Changed', config: { maxTurns: 3 } }));
+    probe('deleteNode', chain, c => a.deleteNode(c.c));
+    probe('connect', chain, c => a.connect(c.i, c.o));
+    probe('disconnect', chain, c => a.disconnect(c.p, c.c));
+    probe('addEval', chain, () => a.addEval());
+    probe('removeEval', withEval, () => a.removeEval());
+    probe('attachVerifier', chain, c => a.attachVerifier(c.t));
+    probe('attachSkeptic', chain, c => a.attachSkeptic(c.p));
+    probe('detachLoop', withLoop, c => a.detachLoop(c.p));
+    probe('setRequirements', chain, () => a.setRequirements('New requirements.'));
+    probe('setContext', chain, () => a.setContext('New context.'));
+    probe('setName', chain, () => a.setName('new-name'));
+    probe('setOptions', chain, () => a.setOptions({ exportFormat: 'teams', memoryEnabled: true, durableRecord: true, approvePlan: true, effort: 'high', verifyPaths: ['docs/verify.md'], verifyNotes: 'Must pass.' }));
+    probe('batch', chain, c => a.batch([{ tool: 'setName', input: { text: 'batch-name' } }, { tool: 'deleteNode', input: { id: c.c } }]));
+  }));
+
+  it('should restore a facade step through the toolbar buttons and the keyboard, and leave the sidebar alone on a step the UI pushed', clean(() => {
+    // The toolbar and the shortcuts call the global undo() and redo() by name.
+    const undoButton = win.document.querySelector('button[onclick="undo()"]'); const redoButton = win.document.querySelector('button[onclick="redo()"]');
+    const key = shift => win.document.body.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, shiftKey: shift, bubbles: true }));
+    chain(); el('workflowName').value = 'before-name';
+    win.awd.setName('facade-name');
+    undoButton.click(); expect(el('workflowName').value).toBe('before-name');
+    redoButton.click(); expect(el('workflowName').value).toBe('facade-name');
+    key(false); expect(el('workflowName').value).toBe('before-name');
+    key(true); expect(el('workflowName').value).toBe('facade-name');
+    fresh(); chain();
+    win.awd.loadPreset('feature');   // a larger preset switches memory on
+    expect(win.state.memoryEnabled + '|' + el('memoryToggle').checked).toBe('true|true');
+    win.undo(); expect(win.state.memoryEnabled + '|' + el('memoryToggle').checked + '|' + win.state.nodes.length).toBe('false|false|5');
+    win.redo(); expect(win.state.memoryEnabled + '|' + win.state.activePreset).toBe('true|feature');
+    fresh(); chain();
+    el('workflowName').value = 'typed-name'; el('approvePlanToggle').checked = true; win.toggleApprovePlan();
+    win.addNode('task', 40, 900, 'UI Step', {});
+    el('workflowName').value = 'typed-later';
+    undoButton.click(); redoButton.click(); undoButton.click();
+    expect(win.state.nodes.length + '|' + el('workflowName').value + '|' + win.state.approvePlan).toBe('5|typed-later|true');
+  }));
+
+  it('should take no undo step for a call that changes nothing, and keep the redo stack', clean(() => {
+    const c = chain();
+    win.addNode('task', 40, 900, 'Marker', {});
+    win.undo();
+    const before = depth() + '|' + snap();
+    const edge = win.state.connections.find(x => x.from === c.p && x.to === c.c);
+    expect(win.awd.connect(c.p, c.c).id).toBe(edge.id);
+    win.awd.setOptions({});
+    win.awd.setOptions({ approvePlan: false });
+    win.awd.updateNode(c.c, { label: 'Code' });
+    win.awd.setName('facade-fixture');
+    expect(JSON.stringify(win.awd.batch([]))).toBe('[]');
+    expect(depth() + '|' + snap()).toBe(before);
+    win.awd.redo();   // the marker comes back: the no-ops left the redo stack alone
+    expect(win.state.nodes.some(n => n.label === 'Marker')).toBe(true);
+  }));
+
+  it('should leave nothing applied and no undo step when a batch entry throws first, in the middle, or last', clean(() => {
+    const c = chain();
+    win.addNode('task', 40, 900, 'Marker', {});
+    const before = depth() + '|' + snap();
+    const good = [{ tool: 'setName', input: { text: 'half' } }, { tool: 'addNode', input: { type: 'task', label: 'Half' } }, { tool: 'setOptions', input: { approvePlan: true } }];
+    const bad = { tool: 'deleteNode', input: { id: 'n404' } };
+    [[bad].concat(good), good.slice(0, 2).concat([bad], good.slice(2)), good.concat([bad])].forEach((ops, k) => {
+      const index = ops.indexOf(bad);
+      const e = thrown(() => win.awd.batch(ops));
+      expect(k + ':' + (e && e.message.indexOf('awd: batch: entry ' + index + ' (deleteNode)') === 0 && e.message.indexOf('n404') !== -1)).toBe(k + ':true');
+      expect(k + ':unchanged:' + (depth() + '|' + snap() === before)).toBe(k + ':unchanged:true');
+    });
+    [[{ tool: 'undo' }, 'cannot run inside a batch'], [{ tool: 'noSuchTool' }, 'unknown tool'], [{ input: {} }, 'unknown tool'], [{ tool: 'connect', input: 'text' }, 'must be an object']].forEach((p, k) => {
+      const e = thrown(() => win.awd.batch(good.concat([p[0]])));
+      expect('rejected ' + k + ':' + (e && e.message.indexOf('entry 3') !== -1 && e.message.indexOf(p[1]) !== -1)).toBe('rejected ' + k + ':true');
+      expect('rejected ' + k + ':unchanged:' + (depth() + '|' + snap() === before)).toBe('rejected ' + k + ':unchanged:true');
+    });
+    expect(win.state.connections.length + '|' + win.state.nodes.some(n => n.label === 'Half')).toBe('4|false');
+  }));
+
+  it('should throw awd: errors that name the method and the bad value, and change nothing', clean(() => {
+    const c = chain(); const before = depth() + '|' + snap();
+    const cases = [
+      ['setOptions', 'memoryEnabled', () => win.awd.setOptions({ durableRecord: true })],
+      ['setOptions', '"  "', () => win.awd.setOptions({ verifyPaths: ['docs/a.md', '  '] })],
+      ['setOptions', 'docs/a.md', () => win.awd.setOptions({ verifyPaths: ['docs/a.md', ' docs/a.md '] })],
+      ['setOptions', '"yes"', () => win.awd.setOptions({ approvePlan: 'yes' })],
+      ['setName', '42', () => win.awd.setName(42)],
+      ['setRequirements', 'null', () => win.awd.setRequirements(null)],
+      ['detachLoop', c.c, () => win.awd.detachLoop(c.c)],
+      ['removeEval', 'Eval Author', () => win.awd.removeEval()],
+      ['addNode', '"far"', () => win.awd.addNode({ type: 'task', x: 'far' })],
+      ['addNode', '"tools"', () => win.awd.addNode({ type: 'agent', config: 'tools' })],
+      ['updateNode', '"no-such-model"', () => win.awd.updateNode(c.c, { config: { model: 'no-such-model' } })],
+      ['connect', '7', () => win.awd.connect(c.i, c.o, 7)],
+      ['setWorkflow', '[]', () => win.awd.setWorkflow([])],
+      ['setWorkflow', 'setWorkflow', () => win.awd.setWorkflow({ canvas: { nodes: 'x' } })]
+    ];
+    cases.forEach((k, j) => {
+      const e = thrown(k[2]);
+      expect(j + ':' + (e instanceof win.Error && e.message.indexOf('awd: ' + k[0] + ':') === 0)).toBe(j + ':true');
+      expect(j + ':names ' + k[1] + ':' + (!!e && e.message.indexOf(k[1]) !== -1)).toBe(j + ':names ' + k[1] + ':true');
+      expect(j + ':unchanged:' + (depth() + '|' + snap() === before)).toBe(j + ':unchanged:true');
+    });
+    const wrapped = thrown(() => win.awd.setWorkflow({ canvas: { nodes: 'x' } }));
+    expect(wrapped.cause instanceof win.Error && wrapped.cause.message.indexOf('awd:') !== 0).toBe(true);   // an unexpected app error keeps its original as the cause
+    fresh(); win.addNode('input', 0, 100, 'One', {}); win.addNode('input', 0, 300, 'Two', {}); win.clearUndo();
+    const e = thrown(() => win.awd.addEval());
+    expect(!!e && e.message.indexOf('awd: addEval:') === 0 && win.state.nodes.length === 2).toBe(true);
+  }));
+
+  it('should register every entry through a fake registerTool and run a tool, with isError on a failure', clean(async () => {
+    const c = chain(); const tools = {};
+    win.awdRegisterWebMCP({ registerTool(t) { tools[t.name] = t; } });
+    expect(Object.keys(tools).sort().join(',')).toBe(win.awd.describe().map(e => e.name).sort().join(','));
+    let r = await tools.addNode.execute({ type: 'task', label: 'Via Tool' });
+    expect(keysOf(r) + '|' + JSON.parse(r.content[0].text).label).toBe('content|Via Tool');
+    r = await tools.generate.execute({ format: 'sdk' });
+    expect(JSON.parse(r.content[0].text) === win.awd.generate('sdk')).toBe(true);   // a string result is JSON text too
+    r = await tools.deleteNode.execute({ id: 'n404' });
+    expect(r.isError + '|' + r.content.length + '|' + r.content[0].type + '|' + r.content[0].text.indexOf('awd: deleteNode:')).toBe('true|1|text|0');
+    r = await tools.listNodes.execute(undefined);
+    expect(JSON.parse(r.content[0].text).length).toBe(6);
+    expect(win.state.nodes.some(n => n.id === c.i)).toBe(true);
+  }));
+
+  it('should provide every entry through a fake provideContext in one call', clean(async () => {
+    chain(); const calls = [];
+    win.awdRegisterWebMCP({ provideContext(arg) { calls.push(arg); } });
+    expect(calls.length).toBe(1);
+    expect(calls[0].tools.map(t => t.name).sort().join(',')).toBe(win.awd.describe().map(e => e.name).sort().join(','));
+    const r = await calls[0].tools.find(t => t.name === 'validate').execute({});
+    expect(r.content[0].text).toBe('[]');
+  }));
+
+  it('should register nothing and log no error without a model context, and warn when a context fails', clean(() => {
+    let errors = 0; const warnings = [];
+    savedConsole = { error: win.console.error, warn: win.console.warn };
+    win.console.error = () => { errors++; }; win.console.warn = m => { warnings.push(String(m)); };
+    [undefined, null, {}, { registerTool: null, provideContext: null }, { registerTool: 'yes' }].forEach((ctx, k) => {
+      const e = thrown(() => win.awdRegisterWebMCP(ctx));
+      expect(k + ':' + (e === null)).toBe(k + ':true');
+    });
+    expect(errors + '|' + warnings.length).toBe('0|0');
+    expect(thrown(() => win.awdRegisterWebMCP({ registerTool() { throw new Error('refused'); } }))).toBe(null);
+    expect(errors + '|' + warnings.length + '|' + ((warnings[0] || '').indexOf('refused') !== -1)).toBe('0|' + win.awd.describe().length + '|true');   // one warning per refused tool: a refusal does not stop the loop
+    expect(warnings[0].indexOf('awd: WebMCP registration failed') === 0 && warnings[0].indexOf('refused') !== -1).toBe(true);
+    // The boot call reads document.modelContext first and navigator.modelContext as the fallback.
+    const fake = { provideContext() {} }; const other = { registerTool() {} };
+    try {
+      Object.defineProperty(win.navigator, 'modelContext', { value: other, configurable: true });
+      expect(win._awdModelContext() === other).toBe(true);
+      Object.defineProperty(win.document, 'modelContext', { value: fake, configurable: true });
+      expect(win._awdModelContext() === fake).toBe(true);
+      Object.defineProperty(win.document, 'modelContext', { value: {}, configurable: true });
+      expect(win._awdModelContext() === other).toBe(true);
+    } finally { delete win.document.modelContext; delete win.navigator.modelContext; }
+  }));
+
+  it('should leave the five formats of every preset byte-identical after every read method runs', clean(() => {
+    // Today's values for every preset are pinned by the strays-never-run eval; this proves the reads perturb nothing.
+    [...win.document.querySelectorAll('.preset-item[data-preset]')].map(p => p.dataset.preset).forEach(k => {
+      fresh(); win.loadPreset(k); el('workflowName').value = 'facade-fixture';
+      const gens = () => Object.keys(FORMATS).map(f => win[FORMATS[f]]()).join('\u0000');
+      const want = gens(); const raw = win.getRawPrompt(); const steps = win.undoDepth();
+      READS.forEach(m => win.awd[m]('prompt'));
+      Object.keys(FORMATS).forEach(f => { win.awd.generate(f); win.awd.explain(f); });
+      expect(k + ':' + (gens() === want && win.getRawPrompt() === raw && win.undoDepth() === steps)).toBe(k + ':true');
+    });
+  }));
+
+  // Edge tests (step 6). Shapes deserializeWorkflow does not pre-check: each throws after state.nodes was assigned.
+  const BROKEN = [
+    { name: 'broken', story: 'Broken story.', canvas: { nodes: [{ id: 'n1', type: 'output', x: 0, y: 0, label: 'No Config' }], connections: [], nextId: 2 } },
+    { name: 'broken', canvas: { nodes: [{ id: 'n1', type: 'task', x: 0, y: 0, label: 'Lone', config: {} }], connections: 'abc', nextId: 2 } }
+  ];
+  // Two UI markers, the second undone: the undo stack holds one step and the redo stack holds one.
+  function markers() { win.addNode('task', 40, 900, 'Marker A', {}); win.addNode('task', 40, 700, 'Marker B', {}); win.undo(); }
+  function stacksIntact(tag) {
+    win.redo(); expect(tag + ':redo:' + win.state.nodes.some(n => n.label === 'Marker B')).toBe(tag + ':redo:true');
+    win.undo(); win.undo();
+    expect(tag + ':undo:' + win.state.nodes.some(n => n.label === 'Marker A') + '|' + depth()).toBe(tag + ':undo:false|0');
+  }
+  function watchConsole() {
+    const seen = { errors: 0, warnings: [] };
+    savedConsole = { error: win.console.error, warn: win.console.warn };
+    win.console.error = () => { seen.errors++; }; win.console.warn = m => { seen.warnings.push(String(m)); };
+    return seen;
+  }
+
+  it('should roll back a single call that throws after it changed state and leave both undo stacks as they were', clean(() => {
+    BROKEN.forEach((bad, k) => {
+      fresh(); chain(); markers();
+      el('storyInput').value = 'Kept story.'; win.updatePrompt();
+      const before = depth() + '|' + snap();
+      const e = thrown(() => win.awd.setWorkflow(bad));
+      expect(k + ':' + (e instanceof win.Error && e.message.indexOf('awd: setWorkflow:') === 0)).toBe(k + ':true');
+      expect(k + ':unchanged:' + (depth() + '|' + snap() === before)).toBe(k + ':unchanged:true');
+      stacksIntact(String(k));
+      // The fixture really reaches the rollback: the app function throws only after it replaced the nodes.
+      fresh(); chain();
+      const raw = thrown(() => win.deserializeWorkflow(JSON.parse(JSON.stringify(bad)), { context: 'restore' }));
+      expect(k + ':precondition:' + (raw instanceof win.TypeError) + '|' + win.state.nodes.length).toBe(k + ':precondition:true|1');
+    });
+  }));
+
+  it('should restore the pre-batch state and both stacks when a batch entry is a setWorkflow that throws after it changed state', clean(() => {
+    chain(); markers();
+    const before = depth() + '|' + snap();
+    const e = thrown(() => win.awd.batch([{ tool: 'setName', input: { text: 'batched' } }, { tool: 'addNode', input: { type: 'task', label: 'In Batch' } }, { tool: 'setWorkflow', input: { workflow: BROKEN[0] } }]));
+    expect(!!e && e.message.indexOf('awd: batch: entry 2 (setWorkflow)') === 0 && e.message.lastIndexOf('awd:') === 0).toBe(true);
+    expect(depth() + '|' + snap()).toBe(before);
+    stacksIntact('batch');
+    win.addNode('task', 40, 500, 'After', {});   // the suppression flag is back to false: a UI step pushes again
+    expect(depth()).toBe('1');
+  }));
+
+  it('should warn and leave no unhandled rejection or console error when registerTool or provideContext returns a rejected promise', clean(async () => {
+    const seen = watchConsole(); const unhandled = [];
+    const onUnhandled = ev => { unhandled.push(String(ev.reason && ev.reason.message)); ev.preventDefault(); };
+    win.addEventListener('unhandledrejection', onUnhandled); window.addEventListener('unhandledrejection', onUnhandled);
+    try {
+      let registered = 0;
+      win.awdRegisterWebMCP({ registerTool(t) { registered++; return t.name === 'generate' ? win.Promise.reject(new win.Error('register refused')) : win.Promise.resolve(); } });
+      win.awdRegisterWebMCP({ provideContext() { return win.Promise.reject(new win.Error('provide refused')); } });
+      await new Promise(r => setTimeout(r, 30)); await new Promise(r => setTimeout(r, 30));
+      expect(registered).toBe(win.awd.describe().length);
+      expect(seen.errors + '|' + unhandled.length).toBe('0|0');
+      expect(seen.warnings.length).toBe(2);
+      expect(seen.warnings.every(w => w.indexOf('awd: WebMCP registration failed') === 0)).toBe(true);
+      expect(seen.warnings.some(w => w.indexOf('register refused') !== -1) && seen.warnings.some(w => w.indexOf('provide refused') !== -1)).toBe(true);
+    } finally {
+      win.removeEventListener('unhandledrejection', onUnhandled); window.removeEventListener('unhandledrejection', onUnhandled);
+    }
+  }));
+
+  it('should hand every other catalog entry to registerTool when it throws for one tool, and report it through console.warn only', clean(() => {
+    const seen = watchConsole(); const got = [];
+    win.awdRegisterWebMCP({ registerTool(t) { if (t.name === 'connect') throw new Error('connect refused'); got.push(t.name); } });
+    const others = win.awd.describe().map(e => e.name).filter(n => n !== 'connect');
+    expect(got.slice().sort().join(',')).toBe(others.slice().sort().join(','));
+    expect(seen.errors + '|' + seen.warnings.length).toBe('0|1');
+    expect(seen.warnings[0].indexOf('awd: WebMCP registration failed') === 0 && seen.warnings[0].indexOf('connect refused') !== -1).toBe(true);
+  }));
+
+  it('should keep no reference to the caller objects passed to updateNode and addNode', clean(() => {
+    const c = chain();
+    const patch = { label: 'Patched', config: { maxTurns: 4, tools: ['Read', 'Grep'], notes: 'Patched notes.' } };
+    const updated = win.awd.updateNode(c.c, patch);
+    const spec = { type: 'agent', label: 'Added', config: { agentType: 'tester', tools: ['Bash'] } };
+    const added = win.awd.addNode(spec);
+    const before = JSON.stringify(win.state.nodes);
+    const code = win.state.nodes.find(n => n.id === c.c).config;
+    expect(code.maxTurns + '|' + code.tools.join(',') + '|' + win.state.nodes.find(n => n.id === added.id).config.agentType).toBe('4|Read,Grep|tester');
+    patch.label = 'Changed'; patch.config.maxTurns = 99; patch.config.tools.push('Write'); patch.config.notes = 'Changed.';
+    spec.label = 'Changed'; spec.config.agentType = 'coder'; spec.config.tools.push('Write'); spec.config.extra = true;
+    updated.config.tools.push('Edit'); added.config.tools.push('Edit');
+    expect(JSON.stringify(win.state.nodes)).toBe(before);
+  }));
+
+  it('should keep the config prototype and the validated agentType when an updateNode patch carries an own __proto__ key', clean(() => {
+    const c = chain();
+    const patch = JSON.parse('{"config":{"__proto__":{"agentType":"no_such_role"}}}');
+    expect(Object.prototype.hasOwnProperty.call(patch.config, '__proto__')).toBe(true);   // the fixture really holds an own key
+    const e = thrown(() => win.awd.updateNode(c.c, patch));
+    expect(e === null || e.message.indexOf('awd: updateNode:') === 0).toBe(true);
+    const check = tag => {
+      const config = win.state.nodes.find(n => n.id === c.c).config;
+      expect(tag + ':' + (Object.getPrototypeOf(config) === win.Object.prototype)).toBe(tag + ':true');
+      expect(tag + ':' + config.agentType + '|' + win.awd.listNodes().find(n => n.id === c.c).config.agentType).toBe(tag + ':coder|coder');
+    };
+    check('after');
+    win.awd.undo(); win.awd.redo(); check('redo');
+    expect(win.Object.prototype.agentType === undefined && Object.prototype.agentType === undefined).toBe(true);
+  }));
+
+  it('should merge an agentType change into the config and keep the prompt, the tools, and the model of the node', clean(() => {
+    const c = chain();
+    const before = JSON.parse(JSON.stringify(win.state.nodes.find(n => n.id === c.c).config));
+    const r = win.awd.updateNode(c.c, { config: { agentType: 'reviewer' } });
+    const after = win.state.nodes.find(n => n.id === c.c).config;
+    expect(after.agentType + '|' + after.prompt + '|' + after.tools.join(',') + '|' + after.model).toBe('reviewer|Do the coder work.|Read|opus-5');
+    expect(JSON.stringify(after)).toBe(JSON.stringify(Object.assign({}, before, { agentType: 'reviewer' })));
+    expect(r.config.agentType).toBe('reviewer');
+  }));
+
+  it('should place a node with only x given level with the rightmost node, with only y given right of it, and keep a zero coordinate', clean(() => {
+    const c = chain(); const right = win.state.nodes.find(n => n.id === c.o);
+    const xOnly = win.awd.addNode({ type: 'task', label: 'X Only', x: 333 });
+    expect(xOnly.x + '|' + xOnly.y).toBe('333|' + right.y);
+    fresh(); const c2 = chain(); const right2 = win.state.nodes.find(n => n.id === c2.o);
+    const yOnly = win.awd.addNode({ type: 'task', label: 'Y Only', y: 777 });
+    expect(yOnly.x + '|' + yOnly.y).toBe((right2.x + right2.w + 80) + '|777');
+    const zero = win.awd.addNode({ type: 'task', label: 'Zero', x: 0, y: 0 });
+    expect(zero.x + '|' + zero.y).toBe('0|0');
+  }));
+
+  it('should take no undo step and keep the redo stack when setOptions sets every option to its current value', clean(() => {
+    chain();
+    win.awd.setOptions({ exportFormat: 'teams', memoryEnabled: true, durableRecord: true, approvePlan: true, effort: 'high', verifyPaths: ['docs/verify.md'], verifyNotes: 'Must pass.' });
+    win.addNode('task', 40, 900, 'Marker', {}); win.undo();
+    const before = depth() + '|' + snap() + '|' + win.state.durableRecord;
+    win.awd.setOptions(JSON.parse(JSON.stringify(optionValues())));
+    expect(depth() + '|' + snap() + '|' + win.state.durableRecord).toBe(before);
+    win.awd.redo();
+    expect(win.state.nodes.some(n => n.label === 'Marker')).toBe(true);
+  }));
+
+  it('should reject a batch entry that names batch, undo, or redo before any entry applies, naming the index and the tool', clean(() => {
+    chain(); const before = depth() + '|' + snap();
+    ['batch', 'undo', 'redo'].forEach(tool => {
+      const e = thrown(() => win.awd.batch([{ tool: 'setName', input: { text: 'early' } }, { tool: tool, input: tool === 'batch' ? { ops: [] } : {} }]));
+      expect(tool + ':' + (!!e && e.message.indexOf('awd: batch: entry 1 (' + tool + ')') === 0 && e.message.indexOf('cannot run inside a batch') !== -1)).toBe(tool + ':true');
+      expect(tool + ':unchanged:' + (depth() + '|' + snap() === before)).toBe(tool + ':unchanged:true');
+    });
+  }));
+
+  it('should return the workflow summary and change nothing when undo or redo runs on an empty stack', clean(() => {
+    const empty = depth() + '|' + snap();
+    expect(keysOf(win.awd.undo()) + '|' + keysOf(win.awd.redo())).toBe(SUMMARY_KEYS + '|' + SUMMARY_KEYS);
+    expect(depth() + '|' + snap()).toBe(empty);
+    chain(); const before = depth() + '|' + snap();
+    const u = win.awd.undo(); const r = win.awd.redo();
+    expect(u.nodes + '|' + r.nodes + '|' + (depth() + '|' + snap() === before)).toBe('5|5|true');
+  }));
+
+  it('should throw and change nothing when disconnect names an existing edge in the reverse direction', clean(() => {
+    const c = chain(); const before = depth() + '|' + snap();
+    const e = thrown(() => win.awd.disconnect(c.c, c.p));
+    expect(!!e && e.message.indexOf('awd: disconnect:') === 0 && e.message.indexOf(c.c) !== -1 && e.message.indexOf(c.p) !== -1).toBe(true);
+    expect(depth() + '|' + snap()).toBe(before);
+    expect(win.state.connections.some(x => x.from === c.p && x.to === c.c)).toBe(true);
+  }));
+
+  it('should return getWorkflow equal to serializeWorkflow and validate rows equal to the Review warnings as { type, msg }', clean(() => {
+    win.loadPreset('feature'); el('storyInput').value = 'Add a CSV export.'; win.render();
+    expect(JSON.stringify(win.awd.getWorkflow())).toBe(JSON.stringify(win.serializeWorkflow()));
+    win.addNode('agent', 40, 900, 'Stray', { agentType: 'coder', model: 'opus-5', tools: ['Read'], prompt: 'Stray work.' });
+    const rows = win.awd.validate();
+    expect(rows.length > 0).toBe(true);
+    rows.forEach((r, k) => expect(k + ':' + keysOf(r) + '|' + typeof r.msg).toBe(k + ':msg,type|string'));
+    expect(JSON.stringify(rows)).toBe(JSON.stringify(win.validateWorkflow().map(w => ({ type: w.type, msg: String(w.msg) }))));
+  }));
+
+  it('should restore the memory and record switches of a facade step through the toolbar and the keyboard', clean(() => {
+    const undoButton = win.document.querySelector('button[onclick="undo()"]'); const redoButton = win.document.querySelector('button[onclick="redo()"]');
+    const key = shift => win.document.body.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, shiftKey: shift, bubbles: true }));
+    const switches = () => win.state.memoryEnabled + '|' + el('memoryToggle').checked + '|' + win.state.durableRecord + '|' + el('durableRecordToggle').checked;
+    chain();
+    win.awd.loadPreset('feature');
+    expect(win.state.memoryEnabled + '|' + el('memoryToggle').checked).toBe('true|true');
+    undoButton.click(); expect(win.state.memoryEnabled + '|' + el('memoryToggle').checked + '|' + win.state.nodes.length).toBe('false|false|5');
+    key(true); expect(win.state.memoryEnabled + '|' + el('memoryToggle').checked + '|' + win.state.activePreset).toBe('true|true|feature');
+    fresh(); chain();
+    win.awd.setOptions({ memoryEnabled: true, durableRecord: true });
+    expect(switches()).toBe('true|true|true|true');
+    key(false); expect(switches()).toBe('false|false|false|false');
+    redoButton.click(); expect(switches()).toBe('true|true|true|true');
+  }));
+
+  it('should match every state on the way when three undos and three redos cross facade and UI steps', clean(() => {
+    const undoButton = win.document.querySelector('button[onclick="undo()"]');
+    chain(); el('workflowName').value = 'start-name'; win.updatePrompt();
+    const states = [snap()];
+    win.awd.setName('facade-one'); states.push(snap());
+    win.addNode('task', 40, 900, 'UI Step', {}); states.push(snap());
+    win.awd.setOptions({ approvePlan: true, memoryEnabled: true }); states.push(snap());
+    expect(depth()).toBe('3');
+    [2, 1, 0].forEach(k => { undoButton.click(); expect('undo to ' + k + ':' + (snap() === states[k])).toBe('undo to ' + k + ':true'); });
+    [1, 2, 3].forEach(k => { win.awd.redo(); expect('redo to ' + k + ':' + (snap() === states[k])).toBe('redo to ' + k + ':true'); });
+  }));
+});
+
 // ═══════════════════════════════════════════════════════════
 // Boot: wait for iframe, then run
 // ═══════════════════════════════════════════════════════════
