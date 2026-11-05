@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-11-05 - url-picker-input-gate - the generated prompt follows typing in Requirements, Workflow Context and custom MCP notes after a short pause, and Copy flushes first; a 42-control audit finds no other stale sidebar control - .workflow/url-picker-input-gate.md
 2026-11-05 - node-config-ux - selecting a node no longer scrolls the sidebar; a double-click on the node reveals Node Configuration (revealNodeConfig) - .workflow/node-config-ux.md
 2026-11-01 - strays-never-run - an agent with no connection to the run is never emitted as a step: runSortedNodes feeds the five generators and the approval checkpoint, the connected set gained two director rules (edgeless Input, no-edge canvas); built by the eval's second live run (one director question, one approval with a modification, verified and reviewed first pass). 2003 -> 2031 - .workflow/strays-never-run.md
 2026-11-01 - pre-registered-eval (update) - the orchestrator preamble binds every later brief to the frozen eval (never around it; only the director moves the bar) and folds the director's answers into the planning brief as resolved requirements; from the live run's lessons; E11 goldens in one-notion-of-the-run recaptured for the eval-including configurations - .workflow/pre-registered-eval.md

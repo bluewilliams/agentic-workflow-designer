@@ -623,7 +623,7 @@ svg.canvas{width:100%;height:100%;display:block}
   <div class="sidebar-section" data-collapse-id="requirements">
     <h3 title="The heart of a run: name the workflow (it namespaces memory, records, and the Session Bridge) and paste the requirements or a Jira URL. A name, requirements, and a preset is a COMPLETE run - everything below is situational.">Workflow Name &amp; Requirements</h3>
     <input type="text" id="workflowName" class="story-input" style="min-height:auto;padding:8px 10px;font-family:var(--font);font-weight:600;margin-bottom:8px" placeholder="optional - auto-named from your requirements" oninput="updateMemoryPath();updatePrompt();autoSaveWorkflow()"/>
-    <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Auto Workflow to auto-build a workflow from keywords." oninput="validateStoryInput(true)"></textarea>
+    <textarea class="story-input" id="storyInput" placeholder="Paste a Jira ticket URL, user story, or requirements here. This context is included in all exported prompts.&#10;&#10;Jira URL: paste a link and pick a workflow preset - the agent fetches ticket details at runtime via Atlassian MCP.&#10;&#10;Requirements: paste full text and click Auto Workflow to auto-build a workflow from keywords." oninput="validateStoryInput(true);schedulePromptUpdate()"></textarea>
     <div id="storyHint" class="input-hint"></div>
     <div class="sub-head" style="margin-top:10px" title="The two run gates: a clarifying round before any step runs, and a pause at the plan before the first step that changes files. Both are switches you set per workflow unless you pin them.">Run gates<button type="button" class="pin-btn" data-pin="gates" aria-pressed="false"></button></div>
     <label class="run-gate-toggle" style="margin-top:4px" title="The generated workflow opens with one focused round of clarifying questions before any step runs, and folds the answers into the plan and the durable record. Built into the prompt itself - distinct from Generate Refine Prompt, which is a separate interview you run first. Non-interactive runs record the open questions as assumptions and proceed.">
@@ -655,7 +655,7 @@ svg.canvas{width:100%;height:100%;display:block}
 
   <div class="sidebar-section" data-collapse-id="workflow-context">
     <h3 title="Whatever you paste here rides into EVERY agent's prompt: an implementation plan (Generate Plan Prompt fills this via the bridge or clipboard), file paths, constraints, an MCP hint - anything. A starting point for agents, never a cage.">Workflow Context <span style="font-weight:400;color:var(--text3);font-size:10px">(optional)</span></h3>
-    <textarea class="story-input" id="planInput" placeholder="Paste context for the whole workflow here. Often an implementation plan (file paths, patterns, architecture decisions), but any guidance works.&#10;&#10;Used as a starting point, not a constraint - agents adapt based on what they discover during research." oninput="autoSaveWorkflow()" style="min-height:60px"></textarea>
+    <textarea class="story-input" id="planInput" placeholder="Paste context for the whole workflow here. Often an implementation plan (file paths, patterns, architecture decisions), but any guidance works.&#10;&#10;Used as a starting point, not a constraint - agents adapt based on what they discover during research." oninput="autoSaveWorkflow();schedulePromptUpdate()" style="min-height:60px"></textarea>
     <div style="height:1px;background:var(--border);opacity:.5;margin:12px 0 10px"></div>
     <div class="btn-row">
       <button class="btn sm" id="planBtn" onclick="generatePlanPrompt()" title="Copy a prompt that has Claude research your actual codebase and return an implementation blueprint for the Workflow Context field - a starting point for agents, never a constraint.">Generate Plan Prompt</button>
@@ -957,7 +957,7 @@ svg.canvas{width:100%;height:100%;display:block}
       <span style="font-size:12px">GitHub <span style="color:var(--text3);font-weight:400">(repos, PRs, issues, Actions)</span></span>
     </label>
     <div style="margin-top:8px">
-      <textarea id="mcpCustomNotes" placeholder="Describe other MCPs available to your agents (e.g. Playwright MCP for browser testing)..." oninput="savePrefsDebounced()" rows="2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;font-family:inherit"></textarea>
+      <textarea id="mcpCustomNotes" placeholder="Describe other MCPs available to your agents (e.g. Playwright MCP for browser testing)..." oninput="savePrefsDebounced();schedulePromptUpdate()" rows="2" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;font-family:inherit"></textarea>
     </div>
   </div>
 
@@ -12379,7 +12379,19 @@ function updateTokenEstimate() {
   if (tokens < 1000) el.textContent = '~' + tokens + ' tokens';
   else el.textContent = '~' + (tokens / 1000).toFixed(1) + 'K tokens';
 }
+// Live prompt: a text field regenerates the prompt after a short pause while typing (a long paste
+// must not re-render a 100K-character prompt on every keystroke); every other control regenerates
+// at once through its own handler. flushPromptUpdate() runs a pending regeneration now, so a Copy
+// or an export never ships text older than the sidebar.
+let _promptUpdateTimer = null;
+const PROMPT_UPDATE_DELAY_MS = 250;
+function schedulePromptUpdate() {
+  clearTimeout(_promptUpdateTimer);
+  _promptUpdateTimer = setTimeout(() => { _promptUpdateTimer = null; updatePrompt(); }, PROMPT_UPDATE_DELAY_MS);
+}
+function flushPromptUpdate() { if (_promptUpdateTimer) { clearTimeout(_promptUpdateTimer); _promptUpdateTimer = null; updatePrompt(); } }
 function updatePrompt() {
+  clearTimeout(_promptUpdateTimer); _promptUpdateTimer = null;   // a regeneration now makes a pending one moot
   const out = $('promptOutput');
   updateFormatRec();
   // Run Reports section rides the universal re-render seam (covers workflow-name
@@ -17074,6 +17086,7 @@ function scanForSecrets(text) {
   return found;
 }
 function copyPrompt() {
+  flushPromptUpdate();   // never ship text older than the sidebar
   const text = _rawPrompt || $('promptOutput').textContent;
   const emptyAgents = state.nodes.filter(n => n.type === 'agent' && (!n.config.prompt || !n.config.prompt.trim()));
   // Scan all user inputs for secrets
