@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-11-06 - director-decisions - the record keeps a concise trail of director answers that changed the run, behind a switch that defaults on with the record; waived tasks and skipped fence steps carry their reason - .workflow/director-decisions.md
 2026-11-06 - telemetry-mcp-sink - run events can go to an MCP tool the driving harness exposes (or to both it and the collector), plus a director.decision event - .workflow/telemetry-mcp-sink.md
 2026-11-06 - live-run-monitor - every task row carries the owner tag of the step that will do it (a provisional list is tagged when the plan arrives; added rows from the start), so the board can show rows in flight - .workflow/live-run-monitor.md
 2026-11-06 - pre-registered-eval - eval results tick live: the executor ticks one checkbox line per criterion as it decides it, the orchestrator reconciles at the beat as the final authority - .workflow/pre-registered-eval.md

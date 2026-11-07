@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## director-decisions
+
+- record: .workflow/director-decisions.md
+- intent: a Director decisions section in the record (switch under Keep a durable record, on by default with the record, a team setting, a facade option): one concise line per director answer that changed what the run did or delivered, written by the orchestrator at the beat, never for a plain approval; waived tasks tick with their reason and skipped fence steps carry a reason regardless
+- files: index.html (recordDirectorDecisions state, the switch and toggleRecordDirectorDecisions, syncDurableUI, prefs, team settings, NEW_WORKFLOW_SWITCHES, facade switches and catalog, the record protocol section and KEEP CURRENT bullet, the approval and eval clauses, the completion gate, runReportDirective), tests.html (Director decisions suite; three guards migrated; goldens recaptured), README.md
+- status: current | date: 2026-11-06
+
 ## telemetry-mcp-sink
 
 - record: .workflow/telemetry-mcp-sink.md
