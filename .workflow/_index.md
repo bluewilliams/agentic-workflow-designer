@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## telemetry-mcp-sink
+
+- record: .workflow/telemetry-mcp-sink.md
+- intent: Run Telemetry gains a sink (otlp, mcp, both) and a tool name: the same OTLP record goes to the collector, to an MCP tool the driving harness exposes (one call per event, fallback to the memory log and the fence), or to both; a new director.decision event fires only when a director answer changes the run; facade setOptions keys and catalog entries; team settings carry both values
+- files: index.html (telemetrySink and telemetryTool state, the select and tool field in Run Telemetry, renderTelemetryFields, setTelemetrySink, prefs and team settings, runTelemetryHint transport branches, TELEMETRY_EVENTS, the Explain row, facade option keys and catalog), tests.html (telemetry MCP sink suite; three sidebar guards migrated), README.md
+- status: current | date: 2026-11-06
+
 ## agent-api-facade-1-1
 
 - record: .workflow/agent-api-facade-1-1.md

@@ -1010,6 +1010,12 @@ svg.canvas{width:100%;height:100%;display:block}
     </div>
     <div id="telemetryFields" style="display:none">
       <input type="text" id="telemetryEndpoint" placeholder="OTLP logs URL (blank: environment)" title="The collector's logs URL (for example https://collector.example.com/v1/logs). Leave blank to use the OTEL_EXPORTER_OTLP_LOGS_ENDPOINT environment variable already configured on the machine that runs the workflow - the standard OpenTelemetry setting. Credentials never go here: a collector that needs headers reads OTEL_EXPORTER_OTLP_HEADERS from the environment." oninput="setTelemetryField('telemetryEndpoint', this.value)" class="story-input" style="min-height:auto;padding:6px 8px;font-family:inherit;font-size:12px;margin-top:4px"/>
+      <select id="telemetrySink" class="story-input" style="min-height:auto;padding:6px 8px;font-size:12px;margin-top:4px;width:100%" onchange="setTelemetrySink(this.value)" title="Where the orchestrator sends each event. OTLP endpoint: one HTTP POST per event to the collector above. MCP tool: one call per event to a tool the harness driving this run exposes, so the harness receives events in-process with no network path to configure. Both: the collector and the tool.">
+        <option value="otlp">Send to the OTLP endpoint</option>
+        <option value="mcp">Send to an MCP tool</option>
+        <option value="both">Send to both</option>
+      </select>
+      <input type="text" id="telemetryTool" placeholder="MCP tool name (for example run_event)" title="The tool the driving harness exposes for run events. Each event is one call with the record as the tool input. Leave blank and the prompt tells the orchestrator to use the tool the harness announces for run events, and to fall back to the memory log and the run-report fence when none is available." oninput="setTelemetryField('telemetryTool', this.value)" class="story-input" style="min-height:auto;padding:6px 8px;font-family:inherit;font-size:12px;margin-top:4px;display:none"/>
       <input type="text" id="telemetryService" placeholder="service name (optional)" title="The service.name resource attribute on every record. Default: agentic-workflow-designer." oninput="setTelemetryField('telemetryService', this.value)" class="story-input" style="min-height:auto;padding:6px 8px;font-family:inherit;font-size:12px;margin-top:4px"/>
       <input type="text" id="telemetryUser" placeholder="user email or handle (optional)" title="Who ran it. Leave blank and the orchestrator resolves it at run start: the Claude Code account email (the same user.email facet Claude Code's own telemetry carries, so events join it), else git config user.email." oninput="setTelemetryField('telemetryUser', this.value)" class="story-input" style="min-height:auto;padding:6px 8px;font-family:inherit;font-size:12px;margin-top:4px"/>
       <input type="text" id="telemetryTags" placeholder="tags: env:dev, team:platform" title="Extra attributes on every record, as key:value pairs separated by commas. Keep values short and bounded - they are for filtering, never for prose." oninput="setTelemetryField('telemetryTags', this.value)" class="story-input" style="min-height:auto;padding:6px 8px;font-family:inherit;font-size:12px;margin-top:4px"/>
@@ -1413,7 +1419,7 @@ svg.canvas{width:100%;height:100%;display:block}
 </ol>
 <p>The record a run keeps is where its report comes back from - and the loop is honest because the predictions are checkable.</p>
 <p><strong>Connect Folder</strong> (in the Run Reports section, Chromium only) removes even the paste. Recommended: connect <code>~/.awd</code> once - every run appends its fence to <code>~/.awd/run-reports.md</code>, so one grant catches every workflow against every repo, always on. (Pick the <code>~/.awd</code> folder itself - Chrome refuses to grant the home directory because it contains system files. Create it first if it does not exist (<code>mkdir -p ~/.awd</code>), then in the picker press <code>Cmd+Shift+G</code> and type <code>~/.awd</code>, or <code>Cmd+Shift+.</code> to reveal hidden folders (macOS keys - Linux pickers use <code>Ctrl+H</code>; on Windows type the path into the dialog's folder-name box). The dialog remembers your last pick afterwards and reopens inside it - and dragging the folder from your file manager onto the Run Reports section, or onto the monitor panel for watches, skips the picker entirely.) Connecting a single repo's <code>.workflow</code> folder works too (reports also live in its durable records) when you only care about that repo. Rescans never double-count (content-hash dedupe); disconnect anytime. Stats live in your browser only.</p>
-<p><strong>Run telemetry (OTLP logs)</strong> (Run Reports section): turn it on and the generated prompt asks the orchestrator to post progress events - run start, each step's start and completion, task confirmations, gate verdicts, verifier results, finalize - as standard OpenTelemetry log records to an OTLP/HTTP collector. Any OTLP-compatible collector works (an OpenTelemetry Collector, a relay, or an observability platform such as Datadog or Grafana). Leave the URL blank to use the <code>OTEL_EXPORTER_OTLP_LOGS_ENDPOINT</code> already configured on the machine that runs the workflow; credentials, if a collector needs them, come from <code>OTEL_EXPORTER_OTLP_HEADERS</code> and never from the designer. Service name defaults to <code>agentic-workflow-designer</code>; the user defaults to the signed-in Claude Code account email when a status command reports it (so events join Claude Code's own telemetry; credential files are never opened), then the git email. The designer itself sends nothing - the run reports on itself, fire-and-forget, and a failed post never touches the work.</p>
+<p><strong>Run telemetry (OTLP logs)</strong> (Run Reports section): turn it on and the generated prompt asks the orchestrator to post progress events - run start, each step's start and completion, task confirmations, gate verdicts, verifier results, finalize - as standard OpenTelemetry log records to an OTLP/HTTP collector. Any OTLP-compatible collector works (an OpenTelemetry Collector, a relay, or an observability platform such as Datadog or Grafana). Leave the URL blank to use the <code>OTEL_EXPORTER_OTLP_LOGS_ENDPOINT</code> already configured on the machine that runs the workflow; credentials, if a collector needs them, come from <code>OTEL_EXPORTER_OTLP_HEADERS</code> and never from the designer. Service name defaults to <code>agentic-workflow-designer</code>; the user defaults to the signed-in Claude Code account email when a status command reports it (so events join Claude Code's own telemetry; credential files are never opened), then the git email. The designer itself sends nothing - the run reports on itself, fire-and-forget, and a failed post never touches the work. The sink selector under the toggle sends the same events to an MCP tool the driving harness exposes (one call per event, the record as the tool input), to the collector, or to both; name the tool, or leave it blank to use the one the harness announces.</p>
 <h3>Workflow Advisor</h3>
 <p>Click the health indicator to open the review modal. Below any issues, a lightbulb <b>Suggestions</b> group offers non-blocking advice: unreviewed build paths (one-click <b>Attach Skeptic</b>), fan-outs that never synthesize, solo agents shipping code, read-only roles holding write tools, starved turn budgets - and, once run reports are ingested, telemetry-informed tuning (gates that loop, steps that cap out or fail). Suggestions never affect the badge count and never block generation.</p>
 <h3>Explain This Workflow</h3>
@@ -2145,7 +2151,7 @@ function atlassianGeneralHint() {
 // does. Single writer, bounded event set, fire-and-forget, never blocks the work.
 const TELEMETRY_DEFAULT_SERVICE = 'agentic-workflow-designer';
 // The bounded event set, single-sourced: the prose lists exactly these, in this order
-const TELEMETRY_EVENTS = ['run.start', 'step.start', 'step.done', 'task.confirmed', 'gate.verdict', 'verify.result', 'run.finalize', 'run.failed'];
+const TELEMETRY_EVENTS = ['run.start', 'step.start', 'step.done', 'task.confirmed', 'gate.verdict', 'verify.result', 'director.decision', 'run.finalize', 'run.failed'];
 const TELEMETRY_EVENT_NOTES = {
   'run.start': 'once before the first step',
   'step.start': 'per step',
@@ -2153,6 +2159,7 @@ const TELEMETRY_EVENT_NOTES = {
   'task.confirmed': 'whenever tasks.md gains confirmed ticks (detail: the confirmed count)',
   'gate.verdict': 'at every decision gate (status: pass or revise; cycle: the revision number)',
   'verify.result': 'at every verifier or tester verdict',
+  'director.decision': 'whenever a director answer changes what the run does or delivers - a step waived, a gate overridden, a failing criterion accepted, scope cut, a plan approved with modifications (detail: the decision and its consequence; a plain approval emits nothing)',
   'run.finalize': 'once at the end (detail: the awd:run summary - steps, cap hits, gate cycles)',
   'run.failed': 'if the run cannot complete'
 };
@@ -2192,17 +2199,24 @@ function runTelemetryHint() {
     + ']},"scopeLogs":[{"scope":{"name":"agentic-workflow-designer"},"logRecords":[{"timeUnixNano":"<unix time in nanoseconds>","severityNumber":"<9 INFO, 13 WARN, or 17 ERROR - a number, not a string>","severityText":"<INFO, WARN, or ERROR>","body":{"stringValue":"<event>: <one-line detail>"},"attributes":['
     + telemetryAttr('event', '<event>') + ',' + telemetryAttr('workflow', slug) + ',' + telemetryAttr('step', '<step slug, or ->') + ',' + telemetryAttr('status', '<status, or ->')
     + ',' + telemetryAttr('cycle', '<revision number, or ->') + ',' + telemetryAttr('user.email', '<user>') + ',' + telemetryAttr('session.id', '<session id, or ->') + tagAttrs + ']}]}]}]}';
-  const where = endpoint
+  const sink = telemetrySinkValue();
+  const tool = telemetryClean(state.telemetryTool);
+  const otlpWhere = endpoint
     ? 'Endpoint: `' + endpoint + '`.'
-    : 'Endpoint: the URL in the `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` environment variable (the standard OpenTelemetry setting); if it is unset, skip telemetry entirely and say so once.';
+    : 'Endpoint: the URL in the `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` environment variable (the standard OpenTelemetry setting); if it is unset, skip ' + (sink === 'both' ? 'the endpoint' : 'telemetry entirely') + ' and say so once.';
+  const mcpWhere = 'MCP sink: ' + (tool ? 'call the `' + tool + '` tool' : 'call the tool the harness driving this run exposes for run events (it names that tool in its own instructions)') + ' once per event, with the record below as the tool input (a JSON object, not a string); if that tool is not available in this session, ' + (sink === 'both' ? 'the endpoint still gets every event' : 'the memory log line and the run-report fence are the fallback') + ', and say so once.';
+  const where = sink === 'otlp' ? otlpWhere : sink === 'mcp' ? mcpWhere : otlpWhere + ' ' + mcpWhere;
+  const transport = sink === 'mcp'
+    ? 'Send one tool call per event, and never let telemetry change the work: a failed call is ignored, never reported as a workflow failure, and never blocks a step.'
+    : 'Send one record per event with curl (or the platform equivalent) using `--max-time 5`, at most one retry' + (sink === 'both' ? ', plus one tool call per event' : '') + ', and never let telemetry change the work: a failed post' + (sink === 'both' ? ' or call' : '') + ' is ignored, never reported as a workflow failure, and never blocks a step. If `OTEL_EXPORTER_OTLP_HEADERS` is set in the environment, send each `key=value` pair as an HTTP header after percent-decoding the value, as the OpenTelemetry specification defines - a collector that needs credentials gets them from there, never from this prompt.';
   const who = user
     ? 'Identity: `<user>` is `' + user + '`.'
     : 'Identity: resolve `<user>` ONCE at run start - the signed-in Claude Code account email when a status command or the environment plainly reports it (never open a credentials or token file to find it), else `git config user.email`, else `-`.';
   const events = TELEMETRY_EVENTS.map(ev => '`' + ev + '` ' + TELEMETRY_EVENT_NOTES[ev]).join('; ');
-  return '> **Run telemetry (OTLP logs) - the orchestrator posts progress events, fire-and-forget.** ' + where + ' The orchestrator (in a team, the lead) is the ONLY writer - steps never post. Send one record per event with curl (or the platform equivalent) using `--max-time 5`, at most one retry, and never let telemetry change the work: a failed post is ignored, never reported as a workflow failure, and never blocks a step. If `OTEL_EXPORTER_OTLP_HEADERS` is set in the environment, send each `key=value` pair as an HTTP header after percent-decoding the value, as the OpenTelemetry specification defines - a collector that needs credentials gets them from there, never from this prompt.\n>\n'
+  return '> **Run telemetry (OTLP logs) - the orchestrator posts progress events, fire-and-forget.** ' + where + ' The orchestrator (in a team, the lead) is the ONLY writer - steps never post. ' + transport + '\n>\n'
     + '> **Events** (this exact, bounded set): ' + events + '. Severity: INFO (9) normally, WARN (13) for revise verdicts and blocked steps, ERROR (17) for run.failed.\n>\n'
-    + '> **Record shape** (standard OTLP/HTTP JSON, `Content-Type: application/json`, one POST per event): `' + record + '`\n>\n'
-    + '> ' + who + ' `<session id>` is `$CLAUDE_CODE_SESSION_ID` when the environment provides it, so events join the session\'s own telemetry. Attribute values are short identifiers only: never requirements text, prompt bodies, file contents, or secrets. Platforms: curl ships with macOS, Linux, and Windows 10+ (curl.exe; PowerShell\'s Invoke-RestMethod also works); read environment variables the way your shell does (`$VAR` in bash or zsh, `$env:VAR` in PowerShell); for the timestamp, unix seconds times 1000000000 is fine (macOS date has no nanoseconds).';
+    + '> **Record shape** (standard OTLP/HTTP JSON' + (sink === 'mcp' ? ', the tool input of each call' : sink === 'both' ? ', `Content-Type: application/json`, one POST and one tool call per event' : ', `Content-Type: application/json`, one POST per event') + '): `' + record + '`\n>\n'
+    + '> ' + who + ' `<session id>` is `$CLAUDE_CODE_SESSION_ID` when the environment provides it, so events join the session\'s own telemetry. Attribute values are short identifiers only: never requirements text, prompt bodies, file contents, or secrets.' + (sink === 'mcp' ? ' For the timestamp, unix seconds times 1000000000 is fine (macOS date has no nanoseconds).' : ' Platforms: curl ships with macOS, Linux, and Windows 10+ (curl.exe; PowerShell\'s Invoke-RestMethod also works); read environment variables the way your shell does (`$VAR` in bash or zsh, `$env:VAR` in PowerShell); for the timestamp, unix seconds times 1000000000 is fine (macOS date has no nanoseconds).');
 }
 // Browser-automation MCP: the workflow-level hint plus a role-gated step hint. The step
 // hint is the un-parked runtime selector-verification design: every UI-automation template
@@ -3303,6 +3317,8 @@ let state = {
   telemetryEndpoint: '',
   telemetryService: '',
   telemetryTags: '',
+  telemetrySink: 'otlp',    // where run events go: 'otlp' (the collector), 'mcp' (a tool the driving harness exposes), or 'both'
+  telemetryTool: '',        // the MCP tool name for the 'mcp' and 'both' sinks
   telemetryUser: '',
   mcpGithub: false,
   mcpAtlassian: true,
@@ -3975,6 +3991,16 @@ function toggleTelemetry() {
 function renderTelemetryFields() {
   const f = $('telemetryFields');
   if (f) f.style.display = state.telemetryEnabled ? '' : 'none';
+  const sel = $('telemetrySink'); if (sel) sel.value = telemetrySinkValue();
+  const tool = $('telemetryTool'); if (tool) { tool.style.display = telemetrySinkValue() === 'otlp' ? 'none' : ''; if (tool.value !== (state.telemetryTool || '')) tool.value = state.telemetryTool || ''; }
+}
+const TELEMETRY_SINKS = ['otlp', 'mcp', 'both'];
+function telemetrySinkValue() { return TELEMETRY_SINKS.indexOf(state.telemetrySink) !== -1 ? state.telemetrySink : 'otlp'; }
+function setTelemetrySink(value) {
+  state.telemetrySink = TELEMETRY_SINKS.indexOf(value) !== -1 ? value : 'otlp';
+  renderTelemetryFields();
+  updatePrompt();
+  savePrefs();
 }
 function setTelemetryField(key, value) {
   state[key] = telemetryClean(value);
@@ -4115,6 +4141,8 @@ function savePrefs() {
       telemetryService: state.telemetryService,
       telemetryTags: state.telemetryTags,
       telemetryUser: state.telemetryUser,
+      telemetrySink: state.telemetrySink,
+      telemetryTool: state.telemetryTool,
       mcpCodeSearch: state.mcpCodeSearch,
       mcpDatadog: state.mcpDatadog,
       consumeRecords: state.consumeRecords,
@@ -4186,9 +4214,10 @@ function restorePrefs() {
       const tcb = $('telemetryToggle');
       if (tcb) tcb.checked = state.telemetryEnabled;
     }
-    ['telemetryEndpoint', 'telemetryService', 'telemetryTags', 'telemetryUser'].forEach(k => {
+    ['telemetryEndpoint', 'telemetryService', 'telemetryTags', 'telemetryUser', 'telemetryTool'].forEach(k => {
       if (typeof p[k] === 'string') { state[k] = telemetryClean(p[k]); const el = $(k); if (el) el.value = state[k]; }
     });
+    if (typeof p.telemetrySink === 'string' && TELEMETRY_SINKS.indexOf(p.telemetrySink) !== -1) state.telemetrySink = p.telemetrySink;
     renderTelemetryFields();
     if (p.mcpAtlassian !== undefined) {
       state.mcpAtlassian = !!p.mcpAtlassian;
@@ -5094,8 +5123,8 @@ document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { clo
 const TEAM_SETTINGS_FORMAT = 'awd-team-settings';
 const TEAM_SETTING_KEYS = ['defaultModel', 'effort', 'defaultDelivery', 'defaultEvalHome', 'pins', 'rulesPaths', 'productDocPaths', 'verifyPaths', 'verifyNotes', 'verifyFailRun',
   'memoryEnabled', 'durableRecord', 'consumeRecords', 'openSpecArtifacts', 'mcpAtlassian', 'mcpCodeSearch', 'mcpDatadog', 'mcpBrowser', 'mcpGithub', 'mcpCustom',
-  'clarifyFirst', 'approvePlan', 'telemetryEnabled', 'telemetryEndpoint', 'telemetryService', 'telemetryTags'];
-const TEAM_SETTING_LABELS = { defaultModel: 'Default Model', effort: 'Default Effort', defaultDelivery: 'Default Delivery', defaultEvalHome: 'Default eval home', pins: 'Section pins', rulesPaths: 'Rules paths', productDocPaths: 'Product doc paths', verifyPaths: 'Verification paths', verifyNotes: 'Verification notes', verifyFailRun: 'Fail the run on unmet verifications', memoryEnabled: 'Workflow memory', durableRecord: 'Durable record', consumeRecords: 'Ground in prior records', openSpecArtifacts: 'OpenSpec artifacts', mcpAtlassian: 'Atlassian MCP', mcpCodeSearch: 'Code search MCP', mcpDatadog: 'Datadog MCP', mcpBrowser: 'Browser MCP', mcpGithub: 'GitHub MCP', mcpCustom: 'Custom MCP notes', clarifyFirst: 'Clarify first', approvePlan: 'Approve plan', telemetryEnabled: 'Run telemetry', telemetryEndpoint: 'Telemetry endpoint', telemetryService: 'Telemetry service', telemetryTags: 'Telemetry tags' };
+  'clarifyFirst', 'approvePlan', 'telemetryEnabled', 'telemetryEndpoint', 'telemetryService', 'telemetryTags', 'telemetrySink', 'telemetryTool'];
+const TEAM_SETTING_LABELS = { defaultModel: 'Default Model', effort: 'Default Effort', defaultDelivery: 'Default Delivery', defaultEvalHome: 'Default eval home', pins: 'Section pins', rulesPaths: 'Rules paths', productDocPaths: 'Product doc paths', verifyPaths: 'Verification paths', verifyNotes: 'Verification notes', verifyFailRun: 'Fail the run on unmet verifications', memoryEnabled: 'Workflow memory', durableRecord: 'Durable record', consumeRecords: 'Ground in prior records', openSpecArtifacts: 'OpenSpec artifacts', mcpAtlassian: 'Atlassian MCP', mcpCodeSearch: 'Code search MCP', mcpDatadog: 'Datadog MCP', mcpBrowser: 'Browser MCP', mcpGithub: 'GitHub MCP', mcpCustom: 'Custom MCP notes', clarifyFirst: 'Clarify first', approvePlan: 'Approve plan', telemetryEnabled: 'Run telemetry', telemetryEndpoint: 'Telemetry endpoint', telemetryService: 'Telemetry service', telemetryTags: 'Telemetry tags', telemetrySink: 'Telemetry sink', telemetryTool: 'Telemetry MCP tool' };
 const TEAM_SWITCH_IDS = { memoryEnabled: 'memoryToggle', durableRecord: 'durableRecordToggle', consumeRecords: 'consumeRecordsToggle', openSpecArtifacts: 'openSpecArtifactsToggle', mcpAtlassian: 'mcpAtlassianToggle', mcpCodeSearch: 'mcpCodeSearchToggle', mcpDatadog: 'mcpDatadogToggle', mcpBrowser: 'mcpBrowserToggle', mcpGithub: 'mcpGithubToggle', clarifyFirst: 'clarifyFirstToggle', approvePlan: 'approvePlanToggle' };
 const TEAM_LOCAL_WORKFLOW_KEYS = ['repositories', 'appSourcePath', 'appSourceBranch', 'appSourceAccess', 'uiContextNotes', 'artifactPath'];
 function teamSettingValue(k) {
@@ -5117,6 +5146,8 @@ function teamValueIsDefault(k, v) {
   if (k in NEW_WORKFLOW_SWITCHES) return typeof v !== 'boolean' || v === NEW_WORKFLOW_SWITCHES[k];
   if (k === 'verifyFailRun') return typeof v !== 'boolean' || v === true;
   if (k === 'telemetryEnabled') return !v;
+  if (k === 'telemetrySink') return v !== 'mcp' && v !== 'both';
+  if (k === 'telemetryTool') return !telemetryClean(v);
   return !String(v || '').trim();
 }
 // An incoming value the app can actually hold; the confirm never names a setting that apply
@@ -5227,7 +5258,8 @@ function applyTeamSetting(k, v) {
     case 'verifyNotes': { state.verifyNotes = String(v); const el = $('verifyNotesInput'); if (el) el.value = state.verifyNotes; break; }
     case 'verifyFailRun': { state.verifyFailRun = !!v; const el = $('verifyFailRunToggle'); if (el) el.checked = state.verifyFailRun; break; }
     case 'mcpCustom': { state.mcpCustom = String(v); const el = $('mcpCustomNotes'); if (el) el.value = state.mcpCustom; break; }
-    case 'telemetryEndpoint': case 'telemetryService': case 'telemetryTags': { state[k] = telemetryClean(String(v)); const el = $(k); if (el) el.value = state[k]; break; }
+    case 'telemetryEndpoint': case 'telemetryService': case 'telemetryTags': case 'telemetryTool': { state[k] = telemetryClean(String(v)); const el = $(k); if (el) el.value = state[k]; if (k === 'telemetryTool') renderTelemetryFields(); break; }
+    case 'telemetrySink': { state.telemetrySink = TELEMETRY_SINKS.indexOf(v) !== -1 ? v : 'otlp'; renderTelemetryFields(); break; }
     case 'telemetryEnabled': { state.telemetryEnabled = !!v; const el = $('telemetryToggle'); if (el) el.checked = state.telemetryEnabled; renderTelemetryFields(); break; }
     default: {
       if (!(k in TEAM_SWITCH_IDS)) return;
@@ -12173,7 +12205,7 @@ function explainWorkflow(format) {
   const brG = browserGeneralHint();
   rows.push(exRow('Browser automation (MCP)', !!brG, brG ? 'Browser automation toggle on' : 'Browser automation toggle off', brG));
   const tlH = runTelemetryHint();
-  rows.push(exRow('Run telemetry (OTLP logs)', !!tlH, tlH ? ('Run telemetry toggle on - ' + (telemetryEndpointValue() ? 'explicit endpoint' : 'endpoint from OTEL_EXPORTER_OTLP_LOGS_ENDPOINT') + ', service ' + telemetryServiceName()) : 'Run telemetry toggle off', tlH));
+  rows.push(exRow('Run telemetry (OTLP logs)', !!tlH, tlH ? ('Run telemetry toggle on - ' + (telemetrySinkValue() === 'mcp' ? 'MCP sink' + (telemetryClean(state.telemetryTool) ? ' (tool ' + telemetryClean(state.telemetryTool) + ')' : ' (the tool the harness announces)') : (telemetryEndpointValue() ? 'explicit endpoint' : 'endpoint from OTEL_EXPORTER_OTLP_LOGS_ENDPOINT') + (telemetrySinkValue() === 'both' ? ' plus the MCP sink' + (telemetryClean(state.telemetryTool) ? ' (tool ' + telemetryClean(state.telemetryTool) + ')' : '') : '')) + ', service ' + telemetryServiceName()) : 'Run telemetry toggle off', tlH));
   const csH = codeSearchHint();
   rows.push(exRow('Code search (workflow-level)', !!csH, csH ? 'Code search toggle on' : 'Code search toggle off', csH));
   rows.push(exRow('Conventions', true, 'always emitted - comment discipline + test-convention discovery', conventionsHint()));
@@ -17136,7 +17168,7 @@ function _awdSummary() {
 const _AWD_FIELDS = { name: 'workflowName', story: 'storyInput', plan: 'planInput', appSourcePath: 'appSourcePath', appSourceBranch: 'appSourceBranch', appSourceAccess: 'appSourceAccess', uiContextNotes: 'uiContextNotes' };
 const _AWD_STATE_KEYS = ['memoryEnabled', 'durableRecord', 'openSpecArtifacts', 'artifactPath', 'consumeRecords', 'approvePlan', 'clarifyFirst', 'defaultModel', 'effort', 'verifyPaths', 'verifyNotes',
   'repositories', 'rulesPaths', 'productDocPaths', 'verifyFailRun', 'mcpAtlassian', 'mcpCodeSearch', 'mcpDatadog', 'mcpBrowser', 'mcpGithub', 'mcpCustom', 'defaultDelivery', 'defaultEvalHome', 'activePreset', 'exportFormat',
-  'pins', 'telemetryEnabled', 'telemetryEndpoint', 'telemetryService', 'telemetryTags'];   // adopted by a team settings import; applyTeamSetting renders them
+  'pins', 'telemetryEnabled', 'telemetryEndpoint', 'telemetryService', 'telemetryTags', 'telemetrySink', 'telemetryTool'];   // adopted by a team settings import; applyTeamSetting renders them
 function _awdCaptureSidebar() {
   const values = {};
   _AWD_STATE_KEYS.forEach(k => { values[k] = _awdCopy(state[k]); });
@@ -17185,7 +17217,7 @@ function _awdApplySidebar(values) {
     renderDefaultDelivery();
   }
   if (has('activePreset')) state.activePreset = values.activePreset;
-  ['pins', 'telemetryEnabled', 'telemetryEndpoint', 'telemetryService', 'telemetryTags'].forEach(k => { if (has(k)) applyTeamSetting(k, values[k]); });
+  ['pins', 'telemetryEnabled', 'telemetryEndpoint', 'telemetryService', 'telemetryTags', 'telemetrySink', 'telemetryTool'].forEach(k => { if (has(k)) applyTeamSetting(k, values[k]); });
   ['appSourcePath', 'appSourceBranch', 'uiContextNotes'].forEach(k => { if (has(k)) { const f = $(_AWD_FIELDS[k]); if (f) f.value = values[k]; } });
   if (has('appSourceAccess')) { const f = $('appSourceAccess'); if (f) { f.value = values.appSourceAccess; refreshEnhancedSelect(f); } }
   ['name', 'story', 'plan'].forEach(k => { if (has(k)) _awdType(_AWD_FIELDS[k], values[k]); });
@@ -17428,7 +17460,7 @@ function _awdPathList(method, key, v) {
   return seen;
 }
 const _AWD_SWITCHES = ['memoryEnabled', 'durableRecord', 'consumeRecords', 'approvePlan', 'clarifyFirst'];
-const _AWD_OPTION_KEYS = ['exportFormat'].concat(_AWD_SWITCHES, ['defaultModel', 'effort', 'verifyPaths', 'verifyNotes']);
+const _AWD_OPTION_KEYS = ['exportFormat'].concat(_AWD_SWITCHES, ['defaultModel', 'effort', 'verifyPaths', 'verifyNotes', 'telemetrySink', 'telemetryTool']);   // the two telemetry keys arrived with the MCP sink (additive)
 // Every key and value is checked before any applies, so a bad call changes nothing.
 function _awdSetOptions(options) {
   const fail = text => _awdFail('setOptions', text);
@@ -17442,6 +17474,8 @@ function _awdSetOptions(options) {
     else if (k === 'defaultModel') { if (!MODELS.some(m => m.value === v)) fail('unknown defaultModel ' + _awdShow(v) + ' (one of ' + MODELS.map(m => m.value).join(', ') + ')'); }
     else if (k === 'effort') { if (v !== '' && EFFORT_LEVELS.indexOf(v) === -1) fail('unknown effort ' + _awdShow(v) + ' (one of "", ' + EFFORT_LEVELS.join(', ') + ')'); }
     else if (k === 'verifyNotes') { if (typeof v !== 'string') fail('verifyNotes must be a string, got ' + _awdShow(v)); }
+    else if (k === 'telemetrySink') { if (TELEMETRY_SINKS.indexOf(v) === -1) fail('unknown telemetrySink ' + _awdShow(v) + ' (one of ' + TELEMETRY_SINKS.join(', ') + ')'); }
+    else if (k === 'telemetryTool') { if (typeof v !== 'string') fail('telemetryTool must be a string, got ' + _awdShow(v)); }
     else if (k === 'verifyPaths') { values[k] = _awdPathList('setOptions', k, v); return; }
     values[k] = v;
   });
@@ -17525,6 +17559,8 @@ function _awdVocabulary() {
     evalHomes: ['record', 'file'],
     evalAmbiguity: EVAL_AMBIGUITY_OPTIONS.map(o => ({ value: o.value, label: o.label })),
     appSourceAccess: _awdAccessValues(),
+    telemetrySinks: TELEMETRY_SINKS,
+    telemetryEvents: TELEMETRY_EVENTS,
     options: _AWD_OPTION_KEYS,
     sources: _AWD_SOURCE_KEYS,
     presets: _awdListPresets()
@@ -17651,7 +17687,9 @@ function _awdBuildMethods() {
     defaultModel: { type: 'string', enum: MODELS.map(m => m.value) },
     effort: { type: 'string', enum: [''].concat(EFFORT_LEVELS) },
     verifyPaths: { type: 'array', items: { type: 'string' }, description: 'Replaces the verification paths.' },
-    verifyNotes: { type: 'string' }
+    verifyNotes: { type: 'string' },
+    telemetrySink: { type: 'string', enum: TELEMETRY_SINKS, description: 'Where run events go: the OTLP endpoint, an MCP tool the driving harness exposes, or both.' },
+    telemetryTool: { type: 'string', description: 'The MCP tool name for run events (mcp and both sinks).' }
   };
   return [
     { name: 'listPresets', description: 'List the presets the sidebar offers, in sidebar order, as [{ id, name, description }].', inputSchema: none(), args: () => [] },
