@@ -2,6 +2,11 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## comment-discipline
+
+- record: .workflow/comment-discipline.md
+- intent: the comment-discipline paragraph moved from the orchestrator header to every code-changing step brief (found-defect role set; prompt, Sub-Agents, Agent Teams, Claude; SDK header unchanged), one layer like the found-defect protocol, because a dispatched step reads only its brief; reviewer briefs gain a mechanics line (a few comments ride a revision, a pattern blocks, at every defect posture) while reviewer templates keep their own check and the Test Reviewer gains one; no instruction reworded, no sentence read twice
+
 ## director-decisions
 
 - record: .workflow/director-decisions.md
