@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-11-07 - live-run-monitor - task rows show the task actually being worked: agents write t: {task} started and t: {task} done, rows read active, complete, finalized; the position guess is deleted and owner tags are optional again; agent chips read the bare TOON emoji, reopen active on resume, and close done whatever the verdict - .workflow/live-run-monitor.md
 2026-11-06 - comment-discipline - the comment-discipline paragraph moves from the orchestrator header to every code-changing step brief, word for word, one layer like the found-defect protocol (dispatched steps never read the header); reviewer briefs gain the gate mechanics, the Test Reviewer gains the comment check its siblings had - .workflow/comment-discipline.md
 2026-11-06 - director-decisions - update: New Workflow resets the switch unless its section is pinned, the preference survives a record-off period, the checkbox sits directly under Keep a durable record, and with the record off no clause names the record - .workflow/director-decisions.md
 2026-11-06 - director-decisions - the record keeps a concise trail of director answers that changed the run, behind a switch that defaults on with the record; waived tasks and skipped fence steps carry their reason - .workflow/director-decisions.md
