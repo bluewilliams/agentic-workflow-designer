@@ -979,6 +979,12 @@ svg.canvas{width:100%;height:100%;display:block}
           <input type="checkbox" id="durableRecordToggle" onchange="toggleDurableRecord()" checked/>
           <span>Keep a durable record</span>
         </label>
+        <div id="recordDirectorDecisionsField" style="display:block;margin-top:8px">
+          <label class="memory-toggle" title="Adds a Director decisions section to the record: one line per director answer that changed what the run did or delivered (a step waived, a gate overridden, a failing criterion accepted, scope cut, a plan approved with modifications), written by the orchestrator at the beat, never for a plain approval. Off: the record carries no such section. A waived task is still ticked with its reason either way.">
+            <input type="checkbox" id="recordDirectorDecisionsToggle" onchange="toggleRecordDirectorDecisions()" checked/>
+            <span>Record director decisions</span>
+          </label>
+        </div>
         <div id="artifactPathField" style="display:block;margin-top:8px">
           <span class="memory-path-label">Artifact Path</span>
           <input type="text" id="artifactPathInput" class="memory-path" oninput="onArtifactPathInput()" placeholder=".workflow/untitled.md" style="width:100%;box-sizing:border-box;border:1px solid var(--surface2);background:var(--surface);color:var(--text);font-family:inherit"/>
@@ -989,12 +995,6 @@ svg.canvas{width:100%;height:100%;display:block}
             <span>Write OpenSpec artifacts (change + specs)</span>
           </label>
 
-        </div>
-        <div id="recordDirectorDecisionsField" style="display:block;margin-top:8px">
-          <label class="memory-toggle" title="Adds a Director decisions section to the record: one line per director answer that changed what the run did or delivered (a step waived, a gate overridden, a failing criterion accepted, scope cut, a plan approved with modifications), written by the orchestrator at the beat, never for a plain approval. Off: the record carries no such section. A waived task is still ticked with its reason either way.">
-            <input type="checkbox" id="recordDirectorDecisionsToggle" onchange="toggleRecordDirectorDecisions()" checked/>
-            <span>Record director decisions</span>
-          </label>
         </div>
       </div>
     </div>
@@ -2884,8 +2884,8 @@ function evalAmbiguityStepClause(node) {
 }
 function evalAmbiguityOrchestratorClause(author) {
   const v = evalAmbiguityOf(author);
-  if (v === 'decide') return '> Open questions: the Eval Author decides every question the requirements leave open and lists its assumptions in its handoff; carry each one into the durable record as a decision (question -> assumption -> the criterion it shaped) and into the planning step\'s brief as a resolved requirement, so the plan is built to the same reading the eval is frozen on. No question reaches the director.';
-  return '> Open questions: when the Eval Author\'s handoff lists open questions' + (v === 'always' ? '' : ' (only those that move the pass bar; it decides the rest and records them)') + ', ask the director ONCE, in one short batch with the proposed defaults, before the eval is frozen and before any planning step starts; then re-dispatch the Eval Author with its draft and the answers to finalize and freeze, record each answer ' + (state.recordDirectorDecisions ? 'under Director decisions in the durable record' : 'in the durable record as a decision') + ' (question -> answer -> the criterion it shaped), and fold each answer into the planning step\'s brief as a resolved requirement, exactly as the clarify gate does, so the plan is built to the same reading the eval is frozen on. Running non-interactively (no director available to answer), do NOT block: adopt the proposed defaults, record them as assumptions, and continue. An eval frozen around an unanswered question is a guess nobody agreed to.';
+  if (v === 'decide') return '> Open questions: the Eval Author decides every question the requirements leave open and lists its assumptions in its handoff; carry each one ' + (state.durableRecord ? 'into the durable record as a decision (question -> assumption -> the criterion it shaped) and ' : '') + 'into the planning step\'s brief as a resolved requirement, so the plan is built to the same reading the eval is frozen on. No question reaches the director.';
+  return '> Open questions: when the Eval Author\'s handoff lists open questions' + (v === 'always' ? '' : ' (only those that move the pass bar; it decides the rest and records them)') + ', ask the director ONCE, in one short batch with the proposed defaults, before the eval is frozen and before any planning step starts; then re-dispatch the Eval Author with its draft and the answers to finalize and freeze, record each answer ' + (!state.durableRecord ? 'in the frozen eval itself (the criterion it shaped carries the answer)' : state.recordDirectorDecisions ? 'under Director decisions in the durable record (question -> answer -> the criterion it shaped)' : 'in the durable record as a decision (question -> answer -> the criterion it shaped)') + ', and fold each answer into the planning step\'s brief as a resolved requirement, exactly as the clarify gate does, so the plan is built to the same reading the eval is frozen on. Running non-interactively (no director available to answer), do NOT block: adopt the proposed defaults, record them as assumptions, and continue. An eval frozen around an unanswered question is a guess nobody agreed to.';
 }
 function evalInRecord() {
   if (!state.durableRecord) return true;   // without a record the question does not arise
@@ -3904,6 +3904,8 @@ function toggleDurableRecord() {
   if (af) af.style.display = state.durableRecord ? 'block' : 'none';
   const smf = $('openSpecArtifactsField');
   if (smf) smf.style.display = state.durableRecord ? 'block' : 'none';
+  const rdf = $('recordDirectorDecisionsField');
+  if (rdf) rdf.style.display = state.durableRecord ? 'block' : 'none';   // the preference itself is kept; it shows again, as saved, when the record returns
   if (!state.durableRecord) {
     // The OpenSpec artifacts ride the record's lifecycle - never on without it.
     state.openSpecArtifacts = false;
@@ -3946,6 +3948,8 @@ function clearDurableRecord() {
   if (af) af.style.display = 'none';
   const smf = $('openSpecArtifactsField');
   if (smf) smf.style.display = 'none';
+  const rdf = $('recordDirectorDecisionsField');
+  if (rdf) rdf.style.display = 'none';
   syncEvalHomeUI();
 }
 
@@ -4212,7 +4216,7 @@ function restorePrefs() {
     state.artifactPath = typeof p.artifactPath === 'string' ? p.artifactPath : '';
     state.durableRecord = !!p.durableRecord && state.memoryEnabled;
     state.openSpecArtifacts = !!p.openSpecArtifacts && state.durableRecord;
-    state.recordDirectorDecisions = (p.recordDirectorDecisions === undefined ? true : !!p.recordDirectorDecisions) && state.durableRecord;   // prefs saved before the switch existed boot with it on
+    state.recordDirectorDecisions = p.recordDirectorDecisions === undefined ? true : !!p.recordDirectorDecisions;   // a remembered preference: it survives a record-off period (emission gates on the record); prefs saved before the switch existed boot with it on
     syncDurableUI();
     if (p.appSourcePath && $('appSourcePath')) $('appSourcePath').value = p.appSourcePath;
     if (p.appSourceBranch && $('appSourceBranch')) $('appSourceBranch').value = p.appSourceBranch;
@@ -10993,6 +10997,7 @@ function clearCanvas(skipConfirm) {
     state.openSpecArtifacts = sw.openSpecArtifacts;   // syncDurableUI below mirrors it
     state.consumeRecords = sw.consumeRecords;
     const _crt = $('consumeRecordsToggle'); if (_crt) _crt.checked = sw.consumeRecords;
+    state.recordDirectorDecisions = sw.recordDirectorDecisions;   // syncDurableUI below mirrors it
   }
   state.artifactPath = '';   // the record path belongs to one workflow
   syncDurableUI();
