@@ -22242,6 +22242,32 @@ describe('Agent API facade 1.1: vocabulary, Auto Workflow, sources, libraries, c
     const tool = A().describe().find(e => e.name === 'setSources');
     expect(tool.inputSchema.additionalProperties).toBe(false);
   });
+
+  it('pushAgents reports no coerced entry for an agent the merge skipped, and updateNode routes an agentType change through the panel rule', () => {
+    const first = A().pushAgents({ pack: 'P', agents: [{ name: 'Scout', version: '1.0', config: { agentType: 'coder', prompt: 'org', custom: 1 } }] });
+    expect(first.added + ':' + first.coerced.map(c => c.key).join(',')).toBe('1:agents.0.config.custom');
+    const again = A().pushAgents({ pack: 'P', agents: [{ name: 'Scout', version: '1.0', config: { agentType: 'coder', prompt: '' } }] });
+    expect(again.skipped + ':' + (again.coerced === undefined)).toBe('1:true');   // nothing applied, nothing coerced
+    const n = A().addNode({ type: 'agent', config: { agentType: 'coder' } });   // addNode fills the generic default tool set (a pristine set)
+    const node = win.state.nodes.find(x => x.id === n.id);
+    expect(node.config.tools.join(',')).toBe(win.NODE_DEFAULTS.agent.config.tools.join(','));
+    A().updateNode(n.id, { config: { agentType: 'planner' } });
+    expect(node.config.agentType).toBe('planner');
+    expect(node.config.tools.join(',')).toBe(win.AGENT_TYPE_TOOL_DEFAULTS.planner.join(','));   // a pristine tool set follows the new type, as the panel does
+    A().updateNode(n.id, { config: { tools: ['Read'] } });
+    A().updateNode(n.id, { config: { agentType: 'tester' } });
+    expect(node.config.tools.join(',')).toBe('Read');   // a customized set is never touched
+  });
+
+  it('pushPrompts keys a coerced entry by the caller index even after a skipped title, and setSources rejects a duplicate repository path', () => {
+    win.saveCustomPrompts([{ id: 'cp_a', title: 'A', desc: '', prompt: 'a' }]);
+    const r = A().pushPrompts([{ title: 'A', prompt: 'x' }, { title: 'B', desc: '  padded  ', prompt: 'b' }]);
+    expect(r.added + ':' + r.skipped.join(',')).toBe('1:A');
+    if (r.coerced) expect(r.coerced.map(c => c.key).join(',')).toBe('prompts.1.desc');   // the caller's index, not the position among the fresh ones
+    let msg = ''; try { A().setSources({ repositories: [{ path: '/a' }, { path: ' /a ' }] }); } catch (e) { msg = e.message; }
+    expect(msg).toContain('awd: setSources: repositories entry " /a " is a duplicate');
+    expect(win.state.repositories.length).toBe(0);
+  });
 });
 
 document.getElementById('app').addEventListener('load', function() {

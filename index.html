@@ -17169,8 +17169,8 @@ function _awdApplySidebar(values) {
   if (has('consumeRecords')) { check('consumeRecordsToggle', values.consumeRecords); toggleConsumeRecords(); }
   if (has('approvePlan')) { check('approvePlanToggle', values.approvePlan); toggleApprovePlan(); }
   if (has('clarifyFirst')) { check('clarifyFirstToggle', values.clarifyFirst); toggleClarifyFirst(); }
-  if (has('defaultModel')) setDefaultModel(values.defaultModel);
-  if (has('effort')) setEffort(values.effort);
+  if (has('defaultModel')) setDefaultModel(values.defaultModel, true);   // quiet: the one render and save at the end of this apply cover it
+  if (has('effort')) setEffort(values.effort, true);
   if (has('verifyPaths')) { state.verifyPaths = normalizePathList(values.verifyPaths || []); renderVerifyRows(); }   // one assignment and one render, as applyWorkflowContext does
   if (has('verifyNotes')) { const notes = $('verifyNotesInput'); if (notes) notes.value = values.verifyNotes || ''; setVerifyNotes(values.verifyNotes || ''); }
   if (has('repositories')) { state.repositories = _awdCopy(values.repositories); renderRepoRows(); }
@@ -17210,8 +17210,7 @@ function _awdStep(fn) {
   try {
     result = fn();
   } catch (e) {
-    _undoBatch = was;   // restored BEFORE the rollback: the rollback's own undo must not run suppressed (the finally below repeats it for the normal path)
-    if (_awdSignature() !== signature) _awdRollback(canvas, side);
+    if (_awdSignature() !== signature) _awdRollback(canvas, side);   // the flag stays raised here on purpose: nothing inside the rollback may push an undo entry
     throw e;
   } finally {
     _undoBatch = was;
@@ -17294,7 +17293,7 @@ function _awdAddNode(spec) {
 }
 function _awdSetText(method, id, text) {
   _awdText(method, text);
-  return _awdStep(() => { _awdType(id, text); if (['workflowName'].indexOf(id) === -1) updatePrompt(); return _awdSummary(); });   // the other fields' input handlers already regenerate the prompt
+  return _awdStep(() => { _awdType(id, text); if (id !== 'workflowName') updatePrompt(); return _awdSummary(); });   // the name field regenerates in its own handler; the other two schedule a debounced regeneration, so regenerate now for a fresh summary
 }
 function _awdFormat(method, format) {
   if (typeof format !== 'string' || !Object.prototype.hasOwnProperty.call(EXPLAIN_FORMATS, format)) _awdFail(method, 'unknown format ' + _awdShow(format) + ' (one of ' + Object.keys(EXPLAIN_FORMATS).join(', ') + ')');
@@ -17337,8 +17336,12 @@ function _awdUpdateNode(id, patch) {
   return _awdStep(() => {
     if (patch.label !== undefined) node.label = patch.label;
     if (patch.config !== undefined) {
-      node.config = { ...node.config, ..._awdCopy(patch.config) };   // spread, as addNode builds a config: a parsed own __proto__ key stays a plain key
+      const cfg = _awdCopy(patch.config);
+      const newType = cfg.agentType;
+      delete cfg.agentType;
+      node.config = { ...node.config, ...cfg };   // spread, as addNode builds a config: a parsed own __proto__ key stays a plain key
       if (Array.isArray(node.config.tools)) node.config.tools = node.config.tools.slice();
+      if (node.type === 'agent' && newType !== undefined && newType !== node.config.agentType) applyAgentTypeChange(node.config, newType, node.config.prompt, node.label);   // the panel's rule: a pristine tool set and an unmodified template follow the new type
     }
     render();
     if (state.selectedId === id) updateConfig();
@@ -17364,7 +17367,6 @@ function _awdDisconnect(from, to) {
   if (!edge) _awdFail('disconnect', 'no edge from ' + _awdShow(from) + ' to ' + _awdShow(to));
   return _awdStep(() => { deleteConnection(edge.id); return _awdSummary(); });
 }
-// The Input that anchors the run: one with edges, else the only one.
 // The Input that anchors the run: the one with edges, else the only one; when more than one Input
 // has edges the caller names it (the one-click path uses the selected Input for the same reason).
 function _awdAddEval(inputId) {
@@ -17414,6 +17416,17 @@ function _awdDetachLoop(nodeId) {
   if (!hasReviewLoop(nodeId)) _awdFail('detachLoop', 'node ' + _awdShow(nodeId) + ' has no loop');
   return _awdStep(() => { detachReviewLoop(nodeId); return _awdSummary(); });
 }
+// One rule for every path list the facade accepts: entries trimmed, a duplicate is an error.
+function _awdPathList(method, key, v) {
+  if (!Array.isArray(v)) _awdFail(method, key + ' must be an array of paths, got ' + _awdShow(v));
+  const seen = [];
+  v.forEach(x => {
+    if (typeof x !== 'string' || !x.trim()) _awdFail(method, key + ' entry must be a non-empty string, got ' + _awdShow(x));
+    if (seen.indexOf(x.trim()) !== -1) _awdFail(method, key + ' entry ' + _awdShow(x) + ' is a duplicate');
+    seen.push(x.trim());
+  });
+  return seen;
+}
 const _AWD_SWITCHES = ['memoryEnabled', 'durableRecord', 'consumeRecords', 'approvePlan', 'clarifyFirst'];
 const _AWD_OPTION_KEYS = ['exportFormat'].concat(_AWD_SWITCHES, ['defaultModel', 'effort', 'verifyPaths', 'verifyNotes']);
 // Every key and value is checked before any applies, so a bad call changes nothing.
@@ -17429,17 +17442,7 @@ function _awdSetOptions(options) {
     else if (k === 'defaultModel') { if (!MODELS.some(m => m.value === v)) fail('unknown defaultModel ' + _awdShow(v) + ' (one of ' + MODELS.map(m => m.value).join(', ') + ')'); }
     else if (k === 'effort') { if (v !== '' && EFFORT_LEVELS.indexOf(v) === -1) fail('unknown effort ' + _awdShow(v) + ' (one of "", ' + EFFORT_LEVELS.join(', ') + ')'); }
     else if (k === 'verifyNotes') { if (typeof v !== 'string') fail('verifyNotes must be a string, got ' + _awdShow(v)); }
-    else if (k === 'verifyPaths') {
-      if (!Array.isArray(v)) fail('verifyPaths must be an array of paths, got ' + _awdShow(v));
-      const seen = [];
-      v.forEach(p => {
-        if (typeof p !== 'string' || !p.trim()) fail('verifyPaths entry must be a non-empty string, got ' + _awdShow(p));
-        if (seen.indexOf(p.trim()) !== -1) fail('verifyPaths entry ' + _awdShow(p) + ' is a duplicate');
-        seen.push(p.trim());
-      });
-      values[k] = seen;
-      return;
-    }
+    else if (k === 'verifyPaths') { values[k] = _awdPathList('setOptions', k, v); return; }
     values[k] = v;
   });
   const memoryAfter = values.memoryEnabled !== undefined ? values.memoryEnabled : state.memoryEnabled;
@@ -17544,24 +17547,18 @@ function _awdSetSources(sources) {
   const fail = text => _awdFail('setSources', text);
   if (!_awdIsObject(sources)) fail('expects an object of sources, got ' + _awdShow(sources));
   const values = {};
-  const pathList = (k, v) => {   // the setOptions verifyPaths rule: trimmed, a duplicate is an error
-    if (!Array.isArray(v)) fail(k + ' must be an array of paths, got ' + _awdShow(v));
-    const seen = [];
-    v.forEach(x => {
-      if (typeof x !== 'string' || !x.trim()) fail(k + ' entry must be a non-empty string, got ' + _awdShow(x));
-      if (seen.indexOf(x.trim()) !== -1) fail(k + ' entry ' + _awdShow(x) + ' is a duplicate');
-      seen.push(x.trim());
-    });
-    return seen;
-  };
+  const pathList = (k, v) => _awdPathList('setSources', k, v);
   Object.keys(sources).forEach(k => {
     const v = sources[k];
     if (_AWD_SOURCE_KEYS.indexOf(k) === -1) fail('unknown source ' + _awdShow(k) + ' (one of ' + _AWD_SOURCE_KEYS.join(', ') + ')');
     if (k === 'repositories') {
       if (!Array.isArray(v)) fail('repositories must be an array of { path, branch }, got ' + _awdShow(v));
+      const seenPaths = [];
       values[k] = v.map(r => {
         if (!_awdIsObject(r) || typeof r.path !== 'string' || !r.path.trim()) fail('repositories entry must be { path, branch } with a non-empty path, got ' + _awdShow(r));
         if (r.branch !== undefined && typeof r.branch !== 'string') fail('repositories entry branch must be a string, got ' + _awdShow(r.branch));
+        if (seenPaths.indexOf(r.path.trim()) !== -1) fail('repositories entry ' + _awdShow(r.path) + ' is a duplicate');   // one rule for every path list
+        seenPaths.push(r.path.trim());
         return { path: r.path.trim(), branch: (r.branch || '').trim() };
       });
     } else if (k === 'rulesPaths' || k === 'productDocPaths') values[k] = pathList(k, v);
@@ -17591,22 +17588,27 @@ function _awdPushAgents(input) {
     _awdConfig('pushAgents', 'agent', a.config);
     return { name: a.name.trim(), version: a.version || '', config: _awdCopy(a.config) };   // name, version, config only: a carried id or source cannot aim at a user entry or another pack
   });
+  const ids = agents.map(a => newAgentId('org', a.name, pack.trim()));
+  const before = getCustomAgents();
   const result = mergeImportedAgents({ source: 'org', pack: pack.trim(), agents: agents });
   rerenderAgentLib(); renderAgentPalette();
-  const ids = agents.map(a => newAgentId('org', a.name, pack.trim()));
   const stored = getCustomAgents();
   const coerced = [];
-  agents.forEach((a, i) => { const now = stored.find(x => x.id === ids[i]); if (now) coerced.push.apply(coerced, _awdCoerced(a.config, now.config || {}, 'agents.' + i + '.config.')); });   // normalizeAgentConfig fills and drops keys; say which
+  agents.forEach((a, i) => {   // only an entry the merge applied (added, or updated to a new version) can have been coerced; a skipped one kept what was there
+    const now = stored.find(x => x.id === ids[i]); const was = before.find(x => x.id === ids[i]);
+    const applied = now && (!was || (now.version !== was.version) || JSON.stringify(now.config) !== JSON.stringify(was.config));
+    if (applied) coerced.push.apply(coerced, _awdCoerced(a.config, now.config || {}, 'agents.' + i + '.config.'));   // normalizeAgentConfig fills and drops keys; say which
+  });
   return _awdWithCoerced({ pack: pack.trim(), added: result.added, updated: result.updated, skipped: result.skipped, ids: ids }, coerced);
 }
 function _awdPushPrompts(prompts) {
   const fail = text => _awdFail('pushPrompts', text);
   if (!Array.isArray(prompts) || !prompts.length) fail('expects a non-empty array of { title, desc, prompt }, got ' + _awdShow(prompts));
-  const clean = prompts.map(x => {
+  const clean = prompts.map((x, i) => {
     if (!_awdIsObject(x) || typeof x.title !== 'string' || !x.title.trim()) fail('prompts entry needs a non-empty title, got ' + _awdShow(x));
     if (typeof x.prompt !== 'string' || !x.prompt.trim()) fail('prompts entry ' + _awdShow(x.title) + ' needs a non-empty prompt, got ' + _awdShow(x.prompt));
     if (x.desc !== undefined && typeof x.desc !== 'string') fail('prompts entry ' + _awdShow(x.title) + ' desc must be a string, got ' + _awdShow(x.desc));
-    return { title: x.title.trim(), desc: x.desc || '', prompt: x.prompt };
+    return { i: i, title: x.title.trim(), desc: x.desc || '', prompt: x.prompt };   // i: the caller's index, kept for the coerced key
   });
   const have = new Set(getCustomPrompts().map(x => x.title));
   const fresh = [], skipped = [];
@@ -17614,7 +17616,7 @@ function _awdPushPrompts(prompts) {
   if (fresh.length) { mergeImportedPrompts({ prompts: fresh }); rerenderPromptLib(); }
   const stored = getCustomPrompts();
   const coerced = [];
-  fresh.forEach((x, i) => { const now = stored.find(y => y.title === x.title); if (now) coerced.push.apply(coerced, _awdCoerced({ desc: x.desc, prompt: x.prompt }, now, 'prompts.' + i + '.')); });
+  fresh.forEach(x => { const now = stored.find(y => y.title === x.title); if (now) coerced.push.apply(coerced, _awdCoerced({ desc: x.desc, prompt: x.prompt }, now, 'prompts.' + x.i + '.')); });
   return _awdWithCoerced({ added: fresh.length, skipped: skipped }, coerced);
 }
 function _awdGetTeamSettings() { return _awdCopy(buildTeamSettings()); }
@@ -17695,7 +17697,7 @@ function _awdBuildMethods() {
     { name: 'pushPrompts', description: 'Add prompts to the Prompt Library; an existing title is skipped, never overwritten. Returns { added, skipped: [titles] }. Not an undo step and not allowed inside a batch.',
       inputSchema: one('prompts', { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, desc: { type: 'string' }, prompt: { type: 'string' } }, required: ['title', 'prompt'] } }), args: i => [i.prompts] },
     { name: 'getTeamSettings', description: 'Return the team settings object the Export menu writes: settings, saved workflows, org and user agents, prompts.', inputSchema: none(), args: () => [] },
-    { name: 'importTeamSettings', description: 'Import a team settings object (format awd-team-settings) with the app rules: adopts only settings still at their defaults, adds workflows, agents and prompts that are not here yet, changes nothing a user already set. Returns { adopted, workflows, agents, prompts, summary }; the adopted settings are one undo step, the added library entries persist. Not allowed inside a batch.', inputSchema: one('settings', { type: 'object', description: 'A team settings object as getTeamSettings returns it.' }), args: i => [i.settings] },
+    { name: 'importTeamSettings', description: 'Import a team settings object (format awd-team-settings) with the app rules: adopts only settings still at their defaults, adds workflows, agents and prompts that are not here yet, changes nothing a user already set. Returns { adopted, workflows, agents, prompts, summary }; the adopted settings are one undo step, the added library entries persist (and a storage failure part-way leaves the entries written before it; the adopted settings roll back). Not allowed inside a batch.', inputSchema: one('settings', { type: 'object', description: 'A team settings object as getTeamSettings returns it.' }), args: i => [i.settings] },
     { name: 'batch', description: 'Run [{ tool, input }] entries in order as one undo step and return their results; when an entry throws, nothing from the batch stays applied. Not allowed inside: batch, undo, redo, pushAgents, pushPrompts, importTeamSettings.',
       inputSchema: one('ops', { type: 'array', items: { type: 'object', properties: { tool: { type: 'string', description: 'A method name other than batch, undo, redo, pushAgents, pushPrompts, or importTeamSettings.' }, input: { type: 'object' } }, required: ['tool'] } }), args: i => [i.ops] }
   ];
