@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## surface-critical-assumptions
+
+- record: .workflow/surface-critical-assumptions.md
+- intent: with no gate on, the orchestrator shows the director at most three critical assumptions once before the first step that changes files (option taken, option passed over, what it decides), then proceeds without waiting; silence when none are critical; replaced by the Clarify or Approve plan gate
+- files: index.html (criticalAssumptionsHint, pushSharedHints, Explain row), tests.html, README.md
+- status: current | date: 2026-11-11
+
 ## comment-discipline
 
 - record: .workflow/comment-discipline.md

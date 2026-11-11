@@ -2484,6 +2484,12 @@ function consumeRecordsHint(fmt) {
 // structured ambiguity taxonomy, asks the director focused questions in one round, then folds the
 // resolutions into the plan and the durable record. Default off (it blocks for input). Degrades
 // gracefully when non-interactive. Avoids the literal "Durable Record" string to dodge gating.
+// Non-blocking sibling of the clarify gate: when no gate already puts the plan or the questions
+// in front of the director, the few assumptions that matter are shown once and the run goes on.
+function criticalAssumptionsHint() {
+  if (state.clarifyFirst || state.approvePlan) return null;
+  return '> **Surface critical assumptions (do not stop).** Once, just before the first step that changes files or produces the deliverable, tell the director the assumptions that pass BOTH tests: a wrong guess would change what the result observably does or the shape of the solution (its architecture, a contract, a data schema), and it would be costly to undo after the work is done. At most three, most consequential first, numbered, one line each: the option you are going with, the option you passed over, and what the choice decides - so the director can redirect one with a reply as short as "2: the other option". If more pass, add one line saying how many more are in the step handoffs' + (state.durableRecord ? ' and the durable record' : '') + '. If none pass, say nothing. Then proceed without waiting: apply a redirect if the director sends one, and do not raise assumptions again mid-run.';
+}
 function clarifyFirstHint() {
   if (!state.clarifyFirst) return null;
   const r = [];
@@ -12294,6 +12300,8 @@ function explainWorkflow(format) {
   rows.push(exRow('Grounding in prior records', !!cr, cr ? 'Ground-in-prior-records toggle on - three-tier lookup, Current behavior first; also scans any openspec/ docs found (bounded: names first, grep to narrow, few files opened)' : 'Ground-in-prior-records toggle off', cr));
   const cl = clarifyFirstHint();
   rows.push(exRow('Clarify-first gate', !!cl, cl ? 'Clarify-requirements-first toggle on - the workflow opens with one round of clarifying questions before any work begins; answers fold into the plan' : 'Clarify-first toggle off', cl));
+  const ca = criticalAssumptionsHint();
+  rows.push(exRow('Critical assumptions', !!ca, ca ? 'no gate is on - the orchestrator shows at most three critical assumptions once, then proceeds without waiting' : 'a gate is on (Clarify first or Approve plan) - it already puts the questions or the plan in front of the director', ca));
   const _apCp = state.approvePlan ? approvalCheckpoint() : null;
   const ap = approvePlanHint(_apCp);
   rows.push(exRow('Plan approval gate', !!ap, ap ? 'Approve-plan-before-build toggle on - the run pauses once before ' + (_apCp ? _apCp.node.label : 'the first step') + ' for the director to approve or modify the plan' : (state.approvePlan ? 'Approve-plan toggle on, but the canvas has no agent step to pause before' : 'Approve-plan toggle off - the run proceeds from plan to build without a director checkpoint'), ap));
@@ -13058,6 +13066,8 @@ function pushSharedHints(p, format, includeEffort) {
   if (cr) { p.push(cr); p.push(''); }
   const cl = clarifyFirstHint();
   if (cl) { p.push(cl); p.push(''); }
+  const ca = criticalAssumptionsHint();
+  if (ca) { p.push(ca); p.push(''); }
   const ap = approvePlanHint();
   if (ap) { p.push(ap); p.push(''); }
   const dd = datadogGroundingHint();
