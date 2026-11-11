@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-11-10 - consume-prior-records - grounding scans the index a second time once the files are known (planner or not), verifies a matched record against the code (code wins, drift noted), and opens matched records whole, leaving their use to the agent - .workflow/make-ground-in-prior-records-use-the-full-three-tier-lookup.md
 2026-11-09 - self-improvement-loop - How it works may run to 30 lines with a second diagram when one view cannot carry the idea; fewest lines still the rule - .workflow/self-improvement-loop.md
 2026-11-09 - self-improvement-loop - the durable record gains How it works: a Mermaid diagram plus a few sentences so the director can explain the change without reading the code, written at finalize from the shipped code, the fewest lines possible and never more than 20 - .workflow/self-improvement-loop.md
 2026-11-07 - live-run-monitor - task rows show the task actually being worked: agents write t: {task} started and t: {task} done, rows read active, complete, finalized; the position guess is deleted and owner tags are optional again; agent chips read the bare TOON emoji, reopen active on resume, and close done whatever the verdict - .workflow/live-run-monitor.md
