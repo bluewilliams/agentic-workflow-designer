@@ -21888,6 +21888,20 @@ describe('Sidebar text fields keep the generated prompt live', () => {
   });
 });
 
+describe('Every preset explains itself: what it is for, what sets it apart, and when to pick a neighbor', () => {
+  it('each of the presets in the sidebar carries a tooltip of real length, and every preset a tooltip tells you to pick instead exists by that exact name', () => {
+    const items = Array.from(win.document.querySelectorAll('.preset-item[data-preset]'));
+    const names = items.map(i => i.querySelector('.preset-name').textContent.trim());
+    expect(items.length).toBe(23);
+    items.forEach(i => {
+      const id = i.dataset.preset, tip = i.getAttribute('title') || '';
+      expect(id + ':' + (tip.length >= 150)).toBe(id + ':true');
+      const refs = tip.match(/[Pp]ick ((?:[A-Z][\w\/&()-]*)(?: (?:[A-Z&\/][\w\/&()-]*|\(fast\)))*)/g) || [];
+      refs.forEach(r => { const name = r.replace(/^[Pp]ick /, ''); expect(id + ' -> ' + name + ':' + (names.indexOf(name) !== -1)).toBe(id + ' -> ' + name + ':true'); });
+    });
+  });
+});
+
 describe('Critical assumptions are surfaced once, without stopping the run', () => {
   afterEach(() => { win.state.clarifyFirst = false; win.state.approvePlan = false; resetState(); });
   const LEAD = '**Surface critical assumptions (do not stop).**';

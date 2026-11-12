@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-11-11 - house-tooltips - every preset tile explains itself: what it is for, what sets it apart, and which neighbor to pick instead - .workflow/house-tooltips.md
 2026-11-11 - surface-critical-assumptions - with no gate on, the orchestrator shows at most three critical assumptions once (option taken, option passed over) and proceeds without waiting; silent when none are critical - .workflow/surface-critical-assumptions.md
 2026-11-10 - consume-prior-records - grounding scans the index a second time once the files are known (planner or not), verifies a matched record against the code (code wins, drift noted), and opens matched records whole, leaving their use to the agent - .workflow/make-ground-in-prior-records-use-the-full-three-tier-lookup.md
 2026-11-09 - self-improvement-loop - How it works may run to 30 lines with a second diagram when one view cannot carry the idea; fewest lines still the rule - .workflow/self-improvement-loop.md

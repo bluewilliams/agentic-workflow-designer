@@ -782,15 +782,15 @@ svg.canvas{width:100%;height:100%;display:block}
   <div class="sidebar-section" data-collapse-id="presets">
     <h3 title="Ready-made pipelines - each a strong opinion you can override after loading. The group at the bottom amends work that already shipped instead of starting new work.">Presets</h3>
     <div class="preset-list">
-      <div class="preset-item" data-preset="feature" onclick="loadPreset('feature')">
+      <div class="preset-item" data-preset="feature" onclick="loadPreset('feature')" title="The default for a new capability in an existing codebase: a Planner drafts the plan and a Skeptic doubts it before any code is written (up to three rounds), then an Implementer builds, a read-only Reviewer gates the change, and a Tester proves it with automated tests. To have the running app exercised as well (a real browser, real API calls), right-click the Implementer and choose Add verification. Pick Feature (fast) when the feature is small and a flawed plan is cheap to correct; pick Full Stack Feature when a backend and a frontend can be built in parallel.">
         <div class="preset-name">Feature Development</div>
         <div class="preset-desc">Plan (Skeptic) &rarr; Implement &rarr; Review &rarr; Test</div>
       </div>
-      <div class="preset-item" data-preset="bugfix" onclick="loadPreset('bugfix')">
+      <div class="preset-item" data-preset="bugfix" onclick="loadPreset('bugfix')" title="For a defect you can describe: an Investigator finds the root cause before anything changes, a Fixer makes the smallest fix, and a Tester adds the regression test. A final gate asks one question: is the reported bug actually gone? If not, the work goes back. Pick Incident RCA when you need the cause proven and written up rather than fixed; pick Touch-Up for a small behavior change that is not a bug.">
         <div class="preset-name">Bug Fix</div>
         <div class="preset-desc">Investigate &rarr; Fix &rarr; Test &rarr; Verify</div>
       </div>
-      <div class="preset-item" data-preset="fullstack" onclick="loadPreset('fullstack')">
+      <div class="preset-item" data-preset="fullstack" onclick="loadPreset('fullstack')" title="For a feature that needs both a server and a client change: an Architect settles the contract between them first, then Backend and Frontend build in parallel against it, a Reviewer gates the integration, and a Tester proves the whole path with automated tests. To have the running app exercised as well (a real browser, real API calls), right-click a build step and choose Add verification. Pick Feature Development when the work sits on one side; pick Cross-Repo Change when the two sides live in different repositories.">
         <div class="preset-name">Full Stack Feature</div>
         <div class="preset-desc">Design &rarr; [Backend | Frontend] &rarr; Test</div>
       </div>
@@ -798,15 +798,15 @@ svg.canvas{width:100%;height:100%;display:block}
         <div class="preset-name">New Project</div>
         <div class="preset-desc">Scout &rarr; Foundation (Skeptic) &rarr; Scaffold &rarr; First Slice &rarr; Review &rarr; Verify Fresh Copy</div>
       </div>
-      <div class="preset-item" data-preset="ui_component" onclick="loadPreset('ui_component')">
+      <div class="preset-item" data-preset="ui_component" onclick="loadPreset('ui_component')" title="For a component or screen that must look like it belongs: a Design System Analyzer reads the project's tokens, components, and visual identity first, a UI Implementer builds to that brief, a Verifier proves it renders and behaves in a browser, and a UI Reviewer gates design-system compliance. Fill in App &amp; UI Context for the best result. Pick Feature Development when the work is mostly logic rather than interface.">
         <div class="preset-name">UI Design &amp; Development</div>
         <div class="preset-desc">Analyze Design System &rarr; Implement &rarr; Review</div>
       </div>
-      <div class="preset-item" data-preset="refactoring" onclick="loadPreset('refactoring')">
+      <div class="preset-item" data-preset="refactoring" onclick="loadPreset('refactoring')" title="For changing structure without changing behavior: a Planner scopes the refactor, a Code Analyzer maps the callers and the tests that pin current behavior, a Refactorer makes the change, a Reviewer gates it, and a Tester confirms behavior is preserved. Pick Performance Optimization when the goal is a measured speed-up, and Feature Development when behavior is meant to change.">
         <div class="preset-name">Refactoring</div>
         <div class="preset-desc">Analyze &rarr; Refactor &rarr; Review &rarr; Test</div>
       </div>
-      <div class="preset-item" data-preset="documentation" onclick="loadPreset('documentation')">
+      <div class="preset-item" data-preset="documentation" onclick="loadPreset('documentation')" title="For docs that must match the code: a Planner sets the audience and outline, a Researcher gathers the facts from the code and the existing docs, a technical Doc Writer writes, and a Skeptic checks every claim against the code before it ships. It writes documentation only. Tip: run it right after a medium or large workflow to get docs that help you understand what the agents just built. Pick Record Sync to repair durable records, and Analysis &amp; Forecast for a decision report built on numbers.">
         <div class="preset-name">Documentation</div>
         <div class="preset-desc">Research &rarr; Write Docs &rarr; Review</div>
       </div>
@@ -816,7 +816,7 @@ svg.canvas{width:100%;height:100%;display:block}
           <div class="preset-name">Feature (fast)</div>
           <div class="preset-desc">Plan &rarr; Implement &rarr; Review &rarr; Test</div>
         </div>
-        <div class="preset-item" data-preset="devops" onclick="loadPreset('devops')">
+        <div class="preset-item" data-preset="devops" onclick="loadPreset('devops')" title="For changes to pipelines, infrastructure as code, containers, and deployment config in a repository that already has them: a Planner scopes the change, a DevOps Engineer makes it, a Reviewer gates it, and a Tester validates it. Pick Platform Provisioning when you are standing up new repositories, pipelines, or environments from nothing.">
           <div class="preset-name">DevOps / Infrastructure</div>
           <div class="preset-desc">Plan &rarr; Implement &rarr; Review &rarr; Test</div>
         </div>
@@ -824,11 +824,11 @@ svg.canvas{width:100%;height:100%;display:block}
           <div class="preset-name">Platform Provisioning</div>
           <div class="preset-desc">Survey Estate &rarr; Plan (Skeptic) &rarr; Provision &rarr; Review &rarr; Verify Deploys</div>
         </div>
-        <div class="preset-item" data-preset="cross_repo" onclick="loadPreset('cross_repo')" title="A change that spans repositories: the contract (the API shape, event, or shared literal) is written once and doubted by a Skeptic, then an Implement-and-Test lane runs once per repository listed under Multi-Repo (instances pooled on the monitor), and an Integration Verifier proves the seam consumer-against-producer before review. Add your repositories in Multi-Repo & Context Paths.">
+        <div class="preset-item" data-preset="cross_repo" onclick="loadPreset('cross_repo')" title="A change that spans repositories: the contract (the API shape, event, or shared literal) is written once and doubted by a Skeptic, then an Implement-and-Test lane runs once per repository listed under Multi-Repo (instances pooled on the monitor), and an Integration Verifier proves the seam consumer-against-producer before review. Any preset can work across repositories; pick this one when the repositories must agree on a contract, because it settles that contract first and proves the two sides fit. Add your repositories in Multi-Repo & Context Paths.">
           <div class="preset-name">Cross-Repo Change</div>
           <div class="preset-desc">Contract (Skeptic) &rarr; [per repo: Implement &rarr; Test] &rarr; Verify Seam &rarr; Review</div>
         </div>
-        <div class="preset-item" data-preset="performance" onclick="loadPreset('performance')">
+        <div class="preset-item" data-preset="performance" onclick="loadPreset('performance')" title="For a speed or resource problem you can measure: a Planner frames the target, a Profiler measures first to find the real bottleneck, an Optimizer changes only what the profile supports, a Reviewer gates the change, and a Tester confirms the gain with benchmark results and no regression. Pick Refactoring when the goal is cleaner structure rather than a number.">
           <div class="preset-name">Performance Optimization</div>
           <div class="preset-desc">Profile &rarr; Optimize &rarr; Review &rarr; Test</div>
         </div>
@@ -836,35 +836,35 @@ svg.canvas{width:100%;height:100%;display:block}
           <div class="preset-name">Data Migration</div>
           <div class="preset-desc">Recon &rarr; Plan (Skeptic) &rarr; Migrate &rarr; Review &rarr; Verify</div>
         </div>
-        <div class="preset-item" data-preset="testing" onclick="loadPreset('testing')">
+        <div class="preset-item" data-preset="testing" onclick="loadPreset('testing')" title="For adding tests to code that already exists: a Planner scopes what to cover, a Code Analyzer maps the behavior and the project's current test conventions, a Test Suite Writer writes the tests, a Reviewer gates their quality, and a Tester runs the suite and reports coverage. Pick Test Automation for end-to-end UI suites with feature files and screen objects.">
           <div class="preset-name">Testing</div>
           <div class="preset-desc">Analyze &rarr; Write Tests &rarr; Review &rarr; Verify</div>
         </div>
-        <div class="preset-item" data-preset="test_automation" onclick="loadPreset('test_automation')">
+        <div class="preset-item" data-preset="test_automation" onclick="loadPreset('test_automation')" title="For end-to-end UI test suites: a Test Planner and a UI Explorer work in parallel (one on the scenarios, one mining the app source for screens and selectors), then a Feature Writer, Screen Objects, and Step Definitions are authored in parallel, and a Test Reviewer gates coverage of every acceptance criterion. Set the app source under App &amp; UI Context. Pick Testing for unit and integration tests.">
           <div class="preset-name">Test Automation</div>
           <div class="preset-desc">Plan + Explore App &rarr; [Feature | Screens | Steps] &rarr; Review</div>
         </div>
-        <div class="preset-item" data-preset="review" onclick="loadPreset('review')">
+        <div class="preset-item" data-preset="review" onclick="loadPreset('review')" title="For reviewing existing code or a pull request and applying what survives: a Reviewer finds the issues, a Skeptic audits every finding with evidence so false positives are dropped, an Improver applies only the confirmed ones, and a Validator proves nothing regressed. This preset changes code. Pick Review Swarm for a read-only audit across security, quality, performance, and architecture.">
           <div class="preset-name">Code Review</div>
           <div class="preset-desc">Review &rarr; Audit Findings &rarr; Fix &rarr; Validate</div>
         </div>
-        <div class="preset-item" data-preset="parallel_research" onclick="loadPreset('parallel_research')">
+        <div class="preset-item" data-preset="parallel_research" onclick="loadPreset('parallel_research')" title="For a question that needs an answer, not a change: three researchers work in parallel (what exists today, what the options are, and how each option fits), and an Advisor writes one recommendation with a scored options matrix in ADVISORY.md. It works for a technology choice and for a question about your own codebase. It writes a report only. Pick Analysis &amp; Forecast when the answer is a number.">
           <div class="preset-name">Parallel Research</div>
           <div class="preset-desc">[Codebase | Docs | Patterns] &rarr; Synthesize</div>
         </div>
-        <div class="preset-item" data-preset="swarm" onclick="loadPreset('swarm')">
+        <div class="preset-item" data-preset="swarm" onclick="loadPreset('swarm')" title="A read-only audit from four angles at once: Security, Quality, Performance, and Architecture reviewers work in parallel, and a Report Builder merges their findings into one prioritized audit report. It never changes code. Pick Code Review when you want the confirmed findings fixed in the same run.">
           <div class="preset-name">Review Swarm</div>
           <div class="preset-desc">[Security | Quality | Performance | Architecture] &rarr; Audit Report</div>
         </div>
-        <div class="preset-item" data-preset="analysis_forecast" onclick="loadPreset('analysis_forecast')">
+        <div class="preset-item" data-preset="analysis_forecast" onclick="loadPreset('analysis_forecast')" title="For measurement, estimation, and forecasting where the method must be visible: a Data Gatherer collects the inputs, an Analyst derives every figure step by step, a Skeptic checks the arithmetic, the units, and the assumptions, and a business Report Writer produces a decision-ready report that keeps measured and estimated values apart. Pick Parallel Research when the question is which option to choose rather than how much.">
           <div class="preset-name">Analysis &amp; Forecast</div>
           <div class="preset-desc">Gather Data &rarr; Analyze &rarr; Skeptic Gate &rarr; Report</div>
         </div>
-        <div class="preset-item" data-preset="incident_rca" onclick="loadPreset('incident_rca')">
+        <div class="preset-item" data-preset="incident_rca" onclick="loadPreset('incident_rca')" title="For understanding why something failed: an Investigator works against anchoring and writes a failing reproduction, a Verifier proves the root cause by execution rather than accepting a plausible story, and an RCA Writer documents the verified mechanism and the prevention plan. It explains the failure; it does not ship the fix. Pick Bug Fix to repair the defect.">
           <div class="preset-name">Incident RCA</div>
           <div class="preset-desc">Investigate &rarr; Verify Root Cause &rarr; RCA Report</div>
         </div>
-        <div class="preset-item" data-preset="delivery_swarm" onclick="loadPreset('delivery_swarm')">
+        <div class="preset-item" data-preset="delivery_swarm" onclick="loadPreset('delivery_swarm')" title="The full pipeline for a large or risky feature: three discovery agents map the codebase, the requirements, and the prior art in parallel, a Lead Planner writes the plan and a Skeptic doubts it, Backend and Frontend build in parallel, an Integrator joins them and a Verifier exercises the running feature (a real browser, real API calls) to prove it meets the acceptance criteria, then a review gate and a Test Engineer. The most thorough preset and the most expensive. Pick Feature Development for an ordinary feature.">
           <div class="preset-name">Delivery Swarm</div>
           <div class="preset-desc">Discover &rarr; Plan (Skeptic) &rarr; Build &rarr; Integrate (Verify) &rarr; Ship</div>
         </div>
