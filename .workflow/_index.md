@@ -2,6 +2,13 @@
 
 Scan-then-open: read this index first, match an entry against the files or capability your change touches, then open only the matched record(s). One entry per record, grouped by a stable capability slug.
 
+## changeset-risk-map
+
+- record: .workflow/changeset-risk-map.md
+- intent: a 24th preset whose product is a one-page reading plan for a large or high-risk pull request: researchers read the work items and linked documents, a mapper proves which files are mechanical, an architect assigns four seats, a blind second reader, and a skip auditor, a second architect consolidates, the Skeptic audits every entry, a verifier then runs code only where a run can settle what reading could not, and a writer produces the map (read these, suggested comments, proven by running, reviewed, mechanical, not checked); staff-level entries only, none is a normal result; report only
+- files: index.html (changeset_risk_map builder, RISKMAP_BAR, RISKMAP_MATERIAL, RISKMAP_REVIEW_STEPS, riskMapSeatPrompt, PROMPTS.riskMap*, tile, STORY_PLACEHOLDERS), tests.html, README.md, TECHNICAL.md
+- status: current | date: 2026-11-16
+
 ## surface-critical-assumptions
 
 - record: .workflow/surface-critical-assumptions.md

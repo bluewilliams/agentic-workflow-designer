@@ -496,6 +496,7 @@ The code tail (review → decision → tester → output) is skipped for read-on
 | **Code Review** | Input → Analyzer → Reviewer → Improver → Validator → Improved Code (code) |
 | **Parallel Research** | Input → Fork → (Codebase Explorer ‖ Doc Researcher ‖ Pattern Analyzer) → Join → Synthesizer → Research Report (report) |
 | **Review Swarm** | Input → Fork → (Security Auditor ‖ Quality Analyst ‖ Perf Profiler ‖ Arch Reviewer) → Join → Report Builder → Audit Report (report) |
+| **Changeset Risk Map** | Input → Fork → (Work Item Researcher ‖ Linked Docs Researcher ‖ Change Mapper ‖ Risk Scout) → Join → Review Architect → Fork → (Seat 1-4 Reviewers ‖ Second Reader ‖ Skip Auditor) → Join → Findings Architect [Skeptic loop] → Verifier → Map Writer → Review Map (report) |
 | **Delivery Swarm** | Input → Fork → (Codebase Cartographer ‖ Requirements Analyst ‖ Prior-Art Researcher) → Join → Lead Planner [Skeptic loop] → Fork → (Backend ‖ Frontend) → Join → Integrator [Verifier loop] → Code Reviewer → Decision → Test Engineer → Feature Delivered (code) |
 | **Test Automation** | (Requirements + App Source) → Fork → (Test Planner ‖ UI Explorer) → Join → Fork → (Feature Writer ‖ Screen Objects ‖ Step Definitions) → Join → Test Reviewer → Decision → Test Suite (code) |
 | **UI Design & Development** | Input → Design System Analyzer → UI Implementer → UI Reviewer → Component Ready (code) |
