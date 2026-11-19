@@ -5619,6 +5619,18 @@ function genAgentMemoryPreamble(agentLabel, slug) {
   return p.join('\n');
 }
 
+// Single-session export only: a step launched with the Task tool sees nothing but its brief,
+// so its memory duties ride in the step block for the orchestrator to pass along.
+function spawnedStepMemoryHint(node, slug) {
+  if (!state.memoryEnabled || !node) return '';
+  const path = getMemoryPath();
+  slug = slug || slugify(node.label);
+  return '**Memory duties (put these in this agent\'s Task brief - a spawned agent sees only its brief):** BEFORE the first action, open `' + path + '@' + slug + '.md` with an active entry (`## @' + slug + ' | {ISO-timestamp} | \u{1F504}active` plus one `d:` line naming the mission); the moment a planned task begins, append `t: {task} started`, and the moment it ends, `t: {task} done` - COPY the task\'s checkbox text from `' + path + 'tasks.md` exactly, one line per event, never a batch at the end; close with a `\u2705done` entry when finished.';
+}
+function isSpawnedStep(node) {
+  return !!node && state.connections.some(c => c.to === node.id && state.nodes.some(n => n.id === c.from && n.type === 'parallel'));
+}
+
 // Per-agent memory postamble - injected AFTER the output format (final mandatory steps)
 function genAgentMemoryPostamble(agentLabel, slug) {
   const path = getMemoryPath();
@@ -11757,6 +11769,7 @@ const EXPLAIN_SECTION_LINKS = {
   'Verification instructions': 'repositories',
   'Memory protocol': 'memory-durable-record',
   'Memory preamble (Step 0)': 'memory-durable-record',
+  'Memory duties for the Task brief': 'memory-durable-record',
   'Memory postamble (Final Steps)': 'memory-durable-record',
   'Memory read step': 'memory-durable-record',
   'Memory write step': 'memory-durable-record',
@@ -11893,6 +11906,10 @@ function explainAgentNode(node, format) {
       scope));
   }
 
+  if (format === 'prompt') {
+    const spawned = isSpawnedStep(node), sm = spawned ? spawnedStepMemoryHint(node, buildAgentSlugMap()[node.id]) : '';
+    rows.push(exRow('Memory duties for the Task brief', !!sm, sm ? 'memory toggle on and this step is launched with the Task tool - the orchestrator passes these duties in its brief' : (!state.memoryEnabled ? 'memory toggle off' : 'the orchestrator runs this step itself and follows the Memory Protocol directly'), sm));
+  }
   if (format === 'subagent' || format === 'teams') {
     const memOn = state.memoryEnabled;
     const memReason = memOn
@@ -13146,6 +13163,7 @@ function genWorkflow() {
   const agents = ordered.filter(n => n.type === 'agent');
   const decisions = ordered.filter(n => n.type === 'decision');
   const parallels = ordered.filter(n => n.type === 'parallel');
+  const _memSlugs = state.memoryEnabled ? buildAgentSlugMap() : null;
   const outputs = ordered.filter(n => n.type === 'output');
   const p = [];
 
@@ -13208,6 +13226,7 @@ function genWorkflow() {
           const _cmS = commentStepHint(s); if (_cmS) p.push('  ' + _cmS);
           const _fdS = foundDefectNote(s); if (_fdS) p.push('  ' + _fdS);
           const _rhS = recordHandoffHint(s); if (_rhS) p.push('  ' + _rhS);
+          const _smS = _memSlugs ? spawnedStepMemoryHint(s, _memSlugs[s.id]) : ''; if (_smS) p.push('  ' + _smS);
           p.push(`  - Instructions: ${getEffectivePrompt(s)}`);
           if (s.config.notes && s.config.notes.trim()) p.push(`  - Agent Context: ${s.config.notes.trim()}`);
           if (s.config.maxTurns) p.push(`  - Max turns: ${s.config.maxTurns}`);
@@ -16147,7 +16166,7 @@ function parseToonEntries(text) {
   let cur = null;
   String(text || '').split('\n').forEach(line => {
     const m = line.match(/^##\s+([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*(.+)$/);
-    if (m) { cur = { slug: m[1].trim().replace(/^@/, ''), ts: m[2].trim(), status: monitorStatusWord(m[3]), lines: [] }; out.push(cur); return; }
+    if (m) { const at = m[1].trim().match(/^@([A-Za-z0-9_-]+)/); cur = { slug: at ? at[1] : m[1].trim(), ts: m[2].trim(), status: monitorStatusWord(m[3]), lines: [] }; out.push(cur); return; }
     if (cur && line.trim()) cur.lines.push(line);
   });
   return out;

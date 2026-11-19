@@ -2,6 +2,7 @@
 
 Newest first. One line per change: date - capability-slug - one-line intent - record link. A recency lens over the same records the `_index.md` breadcrumb groups by capability; together they form the three-tier lookup (timeline -> index -> record). Never hand-pruned.
 
+2026-11-19 - live-run-monitor - the single-session export gives each Task-launched step its memory duties so started tasks show on the board, and the monitor reads the agent name from a header that also carries an address - .workflow/live-run-monitor.md
 2026-11-16 - changeset-risk-map - a new preset that maps a large or high-risk pull request to the few places a person must read, with staff-level entries only and every changed file accounted for - .workflow/changeset-risk-map.md
 2026-11-11 - house-tooltips - every preset tile explains itself: what it is for, what sets it apart, and which neighbor to pick instead - .workflow/house-tooltips.md
 2026-11-11 - surface-critical-assumptions - with no gate on, the orchestrator shows at most three critical assumptions once (option taken, option passed over) and proceeds without waiting; silent when none are critical - .workflow/surface-critical-assumptions.md
